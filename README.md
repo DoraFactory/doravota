@@ -1,2 +1,2 @@
-# DoraFactory-testnet
-A dorafactory test node which supports cosmwasm in cosmos ecosystem
+# doravota-testnet
+doravota test node which supports cosmwasm in cosmos ecosystem
