@@ -17,6 +17,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
+	"github.com/CosmWasm/wasmd/x/wasm"
 
 	"doravota-testnet/app"
 )
@@ -53,6 +54,7 @@ func DefaultConfig() network.Config {
 		encoding = app.MakeEncodingConfig()
 		chainID  = "chain-" + tmrand.NewRand().Str(6)
 	)
+	var wasmOpts []wasm.Option
 	return network.Config{
 		Codec:             encoding.Marshaler,
 		TxConfig:          encoding.TxConfig,
@@ -70,6 +72,8 @@ func DefaultConfig() network.Config {
 				0,
 				encoding,
 				simtestutil.EmptyAppOptions{},
+				app.GetEnabledProposals(),
+				wasmOpts,
 				baseapp.SetPruning(pruningtypes.NewPruningOptionsFromString(val.GetAppConfig().Pruning)),
 				baseapp.SetMinGasPrices(val.GetAppConfig().MinGasPrices),
 				baseapp.SetChainID(chainID),

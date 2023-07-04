@@ -35,9 +35,12 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/stretchr/testify/require"
+	"github.com/CosmWasm/wasmd/x/wasm"
 
 	"doravota-testnet/app"
 )
+
+var emptyWasmOpts []wasm.Option
 
 type storeKeysPrefixes struct {
 	A        storetypes.StoreKey
@@ -97,6 +100,8 @@ func BenchmarkSimulation(b *testing.B) {
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
+		wasm.EnableAllProposals,
+		emptyWasmOpts,
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(b, app.Name, bApp.Name())
@@ -173,9 +178,13 @@ func TestAppStateDeterminism(t *testing.T) {
 				simcli.FlagPeriodValue,
 				app.MakeEncodingConfig(),
 				appOptions,
+				wasm.EnableAllProposals,
+				emptyWasmOpts,
 				fauxMerkleModeOpt,
 				baseapp.SetChainID(chainID),
 			)
+
+			
 
 			fmt.Printf(
 				"running non-determinism simulation; seed %d: %d/%d, attempt: %d/%d\n",
@@ -251,6 +260,8 @@ func TestAppImportExport(t *testing.T) {
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
+		wasm.EnableAllProposals,
+		emptyWasmOpts,
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -312,6 +323,8 @@ func TestAppImportExport(t *testing.T) {
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
+		wasm.EnableAllProposals,
+		emptyWasmOpts,
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -405,6 +418,8 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
+		wasm.EnableAllProposals,
+		emptyWasmOpts,
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)
@@ -472,6 +487,8 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
+		wasm.EnableAllProposals,
+		emptyWasmOpts,
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)
