@@ -20,5 +20,10 @@ sudo cp ~/go/bin/dorad /usr/local/bin
 dorad keys add xxx
 ```
 
+## Chain Info
+- chain-id: doravota-devnet
+- decimal: 6
+- Name: DORA
+
 ## Some useful url
 TBD
