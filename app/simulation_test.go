@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CosmWasm/wasmd/x/wasm"
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -35,9 +36,8 @@ import (
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/stretchr/testify/require"
-	"github.com/CosmWasm/wasmd/x/wasm"
 
-	"doravota-testnet/app"
+	"dora/app"
 )
 
 var emptyWasmOpts []wasm.Option
@@ -183,8 +183,6 @@ func TestAppStateDeterminism(t *testing.T) {
 				fauxMerkleModeOpt,
 				baseapp.SetChainID(chainID),
 			)
-
-			
 
 			fmt.Printf(
 				"running non-determinism simulation; seed %d: %d/%d, attempt: %d/%d\n",

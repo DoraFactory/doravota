@@ -33,18 +33,19 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/prometheus/client_golang/prometheus"
 
-	"doravota-testnet/app/params"
+	"dora/app/params"
+
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	"doravota-testnet/app"
-	appparams "doravota-testnet/app/params"
+	"dora/app"
+	appparams "dora/app/params"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application
@@ -61,7 +62,7 @@ func NewRootCmd() (*cobra.Command, appparams.EncodingConfig) {
 		WithViper("")
 
 	rootCmd := &cobra.Command{
-		Use:    app.Name + "d",
+		Use:   app.Name + "d",
 		Short: "Start dora vota testnet node",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			// set the default command outputs

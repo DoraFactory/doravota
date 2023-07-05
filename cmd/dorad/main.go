@@ -6,8 +6,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/server"
 	svrcmd "github.com/cosmos/cosmos-sdk/server/cmd"
 
-	"doravota-testnet/app"
-	"doravota-testnet/cmd/doravota-testnetd/cmd"
+	"dora/app"
+	"dora/cmd/dorad/cmd"
 )
 
 func main() {

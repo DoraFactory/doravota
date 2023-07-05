@@ -1,4 +1,4 @@
-module doravota-testnet
+module dora
 
 go 1.19
 

@@ -3,7 +3,7 @@ package cmd
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	"doravota-testnet/app"
+	"dora/app"
 )
 
 func initSDKConfig() {

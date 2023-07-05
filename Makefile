@@ -5,8 +5,8 @@ ifeq ($(OS),Windows_NT)
 	$(error wasmd server not supported. Use "make build-windows-client" for client)
 	exit 1
 else
-	go build -mod=readonly $(BUILD_FLAGS) -o build/doravota-testnetd ./cmd/doravota-testnetd
+	go build -mod=readonly $(BUILD_FLAGS) -o build/dorad ./cmd/dorad
 endif
 
 install: go.sum
-	go install -mod=readonly $(BUILD_FLAGS) ./cmd/doravota-testnetd
+	go install -mod=readonly $(BUILD_FLAGS) ./cmd/dorad
