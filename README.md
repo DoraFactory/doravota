@@ -1,2 +1,2 @@
-# doravota-testnet
-doravota test node which supports cosmwasm in cosmos ecosystem
+# dora-vota
+doravota node which supports cosmwasm in cosmos ecosystem
