@@ -26,4 +26,4 @@ dorad keys add xxx
 - Name: DORA
 
 ## Some useful url
-TBD
+- RPC: doravota-devnet-rpc.dorafactory.org:26657
