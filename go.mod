@@ -1,4 +1,4 @@
-module dora
+module github.com/DoraFactory/doravota
 
 go 1.19
 
