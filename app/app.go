@@ -124,8 +124,8 @@ import (
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	appparams "dora/app/params"
-	"dora/docs"
+	appparams "github.com/DoraFactory/doravota/app/params"
+	"github.com/DoraFactory/doravota/docs"
 )
 
 const (

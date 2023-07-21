@@ -3,7 +3,7 @@ package cmd
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	"dora/app"
+	"github.com/DoraFactory/doravota/app"
 )
 
 const (

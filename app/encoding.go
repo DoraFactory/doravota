@@ -6,7 +6,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/std"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
 
-	"dora/app/params"
+	"github.com/DoraFactory/doravota/app/params"
 )
 
 // makeEncodingConfig creates an EncodingConfig for an amino based test configuration.

@@ -38,14 +38,14 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"dora/app/params"
+	"github.com/DoraFactory/doravota/app/params"
 
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
-	"dora/app"
-	appparams "dora/app/params"
+	"github.com/DoraFactory/doravota/app"
+	appparams "github.com/DoraFactory/doravota/app/params"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application

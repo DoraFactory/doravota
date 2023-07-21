@@ -37,7 +37,7 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/stretchr/testify/require"
 
-	"dora/app"
+	"github.com/DoraFactory/doravota/app"
 )
 
 var emptyWasmOpts []wasm.Option
