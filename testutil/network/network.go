@@ -19,7 +19,7 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
 
-	"dora/app"
+	"github.com/DoraFactory/doravota/app"
 )
 
 type (
