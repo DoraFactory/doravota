@@ -9,8 +9,8 @@ import (
 const (
 	// set token decimal
 	HumanCoinUnit = "DORA"
-	BaseCoinUnit  = "uDORA"
-	DoraExponent  = 6
+	BaseCoinUnit  = "peaka"
+	DoraExponent  = 18
 
 	DefaultBondDenom = BaseCoinUnit
 )
