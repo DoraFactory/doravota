@@ -1,4 +1,4 @@
-# dora-vota
+# Dora Vota
 doravota node which supports cosmwasm in cosmos ecosystem
 
 ## Install and Using
