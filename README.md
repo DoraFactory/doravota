@@ -21,66 +21,59 @@ dorad keys add xxx
 ```
 
 ## Chain Info
-- chain-id: doravota-devnet
-- decimal: 6
-- Name: DORA
+- chain-id: vota-ash
+- decimal: 18
+- token name: DORA
+- chain name: Dora Vota
 
 ## Some parameters
 ```
 {
-  "chainId": "doravota-devnet",
-  "chainName": "dora",
-  "rpc": "https://vota-rpc.dorafactory.org",
-  "rest": "https://vota-rest.dorafactory.org",
-  "bip44": {
-    "coinType": 118
-  },
-  "bech32Config": {
-    "bech32PrefixAccAddr": "dora",
-    "bech32PrefixAccPub": "dorapub",
-    "bech32PrefixValAddr": "doravaloper",
-    "bech32PrefixValPub": "doravaloperpub",
-    "bech32PrefixConsAddr": "doravalcons",
-    "bech32PrefixConsPub": "doravalconspub"
-  },
-  "currencies": [
-    {
-      "coinDenom": "DORA",
-      "coinMinimalDenom": "uDORA",
-      "coinDecimals": 6,
-      "coinGeckoId": "dora"
-    }
-  ],
-  "feeCurrencies": [
-    {
-      "coinDenom": "DORA",
-      "coinMinimalDenom": "uDORA",
-      "coinDecimals": 6,
-      "coinGeckoId": "dora",
-      "gasPriceStep": {
-        "low": 0.001,
-        "average": 0.0025,
-        "high": 0.003
+    "chainId": "vota-ash",
+    "chainName": "Dora Vota",
+    "rpc": "https://vota-rpc.dorafactory.org",
+    "rest": "https://vota-rest.dorafactory.org",
+    "bip44": {
+      "coinType": 118
+    },
+    "bech32Config": {
+      "bech32PrefixAccAddr": "dora",
+      "bech32PrefixAccPub": "dorapub",
+      "bech32PrefixValAddr": "doravaloper",
+      "bech32PrefixValPub": "doravaloperpub",
+      "bech32PrefixConsAddr": "doravalcons",
+      "bech32PrefixConsPub": "doravalconspub"
+    },
+    "currencies": [
+      {
+        "coinDenom": "DORA",
+        "coinMinimalDenom": "peaka",
+        "coinDecimals": 18,
+        "coinGeckoId": "dora"
       }
-    }
-  ],
-  "stakeCurrency": {
-    "coinDenom": "DORA",
-    "coinMinimalDenom": "uDORA",
-    "coinDecimals": 6,
-    "coinGeckoId": "dora"
-  },
-  "features": [
-    // "cosmwasm",
-    // "dora-txfees"
-  ]
-}
-
-/** Setting to speed up testing */
-const defaultSigningClientOptions = {
-  broadcastPollIntervalMs: 8_000,
-  broadcastTimeoutMs: 16_000,
-  gasPrice: GasPrice.fromString("0.025uDORA"),
-};
-
+    ],
+    "feeCurrencies": [
+      {
+        "coinDenom": "DORA",
+        "coinMinimalDenom": "peaka",
+        "coinDecimals": 18,
+        "coinGeckoId": "dora",
+        "gasPriceStep": {
+          "low": 0.001,
+          "average": 0.0025,
+          "high": 0.003
+        }
+      }
+    ],
+    "stakeCurrency": {
+      "coinDenom": "DORA",
+      "coinMinimalDenom": "peaka",
+      "coinDecimals": 18,
+      "coinGeckoId": "dora"
+    },
+    "features": [
+      "cosmwasm",
+      "dora-txfees"
+    ]
+  }
 ```
