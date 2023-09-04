@@ -72,8 +72,7 @@ dorad keys add xxx
       "coinGeckoId": "dora"
     },
     "features": [
-      "cosmwasm",
-      "dora-txfees"
+      "cosmwasm"
     ]
   }
 ```
