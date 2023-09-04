@@ -208,7 +208,7 @@
         "min_deposit": [
           {
             "denom": "peaka",
-            "amount": "10000000"
+            "amount": "1000000000000000000"
           }
         ],
         "max_deposit_period": "172800s",
@@ -289,14 +289,14 @@
     },
     "mint": {
       "minter": {
-        "inflation": "0.130000000000000000",
+        "inflation": "0.000000000000000000",
         "annual_provisions": "0.000000000000000000"
       },
       "params": {
         "mint_denom": "peaka",
         "inflation_rate_change": "0.130000000000000000",
-        "inflation_max": "0.200000000000000000",
-        "inflation_min": "0.070000000000000000",
+        "inflation_max": "0.000000000000000000",
+        "inflation_min": "0.000000000000000000",
         "goal_bonded": "0.670000000000000000",
         "blocks_per_year": "6311520"
       }
@@ -304,9 +304,9 @@
     "params": null,
     "slashing": {
       "params": {
-        "signed_blocks_window": "100",
+        "signed_blocks_window": "5000",
         "min_signed_per_window": "0.500000000000000000",
-        "downtime_jail_duration": "600s",
+        "downtime_jail_duration": "30000s",
         "slash_fraction_double_sign": "0.050000000000000000",
         "slash_fraction_downtime": "0.010000000000000000"
       },
@@ -316,7 +316,7 @@
     "staking": {
       "params": {
         "unbonding_time": "1814400s",
-        "max_validators": 100,
+        "max_validators": 2,
         "max_entries": 7,
         "historical_entries": 10000,
         "bond_denom": "peaka",

@@ -38,6 +38,9 @@ func initSDKConfig() {
 		panic(err)
 	}
 
+	// set the genesis default denom
+	sdk.DefaultBondDenom = DefaultBondDenom
+
 	config.Seal()
 }
 
