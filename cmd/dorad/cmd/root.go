@@ -20,6 +20,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/server"
+	"github.com/cosmos/cosmos-sdk/version"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/snapshots"
@@ -111,7 +112,8 @@ func initRootCmd(
 ) {
 	// Set config
 	initSDKConfig()
-
+	// Set app version info
+	setVersionInfo()
 	gentxModule := app.ModuleBasics[genutiltypes.ModuleName].(genutil.AppModuleBasic)
 	rootCmd.AddCommand(
 		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
@@ -129,6 +131,7 @@ func initRootCmd(
 		debug.Cmd(),
 		config.Cmd(),
 		genesisCommand(encodingConfig),
+		version.NewVersionCommand(),
 	)
 
 	a := appCreator{

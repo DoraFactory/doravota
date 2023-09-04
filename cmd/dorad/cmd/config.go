@@ -2,7 +2,7 @@ package cmd
 
 import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
-
+	"github.com/cosmos/cosmos-sdk/version"
 	"github.com/DoraFactory/doravota/app"
 )
 
@@ -39,4 +39,21 @@ func initSDKConfig() {
 	}
 
 	config.Seal()
+}
+
+
+const (
+	// Name      = "Dora Vota"
+	// AppName   = "dorad"
+    Version   = "0.1.0"
+	// Commit    = ""
+	// BuildTags = ""
+)
+
+func setVersionInfo() {
+	// version.Name = Name
+	// version.AppName = AppName
+	version.Version = Version
+	// version.Commit = Commit
+	// version.BuildTags = BuildTags
 }
