@@ -7,6 +7,7 @@ doravota node which supports cosmwasm in cosmos ecosystem
 1. download
 ```shell
 git clone https://github.com/DoraFactory/doravota.git
+git checkout 0.1.0
 ```
 
 2. compile
