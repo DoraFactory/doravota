@@ -60,9 +60,9 @@ dorad keys add xxx
         "coinDecimals": 18,
         "coinGeckoId": "dora",
         "gasPriceStep": {
-          "low": 0.001,
-          "average": 0.0025,
-          "high": 0.003
+          "low": 100000000000,
+          "average": 300000000000,
+          "high": 500000000000
         }
       }
     ],
