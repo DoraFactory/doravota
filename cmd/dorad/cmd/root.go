@@ -309,7 +309,7 @@ func (a appCreator) newApp(
 		cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)),
 		a.encodingConfig,
 		appOpts,
-		app.GetEnabledProposals(),
+		// app.GetEnabledProposals(),
 		wasmOpts,
 		baseapp.SetPruning(pruningOpts),
 		baseapp.SetMinGasPrices(cast.ToString(appOpts.Get(server.FlagMinGasPrices))),
@@ -353,7 +353,7 @@ func (a appCreator) appExport(
 		uint(1),
 		a.encodingConfig,
 		appOpts,
-		app.GetEnabledProposals(),
+		// app.GetEnabledProposals(),
 		emptyWasmOpts,
 	)
 
@@ -391,7 +391,7 @@ func initAppConfig() (string, interface{}) {
 	// - if you set srvCfg.MinGasPrices non-empty, validators CAN tweak their
 	//   own app.toml to override, or use this default value.
 	//
-	srvCfg.MinGasPrices = "0.0001peaka"
+	srvCfg.MinGasPrices = "100000000000peaka"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
