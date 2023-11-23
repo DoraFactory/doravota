@@ -1,20 +1,58 @@
-ARG IMG_TAG=latest
-
-# Compile the gaiad binary
-FROM golang:1.20-alpine AS dorad-builder
-WORKDIR /src/app/
-COPY go.mod go.sum* ./
-RUN go mod download
+# syntax=docker/dockerfile:1
+ARG GO_VERSION="1.20"
+ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
+# --------------------------------------------------------
+# Builder
+# --------------------------------------------------------
+FROM golang:${GO_VERSION}-alpine as builder
+ARG GIT_VERSION
+ARG GIT_COMMIT
+RUN apk add --no-cache \
+    ca-certificates \
+    build-base \
+    linux-headers
+# Download go dependencies
+WORKDIR /dora
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    go mod download
+# Cosmwasm - Download correct libwasmvm version
+RUN ARCH=$(uname -m) && WASMVM_VERSION=$(go list -m github.com/CosmWasm/wasmvm | sed 's/.* //') && \
+    wget https://github.com/CosmWasm/wasmvm/releases/download/$WASMVM_VERSION/libwasmvm_muslc.$ARCH.a \
+        -O /lib/libwasmvm_muslc.a && \
+    # verify checksum
+    wget https://github.com/CosmWasm/wasmvm/releases/download/$WASMVM_VERSION/checksums.txt -O /tmp/checksums.txt && \
+    sha256sum /lib/libwasmvm_muslc.a | grep $(cat /tmp/checksums.txt | grep libwasmvm_muslc.$ARCH | cut -d ' ' -f 1)
+# Copy the remaining files
 COPY . .
-ENV PACKAGES curl make git libc-dev bash gcc linux-headers eudev-dev python3
-RUN apk add --no-cache $PACKAGES
-RUN CGO_ENABLED=0 go install -mod=readonly  ./cmd/dorad
-
-# Add to a distroless container
-FROM cgr.dev/chainguard/static:$IMG_TAG
-ARG IMG_TAG
-COPY --from=dorad-builder /go/bin/dorad /usr/local/bin/
-EXPOSE 26656 26657 1317 9090
-USER 0
-
-ENTRYPOINT ["dorad", "start"]
+# Build dorad binary
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/go/pkg/mod \
+    GOWORK=off go build \
+        -mod=readonly \
+        -tags "netgo,ledger,muslc" \
+        -ldflags \
+            "-X github.com/cosmos/cosmos-sdk/version.Name="dora" \
+            -X github.com/cosmos/cosmos-sdk/version.AppName="dorad" \
+            -X github.com/cosmos/cosmos-sdk/version.Version=${GIT_VERSION} \
+            -X github.com/cosmos/cosmos-sdk/version.Commit=${GIT_COMMIT} \
+            -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,muslc \
+            -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
+        -trimpath \
+        -o /dora/build/dorad \
+        /dora/cmd/dorad/main.go
+# --------------------------------------------------------
+# Runner
+# --------------------------------------------------------
+FROM ${RUNNER_IMAGE}
+COPY --from=builder /dora/build/dorad /bin/dorad
+ENV HOME /dora
+WORKDIR $HOME
+EXPOSE 26656
+EXPOSE 26657
+EXPOSE 1317
+# Note: uncomment the line below if you need pprof in localdora
+# We disable it by default in out main Dockerfile for security reasons
+# EXPOSE 6060
+ENTRYPOINT ["dorad"]
