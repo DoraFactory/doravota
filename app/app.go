@@ -1098,5 +1098,7 @@ func (app *App) setupUpgradeHandlers() {
         return
     }
 
-	app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
+	if upgradeInfo.Name == v0_3_0.UpgradeName {
+		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
+	}
 }
