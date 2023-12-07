@@ -1087,12 +1087,12 @@ func (app *App) setupUpgradeHandlers() {
     )
 
 	// load the upgrade info from the disk
-    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+/*     upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
     if err != nil {
         panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
     }
 
     if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
         return
-    }
+    } */
 }
