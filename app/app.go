@@ -94,6 +94,7 @@ import (
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	v0_3_0 "github.com/DoraFactory/doravota/app/upgrades/v0_3_0"
+	
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller/keeper"
@@ -1086,13 +1087,16 @@ func (app *App) setupUpgradeHandlers() {
         v0_3_0.CreateUpgradeHandler(app.mm, app.Configurator()),
     )
 
+	// setup store loader
 	// load the upgrade info from the disk
-/*     upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
     if err != nil {
         panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
     }
 
     if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
         return
-    } */
+    }
+
+	app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
 }
