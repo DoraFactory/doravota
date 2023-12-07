@@ -93,6 +93,7 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
+	v0_3_0 "github.com/DoraFactory/doravota/app/upgrades/v0_3_0"
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller/keeper"
@@ -715,6 +716,10 @@ func New(
 	// NOTE: Any module instantiated in the module manager that is later modified
 	// must be passed by reference here.
 
+
+	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
+	app.setupUpgradeHandlers()
+
 	app.mm = module.NewManager(
 		genutil.NewAppModule(
 			app.AccountKeeper,
@@ -1073,4 +1078,21 @@ func (app *App) SimulationManager() *module.SimulationManager {
 // ModuleManager returns the app ModuleManager
 func (app *App) ModuleManager() *module.Manager {
 	return app.mm
+}
+
+func (app *App) setupUpgradeHandlers() {
+    app.UpgradeKeeper.SetUpgradeHandler(
+        v0_3_0.UpgradeName,
+        v0_3_0.CreateUpgradeHandler(app.mm, app.Configurator()),
+    )
+
+	// load the upgrade info from the disk
+    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+    if err != nil {
+        panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
+    }
+
+    if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+        return
+    }
 }
