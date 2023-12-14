@@ -14,12 +14,15 @@ func CreateUpgradeHandler(
     return func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
 /* 		logger := ctx.Logger().With("upgrade", UpgradeName)
 		// we just upgrade the wasm version, so we do nothing in module
-		logger.Debug("running module migrations ...") */
+		// logger.Debug("running module migrations ...") */
 
+		ctx.Logger().Info("running module migrations ...")
 		migrations, err := mm.RunMigrations(ctx, configurator, vm)
 		if err != nil {
 			return nil, err
 		}
+		ctx.Logger().Info("migrations has been run...")
+
 
 		return migrations, nil
         // return mm.RunMigrations(ctx, configurator, vm)
