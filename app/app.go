@@ -93,6 +93,8 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
+	v0_3_0 "github.com/DoraFactory/doravota/app/upgrades/v0_3_0"
+	
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller/keeper"
@@ -123,6 +125,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	// cosmwasm "github.com/CosmWasm/wasmvm"
 
 	appparams "github.com/DoraFactory/doravota/app/params"
 	"github.com/DoraFactory/doravota/docs"
@@ -161,7 +164,7 @@ var (
 
 // GetEnabledProposals parses the ProposalsEnabled / EnableSpecificProposals values to
 // produce a list of enabled proposals to pass into wasmd app.
-func GetEnabledProposals() []wasm.ProposalType {
+/* func GetEnabledProposals() []wasm.ProposalType {
 	if EnableSpecificProposals == "" {
 		if ProposalsEnabled == "true" {
 			return wasm.EnableAllProposals
@@ -175,7 +178,7 @@ func GetEnabledProposals() []wasm.ProposalType {
 	}
 	return proposals
 }
-
+ */
 func getGovProposalHandlers() []govclient.ProposalHandler {
 	var govProposalHandlers []govclient.ProposalHandler
 	// this line is used by starport scaffolding # stargate/app/govProposalHandlers
@@ -335,7 +338,7 @@ func New(
 	invCheckPeriod uint,
 	encodingConfig appparams.EncodingConfig,
 	appOpts servertypes.AppOptions,
-	enabledProposals []wasm.ProposalType,
+	// enabledProposals []wasm.ProposalType,
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
@@ -621,6 +624,15 @@ func New(
 	// The last arguments can contain custom message handlers, and custom query handlers,
 	// if we want to allow any custom callbacks
 	availableCapabilities := strings.Join(AllCapabilities(), ",")
+
+	// wasmer, err := cosmwasm.NewVM(filepath.Join(wasmDir, "wasm"), availableCapabilities, 32, wasmConfig.ContractDebugMode, wasmConfig.MemoryCacheSize)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// trackingWasmVm := wasmtypes.Newwa(wasmer, &wasmdTypes.NoOpContractGasProcessor{})
+
+
 	app.WasmKeeper = wasm.NewKeeper(
 		appCodec,
 		keys[wasm.StoreKey],
@@ -643,9 +655,9 @@ func New(
 	)
 
 	// The gov proposal types can be individually enabled
-	if len(enabledProposals) != 0 {
+/* 	if len(enabledProposals) != 0 {
 		govRouter.AddRoute(wasm.RouterKey, wasm.NewWasmProposalHandler(app.WasmKeeper, enabledProposals))
-	}
+	} */
 
 	// Set legacy router for backwards compatibility with gov v1beta1
 	app.GovKeeper.SetLegacyRouter(govRouter)
@@ -678,8 +690,9 @@ func New(
 
 	// Create static IBC router, add transfer route, then set and seal it
 	ibcRouter := ibcporttypes.NewRouter()
-	ibcRouter.AddRoute(icahosttypes.SubModuleName, icaHostIBCModule).
-		AddRoute(ibctransfertypes.ModuleName, transferIBCModule)
+	ibcRouter.AddRoute(icahosttypes.SubModuleName, icaHostIBCModule)
+	ibcRouter.AddRoute(ibctransfertypes.ModuleName, transferIBCModule)
+	ibcRouter.AddRoute(wasmtypes.ModuleName, wasmStack)
 	// this line is used by starport scaffolding # ibc/app/router
 	app.IBCKeeper.SetRouter(ibcRouter)
 
@@ -703,6 +716,10 @@ func New(
 
 	// NOTE: Any module instantiated in the module manager that is later modified
 	// must be passed by reference here.
+
+
+	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
+	app.setupUpgradeHandlers()
 
 	app.mm = module.NewManager(
 		genutil.NewAppModule(
@@ -1062,4 +1079,28 @@ func (app *App) SimulationManager() *module.SimulationManager {
 // ModuleManager returns the app ModuleManager
 func (app *App) ModuleManager() *module.Manager {
 	return app.mm
+}
+
+func (app *App) setupUpgradeHandlers() {
+    app.UpgradeKeeper.SetUpgradeHandler(
+        v0_3_0.UpgradeName,
+		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+		},
+    )
+
+	// setup store loader
+	// load the upgrade info from the disk
+    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+    if err != nil {
+        panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
+    }
+
+    if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+        return
+    }
+
+	if upgradeInfo.Name == v0_3_0.UpgradeName {
+		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
+	}
 }
