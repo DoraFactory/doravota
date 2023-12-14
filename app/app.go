@@ -1084,7 +1084,9 @@ func (app *App) ModuleManager() *module.Manager {
 func (app *App) setupUpgradeHandlers() {
     app.UpgradeKeeper.SetUpgradeHandler(
         v0_3_0.UpgradeName,
-        v0_3_0.CreateUpgradeHandler(app.mm, app.Configurator()),
+		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+		},
     )
 
 	// setup store loader
