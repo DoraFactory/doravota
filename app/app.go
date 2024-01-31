@@ -129,6 +129,8 @@ import (
 
 	appparams "github.com/DoraFactory/doravota/app/params"
 	"github.com/DoraFactory/doravota/docs"
+
+	votatypes "github.com/DoraFactory/doravota/types"
 )
 
 const (
@@ -257,6 +259,8 @@ func init() {
 	}
 
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
+
+	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
 }
 
 // Override Wasm size limitation from WASMD.
