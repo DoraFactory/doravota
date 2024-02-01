@@ -93,7 +93,7 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
-	v0_3_0 "github.com/DoraFactory/doravota/app/upgrades/v0_3_0"
+	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
@@ -1087,7 +1087,7 @@ func (app *App) ModuleManager() *module.Manager {
 
 func (app *App) setupUpgradeHandlers() {
     app.UpgradeKeeper.SetUpgradeHandler(
-        v0_3_0.UpgradeName,
+        v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
@@ -1104,7 +1104,7 @@ func (app *App) setupUpgradeHandlers() {
         return
     }
 
-	if upgradeInfo.Name == v0_3_0.UpgradeName {
+	if upgradeInfo.Name == v0_3_1.UpgradeName {
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
 	}
 }
