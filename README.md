@@ -1,7 +1,7 @@
 # Dora Vota
-doravota node which supports cosmwasm in cosmos ecosystem
+Dora Vota node supporting CosmWasm.
 
-## Install and Using
+## Install and use
 > requirement: go version 1.20+
 
 1. download
@@ -16,12 +16,12 @@ cd doravota && make install
 sudo cp ~/go/bin/dorad /usr/local/bin
 ```
 
-3. create wallet
+3. create a wallet
 ```
 dorad keys add xxx
 ```
 
-## Chain Info
+## Chain info
 - chain-id: vota-ash
 - decimal: 18
 - token name: DORA
