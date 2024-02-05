@@ -30,6 +30,8 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 )
 
+require github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
+
 require (
 	cloud.google.com/go v0.110.4 // indirect
 	cloud.google.com/go/compute v1.20.1 // indirect
@@ -153,7 +155,6 @@ require (
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.16.0 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
-	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	github.com/tendermint/go-amino v0.16.0 // indirect
 	github.com/tidwall/btree v1.6.0 // indirect
 	github.com/ulikunitz/xz v0.5.11 // indirect

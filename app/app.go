@@ -132,7 +132,7 @@ import (
 
 	votatypes "github.com/DoraFactory/doravota/types"
 
-	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	// crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 )
 
 const (
@@ -1092,8 +1092,7 @@ func (app *App) setupUpgradeHandlers() {
         v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
-			var valUpdates []abci.ValidatorUpdate
-
+/* 			var valUpdates []abci.ValidatorUpdate
 
 			// 创建 Ed25519 类型的公钥
 			dora1Ed25519Key := []byte("ZfnXltRgMpe34ECSbISzNuM0akf2NgRbqIj+d3pjGzA=")
@@ -1129,7 +1128,13 @@ func (app *App) setupUpgradeHandlers() {
 			valUpdates = append(valUpdates, dora_01)
 			valUpdates = append(valUpdates, dora_02)
 
-			app.StakingKeeper.SetValidatorUpdates(ctx, valUpdates)
+			app.StakingKeeper.SetValidatorUpdates(ctx, valUpdates) */
+
+			validators := app.StakingKeeper.GetAllValidators(ctx)
+
+			for _, validator := range validators {
+				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
+			}
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
