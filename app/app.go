@@ -1090,13 +1090,14 @@ func (app *App) setupUpgradeHandlers() {
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
 			// logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
-			// stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
+			stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			for _, validator := range validators {
 				
-				store := ctx.KVStore(app.StakingKeeper.storeKey)
+				// store := ctx.KVStore(app.)
+				store := ctx.MultiStore().GetKVStore(stakingKey)
 				deleted := false
 
 				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
