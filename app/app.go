@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	// "bytes"
+	"bytes"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
@@ -1089,20 +1089,20 @@ func (app *App) setupUpgradeHandlers() {
 		v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
-			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
+			// logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
+			stakingKey := sdk.NewKVStoreKey("staking")
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			for _, validator := range validators {
 				
-				logger.Info("previous validator is ", validator)
+/* 				logger.Info("previous validator is ", validator)
 				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
 				logger.Info("current validator is ", validator)
-				app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
-				// return err
-				// logger.Error()
+				app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx) */
+
 				
-				/* store := ctx.KVStore("staking")
+				store := ctx.KVStore(stakingKey)
 				deleted := false
 
 				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
@@ -1119,14 +1119,14 @@ func (app *App) setupUpgradeHandlers() {
 
 						store.Delete(iterator.Key())
 					}
-				} */
+				}
 
-				// app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
+				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
 
-				/* _, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
+				_, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
 				if err != nil {
 					panic(err)
-				} */
+				}
 
 			}
 
