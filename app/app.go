@@ -1089,41 +1089,53 @@ func (app *App) setupUpgradeHandlers() {
 		v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
-			// logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
-			stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
+			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
+			// stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
+			logger.Info("staet change validator....")
 			for _, validator := range validators {
 				
 				// store := ctx.KVStore(app.)
-				store := ctx.MultiStore().GetKVStore(stakingKey)
+				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
+				logger.Info("get staking store ....")
+				
 				deleted := false
 
 				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
+				logger.Info("get kv store iterator")
 				defer iterator.Close()
 
 				for ; iterator.Valid(); iterator.Next() {
 					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
+					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
 						if deleted {
 							panic("found duplicate power index key")
 						} else {
 							deleted = true
+							logger.Info("set delete true..")
 						}
 
 						store.Delete(iterator.Key())
+						logger.Info("deleted the key")
 					}
 				}
 
 				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
-
+				logger.Info("Set the validator successfully...")
 				_, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
+				logger.Info("set validator set update.....")
 				if err != nil {
 					panic(err)
 				}
 
+				logger.Info("start set the next validator...")
+
 			}
+
+			logger.Info("updated all validator successfully....")
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
