@@ -1091,6 +1091,7 @@ func (app *App) setupUpgradeHandlers() {
     app.UpgradeKeeper.SetUpgradeHandler(
         v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
 
 /* 			var valUpdates []abci.ValidatorUpdate
 
@@ -1130,15 +1131,13 @@ func (app *App) setupUpgradeHandlers() {
 
 			app.StakingKeeper.SetValidatorUpdates(ctx, valUpdates) */
 
+			logger.Info("start change the validator voting power....")
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			for _, validator := range validators {
-				log.NewNopLogger().Info("the previous validator is %+v\\n", validator)
-				// app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
-				log.NewNopLogger().Info("the current validator is %+v\\n", validator)
-			
-				// fmt.Println("the previous validator is %+v\\n", validator)
-				// fmt.Println("the current validator is %+v\\n", validator)
+				logger.Info("previous validator is %+v\\n", validator)
+				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
+				logger.Info("current validator is %+v\\n", validator)
 			}
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
