@@ -1134,9 +1134,8 @@ func (app *App) setupUpgradeHandlers() {
 
 			for _, validator := range validators {
 				log.NewNopLogger().Info("the previous validator is %+v\\n", validator)
-				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
+				// app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
 				log.NewNopLogger().Info("the current validator is %+v\\n", validator)
-
 			
 				// fmt.Println("the previous validator is %+v\\n", validator)
 				// fmt.Println("the current validator is %+v\\n", validator)
