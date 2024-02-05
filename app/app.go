@@ -1133,9 +1133,13 @@ func (app *App) setupUpgradeHandlers() {
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			for _, validator := range validators {
-				fmt.Println("the previous validator is %+v\\n", validator)
+				log.NewNopLogger().Info("the previous validator is %+v\\n", validator)
 				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
-				fmt.Println("the current validator is %+v\\n", validator)
+				log.NewNopLogger().Info("the current validator is %+v\\n", validator)
+
+			
+				// fmt.Println("the previous validator is %+v\\n", validator)
+				// fmt.Println("the current validator is %+v\\n", validator)
 			}
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
