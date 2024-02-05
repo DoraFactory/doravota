@@ -1093,51 +1093,14 @@ func (app *App) setupUpgradeHandlers() {
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
 
-/* 			var valUpdates []abci.ValidatorUpdate
-
-			// 创建 Ed25519 类型的公钥
-			dora1Ed25519Key := []byte("ZfnXltRgMpe34ECSbISzNuM0akf2NgRbqIj+d3pjGzA=")
-			dora2Ed25519Key := []byte("bQxyNkpYjHOhqYImQOuS4b/oWmPBvaDt8CR+iYUGLSg=")
-
-			// 创建 PublicKey_Ed25519 类型
-			dora1Ed25519PubKey := &crypto.PublicKey_Ed25519{
-				Ed25519: dora1Ed25519Key,
-			}
-
-			dora2Ed25519PubKey := &crypto.PublicKey_Ed25519{
-				Ed25519: dora2Ed25519Key,
-			}
-
-			dora1PublicKey := crypto.PublicKey{
-				Sum: dora1Ed25519PubKey,
-			}
-
-			dora2PublicKey := crypto.PublicKey{
-				Sum: dora2Ed25519PubKey,
-			}
-
-			dora_01 := abci.ValidatorUpdate{
-				PubKey: dora1PublicKey,
-				Power: 10000,
-			}
-
-			dora_02 := abci.ValidatorUpdate{
-				PubKey: dora2PublicKey,
-				Power: 1,
-			}
-
-			valUpdates = append(valUpdates, dora_01)
-			valUpdates = append(valUpdates, dora_02)
-
-			app.StakingKeeper.SetValidatorUpdates(ctx, valUpdates) */
-
 			logger.Info("start change the validator voting power....")
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			for _, validator := range validators {
-				logger.Info("previous validator is %+v\\n", validator)
+				logger.Info("previous validator is ", validator)
+				//delete
 				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
-				logger.Info("current validator is %+v\\n", validator)
+				logger.Info("current validator is ", validator)
 			}
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
