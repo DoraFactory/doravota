@@ -1090,7 +1090,7 @@ func (app *App) setupUpgradeHandlers() {
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
 			// logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
-			stakingKey := sdk.NewKVStoreKey("staking")
+			stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
