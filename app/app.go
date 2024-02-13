@@ -1094,9 +1094,11 @@ func (app *App) setupUpgradeHandlers() {
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
-			logger.Info("staet change validator....")
+			logger.Info("state change validator....")
+			i := 0
 			for _, validator := range validators {
-				
+				logger.Info(string(i))
+				i += 1
 				// store := ctx.KVStore(app.)
 				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
 				logger.Info("get staking store ....")
@@ -1109,9 +1111,12 @@ func (app *App) setupUpgradeHandlers() {
 
 				for ; iterator.Valid(); iterator.Next() {
 					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
+					val := sdk.ValAddress(valAddr).String()
 					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
 						if deleted {
+							// print validator
+							logger.Info(val)
 							panic("found duplicate power index key")
 						} else {
 							deleted = true
