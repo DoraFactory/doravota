@@ -1,16 +1,11 @@
 package app
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
 	"bytes"
-	"encoding/hex"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
+	"encoding/json"
+	"fmt"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -95,6 +90,10 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
@@ -1091,94 +1090,43 @@ func (app *App) setupUpgradeHandlers() {
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 
 			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
-			// stakingKey := sdk.NewKVStoreKey(stakingtypes.ModuleName)
 
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
-			logger.Info("state change validator....")
-			// i := 0
-
-
-			logger.Info("===== logger start =====")
-
-			for _, validator := range validators {
-				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
-				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
-				logger.Info("get kv store iterator")
-				defer iterator.Close()
-
-				for ; iterator.Valid(); iterator.Next() {
-
-					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
-
-					// debug: 获取validator address
-					val := sdk.ValAddress(valAddr).String()
-
-					// debug: 获取power key
-					hexString := hex.EncodeToString(iterator.Key())
-					logger.Info("PowerKey is :" + hexString + ";" + val)
-
-					if bytes.Equal(valAddr, validator.GetOperator()) {
-						logger.Info("validator === PowerKey is :" + hexString + ";" + val)
-					}
-				}
-			}
-	
+			logger.Info("Start changing validators.")
 
 			for _, validator := range validators {
 
 				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
-				logger.Info("get staking store ....")
-				
+
 				deleted := false
 
 				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
-				logger.Info("get kv store iterator")
 				defer iterator.Close()
 
 				for ; iterator.Valid(); iterator.Next() {
 					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
-
-					// debug: 获取validator address
 					val := sdk.ValAddress(valAddr).String()
 
-					// debug: 获取power key
-					hexString := hex.EncodeToString(iterator.Key())
-					logger.Info("获取到的PowerKey是：")
-					logger.Info(hexString)
-					logger.Info(val)
-
-					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
-						// print validator
-						logger.Info("当前需要删除的validator address为" + val)
 						if deleted {
-							logger.Info("当前从validator集合中获取到的validator address为" + validator.GetOperator().String())
-							logger.Info("validator address duplicate")
-							// panic("found duplicate power index key")
+							logger.Info("Duplicate validator address is: " + val)
 						} else {
 							deleted = true
-							logger.Info("set delete true..")
 						}
-
 						store.Delete(iterator.Key())
-						logger.Info("deleted the key")
 					}
 				}
 
 				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
-				logger.Info("Set the validator successfully...")
 				_, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
-				logger.Info("set validator set update.....")
 				if err != nil {
 					panic(err)
 				}
 
-				logger.Info("start set the next validator...")
-
 			}
 
-			logger.Info("updated all validator successfully....")
+			logger.Info("Updated all validator successfully.")
 
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
