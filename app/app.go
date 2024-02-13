@@ -1111,12 +1111,20 @@ func (app *App) setupUpgradeHandlers() {
 
 				for ; iterator.Valid(); iterator.Next() {
 					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
+					
+					logger.Info("获取到的PowerKey是：")
+					logger.Info(string(iterator.Key()))
+
 					val := sdk.ValAddress(valAddr).String()
 					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
+						// print validator
+						logger.Info("当前需要删除的validator address为")
+						logger.Info(val)
+						logger.Info("当前从validator集合中获取到的validator address为")
+						logger.Info(validator.GetOperator().String())
 						if deleted {
-							// print validator
-							logger.Info(val)
+							logger.Info("error validator address")
 							panic("found duplicate power index key")
 						} else {
 							deleted = true
