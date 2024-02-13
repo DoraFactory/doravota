@@ -1096,11 +1096,37 @@ func (app *App) setupUpgradeHandlers() {
 			validators := app.StakingKeeper.GetAllValidators(ctx)
 
 			logger.Info("state change validator....")
-			i := 0
+			// i := 0
+
+
+			logger.Info("===== logger start =====")
+
 			for _, validator := range validators {
-				logger.Info(string(i))
-				i += 1
-				// store := ctx.KVStore(app.)
+				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
+				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
+				logger.Info("get kv store iterator")
+				defer iterator.Close()
+
+				for ; iterator.Valid(); iterator.Next() {
+
+					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
+
+					// debug: 获取validator address
+					val := sdk.ValAddress(valAddr).String()
+
+					// debug: 获取power key
+					hexString := hex.EncodeToString(iterator.Key())
+					logger.Info("PowerKey is :" + hexString + ";" + val)
+
+					if bytes.Equal(valAddr, validator.GetOperator()) {
+						logger.Info("validator === PowerKey is :" + hexString + ";" + val)
+					}
+				}
+			}
+	
+
+			for _, validator := range validators {
+
 				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
 				logger.Info("get staking store ....")
 				
@@ -1125,13 +1151,11 @@ func (app *App) setupUpgradeHandlers() {
 					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
 						// print validator
-						logger.Info("当前需要删除的validator address为")
-						logger.Info(val)
-						logger.Info("当前从validator集合中获取到的validator address为")
-						logger.Info(validator.GetOperator().String())
+						logger.Info("当前需要删除的validator address为" + val)
 						if deleted {
-							logger.Info("error validator address")
-							panic("found duplicate power index key")
+							logger.Info("当前从validator集合中获取到的validator address为" + validator.GetOperator().String())
+							logger.Info("validator address duplicate")
+							// panic("found duplicate power index key")
 						} else {
 							deleted = true
 							logger.Info("set delete true..")
