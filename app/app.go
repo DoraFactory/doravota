@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"bytes"
+	"encoding/hex"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
@@ -1111,11 +1112,16 @@ func (app *App) setupUpgradeHandlers() {
 
 				for ; iterator.Valid(); iterator.Next() {
 					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
-					
-					logger.Info("获取到的PowerKey是：")
-					logger.Info(string(iterator.Key()))
 
+					// debug: 获取validator address
 					val := sdk.ValAddress(valAddr).String()
+
+					// debug: 获取power key
+					hexString := hex.EncodeToString(iterator.Key())
+					logger.Info("获取到的PowerKey是：")
+					logger.Info(hexString)
+					logger.Info(val)
+
 					logger.Info("start get validtor")
 					if bytes.Equal(valAddr, validator.GetOperator()) {
 						// print validator
