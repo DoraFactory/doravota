@@ -1,5 +1,5 @@
 {
-  "genesis_time": "2023-10-12T08:04:57.112764801Z",
+  "genesis_time": "2024-02-01T10:05:49.448792163Z",
   "chain_id": "vota-testnet",
   "initial_height": "1",
   "consensus_params": {
@@ -13,7 +13,9 @@
       "max_bytes": "1048576"
     },
     "validator": {
-      "pub_key_types": ["ed25519"]
+      "pub_key_types": [
+        "ed25519"
+      ]
     },
     "version": {
       "app": "0"
@@ -34,7 +36,7 @@
       "accounts": [
         {
           "@type": "/cosmos.auth.v1beta1.BaseAccount",
-          "address": "dora1nf44djx4wjsc59vdlmvpnw9elr9jezrnhmjlk8",
+          "address": "dora1urh32mwj85y4xx6urqknps9zzcjhd8kvrm4254",
           "pub_key": null,
           "account_number": "0",
           "sequence": "0"
@@ -51,7 +53,7 @@
       },
       "balances": [
         {
-          "address": "dora1nf44djx4wjsc59vdlmvpnw9elr9jezrnhmjlk8",
+          "address": "dora1urh32mwj85y4xx6urqknps9zzcjhd8kvrm4254",
           "coins": [
             {
               "denom": "peaka",
@@ -132,19 +134,19 @@
                   "max_change_rate": "1.000000000000000000"
                 },
                 "min_self_delegation": "1",
-                "delegator_address": "dora1nf44djx4wjsc59vdlmvpnw9elr9jezrnhmjlk8",
-                "validator_address": "doravaloper1nf44djx4wjsc59vdlmvpnw9elr9jezrnydhfqc",
+                "delegator_address": "dora1urh32mwj85y4xx6urqknps9zzcjhd8kvrm4254",
+                "validator_address": "doravaloper1urh32mwj85y4xx6urqknps9zzcjhd8kvsdsuz2",
                 "pubkey": {
                   "@type": "/cosmos.crypto.ed25519.PubKey",
-                  "key": "2sSSNUINhMX/sx47WMIkNCT3/8buCwhW7KijTt1PJTI="
+                  "key": "IazOBWmINizkU5lTYMXgKwUPiYRJZLX9FBpqNaXKufU="
                 },
                 "value": {
                   "denom": "peaka",
-                  "amount": "1000000000000000000000000"
+                  "amount": "10000000000000000000000"
                 }
               }
             ],
-            "memo": "aff3b0a08e1219f9b3856e9aca327698da2892a1@10.0.16.216:26656",
+            "memo": "36cb190314399eca907131051e7b6691d68d26a6@10.0.16.216:26656",
             "timeout_height": "0",
             "extension_options": [],
             "non_critical_extension_options": []
@@ -154,7 +156,7 @@
               {
                 "public_key": {
                   "@type": "/cosmos.crypto.secp256k1.PubKey",
-                  "key": "AhIo4GWb1Zu95fkSor6LHWANc8UycPvNIbdvGhVrZETB"
+                  "key": "AwuVIO9HKLIEsulFdsgfi6FFtp/+nOw8k0sWtARtdknL"
                 },
                 "mode_info": {
                   "single": {
@@ -173,7 +175,7 @@
             "tip": null
           },
           "signatures": [
-            "bs3Nsp81SXNLMbfObZ1deLXAA/Wg25mGl3IIKD0CvbRX3p3siMp4TBV+AyuyHsacXzmuYkjpNH77BS/2wfXDjw=="
+            "dKrBa+6mEsGitSs3yqi94OFuKuRVRXDM+QGm9giUmMEf6qH/UeawkWtKS85dK09CI66xDuyn0vZbstV5Ue2koA=="
           ]
         }
       ]
@@ -190,11 +192,11 @@
         "min_deposit": [
           {
             "denom": "peaka",
-            "amount": "1000000000000000000"
+            "amount": "10000000"
           }
         ],
-        "max_deposit_period": "172800s",
-        "voting_period": "172800s",
+        "max_deposit_period": "180s",
+        "voting_period": "180s",
         "quorum": "0.334000000000000000",
         "threshold": "0.500000000000000000",
         "veto_threshold": "0.334000000000000000",
@@ -220,7 +222,11 @@
         "clients_consensus": [],
         "clients_metadata": [],
         "params": {
-          "allowed_clients": ["06-solomachine", "07-tendermint", "09-localhost"]
+          "allowed_clients": [
+            "06-solomachine",
+            "07-tendermint",
+            "09-localhost"
+          ]
         },
         "create_localhost": false,
         "next_client_sequence": "0"
@@ -259,20 +265,22 @@
         "port": "icahost",
         "params": {
           "host_enabled": true,
-          "allow_messages": ["*"]
+          "allow_messages": [
+            "*"
+          ]
         }
       }
     },
     "mint": {
       "minter": {
-        "inflation": "0.000000000000000000",
+        "inflation": "0.130000000000000000",
         "annual_provisions": "0.000000000000000000"
       },
       "params": {
         "mint_denom": "peaka",
         "inflation_rate_change": "0.130000000000000000",
-        "inflation_max": "0.000000000000000000",
-        "inflation_min": "0.000000000000000000",
+        "inflation_max": "0.200000000000000000",
+        "inflation_min": "0.070000000000000000",
         "goal_bonded": "0.670000000000000000",
         "blocks_per_year": "6311520"
       }
@@ -280,9 +288,9 @@
     "params": null,
     "slashing": {
       "params": {
-        "signed_blocks_window": "5000",
+        "signed_blocks_window": "100",
         "min_signed_per_window": "0.500000000000000000",
-        "downtime_jail_duration": "30000s",
+        "downtime_jail_duration": "600s",
         "slash_fraction_double_sign": "0.050000000000000000",
         "slash_fraction_downtime": "0.010000000000000000"
       },
@@ -292,7 +300,7 @@
     "staking": {
       "params": {
         "unbonding_time": "1814400s",
-        "max_validators": 3,
+        "max_validators": 100,
         "max_entries": 7,
         "historical_entries": 10000,
         "bond_denom": "peaka",
@@ -321,7 +329,6 @@
       "params": {
         "code_upload_access": {
           "permission": "Everybody",
-          "address": "",
           "addresses": []
         },
         "instantiate_default_permission": "Everybody"

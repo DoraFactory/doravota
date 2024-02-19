@@ -1,15 +1,12 @@
 package app
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-
+	"bytes"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
+	"encoding/json"
+	"fmt"
+	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -93,8 +90,11 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
-	v0_3_0 "github.com/DoraFactory/doravota/app/upgrades/v0_3_0"
-	
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
 	icacontrollerkeeper "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller/keeper"
@@ -129,6 +129,9 @@ import (
 
 	appparams "github.com/DoraFactory/doravota/app/params"
 	"github.com/DoraFactory/doravota/docs"
+
+	votatypes "github.com/DoraFactory/doravota/types"
+	// crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 )
 
 const (
@@ -178,7 +181,7 @@ var (
 	}
 	return proposals
 }
- */
+*/
 func getGovProposalHandlers() []govclient.ProposalHandler {
 	var govProposalHandlers []govclient.ProposalHandler
 	// this line is used by starport scaffolding # stargate/app/govProposalHandlers
@@ -257,6 +260,8 @@ func init() {
 	}
 
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
+
+	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
 }
 
 // Override Wasm size limitation from WASMD.
@@ -632,7 +637,6 @@ func New(
 
 	// trackingWasmVm := wasmtypes.Newwa(wasmer, &wasmdTypes.NoOpContractGasProcessor{})
 
-
 	app.WasmKeeper = wasm.NewKeeper(
 		appCodec,
 		keys[wasm.StoreKey],
@@ -655,7 +659,7 @@ func New(
 	)
 
 	// The gov proposal types can be individually enabled
-/* 	if len(enabledProposals) != 0 {
+	/* 	if len(enabledProposals) != 0 {
 		govRouter.AddRoute(wasm.RouterKey, wasm.NewWasmProposalHandler(app.WasmKeeper, enabledProposals))
 	} */
 
@@ -716,7 +720,6 @@ func New(
 
 	// NOTE: Any module instantiated in the module manager that is later modified
 	// must be passed by reference here.
-
 
 	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
 	app.setupUpgradeHandlers()
@@ -1082,25 +1085,65 @@ func (app *App) ModuleManager() *module.Manager {
 }
 
 func (app *App) setupUpgradeHandlers() {
-    app.UpgradeKeeper.SetUpgradeHandler(
-        v0_3_0.UpgradeName,
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v0_3_1.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+
+			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
+
+			validators := app.StakingKeeper.GetAllValidators(ctx)
+
+			logger.Info("Start changing validators.")
+
+			for _, validator := range validators {
+
+				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
+
+				deleted := false
+
+				iterator := sdk.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
+				defer iterator.Close()
+
+				for ; iterator.Valid(); iterator.Next() {
+					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
+					val := sdk.ValAddress(valAddr).String()
+
+					if bytes.Equal(valAddr, validator.GetOperator()) {
+						if deleted {
+							logger.Info("Duplicate validator address is: " + val)
+						} else {
+							deleted = true
+						}
+						store.Delete(iterator.Key())
+					}
+				}
+
+				app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator)
+				_, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
+				if err != nil {
+					panic(err)
+				}
+
+			}
+
+			logger.Info("Updated all validator successfully.")
+
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
-    )
+	)
 
 	// setup store loader
 	// load the upgrade info from the disk
-    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
-    if err != nil {
-        panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
-    }
+	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+	if err != nil {
+		panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
+	}
 
-    if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
-        return
-    }
+	if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+		return
+	}
 
-	if upgradeInfo.Name == v0_3_0.UpgradeName {
+	if upgradeInfo.Name == v0_3_1.UpgradeName {
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storetypes.StoreUpgrades{}))
 	}
 }
