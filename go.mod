@@ -7,7 +7,7 @@ require (
 	cosmossdk.io/errors v1.0.0
 	// github.com/CosmWasm/wasmd v0.40.2
 	github.com/CosmWasm/wasmd v0.43.0
-	github.com/CosmWasm/wasmvm v1.5.0 // indirect
+	github.com/CosmWasm/wasmvm v1.5.1 // indirect
 	github.com/cometbft/cometbft v0.37.2
 	github.com/cometbft/cometbft-db v0.8.0
 	github.com/cosmos/cosmos-sdk v0.47.5
@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/client_golang v1.16.0
 	github.com/spf13/cast v1.5.1
 	github.com/spf13/cobra v1.7.0
-	github.com/spf13/pflag v1.0.5
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.8.4
 )
 
@@ -30,7 +30,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 )
 
-require github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
+require github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 
 require (
 	cloud.google.com/go v0.110.4 // indirect
