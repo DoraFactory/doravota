@@ -46,17 +46,9 @@ func initSDKConfig() {
 
 
 const (
-	// Name      = "Dora Vota"
-	// AppName   = "dorad"
-    Version   = "0.3.1"
-	// Commit    = ""
-	// BuildTags = ""
+    Version  = "0.4.0"
 )
 
 func setVersionInfo() {
-	// version.Name = Name
-	// version.AppName = AppName
 	version.Version = Version
-	// version.Commit = Commit
-	// version.BuildTags = BuildTags
 }
