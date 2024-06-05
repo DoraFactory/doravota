@@ -56214,16 +56214,6 @@ definitions:
         type: string
         format: uint64
     description: VersionParams contains the ABCI application version.
-  cosmos.crisis.v1beta1.MsgUpdateParamsResponse:
-    type: object
-    description: |-
-      MsgUpdateParamsResponse defines the response structure for executing a
-      MsgUpdateParams message.
-
-      Since: cosmos-sdk 0.47
-  cosmos.crisis.v1beta1.MsgVerifyInvariantResponse:
-    type: object
-    description: MsgVerifyInvariantResponse defines the Msg/VerifyInvariant response type.
   cosmos.base.v1beta1.DecCoin:
     type: object
     properties:
