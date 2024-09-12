@@ -4,7 +4,7 @@ import (
 	"embed"
 	httptemplate "html/template"
 	"net/http"
-
+	"log"
 	"github.com/gorilla/mux"
 )
 
@@ -26,7 +26,10 @@ func RegisterOpenAPIService(appName string, rtr *mux.Router) {
 
 // handler returns an http handler that servers OpenAPI console for an OpenAPI spec at specURL.
 func handler(title string) http.HandlerFunc {
-	t, _ := httptemplate.ParseFS(template, indexFile)
+	t, err := httptemplate.ParseFS(template, indexFile)
+	if err != nil {
+		log.Fatalf("Failed to parse template: %v", err)
+	}
 
 	return func(w http.ResponseWriter, req *http.Request) {
 		t.Execute(w, struct {
@@ -36,5 +39,10 @@ func handler(title string) http.HandlerFunc {
 			title,
 			apiFile,
 		})
+
+		if err != nil {
+			http.Error(w, "Failed to execute template", http.StatusInternalServerError)
+			log.Printf("Failed to execute template: %v", err)
+		}
 	}
 }
