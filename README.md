@@ -1,79 +1,19 @@
 # Dora Vota
-Dora Vota node supporting CosmWasm.
+The Dora Vota mainnet is an appchain built exclusively for the Dora community, supporting essential applications such as quadratic voting and MACI (Minimal Anti-collusion Infrastructure) for voting, public good funding, and governance.
 
-## Install and use
-> requirement: go version 1.20+
+## System Requirements
+This system spec has been tested by many users and validators and found to be comfortable:
 
-1. download
-```shell
-git clone https://github.com/DoraFactory/doravota.git
-git checkout 0.1.0
-```
+- support AMD, ARM, Apple M1 and M2, At least 8 cores
+- 64GB RAM (A lot can be in swap)
+- 1TB NVMe Storage
+- 100MBPS bidirectional internet connection
 
-2. compile
-```
-cd doravota && make install
-sudo cp ~/go/bin/dorad /usr/local/bin
-```
+You can run Dora Vota Node on lower-spec hardware for each component, but you may find that it is not highly performant or prone to crashing.
 
-3. create a wallet
-```
-dorad keys add xxx
-```
+## Documentation
+For the most up to date documentation please visit [docs.dorafactory.org](https://docs.dorafactory.org/docs/vota)
 
-## Chain info
-- chain-id: vota-ash
-- decimal: 18
-- token name: DORA
-- chain name: Dora Vota
+## Contributing
+Anyone who encounters problems while running the Dora Vota node and using the `dorad` binary application can submit a PR to this repository to contribute your code. We warmly welcome valuable feedback from the community developers.
 
-## Some parameters
-```
-{
-    "chainId": "vota-ash",
-    "chainName": "Dora Vota",
-    "rpc": "https://vota-rpc.dorafactory.org",
-    "rest": "https://vota-rest.dorafactory.org",
-    "bip44": {
-      "coinType": 118
-    },
-    "bech32Config": {
-      "bech32PrefixAccAddr": "dora",
-      "bech32PrefixAccPub": "dorapub",
-      "bech32PrefixValAddr": "doravaloper",
-      "bech32PrefixValPub": "doravaloperpub",
-      "bech32PrefixConsAddr": "doravalcons",
-      "bech32PrefixConsPub": "doravalconspub"
-    },
-    "currencies": [
-      {
-        "coinDenom": "DORA",
-        "coinMinimalDenom": "peaka",
-        "coinDecimals": 18,
-        "coinGeckoId": "dora"
-      }
-    ],
-    "feeCurrencies": [
-      {
-        "coinDenom": "DORA",
-        "coinMinimalDenom": "peaka",
-        "coinDecimals": 18,
-        "coinGeckoId": "dora",
-        "gasPriceStep": {
-          "low": 100000000000,
-          "average": 300000000000,
-          "high": 500000000000
-        }
-      }
-    ],
-    "stakeCurrency": {
-      "coinDenom": "DORA",
-      "coinMinimalDenom": "peaka",
-      "coinDecimals": 18,
-      "coinGeckoId": "dora"
-    },
-    "features": [
-      "cosmwasm"
-    ]
-  }
-```
