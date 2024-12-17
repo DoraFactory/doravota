@@ -19,8 +19,8 @@ jobs:
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "Current Tag: $TAG_NAME"
-          awk "/^## \\[${TAG_NAME}\\]/,/^## /{if (!/^## \\[${TAG_NAME}\\]/) print}" CHANGELOG.md > release_notes.md
-          sed -i 's/^## \[${TAG_NAME}\]/## ${TAG_NAME}/' release_notes.md
+          awk "/^## \\[${TAG_NAME}\\]/ {flag=1; next} /^## / {flag=0} flag" CHANGELOG.md > release_notes.md
+          sed -i "s/^## \\[${TAG_NAME}\\]/## ${TAG_NAME}/" release_notes.md
           echo "Release Notes:"
           cat release_notes.md
           if [ ! -s release_notes.md ]; then
