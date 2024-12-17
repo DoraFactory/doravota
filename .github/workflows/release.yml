@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Extract Release Notes
         id: changelog
@@ -33,21 +35,32 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Verify Git state
+        run: |
+          echo "Current branch/tag:"
+          git branch --show-current || echo "Not on a branch"
+          git describe --tags || echo "No tags found"
+          git log -1 --oneline
+
       - name: Build binaries using Makefile
         working-directory: ${{ github.workspace }}
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME}
-          
-          make build
-          
+
+          echo "🔧 Building project for version: ${VERSION}"
           mkdir -p release
+
+          echo "Building for linux-amd64..."
+          make build
           mv build/dorad release/dorad-${VERSION}-linux-amd
           tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
-          
+
+          echo "Building for linux-arm..."
           GOOS=linux GOARCH=arm go build -o release/dorad-${VERSION}-linux-arm ./cmd/dorad
           tar -czvf release/dorad-${VERSION}-linux-arm.tar.gz -C release dorad-${VERSION}-linux-arm
-          
+
+          echo "Generating SHA256 checksums..."
           sha256sum release/* > release/sha256sum.txt
 
       - name: Create GitHub Release
