@@ -1,0 +1,62 @@
+name: Auto Release with Changelog and Artifacts
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Extract Release Notes
+        id: changelog
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "Current Tag: $TAG_NAME"
+          awk "/^## \\[${TAG_NAME}\\]/,/^## /{if (!/^## \\[${TAG_NAME}\\]/) print}" CHANGELOG.md > release_notes.md
+          echo "Release Notes:"
+          cat release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "❌ No release notes found for $TAG_NAME"
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Build binaries using Makefile
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG_NAME}
+          
+          make build
+          
+          mkdir -p release
+          mv build/dorad release/dorad-${VERSION}-linux-amd
+          tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
+          
+          GOOS=linux GOARCH=arm go build -o release/dorad-${VERSION}-linux-arm
+          tar -czvf release/dorad-${VERSION}-linux-arm.tar.gz -C release dorad-${VERSION}-linux-arm
+          
+          sha256sum release/* > release/sha256sum.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: ./release_notes.md
+          files: |
+            release/dorad-*linux-amd*
+            release/dorad-*linux-arm*
+            release/sha256sum.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
