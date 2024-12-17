@@ -57,8 +57,8 @@ jobs:
           tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
 
           echo "Building for linux-arm..."
-          GOOS=linux GOARCH=arm go build -o release/dorad-${VERSION}-linux-arm ./cmd/dorad
-          tar -czvf release/dorad-${VERSION}-linux-arm.tar.gz -C release dorad-${VERSION}-linux-arm
+          GOOS=linux GOARCH=arm64 go build -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
+          tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
 
           echo "Generating SHA256 checksums..."
           sha256sum release/* > release/sha256sum.txt
