@@ -35,6 +35,11 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+
       - name: Verify Git state
         run: |
           echo "Current branch/tag:"
@@ -61,7 +66,14 @@ jobs:
           tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
 
           echo "Building for linux-arm..."
-          GOOS=linux GOARCH=arm64 go build -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
+          echo "Building for linux-arm64..."
+          export GOOS=linux
+          export GOARCH=arm64
+          export CC=aarch64-linux-gnu-gcc
+          export CGO_ENABLED=1
+          export LDFLAGS="-linkmode external -extldflags '-static'"
+
+          go build -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
           tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
           
           echo "Generating SHA256 checksums..."
