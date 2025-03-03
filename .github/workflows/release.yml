@@ -51,6 +51,10 @@ jobs:
           echo "🔧 Building project for version: ${VERSION}"
           mkdir -p release
 
+          # set static link flag
+          export CGO_ENABLED=1
+          export LDFLAGS="-linkmode external -extldflags '-static'"
+
           echo "Building for linux-amd64..."
           make build
           mv build/dorad release/dorad-${VERSION}-linux-amd
