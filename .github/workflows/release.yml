@@ -61,9 +61,8 @@ jobs:
           curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.x86_64.a > /tmp/libwasmvm_muslc.a
           sudo mv /tmp/libwasmvm_muslc.a /usr/local/lib/libwasmvm_muslc.a
 
-          # set static link tag
           export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib'"
+          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib -lm'"
           export BUILD_TAGS="muslc,netgo,osusergo,static_build"
 
           echo "Building for linux-amd64..."
@@ -72,24 +71,23 @@ jobs:
           echo "Verifying static linking for AMD64 binary..."
           ldd release/dorad-${VERSION}-linux-amd || echo "Binary is statically linked (no dependencies)"
           
-          # package amd64 binary
           tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
 
-          # download libwasmvm static library for arm64
           echo "Downloading libwasmvm ${WASMVM_VERSION} static library for ARM64..."
           curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.aarch64.a > /tmp/libwasmvm_muslc.aarch64.a
           sudo mv /tmp/libwasmvm_muslc.aarch64.a /usr/local/lib/libwasmvm_muslc.aarch64.a
-          
+
           export GOOS=linux
           export GOARCH=arm64
           export CC=aarch64-linux-gnu-gcc
           export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib'"
+          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib -lm'"
           
           echo "Building for linux-arm64..."
           go build -tags "${BUILD_TAGS}" -ldflags "${LDFLAGS}" -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
-          tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
           
+          tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
+
           echo "Generating SHA256 checksums..."
           sha256sum release/* > release/sha256sum.txt
 
