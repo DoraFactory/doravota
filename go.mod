@@ -10,7 +10,7 @@ require (
 	github.com/CosmWasm/wasmvm v1.5.1 // indirect
 	github.com/cometbft/cometbft v0.37.5
 	github.com/cometbft/cometbft-db v0.8.0
-	github.com/cosmos/cosmos-sdk v0.47.15
+	github.com/cosmos/cosmos-sdk v0.47.16
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-go/v7 v7.3.0
 	github.com/golang/protobuf v1.5.4
