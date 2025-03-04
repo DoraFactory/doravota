@@ -56,24 +56,38 @@ jobs:
           echo "🔧 Building project for version: ${VERSION}"
           mkdir -p release
 
+          WASMVM_VERSION="v1.5.1"
+          echo "Downloading libwasmvm ${WASMVM_VERSION} static library for AMD64..."
+          curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.x86_64.a > /tmp/libwasmvm_muslc.a
+          sudo mv /tmp/libwasmvm_muslc.a /usr/local/lib/libwasmvm_muslc.a
+
           # set static link tag
           export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static'"
+          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib'"
+          export BUILD_TAGS="muslc,netgo,osusergo,static_build"
 
           echo "Building for linux-amd64..."
-          make build
-          mv build/dorad release/dorad-${VERSION}-linux-amd
+          go build -tags "${BUILD_TAGS}" -ldflags "${LDFLAGS}" -o release/dorad-${VERSION}-linux-amd ./cmd/dorad
+          
+          echo "Verifying static linking for AMD64 binary..."
+          ldd release/dorad-${VERSION}-linux-amd || echo "Binary is statically linked (no dependencies)"
+          
+          # package amd64 binary
           tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
 
-          echo "Building for linux-arm..."
-          echo "Building for linux-arm64..."
+          # download libwasmvm static library for arm64
+          echo "Downloading libwasmvm ${WASMVM_VERSION} static library for ARM64..."
+          curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.aarch64.a > /tmp/libwasmvm_muslc.aarch64.a
+          sudo mv /tmp/libwasmvm_muslc.aarch64.a /usr/local/lib/libwasmvm_muslc.aarch64.a
+          
           export GOOS=linux
           export GOARCH=arm64
           export CC=aarch64-linux-gnu-gcc
           export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static'"
-
-          go build -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
+          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib'"
+          
+          echo "Building for linux-arm64..."
+          go build -tags "${BUILD_TAGS}" -ldflags "${LDFLAGS}" -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
           tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
           
           echo "Generating SHA256 checksums..."
