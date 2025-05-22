@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [0.4.3] - 2025-05-22
+This is a patch to the 0.4.0 release line.
+### Update
+Bump Cosmos SDK from `v0.47.16` to `v0.47.17` to resolve [ISA-2025-002](https://github.com/cosmos/cosmos-sdk/security/advisories/GHSA-47ww-ff84-4jrg) security advisory.
+
 ## [0.4.2] - 2025-02-26
 This is a consensus breaking patch to the 0.4.0 release line.
 ### Update
