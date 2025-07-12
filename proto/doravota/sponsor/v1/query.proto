@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package doravota.sponsor.v1;
+
+import "doravota/sponsor/v1/sponsor.proto";
+
+option go_package = "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types";
+
+// Query defines the gRPC query service for the sponsor module
+service Query {
+  // IsSponsored queries if a contract is sponsored
+  rpc IsSponsored(QueryIsSponsoredRequest) returns (QueryIsSponsoredResponse);
+  
+  // Sponsor queries the sponsor information for a contract
+  rpc Sponsor(QuerySponsorRequest) returns (QuerySponsorResponse);
+  
+  // AllSponsors queries all sponsors
+  rpc AllSponsors(QueryAllSponsorsRequest) returns (QueryAllSponsorsResponse);
+}
+
+// QueryIsSponsoredRequest is the request type for the Query/IsSponsored RPC method
+message QueryIsSponsoredRequest {
+  string contract_address = 1;
+}
+
+// QueryIsSponsoredResponse is the response type for the Query/IsSponsored RPC method
+message QueryIsSponsoredResponse {
+  bool is_sponsored = 1;
+}
+
+// QuerySponsorRequest is the request type for the Query/Sponsor RPC method
+message QuerySponsorRequest {
+  string contract_address = 1;
+}
+
+// QuerySponsorResponse is the response type for the Query/Sponsor RPC method
+message QuerySponsorResponse {
+  ContractSponsor sponsor = 1;
+}
+
+// QueryAllSponsorsRequest is the request type for the Query/AllSponsors RPC method
+message QueryAllSponsorsRequest {
+  // pagination is optional
+  string pagination = 1;
+}
+
+// QueryAllSponsorsResponse is the response type for the Query/AllSponsors RPC method
+message QueryAllSponsorsResponse {
+  repeated ContractSponsor sponsors = 1;
+  string pagination = 2;
+} 

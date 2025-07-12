@@ -2,3 +2,44 @@
 .vscode/
 .DS_Store
 release
+
+contracts/*
+
+scripts/*
+
+# Rust artifacts
+**/*.rs.bk
+**/Cargo.lock
+
+# Docker volumes
+*_cache/
+registry_cache/
+build/*
+
+# Protobuf generated files
+*.pb.go
+*.pb.gw.go
+*_grpc.pb.go
+docs/static/openapi.json
+
+# Buf generated files
+buf.lock
+proto/buf.lock
+
+# Go build artifacts
+build/
+dist/
+vendor/
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+
+# OS specific files
+Thumbs.db
+.DS_Store

@@ -1,0 +1,41 @@
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/DoraFactory/doravota
+    except:
+      - buf.build/googleapis/googleapis
+      - buf.build/cosmos/cosmos-proto
+      - buf.build/cosmos/gogo-proto
+plugins:
+  # gocosmos plugin for Cosmos SDK - generates to the correct module paths
+  - plugin: buf.build/cosmos/gocosmos:v1.0.0
+    out: ..
+    opt:
+      - plugins=grpc
+      - paths=source_relative
+      - Mgoogle/protobuf/any.proto=github.com/cosmos/cosmos-sdk/codec/types
+      - Mgoogle/protobuf/timestamp.proto=github.com/cosmos/gogoproto/types
+      - Mgoogle/protobuf/duration.proto=github.com/cosmos/gogoproto/types
+      - Mgoogle/protobuf/empty.proto=github.com/cosmos/gogoproto/types/empty
+      - Mgoogle/api/annotations.proto=google.golang.org/genproto/googleapis/api/annotations
+      - Mgoogle/api/http.proto=google.golang.org/genproto/googleapis/api/annotations
+      - Mcosmos/msg/v1/msg.proto=github.com/cosmos/cosmos-sdk/types/msgservice
+      - Mcosmos_proto/cosmos.proto=github.com/cosmos/cosmos-proto
+      - Maminojson/aminojson.proto=cosmossdk.io/api/amino
+  # grpc-gateway plugin for REST API
+  - plugin: buf.build/grpc-ecosystem/gateway:v2.20.0
+    out: ..
+    opt:
+      - paths=source_relative
+      - Mgoogle/protobuf/any.proto=github.com/cosmos/cosmos-sdk/codec/types
+      - Mgoogle/api/annotations.proto=google.golang.org/genproto/googleapis/api/annotations
+      - Mgoogle/api/http.proto=google.golang.org/genproto/googleapis/api/annotations
+  # OpenAPI/Swagger documentation
+  - plugin: buf.build/grpc-ecosystem/openapiv2:v2.20.0
+    out: ../docs/static
+    opt:
+      - allow_merge=true
+      - merge_file_name=openapi.json
+      - Mgoogle/api/annotations.proto=google.golang.org/genproto/googleapis/api/annotations
+      - Mgoogle/api/http.proto=google.golang.org/genproto/googleapis/api/annotations

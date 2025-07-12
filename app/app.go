@@ -2,10 +2,15 @@ package app
 
 import (
 	"bytes"
-	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
-	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
+	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
@@ -52,6 +57,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/consensus"
 	consensusparamkeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
 	consensusparamtypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
+	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
@@ -72,7 +78,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/group"
 	groupkeeper "github.com/cosmos/cosmos-sdk/x/group/keeper"
 	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
-	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
@@ -91,10 +96,6 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
 
 	ica "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/controller"
@@ -125,6 +126,7 @@ import (
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+
 	// cosmwasm "github.com/CosmWasm/wasmvm"
 
 	appparams "github.com/DoraFactory/doravota/app/params"
@@ -132,6 +134,11 @@ import (
 
 	votatypes "github.com/DoraFactory/doravota/types"
 	// crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+
+	// sponsor module
+	sponsormodule "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
+	sponsorkeeper "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	sponsortypes "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 const (
@@ -230,6 +237,8 @@ var (
 		vesting.AppModuleBasic{},
 		consensus.AppModuleBasic{},
 		wasm.AppModuleBasic{},
+		// sponsor module
+		sponsormodule.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -311,6 +320,7 @@ type App struct {
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
 	WasmKeeper          wasm.Keeper
+	SponsorKeeper       sponsorkeeper.Keeper
 
 	// make scoped keepers public for test purposes
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
@@ -373,6 +383,8 @@ func New(
 		ibcexported.StoreKey, ibctransfertypes.StoreKey, ibcfeetypes.StoreKey,
 		wasm.StoreKey, icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey,
+		// sponsor module store key
+		sponsortypes.StoreKey,
 	)
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
 	memKeys := sdk.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
@@ -647,6 +659,12 @@ func New(
 		wasmOpts...,
 	)
 
+	// Create sponsor keeper
+	app.SponsorKeeper = *sponsorkeeper.NewKeeper(
+		appCodec,
+		keys[sponsortypes.StoreKey],
+	)
+
 	// The gov proposal types can be individually enabled
 	/* 	if len(enabledProposals) != 0 {
 		govRouter.AddRoute(wasm.RouterKey, wasm.NewWasmProposalHandler(app.WasmKeeper, enabledProposals))
@@ -740,6 +758,8 @@ func New(
 		ibcfee.NewAppModule(app.IBCFeeKeeper),
 		icaModule,
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
+		// sponsor module
+		sponsormodule.NewAppModule(appCodec, app.SponsorKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -759,6 +779,8 @@ func New(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		wasm.ModuleName,
+		// sponsor module
+		sponsortypes.ModuleName,
 	)
 
 	app.mm.SetOrderEndBlockers(
@@ -774,6 +796,8 @@ func New(
 		icatypes.ModuleName,
 		ibcfeetypes.ModuleName,
 		wasm.ModuleName,
+		// sponsor module
+		sponsortypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -794,6 +818,8 @@ func New(
 		ibcfeetypes.ModuleName,
 		// wasm after ibc transfer
 		wasm.ModuleName,
+		// sponsor module
+		sponsortypes.ModuleName,
 	}
 	app.mm.SetOrderInitGenesis(genesisModuleOrder...)
 	app.mm.SetOrderExportGenesis(genesisModuleOrder...)
@@ -875,6 +901,7 @@ func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.Wa
 			IBCKeeper:         app.IBCKeeper,
 			WasmConfig:        &wasmConfig,
 			TXCounterStoreKey: txCounterStoreKey,
+			SponsorKeeper:     app.SponsorKeeper,
 		},
 	)
 	if err != nil {
@@ -1118,18 +1145,18 @@ func (app *App) setupUpgradeHandlers() {
 	)
 
 	// v0.4.0 upgrade handler
-    app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_0.UpgradeName,
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v0_4_0.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_0.UpgradeName)
 			logger.Info("Running module migrations[Remove crisis module] ...")
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
-    )
+	)
 
 	// v0.4.2 upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_2.UpgradeName,
+		v0_4_2.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_2.UpgradeName)
 			logger.Info("Upgrade cosmos sdk from v0.47.15 to 0.47.16...")
@@ -1139,15 +1166,15 @@ func (app *App) setupUpgradeHandlers() {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
 			}
-			
+
 			logger.Info("Upgrade completed successfully")
 			return vm, nil
 		},
-    )
+	)
 
-		// v0.4.2 upgrade handler
+	// v0.4.2 upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_3.UpgradeName,
+		v0_4_3.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_3.UpgradeName)
 			logger.Info("Upgrade cosmos sdk from v0.47.16 to 0.47.17...")
@@ -1157,11 +1184,11 @@ func (app *App) setupUpgradeHandlers() {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
 			}
-			
+
 			logger.Info("Upgrade completed successfully")
 			return vm, nil
 		},
-    )
+	)
 
 	// setup store loader
 	// load the upgrade info from the disk
@@ -1177,20 +1204,20 @@ func (app *App) setupUpgradeHandlers() {
 	var storeUpgrades *storetypes.StoreUpgrades
 
 	switch upgradeInfo.Name {
-	case  v0_3_1.UpgradeName:
+	case v0_3_1.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
-	case  v0_4_0.UpgradeName:
+	case v0_4_0.UpgradeName:
 		// crisis module is deprecated in v0.4.0
 		storeUpgrades = &storetypes.StoreUpgrades{
 			Deleted: []string{crisistypes.ModuleName},
 		}
-	case  v0_4_2.UpgradeName:
+	case v0_4_2.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
-	case  v0_4_3.UpgradeName:
+	case v0_4_3.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	}
 
-	if storeUpgrades != nil  {
+	if storeUpgrades != nil {
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, storeUpgrades))
 	}
 }
