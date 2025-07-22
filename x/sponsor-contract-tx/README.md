@@ -1,4 +1,4 @@
-# x/sponsor-contract-tx
+# Sponsor Contract Transaction Module - Community Review
 
 ## Overview
 
@@ -12,14 +12,13 @@ Current fee payment mechanisms in Cosmos ecosystem have some significant limitat
 
 1. **Fee Grant Limitations**: Cosmos SDK's native fee grant module requires knowing the grantee address beforehand, making it unsuitable for onboarding new users who haven't interacted with the chain yet.
 
-2. **Security Concerns**: The current fee grant module for contract message sponsorship may be abused because the granularity of fee grant sponsored transactions is at the module level(like: ``). Therefore, for contracts, it only supports wasm messages, which can lead to a user sponsored by contract A consuming on contract B, resulting in abuse.
+2. **Security Concerns**: The current fee grant module for contract message sponsorship may be abused because the granularity of fee grant sponsored transactions is at the module level(like: `/cosmwasm.wasm.v1.MsgExecuteContract`). Therefore, for contracts, it only supports wasm messages, which can lead to a user sponsored by contract A consuming on contract B, resulting in abuse.
 
 ### Our Solution
 
 We propose a dedicated module that:
 
 - Maintains a registry of sponsorship-enabled contracts
-- Provides secure access control through contract admin verification
 - Implements policy-based sponsorship through contract queries
 - Ensures transaction integrity through strict validation rules
 
@@ -29,7 +28,7 @@ We propose a dedicated module that:
 
 #### 1. Contract Registry
 
-- **Purpose**: Track which contracts are authorized to sponsor transactions
+- **Purpose**: Track which contracts are authorized to sponsor transactions.
 - **Structure**: Maps contract addresses to sponsorship status
 - **Access Control**: Only contract admins can register/modify sponsorship settings
 
@@ -37,13 +36,15 @@ We propose a dedicated module that:
 
 - **Position**: Placed before fee deduction in the ante handler chain
 - **Function**: Validates sponsored transactions and pre-transfers funds
-- **Flow**: Contract → User → Standard fee deduction
+- **Fee-Flow**: Contract → User → Standard fee deduction
 
 #### 3. Policy Enforcement
 
 - **Mechanism**: Contracts must implement a `CheckPolicy` query method
 - **Purpose**: Allow contracts to define custom sponsorship criteria (whitelist, usage limits, etc.)
 - **Flexibility**: Each contract can implement its own business logic
+
+> Because there is a contract query within the module, which consumes a certain amount of gas, the `query_gas_limit` parameter of node config needs to be adjusted according to the specific contract business to support contract queries.
 
 ### Transaction Flow
 
@@ -66,9 +67,9 @@ To prevent fee leeching attacks, we enforce rigid transaction structure rules:
 
 ```
 [
-    MsgExecuteContract{Contract: "sponsored_contract"},
-    MsgExecuteContract{Contract: "sponsored_contract"}, // Same contract
-    MsgExecuteContract{Contract: "sponsored_contract"}  // Same contract
+    MsgExecuteContract{Contract: "sponsored_contractA"},
+    MsgExecuteContract{Contract: "sponsored_contractA"}, // Same contract
+    MsgExecuteContract{Contract: "sponsored_contractA"}  // Same contract
 ]
 ```
 
@@ -97,17 +98,7 @@ To prevent fee leeching attacks, we enforce rigid transaction structure rules:
 - **Validation**: Admin ownership is verified through wasm keeper queries
 - **Immutability**: Sponsorship settings cannot be modified by unauthorized parties
 
-## Design Decisions & Trade-offs
-
-### Why Not Modify Fee Payer?
-
-Initially, we considered modifying the transaction's fee payer field, but this approach has fundamental security issues:
-
-- Fee data includes user signatures
-- Changing fee payer would invalidate signatures
-- Would require contract to sign fee data (impossible for autonomous contracts)
-
-### Why Pre-transfer Approach?
+## Design Decisions
 
 Our chosen approach transfers funds from contract to user before fee deduction:
 
@@ -124,31 +115,21 @@ Policy queries consume gas during ante handler execution:
 - **Mitigation**: Contracts should implement efficient policy checks
 - **Alternative**: Simple boolean flags for basic use cases
 
-## Potential Issues & Limitations
+## Attention
 
 ### 1. **Cosmos Account Initialization**
 
 - **Problem**: Accounts must exist on-chain to have sequence numbers
 - **Impact**: Completely new users cannot send transactions
-- **Solution**: Separate account activation service (minimal token airdrop)
+- **Solution**: Separate account activation service (when new user first interacts with the service, they can obtain minimal token airdrop, like 1peaka)
 
-### 2. **Batch Transaction Restrictions**
 
-- **Limitation**: Cannot mix sponsored and non-sponsored messages
-- **Impact**: Reduces transaction flexibility
-- **Rationale**: Prevents fee leeching attacks
-
-### 3. **Contract Policy Dependency**
+### 2. **Contract Policy Dependency**
 
 - **Risk**: Policy query failures could block legitimate transactions
 - **Mitigation**: Graceful fallback to non-sponsored execution
 - **Requirement**: All sponsored contracts must implement `CheckPolicy`
 
-### 4. **Gas Metering**
-
-- **Consideration**: Policy queries add gas overhead
-- **Impact**: Higher transaction costs during validation
-- **Optimization**: Efficient contract policy implementations
 
 ## Security Considerations
 
@@ -173,8 +154,24 @@ We would appreciate community feedback on:
 - ✅ AnteHandler integration
 - ✅ Admin verification system
 - ✅ Policy query mechanism
-- ✅ Comprehensive testing
+- ✅ Initial testing
 - 🔄 Community review (current phase)
+- 🔄 Module under improvement. (current phase)
+
+
+## Test Module/Contract
+
+1. clone git repo
+```shell=
+git clone https://github.com/DoraFactory/doravota.git && git checkout sponsor-contract-tx
+```
+2. compile codebase
+```shell=
+make build
+```
+3. Set up a simple local network.
+5. We implemented a [counter contract](https://github.com/DoraFactory/doravota/tree/sponsor-contract-tx/contracts/counter) with a whitelist feature, allowing only those on the whitelist to count, used to test the sponsor-contract-tx module.
+
 
 ## Usage Example
 
@@ -196,7 +193,6 @@ This module provides a secure, flexible solution for contract-sponsored transact
 **We specifically seek feedback on:**
 
 - Security implications and potential attack vectors
-- Integration compatibility with other Cosmos modules
+- Integration compatibility with current Cosmos modules
 - Performance and gas efficiency considerations
 - Alternative design approaches
-
