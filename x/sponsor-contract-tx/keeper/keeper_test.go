@@ -3,6 +3,7 @@ package keeper
 import (
 	"testing"
 
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -38,7 +39,8 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context) {
 	}
 
 	// Create keeper
-	keeper := NewKeeper(cdc, storeKey)
+	var mockWasmKeeper wasmkeeper.Keeper // zero value for testing basic functionality
+	keeper := NewKeeper(cdc, storeKey, mockWasmKeeper)
 
 	// Create context
 	ctx := sdk.NewContext(

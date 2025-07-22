@@ -59,12 +59,57 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// Only apply sponsor functionality if the contract is explicitly sponsored
 	if found && sponsor.IsSponsored {
+		// Get the transaction signer for policy check
+		var userAddr sdk.AccAddress
+		for _, msg := range tx.GetMsgs() {
+			signers := msg.GetSigners()
+			if len(signers) > 0 {
+				userAddr = signers[0]
+				break
+			}
+		}
+
+		if userAddr.Empty() {
+			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
+		}
+
+		// Call contract to check if user is eligible according to contract policy
+		before := ctx.GasMeter().GasConsumed()
+		ctx.Logger().Info("📌📌📌📌contract policy check gas before", "used", before)
+		eligible, err := sctd.keeper.CheckContractPolicy(ctx, contractAddr, userAddr)
+		after := ctx.GasMeter().GasConsumed()
+		ctx.Logger().Info("📌📌📌📌contract policy check gas after", "after", after)
+		ctx.Logger().Info("📌📌📌📌contract policy check gas used", "used", after-before)
+		if err != nil {
+			// If contract query fails, log error and continue with normal validation
+			// This prevents contract errors from blocking legitimate sponsored transactions
+			ctx.Logger().With("module", "sponsor-contract-tx").Error(
+				"❌❌❌❌❌❌Failed to check contract policy, continuing with normal validation",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"error", err.Error(),
+			)
+		} else if !eligible {
+			// User is not eligible according to contract policy
+			return ctx, sdkerrors.Wrapf(
+				sdkerrors.ErrUnauthorized,
+				"🚫🚫🚫🚫🚫🚫user %s is not eligible for sponsored transaction according to contract %s policy",
+				userAddr.String(),
+				contractAddr,
+			)
+		}
+
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"user is eligible for sponsored transaction according to contract policy✅✅✅✅✅✅✅✅✅✅",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+		)
+
 		// Validate contract address
 		contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 		if err != nil {
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
-
 		// Handle sponsored fee payment by pre-transferring funds
 		feeTx, ok := tx.(sdk.FeeTx)
 		if ok {
@@ -105,6 +150,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					if err != nil {
 						return ctx, sdkerrors.Wrapf(err, "failed to transfer sponsorship funds from %s to %s", contractAccAddr, feePayer)
 					}
+
+					ctx.Logger().With("module", "sponsor-contract-tx").Info(
+						"Sponsorship funds transferred successfully ✅✅✅✅✅✅✅✅✅✅",
+						"from", contractAccAddr.String(),
+						"to", feePayer.String(),
+						"amount", fee.String(),
+					)
 				}
 			}
 		}
@@ -123,6 +175,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				"sponsored_tx",
 				sdk.NewAttribute("contract_address", contractAddr),
 				sdk.NewAttribute("sponsor_address", contractAccAddr.String()),
+				sdk.NewAttribute("user_address", userAddr.String()),
+				sdk.NewAttribute("policy_check", "passed"),
 			),
 		)
 	}

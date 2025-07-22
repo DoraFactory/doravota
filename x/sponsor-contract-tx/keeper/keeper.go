@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
@@ -14,21 +15,59 @@ import (
 
 // Keeper maintains the link to storage and exposes getter/setter methods for the various parts of the state machine
 type Keeper struct {
-	cdc      codec.BinaryCodec
-	storeKey storetypes.StoreKey
+	cdc        codec.BinaryCodec
+	storeKey   storetypes.StoreKey
+	wasmKeeper wasmkeeper.Keeper
 }
 
 // NewKeeper creates a new sponsor Keeper instance
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey) *Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper wasmkeeper.Keeper) *Keeper {
 	return &Keeper{
-		cdc:      cdc,
-		storeKey: storeKey,
+		cdc:        cdc,
+		storeKey:   storeKey,
+		wasmKeeper: wasmKeeper,
 	}
 }
 
 // Logger returns a module-specific logger
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", types.ModuleName))
+}
+
+// CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
+func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress) (bool, error) {
+	// prepare query smart contract message
+	queryMsg := map[string]interface{}{
+		"check_policy": map[string]interface{}{
+			"address": userAddr.String(),
+		},
+	}
+
+	queryBytes, err := json.Marshal(queryMsg)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal query message: %w", err)
+	}
+
+	// call contract query method
+	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
+	if err != nil {
+		return false, fmt.Errorf("invalid contract address: %w", err)
+	}
+
+	result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
+	if err != nil {
+		return false, fmt.Errorf("failed to query contract: %w", err)
+	}
+
+	// parse query result
+	var response struct {
+		Eligible bool `json:"eligible"`
+	}
+	if err := json.Unmarshal(result, &response); err != nil {
+		return false, fmt.Errorf("failed to unmarshal query response: %w", err)
+	}
+
+	return response.Eligible, nil
 }
 
 // SetSponsor sets a sponsor in the store
