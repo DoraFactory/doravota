@@ -663,6 +663,7 @@ func New(
 	app.SponsorKeeper = *sponsorkeeper.NewKeeper(
 		appCodec,
 		keys[sponsortypes.StoreKey],
+		app.WasmKeeper,
 	)
 
 	// The gov proposal types can be individually enabled
