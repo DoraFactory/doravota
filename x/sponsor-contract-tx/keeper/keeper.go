@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
@@ -13,15 +13,21 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
+// WasmKeeperInterface defines the interface we need from wasm keeper
+type WasmKeeperInterface interface {
+	GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo
+	QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error)
+}
+
 // Keeper maintains the link to storage and exposes getter/setter methods for the various parts of the state machine
 type Keeper struct {
 	cdc        codec.BinaryCodec
 	storeKey   storetypes.StoreKey
-	wasmKeeper wasmkeeper.Keeper
+	wasmKeeper WasmKeeperInterface
 }
 
 // NewKeeper creates a new sponsor Keeper instance
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper wasmkeeper.Keeper) *Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper WasmKeeperInterface) *Keeper {
 	return &Keeper{
 		cdc:        cdc,
 		storeKey:   storeKey,
@@ -118,6 +124,24 @@ func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 		return false
 	}
 	return sponsor.IsSponsored
+}
+
+// IsContractAdmin checks if the given address is the admin of the contract
+func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress) (bool, error) {
+	// Convert contract address string to AccAddress
+	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
+	if err != nil {
+		return false, fmt.Errorf("invalid contract address: %w", err)
+	}
+
+	// Get contract info from wasm keeper
+	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
+	if contractInfo == nil {
+		return false, fmt.Errorf("contract not found: %s", contractAddr)
+	}
+
+	// Check if the user is the admin
+	return contractInfo.Admin == userAddr.String(), nil
 }
 
 // GetAllSponsors returns all sponsors from the store

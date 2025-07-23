@@ -32,6 +32,21 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor already exists")
 	}
 
+	// Verify that the creator is the admin of the contract
+	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+	}
+
+	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+	}
+
+	if !isAdmin {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can set sponsor")
+	}
+
 	// Create and set the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
@@ -62,6 +77,21 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor not found")
 	}
 
+	// Verify that the creator is the admin of the contract
+	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+	}
+
+	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+	}
+
+	if !isAdmin {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can update sponsor")
+	}
+
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
@@ -90,6 +120,21 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
 		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor not found")
+	}
+
+	// Verify that the creator is the admin of the contract
+	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+	}
+
+	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+	}
+
+	if !isAdmin {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can delete sponsor")
 	}
 
 	// Delete the sponsor
