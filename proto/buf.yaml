@@ -10,9 +10,7 @@ breaking:
     - FILE
 lint:
   use:
-    - STANDARD
-    - COMMENTS
-    - FILE_LOWER_SNAKE_CASE
+    - DEFAULT
   except:
     - UNARY_RPC
     - COMMENT_FIELD
