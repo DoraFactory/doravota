@@ -13,12 +13,16 @@ var _ types.QueryServer = QueryServer{}
 
 // QueryServer wraps the Keeper to implement the gRPC QueryServer interface
 type QueryServer struct {
+	types.UnimplementedQueryServer
 	Keeper
 }
 
 // NewQueryServer creates a new QueryServer instance
 func NewQueryServer(keeper Keeper) types.QueryServer {
-	return &QueryServer{Keeper: keeper}
+	return &QueryServer{
+		UnimplementedQueryServer: types.UnimplementedQueryServer{},
+		Keeper:                   keeper,
+	}
 }
 
 // IsSponsored implements the gRPC IsSponsored query
@@ -78,7 +82,7 @@ func (q QueryServer) Sponsor(goCtx context.Context, req *types.QuerySponsorReque
 	}, nil
 }
 
-// AllSponsors implements the gRPC AllSponsors query
+// AllSponsors implements the gRPC AllSponsors query with pagination support
 func (q QueryServer) AllSponsors(goCtx context.Context, req *types.QueryAllSponsorsRequest) (*types.QueryAllSponsorsResponse, error) {
 	if req == nil {
 		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
@@ -86,16 +90,30 @@ func (q QueryServer) AllSponsors(goCtx context.Context, req *types.QueryAllSpons
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Get all sponsors
-	sponsors := q.Keeper.GetAllSponsors(ctx)
-
-	// Convert []ContractSponsor to []*ContractSponsor
-	sponsorPtrs := make([]*types.ContractSponsor, len(sponsors))
-	for i := range sponsors {
-		sponsorPtrs[i] = &sponsors[i]
+	// Use pagination support
+	sponsors, pageRes, err := q.Keeper.GetSponsorsPaginated(ctx, req.Pagination)
+	if err != nil {
+		return nil, err
 	}
 
 	return &types.QueryAllSponsorsResponse{
-		Sponsors: sponsorPtrs,
+		Sponsors:   sponsors,
+		Pagination: pageRes,
+	}, nil
+}
+
+// Params implements the gRPC Params query
+func (q QueryServer) Params(goCtx context.Context, req *types.QueryParamsRequest) (*types.QueryParamsResponse, error) {
+	if req == nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+	}
+
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Get module parameters
+	params := q.Keeper.GetParams(ctx)
+
+	return &types.QueryParamsResponse{
+		Params: params,
 	}, nil
 }

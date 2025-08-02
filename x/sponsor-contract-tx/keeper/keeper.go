@@ -7,8 +7,10 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/store/prefix"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -80,10 +82,7 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(sponsor.ContractAddress)
-	bz, err := json.Marshal(sponsor)
-	if err != nil {
-		panic(err)
-	}
+	bz := k.cdc.MustMarshal(&sponsor)
 	store.Set(key, bz)
 }
 
@@ -97,9 +96,19 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 	}
 
 	var sponsor types.ContractSponsor
-	if err := json.Unmarshal(bz, &sponsor); err != nil {
-		panic(err)
+	
+	// Try protobuf unmarshaling first (new format)
+	err := k.cdc.Unmarshal(bz, &sponsor)
+	if err != nil {
+		// Fall back to JSON unmarshaling for backward compatibility (old format)
+		err = json.Unmarshal(bz, &sponsor)
+		if err != nil {
+			panic(fmt.Errorf("failed to unmarshal sponsor data for contract %s: %w", contractAddr, err))
+		}
+		// Auto-migrate: save in protobuf format
+		k.SetSponsor(ctx, sponsor)
 	}
+	
 	return sponsor, true
 }
 
@@ -144,20 +153,130 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	return contractInfo.Admin == userAddr.String(), nil
 }
 
-// GetAllSponsors returns all sponsors from the store
+// GetAllSponsors returns all sponsors in the store
 func (k Keeper) GetAllSponsors(ctx sdk.Context) []types.ContractSponsor {
-	store := ctx.KVStore(k.storeKey)
-	iterator := sdk.KVStorePrefixIterator(store, types.SponsorKeyPrefix)
-	defer iterator.Close()
-
 	var sponsors []types.ContractSponsor
-	for ; iterator.Valid(); iterator.Next() {
-		var sponsor types.ContractSponsor
-		if err := json.Unmarshal(iterator.Value(), &sponsor); err != nil {
-			panic(err)
-		}
+
+	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
 		sponsors = append(sponsors, sponsor)
-	}
+		return false // continue iteration
+	})
 
 	return sponsors
+}
+
+// IterateSponsors iterates over all sponsors and calls the provided callback function
+func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractSponsor) (stop bool)) {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.SponsorKeyPrefix)
+	iterator := sdk.KVStorePrefixIterator(store, []byte{})
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var sponsor types.ContractSponsor
+		
+		// Try protobuf unmarshaling first (new format)
+		err := k.cdc.Unmarshal(iterator.Value(), &sponsor)
+		if err != nil {
+			// Fall back to JSON unmarshaling for backward compatibility (old format)
+			err = json.Unmarshal(iterator.Value(), &sponsor)
+			if err != nil {
+				// Skip invalid entries and log error
+				continue
+			}
+		}
+
+		if cb(sponsor) {
+			break
+		}
+	}
+}
+
+// GetSponsorsPaginated returns sponsors with pagination support
+func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest) ([]*types.ContractSponsor, *query.PageResponse, error) {
+	var sponsors []*types.ContractSponsor
+
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.SponsorKeyPrefix)
+
+	pageRes, err := query.Paginate(store, pageReq, func(key []byte, value []byte) error {
+		var sponsor types.ContractSponsor
+		
+		// Try protobuf unmarshaling first (new format)
+		err := k.cdc.Unmarshal(value, &sponsor)
+		if err != nil {
+			// Fall back to JSON unmarshaling for backward compatibility (old format)
+			err = json.Unmarshal(value, &sponsor)
+			if err != nil {
+				return fmt.Errorf("failed to unmarshal sponsor data: %w", err)
+			}
+		}
+		
+		sponsors = append(sponsors, &sponsor)
+		return nil
+	})
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return sponsors, pageRes, nil
+}
+
+// GetSponsorsByStatus returns sponsors filtered by sponsorship status
+func (k Keeper) GetSponsorsByStatus(ctx sdk.Context, isSponsored bool) []types.ContractSponsor {
+	var sponsors []types.ContractSponsor
+
+	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
+		if sponsor.IsSponsored == isSponsored {
+			sponsors = append(sponsors, sponsor)
+		}
+		return false // continue iteration
+	})
+
+	return sponsors
+}
+
+// GetSponsorCount returns the total number of sponsors
+func (k Keeper) GetSponsorCount(ctx sdk.Context) uint64 {
+	var count uint64
+
+	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
+		count++
+		return false // continue iteration
+	})
+
+	return count
+}
+
+// GetActiveSponsorCount returns the number of active sponsors
+func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
+	var count uint64
+
+	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
+		if sponsor.IsSponsored {
+			count++
+		}
+		return false // continue iteration
+	})
+
+	return count
+}
+
+// GetParams returns the module parameters
+func (k Keeper) GetParams(ctx sdk.Context) types.Params {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.ParamsKey)
+	if bz == nil {
+		return types.DefaultParams()
+	}
+
+	var params types.Params
+	k.cdc.MustUnmarshal(bz, &params)
+	return params
+}
+
+// SetParams sets the module parameters
+func (k Keeper) SetParams(ctx sdk.Context, params types.Params) {
+	store := ctx.KVStore(k.storeKey)
+	bz := k.cdc.MustMarshal(&params)
+	store.Set(types.ParamsKey, bz)
 }
