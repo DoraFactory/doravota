@@ -3,6 +3,8 @@ syntax = "proto3";
 package doravota.sponsor.v1;
 
 import "doravota/sponsor/v1/sponsor.proto";
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "gogoproto/gogo.proto";
 
 option go_package = "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types";
 
@@ -14,8 +16,11 @@ service Query {
   // Sponsor queries the sponsor information for a contract
   rpc Sponsor(QuerySponsorRequest) returns (QuerySponsorResponse);
   
-  // AllSponsors queries all sponsors
+  // AllSponsors queries all sponsors with pagination support
   rpc AllSponsors(QueryAllSponsorsRequest) returns (QueryAllSponsorsResponse);
+  
+  // Params queries the parameters of the sponsor module
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
 }
 
 // QueryIsSponsoredRequest is the request type for the Query/IsSponsored RPC method
@@ -40,12 +45,22 @@ message QuerySponsorResponse {
 
 // QueryAllSponsorsRequest is the request type for the Query/AllSponsors RPC method
 message QueryAllSponsorsRequest {
-  // pagination is optional
-  string pagination = 1;
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
 }
 
 // QueryAllSponsorsResponse is the response type for the Query/AllSponsors RPC method
 message QueryAllSponsorsResponse {
   repeated ContractSponsor sponsors = 1;
-  string pagination = 2;
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryParamsRequest is the request type for the Query/Params RPC method
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response type for the Query/Params RPC method
+message QueryParamsResponse {
+  // params holds all the parameters of this module.
+  Params params = 1 [(gogoproto.nullable) = false];
 } 

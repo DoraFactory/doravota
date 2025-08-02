@@ -16,4 +16,20 @@ message ContractSponsor {
 // GenesisState defines the sponsor module's genesis state
 message GenesisState {
   repeated ContractSponsor sponsors = 1;
+  Params params = 2;
+}
+
+// Params defines the parameters for the sponsor module
+message Params {
+  // Maximum number of sponsors per contract
+  uint64 max_sponsors_per_contract = 1;
+  
+  // Whether sponsorship is globally enabled
+  bool sponsorship_enabled = 2;
+  
+  // Maximum gas limit per sponsored transaction
+  uint64 max_gas_per_sponsorship = 3;
+  
+  // Minimum contract age in seconds before it can be sponsored
+  uint64 min_contract_age = 4;
 } 
