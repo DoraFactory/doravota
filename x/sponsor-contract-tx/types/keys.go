@@ -24,6 +24,9 @@ const (
 var (
 	// SponsorKeyPrefix defines the prefix for sponsor records
 	SponsorKeyPrefix = []byte{0x01}
+	
+	// ParamsKey defines the key for module parameters
+	ParamsKey = []byte{0x02}
 )
 
 // GetSponsorKey returns the store key for a sponsor record

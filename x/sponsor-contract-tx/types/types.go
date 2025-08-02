@@ -172,8 +172,10 @@ func NewGenesisState(sponsors []*ContractSponsor) *GenesisState {
 
 // DefaultGenesisState returns a default genesis state
 func DefaultGenesisState() *GenesisState {
+	params := DefaultParams()
 	return &GenesisState{
 		Sponsors: []*ContractSponsor{},
+		Params:   &params,
 	}
 }
 
@@ -195,5 +197,36 @@ func ValidateGenesis(data GenesisState) error {
 			return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor contract address cannot be empty")
 		}
 	}
+	
+	// Validate parameters
+	if data.Params != nil {
+		return data.Params.Validate()
+	}
+	
+	return nil
+}
+
+// === Parameters ===
+
+// DefaultParams returns default parameters
+func DefaultParams() Params {
+	return Params{
+		MaxSponsorsPerContract: 1,
+		SponsorshipEnabled:     true,
+		MaxGasPerSponsorship:   1000000, // 1M gas
+		MinContractAge:         0,       // No minimum age requirement
+	}
+}
+
+// Validate validates the parameters
+func (p Params) Validate() error {
+	if p.MaxSponsorsPerContract == 0 {
+		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract must be greater than 0")
+	}
+	
+	if p.MaxGasPerSponsorship == 0 {
+		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship must be greater than 0")
+	}
+	
 	return nil
 }
