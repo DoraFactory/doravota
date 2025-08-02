@@ -72,7 +72,15 @@ func (AppModuleBasic) RegisterRESTRoutes(clientCtx client.Context, rtr *mux.Rout
 
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the sponsor module
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
-	// gRPC Gateway routes would be registered here
+	// TODO: gRPC Gateway registration requires protoc-gen-grpc-gateway plugin to generate query.pb.gw.go
+	// To enable this, install the plugin and run:
+	// go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+	// Then generate with: make proto-gen (or the equivalent protoc command with --grpc-gateway_out)
+	// After generation, uncomment:
+	// err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx))
+	// if err != nil {
+	//     panic(err)
+	// }
 }
 
 // GetTxCmd returns the sponsor module's root tx command
