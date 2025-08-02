@@ -8,6 +8,7 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // Context key for sponsor information
@@ -74,12 +75,41 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Call contract to check if user is eligible according to contract policy
+		// Create a gas-limited context to prevent DoS attacks through contract queries
+		params := sctd.keeper.GetParams(ctx)
+		gasLimit := params.MaxGasPerSponsorship
+		
+		// Create a limited gas meter for the policy check
+		limitedGasMeter := sdk.NewGasMeter(gasLimit)
+		limitedCtx := ctx.WithGasMeter(limitedGasMeter)
+		
 		before := ctx.GasMeter().GasConsumed()
 		ctx.Logger().Info("📌📌📌📌contract policy check gas before", "used", before)
-		eligible, err := sctd.keeper.CheckContractPolicy(ctx, contractAddr, userAddr)
+		
+		eligible, err := func() (bool, error) {
+			defer func() {
+				if r := recover(); r != nil {
+					// Handle gas limit exceeded panic
+					if _, ok := r.(sdk.ErrorOutOfGas); ok {
+						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded, 
+							"contract policy check exceeded gas limit: %d, used: %d", 
+							gasLimit, limitedGasMeter.GasConsumed())
+					} else {
+						// Re-panic for other types of panics
+						panic(r)
+					}
+				}
+			}()
+			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr)
+		}()
+		
+		// Add the consumed gas back to the original context
+		gasUsed := limitedGasMeter.GasConsumed()
+		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+		
 		after := ctx.GasMeter().GasConsumed()
 		ctx.Logger().Info("📌📌📌📌contract policy check gas after", "after", after)
-		ctx.Logger().Info("📌📌📌📌contract policy check gas used", "used", after-before)
+		ctx.Logger().Info("📌📌📌📌contract policy check gas used", "used", gasUsed)
 		if err != nil {
 			// If contract query fails, log error and continue with normal validation
 			// This prevents contract errors from blocking legitimate sponsored transactions
@@ -169,14 +199,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 		ctx = ctx.WithValue(sponsorInfoKey{}, sponsorInfo)
 
-		// Add event for sponsored transaction
+		// Add event for sponsored transaction using constants
 		ctx.EventManager().EmitEvent(
 			sdk.NewEvent(
-				"sponsored_tx",
-				sdk.NewAttribute("contract_address", contractAddr),
-				sdk.NewAttribute("sponsor_address", contractAccAddr.String()),
-				sdk.NewAttribute("user_address", userAddr.String()),
-				sdk.NewAttribute("policy_check", "passed"),
+				types.EventTypeSponsoredTx,
+				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+				sdk.NewAttribute(types.AttributeKeyPolicyCheck, types.AttributeValueSuccess),
 			),
 		)
 	}
