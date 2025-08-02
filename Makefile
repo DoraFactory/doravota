@@ -24,9 +24,9 @@ go.sum: go.mod
 ###                                Protobuf                                ###
 ###############################################################################
 
-protoVer=0.12.0
-protoImageName=ghcr.io/cosmos/proto-builder:$(protoVer)
-protoImage=$(DOCKER) run --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
+protoVer=latest
+protoImageName=tendermintdev/docker-build-proto:$(protoVer)
+protoImage=$(DOCKER) run --platform linux/amd64 --rm -v $(CURDIR):/workspace --workdir /workspace $(protoImageName)
 
 # ------
 # NOTE: If you are experiencing problems running these commands, try deleting
