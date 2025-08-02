@@ -29,39 +29,42 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 
 	// Check if sponsor already exists
 	if k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor already exists")
+		return nil, sdkerrors.Wrap(types.ErrSponsorAlreadyExists, "sponsor already exists")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can set sponsor")
+		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can set sponsor")
 	}
 
 	// Create and set the sponsor
+	now := ctx.BlockTime().Unix()
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
 		IsSponsored:     msg.IsSponsored,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	k.Keeper.SetSponsor(ctx, sponsor)
 
-	// Emit event
+	// Emit event using constants
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(
-			"set_sponsor",
-			sdk.NewAttribute("creator", msg.Creator),
-			sdk.NewAttribute("contract_address", msg.ContractAddress),
-			sdk.NewAttribute("is_sponsored", fmt.Sprintf("%t", msg.IsSponsored)),
+			types.EventTypeSetSponsor,
+			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
+			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
 
@@ -74,39 +77,48 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor not found")
+		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can update sponsor")
+		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can update sponsor")
 	}
 
+	// Get existing sponsor to preserve CreatedAt timestamp
+	existingSponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
+	if !found {
+		// This shouldn't happen since we checked above, but handle gracefully
+		existingSponsor.CreatedAt = ctx.BlockTime().Unix()
+	}
+	
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
 		IsSponsored:     msg.IsSponsored,
+		CreatedAt:       existingSponsor.CreatedAt,
+		UpdatedAt:       ctx.BlockTime().Unix(),
 	}
 
 	k.Keeper.SetSponsor(ctx, sponsor)
 
-	// Emit event
+	// Emit event using constants
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(
-			"update_sponsor",
-			sdk.NewAttribute("creator", msg.Creator),
-			sdk.NewAttribute("contract_address", msg.ContractAddress),
-			sdk.NewAttribute("is_sponsored", fmt.Sprintf("%t", msg.IsSponsored)),
+			types.EventTypeUpdateSponsor,
+			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
+			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
 
@@ -119,33 +131,33 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor not found")
+		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator address")
+		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "only contract admin can delete sponsor")
+		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can delete sponsor")
 	}
 
 	// Delete the sponsor
 	k.Keeper.DeleteSponsor(ctx, msg.ContractAddress)
 
-	// Emit event
+	// Emit event using constants
 	ctx.EventManager().EmitEvent(
 		sdk.NewEvent(
-			"delete_sponsor",
-			sdk.NewAttribute("creator", msg.Creator),
-			sdk.NewAttribute("contract_address", msg.ContractAddress),
+			types.EventTypeDeleteSponsor,
+			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
+			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 		),
 	)
 
