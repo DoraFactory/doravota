@@ -44,6 +44,7 @@ func GetQueryCmd() *cobra.Command {
 	cmd.AddCommand(
 		GetCmdQueryAllSponsors(),
 		GetCmdQuerySponsorStatus(),
+		GetCmdQueryParams(),
 	)
 
 	return cmd
@@ -163,6 +164,34 @@ func GetCmdQuerySponsorStatus() *cobra.Command {
 				ContractAddress: args[0],
 			}
 			res, err := queryClient.IsSponsored(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// GetCmdQueryParams implements the query params command
+func GetCmdQueryParams() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "params",
+		Short: "Query the parameters of the sponsor module",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			queryClient := types.NewQueryClient(clientCtx)
+
+			req := &types.QueryParamsRequest{}
+			res, err := queryClient.Params(context.Background(), req)
 			if err != nil {
 				return err
 			}
