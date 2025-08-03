@@ -27,6 +27,11 @@ var _ types.MsgServer = msgServer{}
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
+	// Validate that the contract exists and is valid
+	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
+		return nil, err
+	}
+
 	// Check if sponsor already exists
 	if k.HasSponsor(ctx, msg.ContractAddress) {
 		return nil, sdkerrors.Wrap(types.ErrSponsorAlreadyExists, "sponsor already exists")
@@ -75,6 +80,11 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 // UpdateSponsor handles MsgUpdateSponsor
 func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSponsor) (*types.MsgUpdateSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Validate that the contract exists and is valid
+	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
+		return nil, err
+	}
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
@@ -130,6 +140,11 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 // DeleteSponsor handles MsgDeleteSponsor
 func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSponsor) (*types.MsgDeleteSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Validate that the contract exists and is valid
+	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
+		return nil, err
+	}
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {

@@ -41,8 +41,20 @@ func GetSponsorKeyFromBytes(key []byte) string {
 
 // ValidateContractAddress validates a contract address
 func ValidateContractAddress(addr string) error {
-	if _, err := sdk.AccAddressFromBech32(addr); err != nil {
-		return err
+	if addr == "" {
+		return ErrInvalidContractAddress.Wrap("contract address cannot be empty")
 	}
+	
+	// Validate bech32 format
+	accAddr, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return ErrInvalidContractAddress.Wrapf("invalid bech32 address format: %s", addr)
+	}
+	
+	// Check address length (should be 20 bytes for cosmos addresses)
+	if len(accAddr) != 20 {
+		return ErrInvalidContractAddress.Wrapf("invalid address length: expected 20 bytes, got %d", len(accAddr))
+	}
+	
 	return nil
 }

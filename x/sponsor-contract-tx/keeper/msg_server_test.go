@@ -21,11 +21,11 @@ func TestMsgServer_SetSponsor(t *testing.T) {
 		IsSponsored:     true,
 	}
 
-	// This will fail due to contract not found (mock wasm keeper limitation)
+	// This will fail due to invalid contract address format
 	_, err := server.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this now fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 }
 
 func TestMsgServer_UpdateSponsor(t *testing.T) {
@@ -50,8 +50,8 @@ func TestMsgServer_UpdateSponsor(t *testing.T) {
 
 	_, err := server.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 }
 
 func TestMsgServer_DeleteSponsor(t *testing.T) {
@@ -75,8 +75,8 @@ func TestMsgServer_DeleteSponsor(t *testing.T) {
 
 	_, err := server.DeleteSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 }
 
 func TestMsgServerEventEmission(t *testing.T) {
@@ -96,8 +96,8 @@ func TestMsgServerEventEmission(t *testing.T) {
 
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// No events should be emitted when the operation fails
 	events := eventManager.Events()
@@ -129,8 +129,8 @@ func TestMsgServerUpdateEventEmission(t *testing.T) {
 
 	_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// No events should be emitted when the operation fails
 	events := eventManager.Events()
@@ -161,8 +161,8 @@ func TestMsgServerDeleteEventEmission(t *testing.T) {
 
 	_, err := msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), msg)
 	require.Error(t, err)
-	// With admin validation, this fails at the contract admin check
-	assert.Contains(t, err.Error(), "invalid creator address")
+	// With enhanced validation, this now fails at contract address validation
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// No events should be emitted when the operation fails
 	events := eventManager.Events()
@@ -188,7 +188,7 @@ func TestMsgServerWorkflow(t *testing.T) {
 
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid creator address")
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// Since SetSponsor failed, the sponsor is not created
 	assert.False(t, keeper.IsSponsored(ctx, contractAddr))
@@ -214,7 +214,7 @@ func TestMsgServerWorkflow(t *testing.T) {
 
 	_, err = msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), updateMsg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid creator address")
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// 3. Delete sponsor - will fail due to admin validation
 	deleteMsg := &types.MsgDeleteSponsor{
@@ -224,7 +224,7 @@ func TestMsgServerWorkflow(t *testing.T) {
 
 	_, err = msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), deleteMsg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid creator address")
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// The sponsor still exists because delete failed
 	assert.True(t, keeper.HasSponsor(ctx, contractAddr))
@@ -244,7 +244,7 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 	// Note: With admin validation, SetSponsor operations will fail
 	// because the mock wasm keeper doesn't provide contract info
 
-	// Try to set multiple sponsors - all will fail due to admin validation
+	// Try to set multiple sponsors - all will fail due to contract address validation
 	for _, contractAddr := range contracts {
 		msg := &types.MsgSetSponsor{
 			Creator:         signer,
@@ -254,7 +254,7 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid creator address")
+		assert.Contains(t, err.Error(), "invalid contract address")
 	}
 
 	// Since all SetSponsor operations failed, no sponsors should exist
@@ -286,7 +286,7 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 		assert.Equal(t, contractAddr, sponsor.ContractAddress)
 	}
 
-	// Try to update one sponsor - will fail due to admin validation
+	// Try to update one sponsor - will fail due to contract address validation
 	updateMsg := &types.MsgUpdateSponsor{
 		Creator:         signer,
 		ContractAddress: contracts[1],
@@ -295,12 +295,12 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 
 	_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), updateMsg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid creator address")
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// The sponsor state should remain unchanged because update failed
 	assert.False(t, keeper.IsSponsored(ctx, contracts[1]))
 
-	// Try to delete one sponsor - will fail due to admin validation
+	// Try to delete one sponsor - will fail due to contract address validation
 	deleteMsg := &types.MsgDeleteSponsor{
 		Creator:         signer,
 		ContractAddress: contracts[0],
@@ -308,7 +308,7 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 
 	_, err = msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), deleteMsg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid creator address")
+	assert.Contains(t, err.Error(), "invalid contract address")
 
 	// The sponsor should still exist because delete failed
 	assert.True(t, keeper.HasSponsor(ctx, contracts[0]))
@@ -339,7 +339,7 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid creator address")
+		assert.Contains(t, err.Error(), "contract not found")
 	})
 
 	// Test SetSponsor - contract not found (mock wasm keeper returns nil)
@@ -353,7 +353,6 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to verify contract admin")
 		assert.Contains(t, err.Error(), "contract not found")
 	})
 
@@ -407,7 +406,7 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 
 		_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sponsor not found")
+		assert.Contains(t, err.Error(), "contract not found")
 	})
 
 	// Test DeleteSponsor - contract not found
@@ -420,7 +419,7 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 
 		_, err := msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sponsor not found")
+		assert.Contains(t, err.Error(), "contract not found")
 	})
 }
 
@@ -444,21 +443,21 @@ func TestMsgServerInvalidAddresses(t *testing.T) {
 			msgType:     "set",
 			creator:     invalidAddr,
 			contract:    contractAddr,
-			expectError: "invalid creator address",
+			expectError: "contract not found",
 		},
 		{
 			name:        "UpdateSponsor invalid creator",
 			msgType:     "update",
 			creator:     invalidAddr,
 			contract:    contractAddr,
-			expectError: "sponsor not found",
+			expectError: "contract not found",
 		},
 		{
 			name:        "DeleteSponsor invalid creator",
 			msgType:     "delete",
 			creator:     invalidAddr,
 			contract:    contractAddr,
-			expectError: "sponsor not found",
+			expectError: "contract not found",
 		},
 	}
 
@@ -515,8 +514,8 @@ func TestMsgServerPermissionDenied(t *testing.T) {
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		// The addresses used here are not valid bech32, so address validation fails first
-		assert.Contains(t, err.Error(), "invalid creator address")
+		// The contract address used here is not valid bech32, so contract address validation fails first
+		assert.Contains(t, err.Error(), "invalid contract address")
 	})
 
 	// First create a sponsor to test update/delete scenarios
@@ -536,7 +535,7 @@ func TestMsgServerPermissionDenied(t *testing.T) {
 
 		_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid creator address")
+		assert.Contains(t, err.Error(), "invalid contract address")
 	})
 
 	t.Run("DeleteSponsor permission denied", func(t *testing.T) {
@@ -547,7 +546,7 @@ func TestMsgServerPermissionDenied(t *testing.T) {
 
 		_, err := msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid creator address")
+		assert.Contains(t, err.Error(), "invalid contract address")
 	})
 }
 
@@ -572,7 +571,7 @@ func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "invalid creator address")
+		assert.Contains(t, err.Error(), "invalid contract address")
 
 		// Verify no sponsor was created
 		assert.False(t, keeper.HasSponsor(ctx, contractAddr))
@@ -589,8 +588,8 @@ func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
 		require.Error(t, err)
 
-		// The addresses used here are not valid bech32, so address validation fails first
-		assert.Contains(t, err.Error(), "invalid creator address")
+		// The contract address used here is not valid bech32, so contract address validation fails first
+		assert.Contains(t, err.Error(), "invalid contract address")
 
 		// Verify no sponsor was created due to auth failure
 		assert.False(t, keeper.HasSponsor(ctx, contractAddr))
@@ -655,9 +654,9 @@ func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
 	for _, testOp := range testOps {
 		t.Run(testOp.name+" admin check", func(t *testing.T) {
 			err := testOp.fn()
-			require.Error(t, err, "Operation should fail due to admin validation")
-			assert.Contains(t, err.Error(), "invalid creator address",
-				"Error should indicate address validation failure")
+			require.Error(t, err, "Operation should fail due to contract address validation")
+			assert.Contains(t, err.Error(), "invalid contract address",
+				"Error should indicate contract address validation failure")
 		})
 	}
 }

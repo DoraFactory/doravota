@@ -137,20 +137,39 @@ func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 	return sponsor.IsSponsored
 }
 
+// ValidateContractExists checks if a contract exists and is valid
+func (k Keeper) ValidateContractExists(ctx sdk.Context, contractAddr string) error {
+	// Convert contract address string to AccAddress
+	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
+	if err != nil {
+		return fmt.Errorf("invalid contract address: %w", err)
+	}
+
+	// Get contract info from wasm keeper
+	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
+	if contractInfo == nil {
+		return types.ErrContractNotFound.Wrapf("contract not found: %s", contractAddr)
+	}
+
+	return nil
+}
+
 // IsContractAdmin checks if the given address is the admin of the contract
 func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress) (bool, error) {
+	// First validate that contract exists
+	if err := k.ValidateContractExists(ctx, contractAddr); err != nil {
+		return false, err
+	}
+
 	// Convert contract address string to AccAddress
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
 		return false, fmt.Errorf("invalid contract address: %w", err)
 	}
 
-	// Get contract info from wasm keeper
+	// Get contract info from wasm keeper (we know it exists from validation above)
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
-	if contractInfo == nil {
-		return false, fmt.Errorf("contract not found: %s", contractAddr)
-	}
-
+	
 	// Check if the user is the admin
 	return contractInfo.Admin == userAddr.String(), nil
 }

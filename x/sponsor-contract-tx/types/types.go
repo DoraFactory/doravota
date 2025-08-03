@@ -5,6 +5,42 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
+// BaseSponsorMsg defines common fields and methods for sponsor messages
+type BaseSponsorMsg struct {
+	Creator         string
+	ContractAddress string
+}
+
+// ValidateBasicFields performs common validation for sponsor messages
+func (b BaseSponsorMsg) ValidateBasicFields() error {
+	// Validate creator address
+	_, err := sdk.AccAddressFromBech32(b.Creator)
+	if err != nil {
+		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", b.Creator)
+	}
+	
+	// Validate contract address format
+	if err := ValidateContractAddress(b.ContractAddress); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
+// GetCommonSigners returns the signers for sponsor messages
+func (b BaseSponsorMsg) GetCommonSigners() []sdk.AccAddress {
+	signer, err := sdk.AccAddressFromBech32(b.Creator)
+	if err != nil {
+		panic(err)
+	}
+	return []sdk.AccAddress{signer}
+}
+
+// GetCommonRoute returns the message route
+func (b BaseSponsorMsg) GetCommonRoute() string {
+	return RouterKey
+}
+
 // NewMsgSetSponsor creates a new MsgSetSponsor instance
 func NewMsgSetSponsor(creator, contractAddress string, isSponsored bool) *MsgSetSponsor {
 	return &MsgSetSponsor{
@@ -16,7 +52,8 @@ func NewMsgSetSponsor(creator, contractAddress string, isSponsored bool) *MsgSet
 
 // Route returns the message route
 func (msg MsgSetSponsor) Route() string {
-	return RouterKey
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonRoute()
 }
 
 // Type returns the message type
@@ -26,11 +63,8 @@ func (msg MsgSetSponsor) Type() string {
 
 // GetSigners returns the signers
 func (msg MsgSetSponsor) GetSigners() []sdk.AccAddress {
-	signer, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		panic(err)
-	}
-	return []sdk.AccAddress{signer}
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonSigners()
 }
 
 // GetSignBytes returns the sign bytes
@@ -41,14 +75,8 @@ func (msg MsgSetSponsor) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgSetSponsor) ValidateBasic() error {
-	_, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
-	}
-	if msg.ContractAddress == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "contract address cannot be empty")
-	}
-	return nil
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.ValidateBasicFields()
 }
 
 // TypeURL returns the TypeURL for this message
@@ -69,7 +97,8 @@ func NewMsgUpdateSponsor(creator, contractAddress string, isSponsored bool) *Msg
 
 // Route returns the message route
 func (msg MsgUpdateSponsor) Route() string {
-	return RouterKey
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonRoute()
 }
 
 // Type returns the message type
@@ -79,11 +108,8 @@ func (msg MsgUpdateSponsor) Type() string {
 
 // GetSigners returns the signers
 func (msg MsgUpdateSponsor) GetSigners() []sdk.AccAddress {
-	signer, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		panic(err)
-	}
-	return []sdk.AccAddress{signer}
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonSigners()
 }
 
 // GetSignBytes returns the sign bytes
@@ -94,14 +120,8 @@ func (msg MsgUpdateSponsor) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgUpdateSponsor) ValidateBasic() error {
-	_, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
-	}
-	if msg.ContractAddress == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "contract address cannot be empty")
-	}
-	return nil
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.ValidateBasicFields()
 }
 
 // TypeURL returns the TypeURL for this message
@@ -121,7 +141,8 @@ func NewMsgDeleteSponsor(creator, contractAddress string) *MsgDeleteSponsor {
 
 // Route returns the message route
 func (msg MsgDeleteSponsor) Route() string {
-	return RouterKey
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonRoute()
 }
 
 // Type returns the message type
@@ -131,11 +152,8 @@ func (msg MsgDeleteSponsor) Type() string {
 
 // GetSigners returns the signers
 func (msg MsgDeleteSponsor) GetSigners() []sdk.AccAddress {
-	signer, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		panic(err)
-	}
-	return []sdk.AccAddress{signer}
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonSigners()
 }
 
 // GetSignBytes returns the sign bytes
@@ -146,14 +164,8 @@ func (msg MsgDeleteSponsor) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgDeleteSponsor) ValidateBasic() error {
-	_, err := sdk.AccAddressFromBech32(msg.Creator)
-	if err != nil {
-		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
-	}
-	if msg.ContractAddress == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "contract address cannot be empty")
-	}
-	return nil
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.ValidateBasicFields()
 }
 
 // TypeURL returns the TypeURL for this message
