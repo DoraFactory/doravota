@@ -83,9 +83,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		limitedGasMeter := sdk.NewGasMeter(gasLimit)
 		limitedCtx := ctx.WithGasMeter(limitedGasMeter)
 		
-		before := ctx.GasMeter().GasConsumed()
-		ctx.Logger().Info("📌📌📌📌contract policy check gas before", "used", before)
-		
 		eligible, err := func() (bool, error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -106,31 +103,34 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// Add the consumed gas back to the original context
 		gasUsed := limitedGasMeter.GasConsumed()
 		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
-		
-		after := ctx.GasMeter().GasConsumed()
-		ctx.Logger().Info("📌📌📌📌contract policy check gas after", "after", after)
-		ctx.Logger().Info("📌📌📌📌contract policy check gas used", "used", gasUsed)
 		if err != nil {
-			// If contract query fails, log error and continue with normal validation
-			// This prevents contract errors from blocking legitimate sponsored transactions
+			// If contract policy check fails, we must reject the sponsored transaction
+			// This is critical for security - we cannot sponsor transactions without verifying eligibility
 			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"❌❌❌❌❌❌Failed to check contract policy, continuing with normal validation",
+				"Contract policy check failed, rejecting sponsored transaction",
 				"contract", contractAddr,
 				"user", userAddr.String(),
 				"error", err.Error(),
+			)
+			return ctx, sdkerrors.Wrapf(
+				types.ErrPolicyCheckFailed,
+				"contract policy check failed for user %s on contract %s: %s",
+				userAddr.String(),
+				contractAddr,
+				err.Error(),
 			)
 		} else if !eligible {
 			// User is not eligible according to contract policy
 			return ctx, sdkerrors.Wrapf(
 				sdkerrors.ErrUnauthorized,
-				"🚫🚫🚫🚫🚫🚫user %s is not eligible for sponsored transaction according to contract %s policy",
+				"user %s is not eligible for sponsored transaction according to contract %s policy",
 				userAddr.String(),
 				contractAddr,
 			)
 		}
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"user is eligible for sponsored transaction according to contract policy✅✅✅✅✅✅✅✅✅✅",
+			"user is eligible for sponsored transaction according to contract policy",
 			"contract", contractAddr,
 			"user", userAddr.String(),
 		)
@@ -182,7 +182,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					}
 
 					ctx.Logger().With("module", "sponsor-contract-tx").Info(
-						"Sponsorship funds transferred successfully ✅✅✅✅✅✅✅✅✅✅",
+						"sponsorship funds transferred successfully",
 						"from", contractAccAddr.String(),
 						"to", feePayer.String(),
 						"amount", fee.String(),
