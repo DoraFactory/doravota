@@ -103,7 +103,9 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 		// Fall back to JSON unmarshaling for backward compatibility (old format)
 		err = json.Unmarshal(bz, &sponsor)
 		if err != nil {
-			panic(fmt.Errorf("failed to unmarshal sponsor data for contract %s: %w", contractAddr, err))
+			// Log error and return empty sponsor instead of panicking
+			k.Logger(ctx).Error("failed to unmarshal sponsor data", "contract", contractAddr, "error", err)
+			return types.ContractSponsor{}, false
 		}
 		// Auto-migrate: save in protobuf format
 		k.SetSponsor(ctx, sponsor)

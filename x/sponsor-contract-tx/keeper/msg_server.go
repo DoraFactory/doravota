@@ -51,6 +51,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	now := ctx.BlockTime().Unix()
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
+		SponsorAddress:  msg.Creator,
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -105,6 +106,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
+		SponsorAddress:  existingSponsor.SponsorAddress, // Preserve original sponsor address
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       existingSponsor.CreatedAt,
 		UpdatedAt:       ctx.BlockTime().Unix(),
