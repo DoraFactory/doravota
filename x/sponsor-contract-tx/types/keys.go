@@ -27,6 +27,9 @@ var (
 	
 	// ParamsKey defines the key for module parameters
 	ParamsKey = []byte{0x02}
+	
+	// UserGrantUsageKeyPrefix defines the prefix for user grant usage records
+	UserGrantUsageKeyPrefix = []byte{0x03}
 )
 
 // GetSponsorKey returns the store key for a sponsor record
@@ -37,6 +40,20 @@ func GetSponsorKey(contractAddr string) []byte {
 // GetSponsorKeyFromBytes returns the contract address from a sponsor key
 func GetSponsorKeyFromBytes(key []byte) string {
 	return string(key[len(SponsorKeyPrefix):])
+}
+
+// GetUserGrantUsageKey returns the store key for a user grant usage record
+func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
+	// Format: UserGrantUsageKeyPrefix + userAddr + "/" + contractAddr
+	key := append(UserGrantUsageKeyPrefix, []byte(userAddr)...)
+	key = append(key, []byte("/")...)
+	key = append(key, []byte(contractAddr)...)
+	return key
+}
+
+// GetUserGrantUsageKeyPrefix returns the prefix for all user grant usage records for a specific user
+func GetUserGrantUsageKeyPrefix(userAddr string) []byte {
+	return append(UserGrantUsageKeyPrefix, []byte(userAddr)...)
 }
 
 // ValidateContractAddress validates a contract address

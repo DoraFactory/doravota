@@ -145,6 +145,10 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if ok {
 			fee := feeTx.GetFee()
 			if !fee.IsZero() {
+				// Check user's grant limit before processing the transaction
+				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
+					return ctx, err
+				}
 				// Get the fee payer
 				feePayer := feeTx.FeePayer()
 				if feePayer == nil {
@@ -187,6 +191,10 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 						"to", feePayer.String(),
 						"amount", fee.String(),
 					)
+
+					// Update user's grant usage after successful transfer
+					// TODO: Consider the case where the user dont have enough grant to pay this operation????
+					sctd.keeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr, fee)
 				}
 			}
 		}

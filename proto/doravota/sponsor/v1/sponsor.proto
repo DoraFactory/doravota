@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package doravota.sponsor.v1;
 
+import "cosmos/base/v1beta1/coin.proto";
+
 option go_package = "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types";
 
 // ContractSponsor defines the sponsor information for a contract
@@ -11,6 +13,7 @@ message ContractSponsor {
   string sponsor_address = 3;
   int64 created_at = 4;
   int64 updated_at = 5;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 6;
 }
 
 // GenesisState defines the sponsor module's genesis state
@@ -19,17 +22,25 @@ message GenesisState {
   Params params = 2;
 }
 
+// UserGrantUsage tracks how much grant a user has used for a specific contract
+message UserGrantUsage {
+  string user_address = 1;
+  string contract_address = 2;
+  repeated cosmos.base.v1beta1.Coin total_grant_used = 3;
+  int64 last_used_time = 4;
+}
+
 // Params defines the parameters for the sponsor module
 message Params {
   // Maximum number of sponsors per contract
   uint64 max_sponsors_per_contract = 1;
-  
+
   // Whether sponsorship is globally enabled
   bool sponsorship_enabled = 2;
-  
+
   // Maximum gas limit per sponsored transaction
   uint64 max_gas_per_sponsorship = 3;
-  
+
   // Minimum contract age in seconds before it can be sponsored
   uint64 min_contract_age = 4;
-} 
+}

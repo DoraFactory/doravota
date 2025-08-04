@@ -8,10 +8,10 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
-// Ensure QueryServer implements the protobuf QueryServer interface
+// Ensure Server implements the protobuf QueryServer interface
 var _ types.QueryServer = QueryServer{}
 
-// QueryServer wraps the Keeper to implement the gRPC QueryServer interface
+// Server wraps the Keeper to implement the gRPC QueryServer interface
 type QueryServer struct {
 	types.UnimplementedQueryServer
 	Keeper
@@ -23,32 +23,6 @@ func NewQueryServer(keeper Keeper) types.QueryServer {
 		UnimplementedQueryServer: types.UnimplementedQueryServer{},
 		Keeper:                   keeper,
 	}
-}
-
-// IsSponsored implements the gRPC IsSponsored query
-func (q QueryServer) IsSponsored(goCtx context.Context, req *types.QueryIsSponsoredRequest) (*types.QueryIsSponsoredResponse, error) {
-	if req == nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
-	}
-
-	ctx := sdk.UnwrapSDKContext(goCtx)
-
-	// Validate contract address
-	if req.ContractAddress == "" {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
-	}
-
-	_, err := sdk.AccAddressFromBech32(req.ContractAddress)
-	if err != nil {
-		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
-	}
-
-	// Check if contract is sponsored using the keeper method
-	isSponsored := q.Keeper.IsSponsored(ctx, req.ContractAddress)
-
-	return &types.QueryIsSponsoredResponse{
-		IsSponsored: isSponsored,
-	}, nil
 }
 
 // Sponsor implements the gRPC Sponsor query
@@ -115,5 +89,41 @@ func (q QueryServer) Params(goCtx context.Context, req *types.QueryParamsRequest
 
 	return &types.QueryParamsResponse{
 		Params: params,
+	}, nil
+}
+
+// UserGrantUsage implements the gRPC UserGrantUsage query
+func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserGrantUsageRequest) (*types.QueryUserGrantUsageResponse, error) {
+	if req == nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+	}
+
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Validate user address
+	if req.UserAddress == "" {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "user address cannot be empty")
+	}
+
+	_, err := sdk.AccAddressFromBech32(req.UserAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", req.UserAddress)
+	}
+
+	// Validate contract address
+	if req.ContractAddress == "" {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
+	}
+
+	_, err = sdk.AccAddressFromBech32(req.ContractAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+	}
+
+	// Get user grant usage
+	usage := q.Keeper.GetUserGrantUsage(ctx, req.UserAddress, req.ContractAddress)
+
+	return &types.QueryUserGrantUsageResponse{
+		Usage: &usage,
 	}, nil
 }

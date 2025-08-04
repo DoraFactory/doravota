@@ -3,6 +3,7 @@ package types
 import (
 	"testing"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,23 +39,31 @@ func TestContractSponsor(t *testing.T) {
 }
 
 func TestMsgSetSponsor(t *testing.T) {
-	// Test MsgSetSponsor creation
-	msg := NewMsgSetSponsor("cosmos1signer", "cosmos1contract", true)
+	// Test MsgSetSponsor creation with max grant per user
+	maxGrant := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(1000000)))
+	msg := NewMsgSetSponsor("cosmos1signer", "cosmos1contract", true, maxGrant)
 
 	require.Equal(t, "cosmos1signer", msg.Creator)
 	require.Equal(t, "cosmos1contract", msg.ContractAddress)
 	require.True(t, msg.IsSponsored)
+	require.Len(t, msg.MaxGrantPerUser, 1)
+	require.Equal(t, "dora", msg.MaxGrantPerUser[0].Denom)
+	require.Equal(t, sdk.NewInt(1000000), msg.MaxGrantPerUser[0].Amount)
 	require.Equal(t, "set_sponsor", msg.Type())
 	require.Equal(t, RouterKey, msg.Route())
 }
 
 func TestMsgUpdateSponsor(t *testing.T) {
-	// Test MsgUpdateSponsor creation
-	msg := NewMsgUpdateSponsor("cosmos1signer", "cosmos1contract", false)
+	// Test MsgUpdateSponsor creation with max grant per user
+	maxGrant := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(500000)))
+	msg := NewMsgUpdateSponsor("cosmos1signer", "cosmos1contract", false, maxGrant)
 
 	require.Equal(t, "cosmos1signer", msg.Creator)
 	require.Equal(t, "cosmos1contract", msg.ContractAddress)
 	require.False(t, msg.IsSponsored)
+	require.Len(t, msg.MaxGrantPerUser, 1)
+	require.Equal(t, "dora", msg.MaxGrantPerUser[0].Denom)
+	require.Equal(t, sdk.NewInt(500000), msg.MaxGrantPerUser[0].Amount)
 	require.Equal(t, "update_sponsor", msg.Type())
 	require.Equal(t, RouterKey, msg.Route())
 }

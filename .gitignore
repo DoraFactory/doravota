@@ -15,10 +15,6 @@ scripts/*
 registry_cache/
 build/*
 
-# Protobuf generated files
-*.pb.go
-*.pb.gw.go
-*_grpc.pb.go
 docs/static/openapi.json
 
 # Buf generated files

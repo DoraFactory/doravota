@@ -96,7 +96,7 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 	}
 
 	var sponsor types.ContractSponsor
-	
+
 	// Try protobuf unmarshaling first (new format)
 	err := k.cdc.Unmarshal(bz, &sponsor)
 	if err != nil {
@@ -110,7 +110,7 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 		// Auto-migrate: save in protobuf format
 		k.SetSponsor(ctx, sponsor)
 	}
-	
+
 	return sponsor, true
 }
 
@@ -169,7 +169,7 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 
 	// Get contract info from wasm keeper (we know it exists from validation above)
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
-	
+
 	// Check if the user is the admin
 	return contractInfo.Admin == userAddr.String(), nil
 }
@@ -194,7 +194,7 @@ func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractS
 
 	for ; iterator.Valid(); iterator.Next() {
 		var sponsor types.ContractSponsor
-		
+
 		// Try protobuf unmarshaling first (new format)
 		err := k.cdc.Unmarshal(iterator.Value(), &sponsor)
 		if err != nil {
@@ -220,7 +220,7 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 
 	pageRes, err := query.Paginate(store, pageReq, func(key []byte, value []byte) error {
 		var sponsor types.ContractSponsor
-		
+
 		// Try protobuf unmarshaling first (new format)
 		err := k.cdc.Unmarshal(value, &sponsor)
 		if err != nil {
@@ -230,7 +230,7 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 				return fmt.Errorf("failed to unmarshal sponsor data: %w", err)
 			}
 		}
-		
+
 		sponsors = append(sponsors, &sponsor)
 		return nil
 	})
@@ -300,4 +300,119 @@ func (k Keeper) SetParams(ctx sdk.Context, params types.Params) {
 	store := ctx.KVStore(k.storeKey)
 	bz := k.cdc.MustMarshal(&params)
 	store.Set(types.ParamsKey, bz)
+}
+
+// === User Grant Usage Management ===
+
+// GetUserGrantUsage returns the grant usage for a specific user and contract
+func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string) types.UserGrantUsage {
+	store := ctx.KVStore(k.storeKey)
+	key := types.GetUserGrantUsageKey(userAddr, contractAddr)
+	bz := store.Get(key)
+
+	if bz == nil {
+		// Return new usage record if not found
+		return types.NewUserGrantUsage(userAddr, contractAddr)
+	}
+
+	var usage types.UserGrantUsage
+	err := json.Unmarshal(bz, &usage)
+	if err != nil {
+		// Log error and return new usage record
+		k.Logger(ctx).Error("failed to unmarshal user grant usage", "user", userAddr, "contract", contractAddr, "error", err)
+		return types.NewUserGrantUsage(userAddr, contractAddr)
+	}
+
+	return usage
+}
+
+// SetUserGrantUsage sets the grant usage for a specific user and contract
+func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.GetUserGrantUsageKey(usage.UserAddress, usage.ContractAddress)
+
+	bz, err := json.Marshal(usage)
+	if err != nil {
+		k.Logger(ctx).Error("failed to marshal user grant usage", "user", usage.UserAddress, "contract", usage.ContractAddress, "error", err)
+		return
+	}
+
+	store.Set(key, bz)
+}
+
+// UpdateUserGrantUsage updates the user's grant usage by adding the consumed amount
+func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) {
+	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
+	
+	// Convert []*sdk.Coin to sdk.Coins for calculation
+	currentUsed := sdk.Coins{}
+	for _, coin := range usage.TotalGrantUsed {
+		if coin != nil {
+			currentUsed = currentUsed.Add(*coin)
+		}
+	}
+	
+	// Add consumed amount
+	newTotal := currentUsed.Add(consumedAmount...)
+	
+	// Convert back to []*sdk.Coin
+	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
+	for i, coin := range newTotal {
+		usage.TotalGrantUsed[i] = &coin
+	}
+	
+	usage.LastUsedTime = ctx.BlockTime().Unix()
+	k.SetUserGrantUsage(ctx, usage)
+}
+
+// GetMaxGrantPerUser returns the maximum grant amount per user for a contract
+func (k Keeper) GetMaxGrantPerUser(ctx sdk.Context, contractAddr string) sdk.Coins {
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found || len(sponsor.MaxGrantPerUser) == 0 {
+		// Return default limit if not configured - 1 DORA = 10^18 peaka
+		amount, _ := sdk.NewIntFromString("1000000000000000000")
+		return sdk.NewCoins(sdk.NewCoin("peaka", amount)) // 1 DORA default
+	}
+
+	// Convert from protobuf Coin to sdk.Coins
+	coins := make(sdk.Coins, len(sponsor.MaxGrantPerUser))
+	for i, coin := range sponsor.MaxGrantPerUser {
+		coins[i] = *coin // Dereference the pointer
+	}
+
+	return coins
+}
+
+// CheckUserGrantLimit checks if a user can use the requested grant amount
+func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error {
+	// Get user's current usage
+	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
+
+	// Get the maximum grant limit for this contract
+	maxLimit := k.GetMaxGrantPerUser(ctx, contractAddr)
+
+	// Convert []*sdk.Coin to sdk.Coins for calculation
+	currentUsed := sdk.Coins{}
+	for _, coin := range usage.TotalGrantUsed {
+		if coin != nil {
+			currentUsed = currentUsed.Add(*coin)
+		}
+	}
+	
+	// Calculate total after this transaction
+	totalAfterTx := currentUsed.Add(requestedAmount...)
+
+	// Check if it exceeds the limit
+	if !maxLimit.IsAllGTE(totalAfterTx) {
+		return types.ErrUserGrantLimitExceeded.Wrapf(
+			"user %s grant limit exceeded for contract %s: used %s + requested %s > limit %s",
+			userAddr,
+			contractAddr,
+			usage.TotalGrantUsed,
+			requestedAmount,
+			maxLimit,
+		)
+	}
+
+	return nil
 }

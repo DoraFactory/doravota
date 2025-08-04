@@ -660,3 +660,82 @@ func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
 		})
 	}
 }
+
+func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
+	keeper, ctx, mockWasmKeeper := setupKeeper(t)
+	msgServer := NewMsgServerImpl(keeper)
+
+	// Set up a valid contract and admin
+	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
+	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
+	
+	// Set up mock wasm keeper
+	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+
+	t.Run("SetSponsor with max grant per user", func(t *testing.T) {
+		// Create message with max grant per user
+		maxGrant := sdk.NewCoins(
+			sdk.NewCoin("dora", sdk.NewInt(1000000)),
+			sdk.NewCoin("uatom", sdk.NewInt(500000)),
+		)
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgSetSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.SetSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify sponsor was set with correct max grant per user
+		sponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		require.True(t, sponsor.IsSponsored)
+		require.Len(t, sponsor.MaxGrantPerUser, 2)
+		
+		// Check the saved max grant per user
+		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		expectedMaxGrant := maxGrant.Sort()
+		actualMaxGrant = actualMaxGrant.Sort()
+		require.Equal(t, expectedMaxGrant, actualMaxGrant)
+	})
+
+	t.Run("UpdateSponsor with max grant per user", func(t *testing.T) {
+		// Update with different max grant per user
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(2000000)))
+		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
+		for i, coin := range newMaxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgUpdateSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.UpdateSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify max grant per user was updated
+		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		require.Equal(t, newMaxGrant, actualMaxGrant)
+	})
+}

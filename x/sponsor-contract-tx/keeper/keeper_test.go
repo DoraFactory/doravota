@@ -370,3 +370,176 @@ func TestIsContractAdminInvalidUserAddress(t *testing.T) {
 // The current zero-value mock causes panics when GetContractInfo is called.
 // The admin authorization functionality is tested indirectly through the
 // msg_server tests which expect appropriate error messages.
+
+func TestMaxGrantPerUser(t *testing.T) {
+	keeper, ctx := setupKeeperSimple(t)
+
+	contractAddr := "dora1contract123"
+
+	t.Run("default limit when sponsor not configured", func(t *testing.T) {
+		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		expected := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(1000000)))
+		assert.Equal(t, expected, maxGrant)
+	})
+
+	t.Run("default limit when sponsor has no max grant configured", func(t *testing.T) {
+		sponsor := types.ContractSponsor{
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+		}
+		keeper.SetSponsor(ctx, sponsor)
+
+		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		expected := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(1000000)))
+		assert.Equal(t, expected, maxGrant)
+	})
+
+	t.Run("custom max grant per user", func(t *testing.T) {
+		// Create custom limit
+		customLimit := sdk.NewCoins(
+			sdk.NewCoin("dora", sdk.NewInt(500000)),
+			sdk.NewCoin("uatom", sdk.NewInt(100000)),
+		)
+
+		// Convert to protobuf coins
+		pbCoins := make([]*sdk.Coin, len(customLimit))
+		for i, coin := range customLimit {
+			// Create a new coin to avoid pointer sharing issues
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		sponsor := types.ContractSponsor{
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+		keeper.SetSponsor(ctx, sponsor)
+
+		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		
+		// Sort both for consistent comparison since coin order might differ
+		customLimit = customLimit.Sort()
+		maxGrant = maxGrant.Sort()
+		assert.Equal(t, customLimit, maxGrant)
+	})
+}
+
+func TestUserGrantUsage(t *testing.T) {
+	keeper, ctx := setupKeeperSimple(t)
+
+	userAddr := "dora1user123"
+	contractAddr := "dora1contract456"
+
+	t.Run("new user has no usage", func(t *testing.T) {
+		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
+		assert.Equal(t, userAddr, usage.UserAddress)
+		assert.Equal(t, contractAddr, usage.ContractAddress)
+		assert.Empty(t, usage.TotalGrantUsed)
+		assert.Equal(t, int64(0), usage.LastUsedTime)
+	})
+
+	t.Run("update user grant usage", func(t *testing.T) {
+		consumedAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		
+		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
+		
+		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
+		// Convert []*sdk.Coin to sdk.Coins for comparison
+		actualUsed := sdk.Coins{}
+		for _, coin := range usage.TotalGrantUsed {
+			if coin != nil {
+				actualUsed = actualUsed.Add(*coin)
+			}
+		}
+		assert.Equal(t, consumedAmount, actualUsed)
+		// In test environment, BlockTime() might return zero time, so just check it's been set
+		assert.NotEqual(t, int64(0), usage.LastUsedTime)
+	})
+
+	t.Run("accumulate user grant usage", func(t *testing.T) {
+		// Add more usage
+		additionalAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, additionalAmount)
+		
+		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
+		expectedTotal := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000))) // 100000 + 50000
+		// Convert []*sdk.Coin to sdk.Coins for comparison
+		actualUsed := sdk.Coins{}
+		for _, coin := range usage.TotalGrantUsed {
+			if coin != nil {
+				actualUsed = actualUsed.Add(*coin)
+			}
+		}
+		assert.Equal(t, expectedTotal, actualUsed)
+	})
+}
+
+func TestCheckUserGrantLimit(t *testing.T) {
+	keeper, ctx := setupKeeperSimple(t)
+
+	userAddr := "dora1user123"
+	contractAddr := "dora1contract456"
+
+	// Set up sponsor with custom limit
+	customLimit := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+	pbCoins := make([]*sdk.Coin, len(customLimit))
+	for i, coin := range customLimit {
+		pbCoins[i] = &coin
+	}
+
+	sponsor := types.ContractSponsor{
+		ContractAddress: contractAddr,
+		IsSponsored:     true,
+		MaxGrantPerUser: pbCoins,
+	}
+	keeper.SetSponsor(ctx, sponsor)
+
+	t.Run("within limit", func(t *testing.T) {
+		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
+		assert.NoError(t, err)
+	})
+
+	t.Run("exactly at limit", func(t *testing.T) {
+		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
+		assert.NoError(t, err)
+	})
+
+	t.Run("exceeds limit", func(t *testing.T) {
+		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(300000)))
+		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "grant limit exceeded")
+	})
+
+	t.Run("exceeds limit after previous usage", func(t *testing.T) {
+		// Simulate previous usage
+		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000)))
+		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, previousUsage)
+
+		// Try to use more than remaining limit
+		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "grant limit exceeded")
+	})
+
+	t.Run("within remaining limit after previous usage", func(t *testing.T) {
+		// Clear previous usage for this test
+		newUserAddr := "dora1user789"
+		
+		// Simulate some usage
+		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		keeper.UpdateUserGrantUsage(ctx, newUserAddr, contractAddr, previousUsage)
+
+		// Request amount within remaining limit (200000 - 100000 = 100000 remaining)
+		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		err := keeper.CheckUserGrantLimit(ctx, newUserAddr, contractAddr, requestAmount)
+		assert.NoError(t, err)
+	})
+}

@@ -196,3 +196,20 @@ This module provides a secure, flexible solution for contract-sponsored transact
 - Integration compatibility with current Cosmos modules
 - Performance and gas efficiency considerations
 - Alternative design approaches
+
+
+
+完整的check流程：
+  🎯 使用流程
+  1. 用户提交投票交易
+  2. Module检查: 用户还有没有grant额度
+  3. 合约检查: 投票时间、用户资格、是否已投票
+  4. 两者都通过: 转账并扣减用户额度
+  5. 任何一个失败: 拒绝交易
+
+
+TODO list:
+- sposnor转账和update user usage limit的顺序，可能需要处理一下，这里有可能会导致用户先收到转账，但是费用不足以支付update的钱
+- 如果用户是被准许的，可以先check用户是否有足够的钱，如果有足够的钱支付gas fee的话，我们就不进行grant，也就是说，我们只会sponsor给不足以支付gas fee的用户，如果用户是合规的，但是自己本身有足够的钱，我们还是不会给他sponsor
+- client增加设置和更新max_grant_per_user的参数
+- 用户只能设置DORA和peaka两种单位，其他token单位是不支持的

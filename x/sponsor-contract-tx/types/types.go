@@ -1,6 +1,8 @@
 package types
 
 import (
+	"fmt"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
@@ -18,12 +20,35 @@ func (b BaseSponsorMsg) ValidateBasicFields() error {
 	if err != nil {
 		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", b.Creator)
 	}
-	
+
 	// Validate contract address format
 	if err := ValidateContractAddress(b.ContractAddress); err != nil {
 		return err
 	}
-	
+
+	return nil
+}
+
+// ValidateMaxGrantPerUser validates that MaxGrantPerUser only contains peaka denomination
+func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
+	if maxGrantPerUser == nil {
+		return nil // nil is allowed
+	}
+
+	for _, coin := range maxGrantPerUser {
+		if coin == nil {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+		}
+
+		if coin.Denom != "peaka" {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
+		}
+
+		if !coin.Amount.IsPositive() {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
+		}
+	}
+
 	return nil
 }
 
@@ -41,12 +66,35 @@ func (b BaseSponsorMsg) GetCommonRoute() string {
 	return RouterKey
 }
 
+// === User Grant Usage Structures ===
+
+// NewUserGrantUsage creates a new UserGrantUsage instance
+func NewUserGrantUsage(userAddr, contractAddr string) UserGrantUsage {
+	return UserGrantUsage{
+		UserAddress:     userAddr,
+		ContractAddress: contractAddr,
+		TotalGrantUsed:  []*sdk.Coin{},
+		LastUsedTime:    0,
+	}
+}
+
 // NewMsgSetSponsor creates a new MsgSetSponsor instance
-func NewMsgSetSponsor(creator, contractAddress string, isSponsored bool) *MsgSetSponsor {
+func NewMsgSetSponsor(creator, contractAddress string, isSponsored bool, maxGrantPerUser sdk.Coins) *MsgSetSponsor {
+	// Convert sdk.Coins to protobuf coins
+	pbCoins := make([]*sdk.Coin, len(maxGrantPerUser))
+	for i, coin := range maxGrantPerUser {
+		newCoin := sdk.Coin{
+			Denom:  coin.Denom,
+			Amount: coin.Amount,
+		}
+		pbCoins[i] = &newCoin
+	}
+
 	return &MsgSetSponsor{
 		Creator:         creator,
 		ContractAddress: contractAddress,
 		IsSponsored:     isSponsored,
+		MaxGrantPerUser: pbCoins,
 	}
 }
 
@@ -76,7 +124,16 @@ func (msg MsgSetSponsor) GetSignBytes() []byte {
 // ValidateBasic performs basic validation
 func (msg MsgSetSponsor) ValidateBasic() error {
 	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
-	return base.ValidateBasicFields()
+	if err := base.ValidateBasicFields(); err != nil {
+		return err
+	}
+
+	// Validate MaxGrantPerUser field
+	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // TypeURL returns the TypeURL for this message
@@ -87,11 +144,22 @@ func (msg *MsgSetSponsor) XXX_MessageName() string {
 // === Message implementations for MsgUpdateSponsor ===
 
 // NewMsgUpdateSponsor creates a new MsgUpdateSponsor instance
-func NewMsgUpdateSponsor(creator, contractAddress string, isSponsored bool) *MsgUpdateSponsor {
+func NewMsgUpdateSponsor(creator, contractAddress string, isSponsored bool, maxGrantPerUser sdk.Coins) *MsgUpdateSponsor {
+	// Convert sdk.Coins to protobuf coins
+	pbCoins := make([]*sdk.Coin, len(maxGrantPerUser))
+	for i, coin := range maxGrantPerUser {
+		newCoin := sdk.Coin{
+			Denom:  coin.Denom,
+			Amount: coin.Amount,
+		}
+		pbCoins[i] = &newCoin
+	}
+
 	return &MsgUpdateSponsor{
 		Creator:         creator,
 		ContractAddress: contractAddress,
 		IsSponsored:     isSponsored,
+		MaxGrantPerUser: pbCoins,
 	}
 }
 
@@ -121,7 +189,16 @@ func (msg MsgUpdateSponsor) GetSignBytes() []byte {
 // ValidateBasic performs basic validation
 func (msg MsgUpdateSponsor) ValidateBasic() error {
 	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
-	return base.ValidateBasicFields()
+	if err := base.ValidateBasicFields(); err != nil {
+		return err
+	}
+
+	// Validate MaxGrantPerUser field
+	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // TypeURL returns the TypeURL for this message
@@ -209,12 +286,12 @@ func ValidateGenesis(data GenesisState) error {
 			return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "sponsor contract address cannot be empty")
 		}
 	}
-	
+
 	// Validate parameters
 	if data.Params != nil {
 		return data.Params.Validate()
 	}
-	
+
 	return nil
 }
 
@@ -223,7 +300,7 @@ func ValidateGenesis(data GenesisState) error {
 // DefaultParams returns default parameters
 func DefaultParams() Params {
 	return Params{
-		MaxSponsorsPerContract: 1,
+		MaxSponsorsPerContract: 1000,
 		SponsorshipEnabled:     true,
 		MaxGasPerSponsorship:   1000000, // 1M gas
 		MinContractAge:         0,       // No minimum age requirement
@@ -238,18 +315,18 @@ func (p Params) Validate() error {
 	if p.MaxSponsorsPerContract > 1000 { // Reasonable upper limit
 		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract cannot exceed 1000")
 	}
-	
+
 	if p.MaxGasPerSponsorship == 0 {
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship must be greater than 0")
 	}
 	if p.MaxGasPerSponsorship > 50000000 { // 50M gas upper limit
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship cannot exceed 50,000,000")
 	}
-	
+
 	// MinContractAge validation - should be reasonable
 	if p.MinContractAge > 86400*365 { // 1 year max
 		return sdkerrors.Wrap(ErrInvalidParams, "min contract age cannot exceed 1 year")
 	}
-	
+
 	return nil
 }

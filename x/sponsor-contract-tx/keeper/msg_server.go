@@ -60,6 +60,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       now,
 		UpdatedAt:       now,
+		MaxGrantPerUser: msg.MaxGrantPerUser,
 	}
 
 	k.Keeper.SetSponsor(ctx, sponsor)
@@ -120,6 +121,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       existingSponsor.CreatedAt,
 		UpdatedAt:       ctx.BlockTime().Unix(),
+		MaxGrantPerUser: msg.MaxGrantPerUser,
 	}
 
 	k.Keeper.SetSponsor(ctx, sponsor)
