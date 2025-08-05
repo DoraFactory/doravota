@@ -1,198 +1,552 @@
-# Sponsor Contract Transaction Module - Community Review
+# Sponsor Contract Transaction Module
 
 ## Overview
 
-We want to develop a **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) that enables smart contracts to automatically sponsor transaction fees for their users. This module addresses the cold start problem in Web3 applications where new users need tokens to interact with cosmwasm smart contracts on cosmos ecosystem.
+The **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) enables smart contracts to automatically sponsor transaction fees for their users on Cosmos-based blockchains. This module solves the cold start problem in Web3 applications where new users need tokens to interact with CosmWasm smart contracts.
 
-## Motivation & Background
+## Table of Contents
 
-### The Problem
+- [Motivation & Problem Statement](#motivation--problem-statement)
+- [Solution Architecture](#solution-architecture)
+- [Core Components](#core-components)
+- [Transaction Flow](#transaction-flow)
+- [Security Model](#security-model)
+- [Event System](#event-system)
+- [CLI Usage Guide](#cli-usage-guide)
+- [Query Commands](#query-commands)
+- [Integration Guide](#integration-guide)
+- [Security Considerations](#security-considerations)
+- [Implementation Status](#implementation-status)
 
-Current fee payment mechanisms in Cosmos ecosystem have some significant limitations:
+## Motivation & Problem Statement
 
-1. **Fee Grant Limitations**: Cosmos SDK's native fee grant module requires knowing the grantee address beforehand, making it unsuitable for onboarding new users who haven't interacted with the chain yet.
+### Current Limitations
 
-2. **Security Concerns**: The current fee grant module for contract message sponsorship may be abused because the granularity of fee grant sponsored transactions is at the module level(like: `/cosmwasm.wasm.v1.MsgExecuteContract`). Therefore, for contracts, it only supports wasm messages, which can lead to a user sponsored by contract A consuming on contract B, resulting in abuse.
+1. **Fee Grant Module Constraints**: Cosmos SDK's native fee grant module requires pre-known grantee addresses, making it unsuitable for onboarding new users who haven't interacted with the chain.
+
+2. **Granularity Issues**: Current fee grant mechanisms operate at the module level (`/cosmwasm.wasm.v1.MsgExecuteContract`), allowing potential abuse where users sponsored for contract A could consume resources on contract B.
+
+3. **User Onboarding Friction**: New users must acquire tokens before any blockchain interaction, creating barriers to adoption.
 
 ### Our Solution
 
-We propose a dedicated module that:
+A dedicated sponsorship module that provides:
 
-- Maintains a registry of sponsorship-enabled contracts
-- Implements policy-based sponsorship through contract queries
-- Ensures transaction integrity through strict validation rules
+- **Contract-specific sponsorship**: Each contract manages its own fee sponsorship independently
+- **Policy-based eligibility**: Contracts implement custom logic to determine user eligibility
+- **Secure fund management**: Built-in usage limits and abuse prevention mechanisms
+- **Event-driven monitoring**: Comprehensive event emission for all operations
 
-## Architecture & Implementation
+## Solution Architecture
 
 ### Core Components
 
-#### 1. Contract Registry
+#### 1. Sponsor Registry (`ContractSponsor`)
 
-- **Purpose**: Track which contracts are authorized to sponsor transactions.
-- **Structure**: Maps contract addresses to sponsorship status
-- **Access Control**: Only contract admins can register/modify sponsorship settings
-
-#### 2. AnteHandler Integration
-
-- **Position**: Placed before fee deduction in the ante handler chain
-- **Function**: Validates sponsored transactions and pre-transfers funds
-- **Fee-Flow**: Contract → User → Standard fee deduction
-
-#### 3. Policy Enforcement
-
-- **Mechanism**: Contracts must implement a `CheckPolicy` query method
-- **Purpose**: Allow contracts to define custom sponsorship criteria (whitelist, usage limits, etc.)
-- **Flexibility**: Each contract can implement its own business logic
-
-> Because there is a contract query within the module, which consumes a certain amount of gas, the `query_gas_limit` parameter of node config needs to be adjusted according to the specific contract business to support contract queries.
-
-### Transaction Flow
-
+```protobuf
+message ContractSponsor {
+  string contract_address = 1;
+  string sponsor_address = 2;
+  bool is_sponsored = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 6;
+}
 ```
-1. User submits transaction to sponsored contract
-2. SponsorAnteHandler validates transaction structure
-3. Query contract's CheckPolicy method for user eligibility
-4. If approved: Contract transfers fee amount to user
-5. Standard fee deduction proceeds normally
-6. Transaction executes
+
+#### 2. User Grant Tracking (`UserGrantUsage`)
+
+```protobuf
+message UserGrantUsage {
+  string user_address = 1;
+  string contract_address = 2;
+  repeated cosmos.base.v1beta1.Coin total_grant_used = 3;
+  int64 last_used_time = 4;
+}
+```
+
+#### 3. AnteHandler Integration
+
+- **SponsorContractTxAnteDecorator**: Validates sponsored transactions and checks policies
+- **SponsorAwareDeductFeeDecorator**: Handles sponsored fee deduction
+
+## Transaction Flow
+
+```mermaid
+graph TD
+    A[User submits tx] --> B[Ante Handler validation]
+    B --> C{Is contract sponsored?}
+    C -->|No| D[Standard fee processing]
+    C -->|Yes| E[Check user eligibility via contract policy]
+    E -->|Rejected| F[Transaction rejected]
+    E -->|Approved| G{User has sufficient balance?}
+    G -->|Yes| H[User pays own fees - emit event]
+    G -->|No| I{Sponsor has funds?}
+    I -->|No| J[Emit insufficient funds event]
+    I -->|Yes| K[Check user grant limit]
+    K -->|Exceeded| L[Transaction rejected]
+    K -->|OK| M[Sponsor pays fees]
+    M --> N[Update user grant usage]
+    N --> O[Emit sponsored transaction event]
+    O --> P[Transaction execution]
 ```
 
 ## Security Model
 
-### Strict Transaction Validation
+### Transaction Validation Rules
 
-To prevent fee leeching attacks, we enforce rigid transaction structure rules:
+**✅ ALLOWED: Single contract, multiple messages**
 
-**✅ ALLOWED**: Single contract, multiple messages
-
-```
+```json
 [
-    MsgExecuteContract{Contract: "sponsored_contractA"},
-    MsgExecuteContract{Contract: "sponsored_contractA"}, // Same contract
-    MsgExecuteContract{Contract: "sponsored_contractA"}  // Same contract
+  {
+    "@type": "/cosmwasm.wasm.v1.MsgExecuteContract",
+    "contract": "dora1contract"
+  },
+  {
+    "@type": "/cosmwasm.wasm.v1.MsgExecuteContract",
+    "contract": "dora1contract"
+  }
 ]
 ```
 
-**❌ REJECTED**: Mixed message types
+**❌ REJECTED: Mixed message types**
 
-```
+```json
 [
-    MsgExecuteContract{Contract: "sponsored_contract"},
-    MsgSend{},           // Trying to piggyback on sponsorship
-    MsgDelegate{}        // Trying to piggyback on sponsorship
+  {
+    "@type": "/cosmwasm.wasm.v1.MsgExecuteContract",
+    "contract": "dora1contract"
+  },
+  { "@type": "/cosmos.bank.v1beta1.MsgSend", "from_address": "..." }
 ]
 ```
 
-**❌ REJECTED**: Multiple different contracts
+**❌ REJECTED: Multiple different contracts**
 
-```
+```json
 [
-    MsgExecuteContract{Contract: "sponsored_contract_A"},
-    MsgExecuteContract{Contract: "sponsored_contract_B"} // Different contract
+  {
+    "@type": "/cosmwasm.wasm.v1.MsgExecuteContract",
+    "contract": "dora1contractA"
+  },
+  {
+    "@type": "/cosmwasm.wasm.v1.MsgExecuteContract",
+    "contract": "dora1contractB"
+  }
 ]
 ```
 
 ### Access Control
 
-- **Registration**: Only contract admin can register/update sponsorship status
-- **Validation**: Admin ownership is verified through wasm keeper queries
-- **Immutability**: Sponsorship settings cannot be modified by unauthorized parties
+- Only contract admins can register/modify sponsorship settings
+- Admin verification through wasm keeper queries
+- Immutable sponsorship settings by unauthorized parties
 
-## Design Decisions
+### Anti-Abuse Mechanisms
 
-Our chosen approach transfers funds from contract to user before fee deduction:
+1. **User Grant Limits**: Per-user spending caps per contract
+2. **Policy Queries**: Contract-defined eligibility checks
+3. **Balance Checks**: Users with sufficient funds pay their own fees
+4. **Usage Tracking**: Comprehensive monitoring of grant consumption
 
-- ✅ Preserves existing fee validation logic
-- ✅ Maintains transaction integrity
-- ✅ Enables standard fee deduction flow
-- ✅ Compatible with existing signature schemes
+## Event System
 
-### Gas Consumption Considerations
+The module emits comprehensive events for monitoring and auditing:
 
-Policy queries consume gas during ante handler execution:
+### Transaction Events
 
-- **Trade-off**: Flexibility vs. gas efficiency
-- **Mitigation**: Contracts should implement efficient policy checks
-- **Alternative**: Simple boolean flags for basic use cases
+- `sponsored_transaction`: Successful sponsored transaction
+- `sponsor_insufficient_funds`: Sponsor cannot pay fees
+- `user_self_pay`: User paid own fees despite sponsorship availability
+- `sponsor_usage_updated`: User grant usage updated
 
-## Attention
+### Management Events
 
-### 1. **Cosmos Account Initialization**
+- `set_sponsor`: Contract sponsorship registered
+- `update_sponsor`: Contract sponsorship settings updated
+- `delete_sponsor`: Contract sponsorship removed
 
-- **Problem**: Accounts must exist on-chain to have sequence numbers
-- **Impact**: Completely new users cannot send transactions
-- **Solution**: Separate account activation service (when new user first interacts with the service, they can obtain minimal token airdrop, like 1peaka)
+### Query Events
 
+- `get_sponsor`: Sponsor data retrieved
+- `get_user_grant_usage`: User grant usage queried
+- `check_sponsorship`: Sponsorship status checked
+- `query_sponsors`: Sponsor list queried
 
-### 2. **Contract Policy Dependency**
+## CLI Usage Guide
 
-- **Risk**: Policy query failures could block legitimate transactions
-- **Mitigation**: Graceful fallback to non-sponsored execution
-- **Requirement**: All sponsored contracts must implement `CheckPolicy`
+### Prerequisites
 
+```bash
+# Ensure you have the dorad binary built
+make build
+
+# Set up your key
+dorad keys add admin
+dorad keys add user
+
+# Fund accounts (for testing)
+# Admin needs funds to pay for registration transactions
+# Contract needs funds to sponsor user transactions
+```
+
+### Contract Sponsorship Management
+
+#### 1. Register Contract for Sponsorship
+
+```bash
+# Basic sponsorship registration
+dorad tx sponsor set-sponsor [contract-address] true \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.2 \
+  --fees 1000peaka
+
+# With custom grant limit per user (1 DORA = 10^18 peaka)
+dorad tx sponsor set-sponsor [contract-address] true \
+  --max-grant-per-user 1000000000000000000peaka \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.2 \
+  --fees 1000peaka
+
+# Example with real addresses
+dorad tx sponsor set-sponsor dora1contractaddr123... true \
+  --max-grant-per-user 500000000000000000peaka \
+  --from admin \
+  --chain-id dora-vota-1 \
+  --gas auto \
+  --gas-adjustment 1.2 \
+  --fees 1000peaka
+```
+
+#### 2. Update Sponsorship Settings
+
+```bash
+# Disable sponsorship
+dorad tx sponsor update-sponsor [contract-address] false \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --fees 1000peaka
+
+# Update grant limits
+dorad tx sponsor update-sponsor [contract-address] true \
+  --max-grant-per-user 2000000000000000000peaka \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --fees 1000peaka
+```
+
+#### 3. Remove Sponsorship
+
+```bash
+dorad tx sponsor delete-sponsor [contract-address] \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --fees 1000peaka
+```
+
+### Fund Management
+
+#### Transfer Funds to Contract (for sponsorship)
+
+```bash
+# Contract needs funds to sponsor user transactions
+dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --fees 1000peaka
+```
+
+## Query Commands
+
+### Sponsorship Status Queries
+
+#### 1. Check if Contract is Sponsored
+
+```bash
+dorad query sponsor is-sponsored [contract-address]
+
+# Example output:
+# is_sponsored: true
+```
+
+#### 2. Get Sponsor Details
+
+```bash
+dorad query sponsor sponsor [contract-address]
+
+# Example output:
+# sponsor:
+#   contract_address: dora1contract...
+#   sponsor_address: dora1admin...
+#   is_sponsored: true
+#   created_at: "1640995200"
+#   updated_at: "1640995200"
+#   max_grant_per_user:
+#   - denom: peaka
+#     amount: "1000000000000000000"
+```
+
+#### 3. List All Sponsors
+
+```bash
+dorad query sponsor sponsors
+
+# With pagination
+dorad query sponsor sponsors --limit 50 --offset 0
+```
+
+#### 4. Get Sponsor Statistics
+
+```bash
+# Total sponsor count
+dorad query sponsor sponsor-count
+
+# Active sponsor count
+dorad query sponsor active-sponsor-count
+```
+
+### User Grant Queries
+
+#### 1. Get User Grant Usage
+
+```bash
+dorad query sponsor user-grant-usage [user-address] [contract-address]
+
+# Example output:
+# usage:
+#   user_address: dora1user...
+#   contract_address: dora1contract...
+#   total_grant_used:
+#   - denom: peaka
+#     amount: "500000000000000000"
+#   last_used_time: "1640995800"
+```
+
+#### 2. Check User Grant Limit
+
+```bash
+dorad query sponsor max-grant-per-user [contract-address]
+
+# Example output:
+# max_grant:
+# - denom: peaka
+#   amount: "1000000000000000000"
+```
+
+### Module Parameters
+
+```bash
+dorad query sponsor params
+
+# Example output:
+# params:
+#   max_gas_per_sponsorship: "100000"
+```
+
+## Integration Guide
+
+### For Contract Developers
+
+#### 1. Implement CheckPolicy Query
+
+Your contract must implement the following query method:
+
+```rust
+#[cw_serde]
+#[derive(QueryResponses)]
+pub enum QueryMsg {
+    #[returns(CheckPolicyResponse)]
+    CheckPolicy { address: String },
+}
+
+#[cw_serde]
+pub struct CheckPolicyResponse {
+    pub eligible: bool,
+}
+
+pub fn query_check_policy(
+    deps: Deps,
+    address: String,
+) -> StdResult<CheckPolicyResponse> {
+    // Implement your custom logic here
+    // Examples:
+    // - Check whitelist
+    // - Verify user registration
+    // - Check usage patterns
+    // - Validate business rules
+
+    let eligible = check_user_eligibility(&deps, &address)?;
+    Ok(CheckPolicyResponse { eligible })
+}
+```
+
+#### 2. Fund Your Contract
+
+```bash
+# Ensure your contract has sufficient balance for sponsorship
+dorad tx bank send [admin] [contract-address] [amount]peaka --from admin
+```
+
+#### 3. Register for Sponsorship
+
+```bash
+# Only contract admin can register
+dorad tx sponsor set-sponsor [contract-address] true \
+  --max-grant-per-user [limit] \
+  --from [contract-admin]
+```
+
+### For Frontend Developers
+
+#### 1. Check Sponsorship Status
+
+```bash
+# Before submitting transactions, check if contract supports sponsorship
+dorad query sponsor is-sponsored [contract-address]
+```
+
+#### 2. Submit Sponsored Transactions
+
+Transactions are automatically sponsored if:
+
+- Contract is registered for sponsorship
+- User passes contract's CheckPolicy
+- User has insufficient funds for fees
+- Contract has sufficient balance
+- User hasn't exceeded grant limits
+
+```bash
+# Normal transaction - will be automatically sponsored if eligible
+dorad tx wasm execute [contract-address] '{"increment":{}}' \
+  --from user \
+  --gas auto
+```
 
 ## Security Considerations
 
-1. **Admin Verification**: Critical for preventing unauthorized sponsorship registration
-2. **Policy Validation**: Contracts must implement secure policy logic
-3. **Fund Management**: Contracts need sufficient balance monitoring
-4. **Abuse Prevention**: Strict transaction structure validation
+### 1. Admin Verification
 
-## Community Questions
+- Critical for preventing unauthorized sponsorship registration
+- Verified through wasm keeper queries to ensure only actual contract admins can register
 
-We would appreciate community feedback on:
+### 2. Policy Implementation
 
-1. **Architecture Review**: Is the overall design sound and secure?
-2. **Security Analysis**: Are there attack vectors we haven't considered?
-3. **Integration Concerns**: How might this affect other modules or chains?
-4. **Performance Impact**: Are there optimization opportunities?
-5. **Alternative Approaches**: Are there better solutions to this problem?
+- Contracts must implement secure and efficient `CheckPolicy` logic
+- Policy queries consume gas during ante handler execution
+- Consider gas limits in node configuration (`query_gas_limit`)
+
+### 3. Fund Management
+
+- Contracts need sufficient balance monitoring
+- Implement spending alerts and automatic funding mechanisms
+- Consider setting reasonable `max_grant_per_user` limits
+
+### 4. Abuse Prevention
+
+- Strict transaction structure validation prevents fee leeching
+- Per-user grant limits prevent excessive consumption
+- Event monitoring enables abuse detection
+
+### 5. Gas Considerations
+
+- Policy queries consume gas during transaction validation
+- Set appropriate gas limits for contract queries
+- Consider implementing simple boolean flags for basic use cases
 
 ## Implementation Status
 
-- ✅ Core module implementation
-- ✅ AnteHandler integration
-- ✅ Admin verification system
-- ✅ Policy query mechanism
-- ✅ Initial testing
-- 🔄 Community review (current phase)
-- 🔄 Module under improvement. (current phase)
+- ✅ Core module implementation with protobuf serialization
+- ✅ AnteHandler integration with comprehensive validation
+- ✅ Admin verification system through wasm keeper
+- ✅ Policy query mechanism with gas limiting
+- ✅ User grant usage tracking and limits
+- ✅ Comprehensive event system for monitoring
+- ✅ Error handling with proper error returns
+- ✅ Full CLI command support
+- ✅ Complete test coverage
+- 🔄 Third-party security audit (current phase)
+- 🔄 Community review and feedback integration
 
+## Testing
 
-## Test Module/Contract
+### Local Testing Setup
 
-1. clone git repo
-```shell=
-git clone https://github.com/DoraFactory/doravota.git && git checkout sponsor-contract-tx
-```
-2. compile codebase
-```shell=
+1. **Clone and Build**
+
+```bash
+git clone https://github.com/DoraFactory/doravota.git
+cd doravota
+git checkout sponsor-contract-tx
 make build
 ```
-3. Set up a simple local network.
-5. We implemented a [counter contract](https://github.com/DoraFactory/doravota/tree/sponsor-contract-tx/contracts/counter) with a whitelist feature, allowing only those on the whitelist to count, used to test the sponsor-contract-tx module.
 
+2. **Set Up Local Network**
 
-## Usage Example
+```bash
+# Initialize local chain
+dorad init test --chain-id test-chain
+dorad keys add admin
+dorad keys add user
 
-```go
-// Register a contract for sponsorship (only admin can do this)
-dorad tx sponsor set-sponsor [contract-address] true --from [admin-key]
+# Add genesis accounts
+dorad add-genesis-account $(dorad keys show admin -a) 1000000000000000000000peaka
+dorad add-genesis-account $(dorad keys show user -a) 100000000000000000peaka
 
-// Query sponsorship status
-dorad query sponsor is-sponsored [contract-address]
+# Start chain
+dorad start
+```
 
-// User sends sponsored transaction (automatically handled)
-dorad tx wasm execute [contract-address] '<CONTRACT_FUNCTION>' --from [user-key]
+3. **Deploy Test Contract**
+
+```bash
+# Deploy the included counter contract
+dorad tx wasm store contracts/counter/target/wasm32-unknown-unknown/release/counter.wasm \
+  --from admin --gas auto --gas-adjustment 1.2
+
+# Instantiate contract
+dorad tx wasm instantiate 1 '{}' \
+  --label "test-counter" \
+  --admin $(dorad keys show admin -a) \
+  --from admin --gas auto
+```
+
+4. **Test Sponsorship**
+
+```bash
+# Register contract for sponsorship
+dorad tx sponsor set-sponsor [contract-address] true \
+  --max-grant-per-user 1000000000000000000peaka \
+  --from admin
+
+# Fund contract for sponsorship
+dorad tx bank send $(dorad keys show admin -a) [contract-address] 10000000000000000000peaka \
+  --from admin
+
+# Test sponsored transaction
+dorad tx wasm execute [contract-address] '{"increment":{}}' \
+  --from user --gas auto
 ```
 
 ## Conclusion
 
-This module provides a secure, flexible solution for contract-sponsored transactions while maintaining compatibility with existing Cosmos SDK patterns. We believe it addresses a real need in the ecosystem but welcome community scrutiny to identify potential improvements or concerns.
+This module provides a secure, flexible, and comprehensive solution for contract-sponsored transactions while maintaining full compatibility with existing Cosmos SDK patterns. The implementation includes robust error handling, comprehensive event emission, and strong security measures to prevent abuse.
 
-**We specifically seek feedback on:**
+**Key Features for Audit:**
 
-- Security implications and potential attack vectors
-- Integration compatibility with current Cosmos modules
-- Performance and gas efficiency considerations
-- Alternative design approaches
+- Complete transaction flow validation
+- Comprehensive access control mechanisms
+- Event-driven monitoring and logging
+- Proper error handling throughout the system
+- Protection against known attack vectors
+- Extensive test coverage
+
+We welcome third-party security audits and community feedback to ensure the highest level of security and reliability.
