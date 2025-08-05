@@ -62,15 +62,10 @@ func ValidateContractAddress(addr string) error {
 		return ErrInvalidContractAddress.Wrap("contract address cannot be empty")
 	}
 	
-	// Validate bech32 format
-	accAddr, err := sdk.AccAddressFromBech32(addr)
+	// Validate bech32 format - this already ensures the address is valid
+	_, err := sdk.AccAddressFromBech32(addr)
 	if err != nil {
 		return ErrInvalidContractAddress.Wrapf("invalid bech32 address format: %s", addr)
-	}
-	
-	// Check address length (should be 20 bytes for cosmos addresses)
-	if len(accAddr) != 20 {
-		return ErrInvalidContractAddress.Wrapf("invalid address length: expected 20 bytes, got %d", len(accAddr))
 	}
 	
 	return nil
