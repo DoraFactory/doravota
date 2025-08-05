@@ -140,7 +140,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if err != nil {
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
-		// Handle sponsored fee payment by pre-transferring funds
+		// Handle sponsored fee payment using feegrant-like mechanism
 		feeTx, ok := tx.(sdk.FeeTx)
 		if ok {
 			fee := feeTx.GetFee()
@@ -149,53 +149,29 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
 					return ctx, err
 				}
-				// Get the fee payer
-				feePayer := feeTx.FeePayer()
-				if feePayer == nil {
-					// Get signers from the transaction's messages
-					var signers []sdk.AccAddress
-					for _, msg := range tx.GetMsgs() {
-						signers = append(signers, msg.GetSigners()...)
-					}
-					if len(signers) > 0 {
-						feePayer = signers[0]
-					} else {
-						return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "no signers found")
-					}
+
+				// Check if sponsor has sufficient balance
+				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
+				if !sponsorBalance.IsAllGTE(fee) {
+					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
 				}
 
-				// In simulation mode, we don't need to do actual transfers
-				// but we need to validate that sponsor has sufficient balance
-				if simulate {
-					sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
-					if !sponsorBalance.IsAllGTE(fee) {
-						return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
-					}
-				} else {
-					// Check if sponsor has sufficient balance
-					sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
-					if !sponsorBalance.IsAllGTE(fee) {
-						return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
-					}
+				// Store sponsor info in context for custom fee handling
+				// Don't use SetFeeGranter as it conflicts with standard feegrant system
+				ctx = ctx.WithValue("sponsor_contract_addr", contractAccAddr)
+				ctx = ctx.WithValue("sponsor_fee_amount", fee)
+				ctx = ctx.WithValue("sponsor_user_addr", userAddr)
+				
+				ctx.Logger().With("module", "sponsor-contract-tx").Info(
+					"sponsor info stored in context",
+					"sponsor", contractAccAddr.String(),
+					"user", userAddr.String(),
+					"fee", fee.String(),
+				)
 
-					// Transfer fee amount from sponsor to fee payer
-					// This ensures the standard fee decorator can deduct normally
-					err = sctd.bankKeeper.SendCoins(ctx, contractAccAddr, feePayer, fee)
-					if err != nil {
-						return ctx, sdkerrors.Wrapf(err, "failed to transfer sponsorship funds from %s to %s", contractAccAddr, feePayer)
-					}
-
-					ctx.Logger().With("module", "sponsor-contract-tx").Info(
-						"sponsorship funds transferred successfully",
-						"from", contractAccAddr.String(),
-						"to", feePayer.String(),
-						"amount", fee.String(),
-					)
-
-					// Update user's grant usage after successful transfer
-					// TODO: Consider the case where the user dont have enough grant to pay this operation????
-					sctd.keeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr, fee)
-				}
+				// Store user info in context for later usage update
+				// The actual usage update should happen when fee is successfully deducted
+				ctx = ctx.WithValue("sponsor_user_addr", userAddr)
 			}
 		}
 

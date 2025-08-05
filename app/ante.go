@@ -57,8 +57,14 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
 		sponsorante.NewSponsorContractTxAnteDecorator(options.SponsorKeeper, options.AccountKeeper.(authkeeper.AccountKeeper), options.BankKeeper.(bankkeeper.Keeper)),
-		// Keep the standard fee decorator for normal transactions and fee grants
-		ante.NewDeductFeeDecorator(options.AccountKeeper, options.BankKeeper, options.FeegrantKeeper, options.TxFeeChecker),
+		// Use sponsor-aware fee decorator that handles both normal fees and sponsor fees
+		sponsorante.NewSponsorAwareDeductFeeDecorator(
+			options.AccountKeeper.(authkeeper.AccountKeeper), 
+			options.BankKeeper.(bankkeeper.Keeper), 
+			options.FeegrantKeeper, 
+			options.SponsorKeeper, 
+			options.TxFeeChecker,
+		),
 		ante.NewSetPubKeyDecorator(options.AccountKeeper), // SetPubKeyDecorator must be called before all signature verification decorators
 		ante.NewValidateSigCountDecorator(options.AccountKeeper),
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
