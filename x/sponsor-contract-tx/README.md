@@ -201,27 +201,16 @@ dorad tx sponsor set-sponsor [contract-address] true \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --gas-adjustment 1.2 \
-  --fees 1000peaka
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 # With custom grant limit per user (1 DORA = 10^18 peaka)
-dorad tx sponsor set-sponsor [contract-address] true \
-  --max-grant-per-user 1000000000000000000peaka \
+dorad tx sponsor set-sponsor [contract-address] true 1000000000000000000peaka \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --gas-adjustment 1.2 \
-  --fees 1000peaka
-
-# Example with real addresses
-dorad tx sponsor set-sponsor dora1contractaddr123... true \
-  --max-grant-per-user 500000000000000000peaka \
-  --from admin \
-  --chain-id dora-vota-1 \
-  --gas auto \
-  --gas-adjustment 1.2 \
-  --fees 1000peaka
-```
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 #### 2. Update Sponsorship Settings
 
@@ -231,7 +220,8 @@ dorad tx sponsor update-sponsor [contract-address] false \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --fees 1000peaka
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 # Update grant limits
 dorad tx sponsor update-sponsor [contract-address] true \
@@ -239,7 +229,8 @@ dorad tx sponsor update-sponsor [contract-address] true \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --fees 1000peaka
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 ```
 
 #### 3. Remove Sponsorship
@@ -249,7 +240,8 @@ dorad tx sponsor delete-sponsor [contract-address] \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --fees 1000peaka
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 ```
 
 ### Fund Management
@@ -262,26 +254,22 @@ dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka 
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
-  --fees 1000peaka
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 ```
 
 ## Query Commands
 
 ### Sponsorship Status Queries
 
-#### 1. Check if Contract is Sponsored
+#### 1. Get Sponsor Details
 
 ```bash
-dorad query sponsor is-sponsored [contract-address]
-
-# Example output:
-# is_sponsored: true
-```
-
-#### 2. Get Sponsor Details
-
-```bash
-dorad query sponsor sponsor [contract-address]
+dorad query sponsor status [contract-address] \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 # Example output:
 # sponsor:
@@ -295,24 +283,18 @@ dorad query sponsor sponsor [contract-address]
 #     amount: "1000000000000000000"
 ```
 
-#### 3. List All Sponsors
+#### 2. List All Sponsors
 
 ```bash
-dorad query sponsor sponsors
+dorad query sponsor all-sponsors \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
-# With pagination
-dorad query sponsor sponsors --limit 50 --offset 0
+# This query also support pagination
 ```
 
-#### 4. Get Sponsor Statistics
-
-```bash
-# Total sponsor count
-dorad query sponsor sponsor-count
-
-# Active sponsor count
-dorad query sponsor active-sponsor-count
-```
 
 ### User Grant Queries
 
@@ -331,17 +313,6 @@ dorad query sponsor user-grant-usage [user-address] [contract-address]
 #   last_used_time: "1640995800"
 ```
 
-#### 2. Check User Grant Limit
-
-```bash
-dorad query sponsor max-grant-per-user [contract-address]
-
-# Example output:
-# max_grant:
-# - denom: peaka
-#   amount: "1000000000000000000"
-```
-
 ### Module Parameters
 
 ```bash
@@ -349,10 +320,16 @@ dorad query sponsor params
 
 # Example output:
 # params:
-#   max_gas_per_sponsorship: "100000"
+#   params:
+#   max_gas_per_sponsorship: "1000000"
+#   max_sponsors_per_contract: "1000"
+#   min_contract_age: "0"
+#   sponsorship_enabled: true
 ```
 
 ## Integration Guide
+> We have implemented a sample contract in the  `doravota/contracts` directory, which is a `counter` contract that records user addresses as a `whitelist`. In our business logic, we want users on the whitelist to be able to have their transactions sponsored by our contract address. Therefore, we first need to register the contract address with the `sponsor-contract-tx` module through the admin of the counter contract, set the appropriate `Usage limit`, and ensure that the contract address has `sufficient balance` to sponsor transactions.
+Any user on the whitelist can enjoy transaction sponsorship by the contract address.
 
 ### For Contract Developers
 
@@ -381,8 +358,8 @@ pub fn query_check_policy(
     // Examples:
     // - Check whitelist
     // - Verify user registration
-    // - Check usage patterns
-    // - Validate business rules
+    // - Check usage patterns(like period limit)
+    // - Validate business rules(like zero knowledge proof verfication)
 
     let eligible = check_user_eligibility(&deps, &address)?;
     Ok(CheckPolicyResponse { eligible })
@@ -400,8 +377,7 @@ dorad tx bank send [admin] [contract-address] [amount]peaka --from admin
 
 ```bash
 # Only contract admin can register
-dorad tx sponsor set-sponsor [contract-address] true \
-  --max-grant-per-user [limit] \
+dorad tx sponsor set-sponsor [contract-address] true <LIMIT_AMOUNT_DORA> \
   --from [contract-admin]
 ```
 
@@ -411,7 +387,7 @@ dorad tx sponsor set-sponsor [contract-address] true \
 
 ```bash
 # Before submitting transactions, check if contract supports sponsorship
-dorad query sponsor is-sponsored [contract-address]
+dorad query sponsor status [contract-address]
 ```
 
 #### 2. Submit Sponsored Transactions
@@ -428,7 +404,8 @@ Transactions are automatically sponsored if:
 # Normal transaction - will be automatically sponsored if eligible
 dorad tx wasm execute [contract-address] '{"increment":{}}' \
   --from user \
-  --gas auto
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 ```
 
 ## Security Considerations
@@ -453,7 +430,8 @@ dorad tx wasm execute [contract-address] '{"increment":{}}' \
 ### 4. Abuse Prevention
 
 - Strict transaction structure validation prevents fee leeching
-- Per-user grant limits prevent excessive consumption
+- Only legitimate users who cannot afford the contract transaction gas fee will be sponsored. If the user can pay the fee themselves, the contract will not sponsor them even if they meet the sponsorship requirements.
+- Per-user grant limits prevent excessive consumption(In the current design, the module only implements the usage quota limit for each user of the sponsorship contract, and it is unified; each contract can customize this configuration. If the specific sponsorship contract has special settings, it can be implemented through `check_policy` in the contract logic, such as a `period` restriction, where a legitimate user must be sponsored within this period. If it is not within this time period, it will be rejected to prevent abuse.)
 - Event monitoring enables abuse detection
 
 ### 5. Gas Considerations
@@ -523,17 +501,25 @@ dorad tx wasm instantiate 1 '{}' \
 
 ```bash
 # Register contract for sponsorship
-dorad tx sponsor set-sponsor [contract-address] true \
-  --max-grant-per-user 1000000000000000000peaka \
-  --from admin
+dorad tx sponsor set-sponsor [contract-address] true 1000000000000000000peaka \
+  --from admin \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 # Fund contract for sponsorship
 dorad tx bank send $(dorad keys show admin -a) [contract-address] 10000000000000000000peaka \
-  --from admin
+  --from admin \
+  --gas auto \ 
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 
 # Test sponsored transaction
 dorad tx wasm execute [contract-address] '{"increment":{}}' \
-  --from user --gas auto
+  --from user \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
 ```
 
 ## Conclusion
