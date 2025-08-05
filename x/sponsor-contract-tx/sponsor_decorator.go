@@ -5,6 +5,7 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -70,7 +71,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		err = safd.bankKeeper.SendCoinsFromAccountToModule(
 			ctx, 
 			sponsorAddr, 
-			"fee_collector", // Standard fee collector module
+			authtypes.FeeCollectorName, // Standard fee collector module
 			fee,
 		)
 		if err != nil {
