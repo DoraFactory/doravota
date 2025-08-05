@@ -168,10 +168,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					"user", userAddr.String(),
 					"fee", fee.String(),
 				)
-
-				// Store user info in context for later usage update
-				// The actual usage update should happen when fee is successfully deducted
-				ctx = ctx.WithValue("sponsor_user_addr", userAddr)
 			}
 		}
 
