@@ -140,11 +140,33 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if err != nil {
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
+		
 		// Handle sponsored fee payment using feegrant-like mechanism
 		feeTx, ok := tx.(sdk.FeeTx)
 		if ok {
 			fee := feeTx.GetFee()
 			if !fee.IsZero() {
+				// Anti-abuse check: Only sponsor users who cannot afford the fee themselves
+				// If user has sufficient balance, let them pay their own fees
+				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+				if userBalance.IsAllGTE(fee) {
+					ctx.Logger().With("module", "sponsor-contract-tx").Info(
+						"user has sufficient balance to pay fees themselves, skipping sponsor",
+						"user", userAddr.String(),
+						"user_balance", userBalance.String(),
+						"required_fee", fee.String(),
+					)
+					// Don't sponsor - let standard fee processing handle this
+					return next(ctx, tx, simulate)
+				}
+
+				ctx.Logger().With("module", "sponsor-contract-tx").Info(
+					"user has insufficient balance, proceeding with sponsor",
+					"user", userAddr.String(), 
+					"user_balance", userBalance.String(),
+					"required_fee", fee.String(),
+				)
+
 				// Check user's grant limit before processing the transaction
 				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
 					return ctx, err
