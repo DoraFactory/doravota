@@ -378,7 +378,8 @@ func TestMaxGrantPerUser(t *testing.T) {
 
 	t.Run("default limit when sponsor not configured", func(t *testing.T) {
 		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		expected := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(1000000)))
+		// Default is 1 DORA = 10^18 peaka
+		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
 		assert.Equal(t, expected, maxGrant)
 	})
 
@@ -387,10 +388,12 @@ func TestMaxGrantPerUser(t *testing.T) {
 			ContractAddress: contractAddr,
 			IsSponsored:     true,
 		}
-		keeper.SetSponsor(ctx, sponsor)
+		err := keeper.SetSponsor(ctx, sponsor)
+		assert.NoError(t, err)
 
 		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		expected := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(1000000)))
+		// Default is 1 DORA = 10^18 peaka
+		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
 		assert.Equal(t, expected, maxGrant)
 	})
 
@@ -420,7 +423,7 @@ func TestMaxGrantPerUser(t *testing.T) {
 		keeper.SetSponsor(ctx, sponsor)
 
 		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		
+
 		// Sort both for consistent comparison since coin order might differ
 		customLimit = customLimit.Sort()
 		maxGrant = maxGrant.Sort()
@@ -444,9 +447,9 @@ func TestUserGrantUsage(t *testing.T) {
 
 	t.Run("update user grant usage", func(t *testing.T) {
 		consumedAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
-		
+
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
-		
+
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 		// Convert []*sdk.Coin to sdk.Coins for comparison
 		actualUsed := sdk.Coins{}
@@ -464,7 +467,7 @@ func TestUserGrantUsage(t *testing.T) {
 		// Add more usage
 		additionalAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, additionalAmount)
-		
+
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 		expectedTotal := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000))) // 100000 + 50000
 		// Convert []*sdk.Coin to sdk.Coins for comparison
@@ -532,7 +535,7 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	t.Run("within remaining limit after previous usage", func(t *testing.T) {
 		// Clear previous usage for this test
 		newUserAddr := "dora1user789"
-		
+
 		// Simulate some usage
 		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
 		keeper.UpdateUserGrantUsage(ctx, newUserAddr, contractAddr, previousUsage)

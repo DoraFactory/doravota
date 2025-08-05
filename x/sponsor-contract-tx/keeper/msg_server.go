@@ -63,7 +63,9 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		MaxGrantPerUser: msg.MaxGrantPerUser,
 	}
 
-	k.Keeper.SetSponsor(ctx, sponsor)
+	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+		return nil, sdkerrors.Wrap(err, "failed to set sponsor")
+	}
 
 	// Emit event using constants
 	ctx.EventManager().EmitEvent(
@@ -113,7 +115,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		// This shouldn't happen since we checked above, but handle gracefully
 		existingSponsor.CreatedAt = ctx.BlockTime().Unix()
 	}
-	
+
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
@@ -124,7 +126,9 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		MaxGrantPerUser: msg.MaxGrantPerUser,
 	}
 
-	k.Keeper.SetSponsor(ctx, sponsor)
+	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+		return nil, sdkerrors.Wrap(err, "failed to update sponsor")
+	}
 
 	// Emit event using constants
 	ctx.EventManager().EmitEvent(
@@ -169,7 +173,9 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	}
 
 	// Delete the sponsor
-	k.Keeper.DeleteSponsor(ctx, msg.ContractAddress)
+	if err := k.Keeper.DeleteSponsor(ctx, msg.ContractAddress); err != nil {
+		return nil, sdkerrors.Wrap(err, "failed to delete sponsor")
+	}
 
 	// Emit event using constants
 	ctx.EventManager().EmitEvent(

@@ -78,18 +78,18 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// Create a gas-limited context to prevent DoS attacks through contract queries
 		params := sctd.keeper.GetParams(ctx)
 		gasLimit := params.MaxGasPerSponsorship
-		
+
 		// Create a limited gas meter for the policy check
 		limitedGasMeter := sdk.NewGasMeter(gasLimit)
 		limitedCtx := ctx.WithGasMeter(limitedGasMeter)
-		
+
 		eligible, err := func() (bool, error) {
 			defer func() {
 				if r := recover(); r != nil {
 					// Handle gas limit exceeded panic
 					if _, ok := r.(sdk.ErrorOutOfGas); ok {
-						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded, 
-							"contract policy check exceeded gas limit: %d, used: %d", 
+						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
+							"contract policy check exceeded gas limit: %d, used: %d",
 							gasLimit, limitedGasMeter.GasConsumed())
 					} else {
 						// Re-panic for other types of panics
@@ -99,7 +99,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}()
 			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr)
 		}()
-		
+
 		// Add the consumed gas back to the original context
 		gasUsed := limitedGasMeter.GasConsumed()
 		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
@@ -140,7 +140,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if err != nil {
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
-		
+
 		// Handle sponsored fee payment using feegrant-like mechanism
 		feeTx, ok := tx.(sdk.FeeTx)
 		if ok {
@@ -156,13 +156,24 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 						"user_balance", userBalance.String(),
 						"required_fee", fee.String(),
 					)
+
+					// Emit user self pay event
+					ctx.EventManager().EmitEvent(
+						sdk.NewEvent(
+							types.EventTypeUserSelfPay,
+							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+							sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+							sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+						),
+					)
+
 					// Don't sponsor - let standard fee processing handle this
 					return next(ctx, tx, simulate)
 				}
 
 				ctx.Logger().With("module", "sponsor-contract-tx").Info(
 					"user has insufficient balance, proceeding with sponsor",
-					"user", userAddr.String(), 
+					"user", userAddr.String(),
 					"user_balance", userBalance.String(),
 					"required_fee", fee.String(),
 				)
@@ -175,6 +186,15 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				// Check if sponsor has sufficient balance
 				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
 				if !sponsorBalance.IsAllGTE(fee) {
+					// Emit sponsor insufficient funds event
+					ctx.EventManager().EmitEvent(
+						sdk.NewEvent(
+							types.EventTypeSponsorInsufficient,
+							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+							sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+							sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+						),
+					)
 					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
 				}
 
@@ -183,7 +203,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				ctx = ctx.WithValue("sponsor_contract_addr", contractAccAddr)
 				ctx = ctx.WithValue("sponsor_fee_amount", fee)
 				ctx = ctx.WithValue("sponsor_user_addr", userAddr)
-				
+
 				ctx.Logger().With("module", "sponsor-contract-tx").Info(
 					"sponsor info stored in context",
 					"sponsor", contractAccAddr.String(),

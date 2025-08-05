@@ -1,6 +1,8 @@
 package sponsor
 
 import (
+	"fmt"
+
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -12,11 +14,13 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	if genState.Params != nil {
 		k.SetParams(ctx, *genState.Params)
 	}
-	
+
 	// Set all sponsors
 	for _, sponsor := range genState.Sponsors {
 		// Convert pointer to value type
-		k.SetSponsor(ctx, *sponsor)
+		if err := k.SetSponsor(ctx, *sponsor); err != nil {
+			panic(fmt.Errorf("failed to set sponsor during genesis initialization: %w", err))
+		}
 	}
 }
 

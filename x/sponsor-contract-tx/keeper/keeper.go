@@ -44,6 +44,10 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
 func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress) (bool, error) {
+	// NOTE: JSON is required for CosmWasm smart contract communication
+	// CosmWasm contracts expect JSON queries and return JSON responses
+	// This cannot be changed to protobuf without breaking contract compatibility
+
 	// prepare query smart contract message
 	queryMsg := map[string]interface{}{
 		"check_policy": map[string]interface{}{
@@ -79,11 +83,17 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 }
 
 // SetSponsor sets a sponsor in the store
-func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) {
+func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(sponsor.ContractAddress)
-	bz := k.cdc.MustMarshal(&sponsor)
+
+	bz, err := k.cdc.Marshal(&sponsor)
+	if err != nil {
+		return fmt.Errorf("failed to marshal sponsor: %w", err)
+	}
+
 	store.Set(key, bz)
+	return nil
 }
 
 // GetSponsor returns a sponsor from the store
@@ -91,24 +101,28 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
 	bz := store.Get(key)
+
+	found := bz != nil
+
+	// Emit get sponsor event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeGetSponsor,
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
+		),
+	)
+
 	if bz == nil {
 		return types.ContractSponsor{}, false
 	}
 
 	var sponsor types.ContractSponsor
-
-	// Try protobuf unmarshaling first (new format)
 	err := k.cdc.Unmarshal(bz, &sponsor)
 	if err != nil {
-		// Fall back to JSON unmarshaling for backward compatibility (old format)
-		err = json.Unmarshal(bz, &sponsor)
-		if err != nil {
-			// Log error and return empty sponsor instead of panicking
-			k.Logger(ctx).Error("failed to unmarshal sponsor data", "contract", contractAddr, "error", err)
-			return types.ContractSponsor{}, false
-		}
-		// Auto-migrate: save in protobuf format
-		k.SetSponsor(ctx, sponsor)
+		// Log error and return empty sponsor instead of panicking
+		k.Logger(ctx).Error("failed to unmarshal sponsor data", "contract", contractAddr, "error", err)
+		return types.ContractSponsor{}, false
 	}
 
 	return sponsor, true
@@ -118,19 +132,46 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 func (k Keeper) HasSponsor(ctx sdk.Context, contractAddr string) bool {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
-	return store.Has(key)
+	exists := store.Has(key)
+
+	// Emit check sponsorship event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeCheckSponsorship,
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", exists)),
+			sdk.NewAttribute(types.AttributeKeyQueryType, "has_sponsor"),
+		),
+	)
+
+	return exists
 }
 
 // DeleteSponsor removes a sponsor from the store
-func (k Keeper) DeleteSponsor(ctx sdk.Context, contractAddr string) {
+func (k Keeper) DeleteSponsor(ctx sdk.Context, contractAddr string) error {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
 	store.Delete(key)
+	return nil
 }
 
 // IsSponsored checks if a contract is sponsored (key method for AnteHandler)
 func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 	sponsor, found := k.GetSponsor(ctx, contractAddr)
+
+	sponsored := found && sponsor.IsSponsored
+
+	// Emit check sponsorship event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeCheckSponsorship,
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
+			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", sponsored)),
+			sdk.NewAttribute(types.AttributeKeyQueryType, "is_sponsored"),
+		),
+	)
+
 	if !found {
 		return false
 	}
@@ -183,6 +224,15 @@ func (k Keeper) GetAllSponsors(ctx sdk.Context) []types.ContractSponsor {
 		return false // continue iteration
 	})
 
+	// Emit query sponsors event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeQuerySponsors,
+			sdk.NewAttribute(types.AttributeKeyQueryType, "all_sponsors"),
+			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", len(sponsors))),
+		),
+	)
+
 	return sponsors
 }
 
@@ -195,15 +245,11 @@ func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractS
 	for ; iterator.Valid(); iterator.Next() {
 		var sponsor types.ContractSponsor
 
-		// Try protobuf unmarshaling first (new format)
 		err := k.cdc.Unmarshal(iterator.Value(), &sponsor)
 		if err != nil {
-			// Fall back to JSON unmarshaling for backward compatibility (old format)
-			err = json.Unmarshal(iterator.Value(), &sponsor)
-			if err != nil {
-				// Skip invalid entries and log error
-				continue
-			}
+			// Skip invalid entries and log error
+			k.Logger(ctx).Error("failed to unmarshal sponsor data during iteration", "error", err)
+			continue
 		}
 
 		if cb(sponsor) {
@@ -221,14 +267,9 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 	pageRes, err := query.Paginate(store, pageReq, func(key []byte, value []byte) error {
 		var sponsor types.ContractSponsor
 
-		// Try protobuf unmarshaling first (new format)
 		err := k.cdc.Unmarshal(value, &sponsor)
 		if err != nil {
-			// Fall back to JSON unmarshaling for backward compatibility (old format)
-			err = json.Unmarshal(value, &sponsor)
-			if err != nil {
-				return fmt.Errorf("failed to unmarshal sponsor data: %w", err)
-			}
+			return fmt.Errorf("failed to unmarshal sponsor data: %w", err)
 		}
 
 		sponsors = append(sponsors, &sponsor)
@@ -265,6 +306,15 @@ func (k Keeper) GetSponsorCount(ctx sdk.Context) uint64 {
 		return false // continue iteration
 	})
 
+	// Emit query sponsors event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeQuerySponsors,
+			sdk.NewAttribute(types.AttributeKeyQueryType, "sponsor_count"),
+			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", count)),
+		),
+	)
+
 	return count
 }
 
@@ -279,6 +329,15 @@ func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
 		return false // continue iteration
 	})
 
+	// Emit query sponsors event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeQuerySponsors,
+			sdk.NewAttribute(types.AttributeKeyQueryType, "active_sponsor_count"),
+			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", count)),
+		),
+	)
+
 	return count
 }
 
@@ -286,6 +345,17 @@ func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
 func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 	store := ctx.KVStore(k.storeKey)
 	bz := store.Get(types.ParamsKey)
+
+	found := bz != nil
+
+	// Emit get params event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeGetParams,
+			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
+		),
+	)
+
 	if bz == nil {
 		return types.DefaultParams()
 	}
@@ -296,10 +366,14 @@ func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 }
 
 // SetParams sets the module parameters
-func (k Keeper) SetParams(ctx sdk.Context, params types.Params) {
+func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
 	store := ctx.KVStore(k.storeKey)
-	bz := k.cdc.MustMarshal(&params)
+	bz, err := k.cdc.Marshal(&params)
+	if err != nil {
+		return fmt.Errorf("failed to marshal params: %w", err)
+	}
 	store.Set(types.ParamsKey, bz)
+	return nil
 }
 
 // === User Grant Usage Management ===
@@ -310,13 +384,25 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 	key := types.GetUserGrantUsageKey(userAddr, contractAddr)
 	bz := store.Get(key)
 
+	found := bz != nil
+
+	// Emit get user grant usage event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeGetUserGrantUsage,
+			sdk.NewAttribute(types.AttributeKeyUser, userAddr),
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
+		),
+	)
+
 	if bz == nil {
 		// Return new usage record if not found
 		return types.NewUserGrantUsage(userAddr, contractAddr)
 	}
 
 	var usage types.UserGrantUsage
-	err := json.Unmarshal(bz, &usage)
+	err := k.cdc.Unmarshal(bz, &usage)
 	if err != nil {
 		// Log error and return new usage record
 		k.Logger(ctx).Error("failed to unmarshal user grant usage", "user", userAddr, "contract", contractAddr, "error", err)
@@ -327,23 +413,22 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 }
 
 // SetUserGrantUsage sets the grant usage for a specific user and contract
-func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) {
+func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) error {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetUserGrantUsageKey(usage.UserAddress, usage.ContractAddress)
 
-	bz, err := json.Marshal(usage)
+	bz, err := k.cdc.Marshal(&usage)
 	if err != nil {
-		k.Logger(ctx).Error("failed to marshal user grant usage", "user", usage.UserAddress, "contract", usage.ContractAddress, "error", err)
-		return
+		return fmt.Errorf("failed to marshal user grant usage: %w", err)
 	}
-
 	store.Set(key, bz)
+	return nil
 }
 
 // UpdateUserGrantUsage updates the user's grant usage by adding the consumed amount
-func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) {
+func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error {
 	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
-	
+
 	// Convert []*sdk.Coin to sdk.Coins for calculation
 	currentUsed := sdk.Coins{}
 	for _, coin := range usage.TotalGrantUsed {
@@ -351,18 +436,32 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 			currentUsed = currentUsed.Add(*coin)
 		}
 	}
-	
+
 	// Add consumed amount
 	newTotal := currentUsed.Add(consumedAmount...)
-	
+
 	// Convert back to []*sdk.Coin
 	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
 	for i, coin := range newTotal {
 		usage.TotalGrantUsed[i] = &coin
 	}
-	
+
 	usage.LastUsedTime = ctx.BlockTime().Unix()
-	k.SetUserGrantUsage(ctx, usage)
+	if err := k.SetUserGrantUsage(ctx, usage); err != nil {
+		return fmt.Errorf("failed to set user grant usage: %w", err)
+	}
+
+	// Emit sponsor usage updated event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeSponsorUsage,
+			sdk.NewAttribute(types.AttributeKeyUser, userAddr),
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+			sdk.NewAttribute(types.AttributeKeySponsorAmount, consumedAmount.String()),
+		),
+	)
+
+	return nil
 }
 
 // GetMaxGrantPerUser returns the maximum grant amount per user for a contract
@@ -398,7 +497,7 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 			currentUsed = currentUsed.Add(*coin)
 		}
 	}
-	
+
 	// Calculate total after this transaction
 	totalAfterTx := currentUsed.Add(requestedAmount...)
 
