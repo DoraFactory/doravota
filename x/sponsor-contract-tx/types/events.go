@@ -9,6 +9,7 @@ const (
 	EventTypeSponsorUsage        = "sponsor_usage_updated"      // New: track usage updates
 	EventTypeSponsorInsufficient = "sponsor_insufficient_funds" // New: sponsor can't pay
 	EventTypeUserSelfPay         = "user_self_pay"              // New: user paid themselves
+	EventTypeSponsorshipDisabled = "sponsorship_disabled"       // New: sponsorship globally disabled
 
 	// Read operation events
 	EventTypeGetSponsor        = "get_sponsor"
@@ -33,6 +34,7 @@ const (
 	AttributeKeyFound           = "found"
 	AttributeKeyCount           = "count"
 	AttributeKeyQueryType       = "query_type"
+	AttributeKeyReason          = "reason"
 )
 
 // Event attribute values

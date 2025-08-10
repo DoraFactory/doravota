@@ -55,6 +55,25 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
+	// Check if sponsorship is globally enabled first
+	params := sctd.keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		// Sponsorship is globally disabled, skip all sponsor logic
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"sponsorship globally disabled, using standard fee processing",
+		)
+		
+		// Emit event to notify users that sponsorship is disabled
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeSponsorshipDisabled,
+				sdk.NewAttribute(types.AttributeKeyReason, "globally_disabled"),
+			),
+		)
+		
+		return next(ctx, tx, simulate)
+	}
+
 	// Find and validate contract execution messages
 	contractAddr, err := validateSponsoredTransaction(tx)
 	if err != nil {
@@ -89,7 +108,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// Call contract to check if user is eligible according to contract policy
 		// Create a gas-limited context to prevent DoS attacks through contract queries
-		params := sctd.keeper.GetParams(ctx)
 		gasLimit := params.MaxGasPerSponsorship
 
 		// Create a limited gas meter for the policy check

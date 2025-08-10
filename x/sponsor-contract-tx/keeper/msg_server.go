@@ -27,6 +27,12 @@ var _ types.MsgServer = msgServer{}
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
+
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
 		return nil, err
@@ -83,6 +89,12 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 // UpdateSponsor handles MsgUpdateSponsor
 func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSponsor) (*types.MsgUpdateSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -146,6 +158,12 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 // DeleteSponsor handles MsgDeleteSponsor
 func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSponsor) (*types.MsgDeleteSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
