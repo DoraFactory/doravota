@@ -123,13 +123,13 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 			return ctx, sdkerrors.Wrapf(err, "failed to deduct fee from %s", deductFeesFrom)
 		}
 		
-		// Update user grant usage ONLY when using sponsor (not feegrant)
-		if deductFeesFrom.Equals(sponsorAddr) {
+		// Update user grant usage ONLY when using sponsor (not feegrant) only in DeliverTx period
+		if deductFeesFrom.Equals(sponsorAddr)  && !ctx.IsCheckTx() {
 			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
 				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
 			}
 
-			// Emit successful sponsored transaction event
+			// Emit successful sponsored transaction event only in DeliverTx period
 			ctx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeSponsoredTx,
