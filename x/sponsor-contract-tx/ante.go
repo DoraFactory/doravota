@@ -300,25 +300,16 @@ func validateSponsoredTransaction(tx sdk.Tx) (string, error) {
 }
 
 // getUserAddressForSponsorship determines the appropriate user address for sponsorship
-// It implements the priority logic: FeePayer > consistent signers > error
+// It first validates signer consistency, then checks FeePayer consistency for security
 func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.Tx) (sdk.AccAddress, error) {
-	// First, try to get the FeePayer if the transaction implements FeeTx interface
-	if feeTx, ok := tx.(sdk.FeeTx); ok {
-		// Use the FeePayer method from FeeTx interface
-		feePayer := feeTx.FeePayer()
-		if !feePayer.Empty() {
-			return feePayer, nil
-		}
-	}
-
-	// Fall back to signer validation - ensure all message signers are consistent
-	var firstSigner sdk.AccAddress
-	var allSigners []sdk.AccAddress
-
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {
 		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "transaction has no messages")
 	}
+
+	// First, validate all message signers are consistent for security
+	var validatedSigner sdk.AccAddress
+	var allSigners []sdk.AccAddress
 
 	for i, msg := range msgs {
 		msgSigners := msg.GetSigners()
@@ -328,7 +319,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 
 		// For the first message, record all its signers
 		if i == 0 {
-			firstSigner = msgSigners[0]
+			validatedSigner = msgSigners[0]
 			allSigners = append(allSigners, msgSigners...)
 		} else {
 			// For subsequent messages, ensure signers match the first message
@@ -346,14 +337,26 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 		}
 	}
 
-	// If we have multiple signers, we need to be more cautious
+	// Reject multi-signer transactions for security reasons
 	if len(allSigners) > 1 {
-		// For multi-signer transactions, for security reasons, we don't sponsor them
-		// This prevents potential abuse where one signer could cause fees to be sponsored
-		// for other signers without their explicit consent to use sponsorship
 		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrUnauthorized,
 			"multi-signer transactions are not supported for sponsorship - please use single signer transactions or separate transactions")
 	}
 
-	return firstSigner, nil
+	// Now check FeePayer, but it must be consistent with validated signers for security
+	if feeTx, ok := tx.(sdk.FeeTx); ok {
+		feePayer := feeTx.FeePayer()
+		if !feePayer.Empty() {
+			// Security check: FeePayer must match the validated signer to prevent abuse
+			// This prevents users from setting arbitrary FeePayer addresses
+			if !feePayer.Equals(validatedSigner) {
+				return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrUnauthorized,
+					"FeePayer %s does not match message signer %s - potential security risk in sponsored transactions", 
+					feePayer.String(), validatedSigner.String())
+			}
+			return feePayer, nil
+		}
+	}
+
+	return validatedSigner, nil
 }
