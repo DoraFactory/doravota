@@ -102,17 +102,6 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 	key := types.GetSponsorKey(contractAddr)
 	bz := store.Get(key)
 
-	found := bz != nil
-
-	// Emit get sponsor event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeGetSponsor,
-			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
-		),
-	)
-
 	if bz == nil {
 		return types.ContractSponsor{}, false
 	}
@@ -132,19 +121,7 @@ func (k Keeper) GetSponsor(ctx sdk.Context, contractAddr string) (types.Contract
 func (k Keeper) HasSponsor(ctx sdk.Context, contractAddr string) bool {
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
-	exists := store.Has(key)
-
-	// Emit check sponsorship event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeCheckSponsorship,
-			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", exists)),
-			sdk.NewAttribute(types.AttributeKeyQueryType, "has_sponsor"),
-		),
-	)
-
-	return exists
+	return store.Has(key)
 }
 
 // DeleteSponsor removes a sponsor from the store
@@ -224,15 +201,6 @@ func (k Keeper) GetAllSponsors(ctx sdk.Context) []types.ContractSponsor {
 		return false // continue iteration
 	})
 
-	// Emit query sponsors event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeQuerySponsors,
-			sdk.NewAttribute(types.AttributeKeyQueryType, "all_sponsors"),
-			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", len(sponsors))),
-		),
-	)
-
 	return sponsors
 }
 
@@ -306,15 +274,6 @@ func (k Keeper) GetSponsorCount(ctx sdk.Context) uint64 {
 		return false // continue iteration
 	})
 
-	// Emit query sponsors event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeQuerySponsors,
-			sdk.NewAttribute(types.AttributeKeyQueryType, "sponsor_count"),
-			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", count)),
-		),
-	)
-
 	return count
 }
 
@@ -329,14 +288,7 @@ func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
 		return false // continue iteration
 	})
 
-	// Emit query sponsors event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeQuerySponsors,
-			sdk.NewAttribute(types.AttributeKeyQueryType, "active_sponsor_count"),
-			sdk.NewAttribute(types.AttributeKeyCount, fmt.Sprintf("%d", count)),
-		),
-	)
+	// Removed read-path event to reduce noise
 
 	return count
 }
@@ -345,16 +297,6 @@ func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
 func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 	store := ctx.KVStore(k.storeKey)
 	bz := store.Get(types.ParamsKey)
-
-	found := bz != nil
-
-	// Emit get params event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeGetParams,
-			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
-		),
-	)
 
 	if bz == nil {
 		return types.DefaultParams()
@@ -383,18 +325,6 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetUserGrantUsageKey(userAddr, contractAddr)
 	bz := store.Get(key)
-
-	found := bz != nil
-
-	// Emit get user grant usage event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeGetUserGrantUsage,
-			sdk.NewAttribute(types.AttributeKeyUser, userAddr),
-			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
-		),
-	)
 
 	if bz == nil {
 		// Return new usage record if not found

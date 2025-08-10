@@ -256,15 +256,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 		ctx = ctx.WithValue(sponsorInfoKey{}, sponsorInfo)
 
-		// Add event for sponsored transaction using constants
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeSponsoredTx,
-				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-				sdk.NewAttribute(types.AttributeKeyPolicyCheck, types.AttributeValueSuccess),
-			),
-		)
+		// Event will be emitted in sponsor_decorator.go after successful fee deduction
 	}
 
 	return next(ctx, tx, simulate)
