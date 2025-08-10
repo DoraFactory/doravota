@@ -60,14 +60,16 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// Only apply sponsor functionality if the contract is explicitly sponsored
 	if found && sponsor.IsSponsored {
-		// Get the transaction signer for policy check
-		var userAddr sdk.AccAddress
-		for _, msg := range tx.GetMsgs() {
-			signers := msg.GetSigners()
-			if len(signers) > 0 {
-				userAddr = signers[0]
-				break
-			}
+		// Get the appropriate user address for policy check and fee payment
+		userAddr, err := sctd.getUserAddressForSponsorship(tx)
+		if err != nil {
+			// If we can't determine a consistent user address, fall back to standard processing
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"falling back to standard fee processing due to signer inconsistency",
+				"contract", contractAddr,
+				"error", err.Error(),
+			)
+			return next(ctx, tx, simulate)
 		}
 
 		if userAddr.Empty() {
@@ -270,4 +272,63 @@ func validateSponsoredTransaction(tx sdk.Tx) (string, error) {
 	}
 
 	return sponsoredContract, nil
+}
+
+// getUserAddressForSponsorship determines the appropriate user address for sponsorship
+// It implements the priority logic: FeePayer > consistent signers > error
+func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.Tx) (sdk.AccAddress, error) {
+	// First, try to get the FeePayer if the transaction implements FeeTx interface
+	if feeTx, ok := tx.(sdk.FeeTx); ok {
+		// Use the FeePayer method from FeeTx interface
+		feePayer := feeTx.FeePayer()
+		if !feePayer.Empty() {
+			return feePayer, nil
+		}
+	}
+
+	// Fall back to signer validation - ensure all message signers are consistent
+	var firstSigner sdk.AccAddress
+	var allSigners []sdk.AccAddress
+
+	msgs := tx.GetMsgs()
+	if len(msgs) == 0 {
+		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "transaction has no messages")
+	}
+
+	for i, msg := range msgs {
+		msgSigners := msg.GetSigners()
+		if len(msgSigners) == 0 {
+			return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "message at index %d has no signers", i)
+		}
+
+		// For the first message, record all its signers
+		if i == 0 {
+			firstSigner = msgSigners[0]
+			allSigners = append(allSigners, msgSigners...)
+		} else {
+			// For subsequent messages, ensure signers match the first message
+			if len(msgSigners) != len(allSigners) {
+				return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, 
+					"inconsistent signer count across messages - sponsored transactions require consistent signers")
+			}
+
+			for j, signer := range msgSigners {
+				if !signer.Equals(allSigners[j]) {
+					return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrUnauthorized,
+						"signer mismatch at message %d, position %d - sponsored transactions require consistent signers", i, j)
+				}
+			}
+		}
+	}
+
+	// If we have multiple signers, we need to be more cautious
+	if len(allSigners) > 1 {
+		// For multi-signer transactions, for security reasons, we don't sponsor them
+		// This prevents potential abuse where one signer could cause fees to be sponsored
+		// for other signers without their explicit consent to use sponsorship
+		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrUnauthorized,
+			"multi-signer transactions are not supported for sponsorship - please use single signer transactions or separate transactions")
+	}
+
+	return firstSigner, nil
 }
