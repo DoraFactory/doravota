@@ -300,32 +300,18 @@ func ValidateGenesis(data GenesisState) error {
 // DefaultParams returns default parameters
 func DefaultParams() Params {
 	return Params{
-		MaxSponsorsPerContract: 1000,
-		SponsorshipEnabled:     true,
-		MaxGasPerSponsorship:   1000000, // 1M gas
-		MinContractAge:         0,       // No minimum age requirement
+		SponsorshipEnabled:   true,
+		MaxGasPerSponsorship: 1000000, // 1M gas
 	}
 }
 
 // Validate validates the parameters
 func (p Params) Validate() error {
-	if p.MaxSponsorsPerContract == 0 {
-		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract must be greater than 0")
-	}
-	if p.MaxSponsorsPerContract > 1000 { // Reasonable upper limit
-		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract cannot exceed 1000")
-	}
-
 	if p.MaxGasPerSponsorship == 0 {
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship must be greater than 0")
 	}
 	if p.MaxGasPerSponsorship > 50000000 { // 50M gas upper limit
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship cannot exceed 50,000,000")
-	}
-
-	// MinContractAge validation - should be reasonable
-	if p.MinContractAge > 86400*365 { // 1 year max
-		return sdkerrors.Wrap(ErrInvalidParams, "min contract age cannot exceed 1 year")
 	}
 
 	return nil
