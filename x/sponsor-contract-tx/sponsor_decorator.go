@@ -18,6 +18,7 @@ type SponsorAwareDeductFeeDecorator struct {
 	standardDecorator ante.DeductFeeDecorator
 	sponsorKeeper     keeper.Keeper
 	bankKeeper        bankkeeper.Keeper
+	feegrantKeeper    ante.FeegrantKeeper
 	txFeeChecker      ante.TxFeeChecker
 }
 
@@ -33,6 +34,7 @@ func NewSponsorAwareDeductFeeDecorator(
 		standardDecorator: ante.NewDeductFeeDecorator(ak, bk, fgk, txFeeChecker),
 		sponsorKeeper:     sponsorKeeper,
 		bankKeeper:        bk,
+		feegrantKeeper:    fgk,
 		txFeeChecker:      txFeeChecker,
 	}
 }
@@ -85,40 +87,67 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
-	// Deduct fee from sponsor account directly
+	// Check for feegrant first (following official SDK pattern)
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return ctx, sdkerrors.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
+	}
+
+	feePayer := feeTx.FeePayer()
+	feeGranter := feeTx.FeeGranter()
+	deductFeesFrom := sponsorAddr // Default to sponsor
+
+	// Priority logic: feegrant > sponsor > standard
+	if feeGranter != nil && !feeGranter.Empty() {
+		if safd.feegrantKeeper == nil {
+		} else if !feeGranter.Equals(feePayer) {
+			// Try to use standard feegrant
+			err := safd.feegrantKeeper.UseGrantedFees(ctx, feeGranter, feePayer, fee, tx.GetMsgs())
+			if err != nil {
+				return ctx, sdkerrors.Wrapf(err, "%s does not allow to pay fees for %s", feeGranter, feePayer)
+			} else {
+				deductFeesFrom = feeGranter
+			}
+		}
+	}
+
+	// Deduct fee from the determined account (feegranter or sponsor)
 	if !simulate {
 		err = safd.bankKeeper.SendCoinsFromAccountToModule(
 			ctx,
-			sponsorAddr,
+			deductFeesFrom, // This is either feeGranter or sponsorAddr
 			authtypes.FeeCollectorName, // Standard fee collector module
 			fee,
 		)
 		if err != nil {
-			return ctx, sdkerrors.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
+			return ctx, sdkerrors.Wrapf(err, "failed to deduct fee from %s", deductFeesFrom)
 		}
-		// Update user grant usage ONLY after successful fee deduction
-		// Use the contract address parameter directly instead of reading from context
-		if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
-			return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
+		
+		// Update user grant usage ONLY when using sponsor (not feegrant)
+		if deductFeesFrom.Equals(sponsorAddr) {
+			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
+				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
+			}
+
+			// Emit successful sponsored transaction event
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsoredTx,
+					sdk.NewAttribute(types.AttributeKeyContractAddress, sponsorAddr.String()),
+					sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+					sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
+					sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
+				),
+			)
+
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"sponsor fee deducted successfully and usage updated",
+				"sponsor", sponsorAddr.String(),
+				"user", userAddr.String(),
+				"fee", fee.String(),
+			)
 		}
-
-		// Emit successful sponsored transaction event
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeSponsoredTx,
-				sdk.NewAttribute(types.AttributeKeyContractAddress, sponsorAddr.String()),
-				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-				sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
-				sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
-			),
-		)
-
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"sponsor fee deducted successfully and usage updated",
-			"sponsor", sponsorAddr.String(),
-			"user", userAddr.String(),
-			"fee", fee.String(),
-		)
+		// If feegrant was used, fee is already deducted and events are handled by feegrant module
 	}
 
 	return next(ctx, tx, simulate)
