@@ -14,10 +14,21 @@ import (
 // Context key for sponsor information
 type sponsorInfoKey struct{}
 
+// Context key for sponsor payment information
+type sponsorPaymentKey struct{}
+
 // SponsorInfo holds sponsor information
 type SponsorInfo struct {
 	ContractAddr string
 	SponsorAddr  sdk.AccAddress
+	IsSponsored  bool
+}
+
+// SponsorPaymentInfo holds all sponsor payment context information
+type SponsorPaymentInfo struct {
+	ContractAddr sdk.AccAddress
+	UserAddr     sdk.AccAddress
+	Fee          sdk.Coins
 	IsSponsored  bool
 }
 
@@ -200,11 +211,15 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
 				}
 
-				// Store sponsor info in context for custom fee handling
+				// Store sponsor payment info in context for custom fee handling using type-safe key
 				// Don't use SetFeeGranter as it conflicts with standard feegrant system
-				ctx = ctx.WithValue("sponsor_contract_addr", contractAccAddr)
-				ctx = ctx.WithValue("sponsor_fee_amount", fee)
-				ctx = ctx.WithValue("sponsor_user_addr", userAddr)
+				sponsorPayment := SponsorPaymentInfo{
+					ContractAddr: contractAccAddr,
+					UserAddr:     userAddr,
+					Fee:          fee,
+					IsSponsored:  true,
+				}
+				ctx = ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 				ctx.Logger().With("module", "sponsor-contract-tx").Info(
 					"sponsor info stored in context",

@@ -44,14 +44,12 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
-	// Check if this transaction has sponsor information in context
-	if sponsorAddr, ok := ctx.Value("sponsor_contract_addr").(sdk.AccAddress); ok {
-		fee, feeOk := ctx.Value("sponsor_fee_amount").(sdk.Coins)
-		userAddr, userOk := ctx.Value("sponsor_user_addr").(sdk.AccAddress)
-
-		if feeOk && userOk && !fee.IsZero() {
+	// Check if this transaction has sponsor payment information in context using type-safe key
+	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
+		if sponsorPayment.IsSponsored && !sponsorPayment.Fee.IsZero() {
 			// Handle sponsor fee payment directly
-			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorAddr, userAddr, fee)
+			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, 
+				sponsorPayment.ContractAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
 		}
 	}
 
@@ -99,22 +97,21 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 			return ctx, sdkerrors.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
 		}
 		// Update user grant usage ONLY after successful fee deduction
-		if contractAddr, ok := ctx.Value("sponsor_contract_addr").(sdk.AccAddress); ok {
-			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
-				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
-			}
-
-			// Emit successful sponsored transaction event
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsoredTx,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-					sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-					sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
-					sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
-				),
-			)
+		// Use the contract address parameter directly instead of reading from context
+		if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
+			return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
 		}
+
+		// Emit successful sponsored transaction event
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeSponsoredTx,
+				sdk.NewAttribute(types.AttributeKeyContractAddress, sponsorAddr.String()),
+				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+				sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
+				sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
+			),
+		)
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"sponsor fee deducted successfully and usage updated",
