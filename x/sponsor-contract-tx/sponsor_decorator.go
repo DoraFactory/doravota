@@ -18,6 +18,7 @@ type SponsorAwareDeductFeeDecorator struct {
 	standardDecorator ante.DeductFeeDecorator
 	sponsorKeeper     keeper.Keeper
 	bankKeeper        bankkeeper.Keeper
+	txFeeChecker      ante.TxFeeChecker
 }
 
 // NewSponsorAwareDeductFeeDecorator creates a sponsor-aware fee decorator
@@ -32,6 +33,7 @@ func NewSponsorAwareDeductFeeDecorator(
 		standardDecorator: ante.NewDeductFeeDecorator(ak, bk, fgk, txFeeChecker),
 		sponsorKeeper:     sponsorKeeper,
 		bankKeeper:        bk,
+		txFeeChecker:      txFeeChecker,
 	}
 }
 
@@ -67,6 +69,24 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	userAddr sdk.AccAddress,
 	fee sdk.Coins,
 ) (newCtx sdk.Context, err error) {
+	// Validate fee amount using txFeeChecker to ensure it meets minimum requirements
+	if safd.txFeeChecker != nil {
+		requiredFee, _, err := safd.txFeeChecker(ctx, tx)
+		if err != nil {
+			return ctx, sdkerrors.Wrapf(err, "failed to check required fee")
+		}
+		
+		// Ensure sponsor fee meets minimum gas price and required fee
+		if !fee.IsAllGTE(requiredFee) {
+			return ctx, sdkerrors.Wrapf(
+				sdkerrors.ErrInsufficientFee,
+				"sponsor fee %s is insufficient, required minimum fee: %s",
+				fee.String(),
+				requiredFee.String(),
+			)
+		}
+	}
+
 	// Deduct fee from sponsor account directly
 	if !simulate {
 		err = safd.bankKeeper.SendCoinsFromAccountToModule(
