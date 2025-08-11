@@ -86,8 +86,17 @@ func (m *MockWasmKeeper) SetQueryResult(contractAddr sdk.AccAddress, result []by
 }
 
 func (suite *AnteTestSuite) SetupTest() {
-	// Create codec
+	// Create codec with proper interface registrations
 	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	// Register auth interfaces for BaseAccount
+	authtypes.RegisterInterfaces(interfaceRegistry)
+	// Register bank interfaces for coin types
+	banktypes.RegisterInterfaces(interfaceRegistry)
+	// Register wasm interfaces for contract messages
+	wasmtypes.RegisterInterfaces(interfaceRegistry)
+	// Register sponsor module interfaces
+	types.RegisterInterfaces(interfaceRegistry)
+	
 	codec := codec.NewProtoCodec(interfaceRegistry)
 
 	// Create in-memory database
@@ -119,6 +128,7 @@ func (suite *AnteTestSuite) SetupTest() {
 	// Create keepers
 	maccPerms := map[string][]string{
 		authtypes.FeeCollectorName: nil,
+		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
 	}
 	
 	suite.accountKeeper = authkeeper.NewAccountKeeper(
@@ -168,6 +178,10 @@ func (suite *AnteTestSuite) SetupTest() {
 	suite.accountKeeper.SetAccount(suite.ctx, userAcc)
 	suite.accountKeeper.SetAccount(suite.ctx, contractAcc)
 	suite.accountKeeper.SetAccount(suite.ctx, feeGranterAcc)
+
+	// Create sponsor module account for minting coins
+	sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
+	suite.accountKeeper.SetAccount(suite.ctx, sponsorModuleAcc)
 
 	// Set up default module parameters
 	params := types.DefaultParams()
