@@ -135,24 +135,7 @@ func (k Keeper) DeleteSponsor(ctx sdk.Context, contractAddr string) error {
 // IsSponsored checks if a contract is sponsored (key method for AnteHandler)
 func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 	sponsor, found := k.GetSponsor(ctx, contractAddr)
-
-	sponsored := found && sponsor.IsSponsored
-
-	// Emit check sponsorship event
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeCheckSponsorship,
-			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-			sdk.NewAttribute(types.AttributeKeyFound, fmt.Sprintf("%t", found)),
-			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", sponsored)),
-			sdk.NewAttribute(types.AttributeKeyQueryType, "is_sponsored"),
-		),
-	)
-
-	if !found {
-		return false
-	}
-	return sponsor.IsSponsored
+	return found && sponsor.IsSponsored
 }
 
 // ValidateContractExists checks if a contract exists and is valid
