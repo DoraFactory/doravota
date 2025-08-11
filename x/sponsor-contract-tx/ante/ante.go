@@ -90,10 +90,10 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	}
 
 	// Check if this contract is sponsored
-	sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
+	IsSponsored := sctd.keeper.IsSponsored(ctx, contractAddr)
 
 	// Only apply sponsor functionality if the contract is explicitly sponsored
-	if found && sponsor.IsSponsored {
+	if IsSponsored {
 		// Get the appropriate user address for policy check and fee payment
 		userAddr, err := sctd.getUserAddressForSponsorship(tx)
 		if err != nil {
