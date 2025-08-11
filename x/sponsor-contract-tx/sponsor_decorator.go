@@ -69,6 +69,20 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	userAddr sdk.AccAddress,
 	fee sdk.Coins,
 ) (newCtx sdk.Context, err error) {
+	// Check for feegrant first - if present, delegate to standard decorator
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return ctx, sdkerrors.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
+	}
+
+	feeGranter := feeTx.FeeGranter()
+	// Priority: feegrant > sponsor - when FeeGranter is set, use standard fee handling
+	if feeGranter != nil && !feeGranter.Empty() {
+		// Delegate to standard fee decorator to handle feegrant properly
+		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
+	}
+
+	// No feegrant, proceed with sponsor payment
 	// Validate fee amount using txFeeChecker to ensure it meets minimum requirements
 	if safd.txFeeChecker != nil {
 		requiredFee, _, err := safd.txFeeChecker(ctx, tx)
@@ -87,44 +101,20 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
-	// Check for feegrant first (following official SDK pattern)
-	feeTx, ok := tx.(sdk.FeeTx)
-	if !ok {
-		return ctx, sdkerrors.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
-	}
-
-	feePayer := feeTx.FeePayer()
-	feeGranter := feeTx.FeeGranter()
-	deductFeesFrom := sponsorAddr // Default to sponsor
-
-	// Priority logic: feegrant > sponsor > standard
-	if feeGranter != nil && !feeGranter.Empty() {
-		if safd.feegrantKeeper == nil {
-		} else if !feeGranter.Equals(feePayer) {
-			// Try to use standard feegrant
-			err := safd.feegrantKeeper.UseGrantedFees(ctx, feeGranter, feePayer, fee, tx.GetMsgs())
-			if err != nil {
-				return ctx, sdkerrors.Wrapf(err, "%s does not allow to pay fees for %s", feeGranter, feePayer)
-			} else {
-				deductFeesFrom = feeGranter
-			}
-		}
-	}
-
-	// Deduct fee from the determined account (feegranter or sponsor)
+	// Deduct fee from sponsor account
 	if !simulate {
 		err = safd.bankKeeper.SendCoinsFromAccountToModule(
 			ctx,
-			deductFeesFrom, // This is either feeGranter or sponsorAddr
-			authtypes.FeeCollectorName, // Standard fee collector module
+			sponsorAddr,
+			authtypes.FeeCollectorName,
 			fee,
 		)
 		if err != nil {
-			return ctx, sdkerrors.Wrapf(err, "failed to deduct fee from %s", deductFeesFrom)
+			return ctx, sdkerrors.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
 		}
 		
-		// Update user grant usage ONLY when using sponsor (not feegrant) only in DeliverTx period
-		if deductFeesFrom.Equals(sponsorAddr)  && !ctx.IsCheckTx() {
+		// Update user grant usage only in DeliverTx period
+		if !ctx.IsCheckTx() {
 			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
 				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
 			}
@@ -147,7 +137,6 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 				"fee", fee.String(),
 			)
 		}
-		// If feegrant was used, fee is already deducted and events are handled by feegrant module
 	}
 
 	return next(ctx, tx, simulate)

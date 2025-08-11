@@ -74,6 +74,20 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		return next(ctx, tx, simulate)
 	}
 
+	// Check for feegrant first - if present, delegate to standard processing
+	if feeTx, ok := tx.(sdk.FeeTx); ok {
+		feeGranter := feeTx.FeeGranter()
+		if feeGranter != nil && !feeGranter.Empty() {
+			// Transaction has feegrant set, skip sponsor logic entirely
+			// Let standard fee processing handle feegrant behavior
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"transaction has feegrant set, skipping sponsor logic",
+				"granter", feeGranter.String(),
+			)
+			return next(ctx, tx, simulate)
+		}
+	}
+
 	// Find and validate contract execution messages
 	contractAddr, err := validateSponsoredTransaction(tx)
 	if err != nil {
