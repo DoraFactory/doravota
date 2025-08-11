@@ -15,7 +15,7 @@ import (
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	// sponsor module
-	sponsorante "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
+	sponsorante "github.com/DoraFactory/doravota/x/sponsor-contract-tx/ante"
 	sponsorkeeper "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 )
 
