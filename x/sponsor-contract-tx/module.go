@@ -19,6 +19,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -81,12 +82,12 @@ func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *r
 
 // GetTxCmd returns the sponsor module's root tx command
 func (a AppModuleBasic) GetTxCmd() *cobra.Command {
-	return GetTxCmd()
+	return cli.GetTxCmd()
 }
 
 // GetQueryCmd returns the sponsor module's root query command
 func (AppModuleBasic) GetQueryCmd() *cobra.Command {
-	return GetQueryCmd()
+	return cli.GetQueryCmd()
 }
 
 // AppModule implements the AppModule interface for the sponsor module
