@@ -11,18 +11,8 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
-// Context key for sponsor information
-type sponsorInfoKey struct{}
-
 // Context key for sponsor payment information
 type sponsorPaymentKey struct{}
-
-// SponsorInfo holds sponsor information
-type SponsorInfo struct {
-	ContractAddr string
-	SponsorAddr  sdk.AccAddress
-	IsSponsored  bool
-}
 
 // SponsorPaymentInfo holds all sponsor payment context information
 type SponsorPaymentInfo struct {
@@ -261,14 +251,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				)
 			}
 		}
-
-		// Store sponsor information in context for event tracking
-		sponsorInfo := SponsorInfo{
-			ContractAddr: contractAddr,
-			SponsorAddr:  contractAccAddr,
-			IsSponsored:  true,
-		}
-		ctx = ctx.WithValue(sponsorInfoKey{}, sponsorInfo)
 
 		// Event will be emitted in sponsor_decorator.go after successful fee deduction
 	}
