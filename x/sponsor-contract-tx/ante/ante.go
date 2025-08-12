@@ -132,7 +132,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					}
 				}
 			}()
-			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr)
+			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
 		}()
 
 		// Add the consumed gas back to the original context

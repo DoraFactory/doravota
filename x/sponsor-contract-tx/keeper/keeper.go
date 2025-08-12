@@ -15,6 +15,12 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
+// ContractMessage represents a parsed contract execution message
+type ContractMessage struct {
+	MsgType string
+	MsgData string
+}
+
 // WasmKeeperInterface defines the interface we need from wasm keeper
 type WasmKeeperInterface interface {
 	GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo
@@ -43,43 +49,112 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 }
 
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
-func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress) (bool, error) {
+// It checks ALL contract execution messages for the specified contract to prevent hitchhiking attacks
+func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (bool, error) {
 	// NOTE: JSON is required for CosmWasm smart contract communication
 	// CosmWasm contracts expect JSON queries and return JSON responses
 	// This cannot be changed to protobuf without breaking contract compatibility
 
-	// prepare query smart contract message
-	queryMsg := map[string]interface{}{
-		"check_policy": map[string]interface{}{
-			"address": userAddr.String(),
-		},
-	}
-
-	queryBytes, err := json.Marshal(queryMsg)
+	// Extract all contract messages for security - prevent hitchhiking attacks
+	contractMessages, err := k.extractAllContractMessages(tx, contractAddr)
 	if err != nil {
-		return false, fmt.Errorf("failed to marshal query message: %w", err)
+		return false, fmt.Errorf("failed to extract contract messages: %w", err)
 	}
 
-	// call contract query method
+	if len(contractMessages) == 0 {
+		return false, fmt.Errorf("no contract execution messages found for contract %s", contractAddr)
+	}
+
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
 		return false, fmt.Errorf("invalid contract address: %w", err)
 	}
 
-	result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
-	if err != nil {
-		return false, fmt.Errorf("failed to query contract: %w", err)
+	// Check EVERY contract message for permission - critical for security
+	for i, contractMsg := range contractMessages {
+		// prepare query smart contract message with enhanced parameters
+		queryMsg := map[string]interface{}{
+			"check_policy": map[string]interface{}{
+				"sender":   userAddr.String(),
+				"msg_type": contractMsg.MsgType,
+				"msg_data": contractMsg.MsgData,
+			},
+		}
+
+		queryBytes, err := json.Marshal(queryMsg)
+		if err != nil {
+			return false, fmt.Errorf("failed to marshal query message for message %d: %w", i, err)
+		}
+
+		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
+		if err != nil {
+			return false, fmt.Errorf("failed to query contract for message %d (%s): %w", i, contractMsg.MsgType, err)
+		}
+
+		// parse query result
+		var response struct {
+			Eligible bool `json:"eligible"`
+		}
+		if err := json.Unmarshal(result, &response); err != nil {
+			return false, fmt.Errorf("failed to unmarshal query response for message %d: %w", i, err)
+		}
+
+		// If ANY message is not eligible, reject the entire transaction
+		if !response.Eligible {
+			k.Logger(ctx).Info("message not eligible for sponsorship",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"message_index", i,
+				"message_type", contractMsg.MsgType,
+			)
+			return false, nil
+		}
+
+		k.Logger(ctx).Debug("message eligible for sponsorship",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"message_index", i,
+			"message_type", contractMsg.MsgType,
+		)
 	}
 
-	// parse query result
-	var response struct {
-		Eligible bool `json:"eligible"`
-	}
-	if err := json.Unmarshal(result, &response); err != nil {
-		return false, fmt.Errorf("failed to unmarshal query response: %w", err)
+	// All messages are eligible
+	return true, nil
+}
+
+// extractAllContractMessages extracts ALL contract execution messages for the specified contract
+// This prevents hitchhiking attacks where unauthorized messages are bundled with authorized ones
+func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string) ([]ContractMessage, error) {
+	var contractMessages []ContractMessage
+
+	for _, msg := range tx.GetMsgs() {
+		if execMsg, ok := msg.(*wasmtypes.MsgExecuteContract); ok {
+			if execMsg.Contract == targetContractAddr {
+				// Parse the contract message to extract type and data
+				var msgMap map[string]interface{}
+				if err := json.Unmarshal(execMsg.Msg, &msgMap); err != nil {
+					return nil, fmt.Errorf("failed to parse contract message: %w", err)
+				}
+
+				// Extract message type and data (assumes single message type per execution)
+				for msgType, msgData := range msgMap {
+					// Convert message data back to JSON string
+					msgDataBytes, err := json.Marshal(msgData)
+					if err != nil {
+						return nil, fmt.Errorf("failed to marshal message data: %w", err)
+					}
+
+					contractMessages = append(contractMessages, ContractMessage{
+						MsgType: msgType,
+						MsgData: string(msgDataBytes),
+					})
+					break // CosmWasm messages typically have only one top-level key
+				}
+			}
+		}
 	}
 
-	return response.Eligible, nil
+	return contractMessages, nil
 }
 
 // SetSponsor sets a sponsor in the store
