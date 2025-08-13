@@ -7,7 +7,7 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Increment {},
+    Increment { amount: i32 },
     Decrement {},
     Reset { count: i32 },
     // add whitelist management functionality
@@ -21,9 +21,13 @@ pub enum QueryMsg {
     // GetCount returns the current count as a json-encoded number
     #[returns(GetCountResponse)]
     GetCount {},
-    // CheckPolicy check if the user is in the whitelist
+    // CheckPolicy check if the user is eligible for sponsorship based on message type
     #[returns(CheckPolicyResponse)]
-    CheckPolicy { address: String },
+    CheckPolicy { 
+        sender: String,
+        msg_type: String,
+        msg_data: String,
+    },
     // query whitelist status
     #[returns(WhitelistResponse)]
     IsWhitelisted { address: String },
@@ -38,6 +42,7 @@ pub struct GetCountResponse {
 #[cw_serde]
 pub struct CheckPolicyResponse {
     pub eligible: bool,
+    pub reason: Option<String>,
 }
 
 #[cw_serde]
@@ -47,3 +52,17 @@ pub struct WhitelistResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
+
+// Message types for parsing sponsor transaction data
+#[cw_serde]
+pub struct IncrementMsg {
+    pub amount: i32,
+}
+
+#[cw_serde]
+pub struct DecrementMsg {}
+
+#[cw_serde]
+pub struct ResetMsg {
+    pub count: i32,
+}
