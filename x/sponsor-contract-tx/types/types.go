@@ -29,10 +29,10 @@ func (b BaseSponsorMsg) ValidateBasicFields() error {
 	return nil
 }
 
-// ValidateMaxGrantPerUser validates that MaxGrantPerUser only contains peaka denomination
+// ValidateMaxGrantPerUser validates that MaxGrantPerUser is required and only contains peaka denomination
 func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
-	if maxGrantPerUser == nil {
-		return nil // nil is allowed
+	if len(maxGrantPerUser) == 0 {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "max_grant_per_user is required and cannot be empty")
 	}
 
 	for _, coin := range maxGrantPerUser {

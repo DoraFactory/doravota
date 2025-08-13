@@ -705,7 +705,8 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.Len(t, sponsor.MaxGrantPerUser, 2)
 		
 		// Check the saved max grant per user
-		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		require.NoError(t, err)
 		expectedMaxGrant := maxGrant.Sort()
 		actualMaxGrant = actualMaxGrant.Sort()
 		require.Equal(t, expectedMaxGrant, actualMaxGrant)
@@ -735,7 +736,8 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify max grant per user was updated
-		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		require.NoError(t, err)
 		require.Equal(t, newMaxGrant, actualMaxGrant)
 	})
 }

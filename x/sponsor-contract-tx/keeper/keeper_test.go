@@ -376,14 +376,13 @@ func TestMaxGrantPerUser(t *testing.T) {
 
 	contractAddr := "dora1contract123"
 
-	t.Run("default limit when sponsor not configured", func(t *testing.T) {
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		// Default is 1 DORA = 10^18 peaka
-		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
-		assert.Equal(t, expected, maxGrant)
+	t.Run("error when sponsor not configured", func(t *testing.T) {
+		_, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no sponsor configuration found")
 	})
 
-	t.Run("default limit when sponsor has no max grant configured", func(t *testing.T) {
+	t.Run("error when sponsor has no max grant configured", func(t *testing.T) {
 		sponsor := types.ContractSponsor{
 			ContractAddress: contractAddr,
 			IsSponsored:     true,
@@ -391,10 +390,9 @@ func TestMaxGrantPerUser(t *testing.T) {
 		err := keeper.SetSponsor(ctx, sponsor)
 		assert.NoError(t, err)
 
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		// Default is 1 DORA = 10^18 peaka
-		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
-		assert.Equal(t, expected, maxGrant)
+		_, err = keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "max_grant_per_user is required but not configured")
 	})
 
 	t.Run("custom max grant per user", func(t *testing.T) {
@@ -422,7 +420,8 @@ func TestMaxGrantPerUser(t *testing.T) {
 		}
 		keeper.SetSponsor(ctx, sponsor)
 
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		maxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.NoError(t, err)
 
 		// Sort both for consistent comparison since coin order might differ
 		customLimit = customLimit.Sort()

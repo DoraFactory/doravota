@@ -323,7 +323,7 @@ func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 
 	// Verify error
 	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "not eligible for sponsored transaction")
+	suite.Require().Contains(err.Error(), "not eligible")
 }
 
 // Test case: User has sufficient balance, should pay own fees
