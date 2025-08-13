@@ -93,7 +93,8 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 
 		// parse query result
 		var response struct {
-			Eligible bool `json:"eligible"`
+			Eligible bool    `json:"eligible"`
+			Reason   *string `json:"reason"`
 		}
 		if err := json.Unmarshal(result, &response); err != nil {
 			return false, fmt.Errorf("failed to unmarshal query response for message %d: %w", i, err)
@@ -101,13 +102,18 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 
 		// If ANY message is not eligible, reject the entire transaction
 		if !response.Eligible {
+			reason := "no reason provided"
+			if response.Reason != nil {
+				reason = *response.Reason
+			}
 			k.Logger(ctx).Info("message not eligible for sponsorship",
 				"contract", contractAddr,
 				"user", userAddr.String(),
 				"message_index", i,
 				"message_type", contractMsg.MsgType,
+				"reason", reason,
 			)
-			return false, nil
+			return false, fmt.Errorf("message %d (%s) not eligible: %s", i, contractMsg.MsgType, reason)
 		}
 
 		k.Logger(ctx).Debug("message eligible for sponsorship",
