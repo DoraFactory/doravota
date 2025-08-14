@@ -460,11 +460,16 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 }
 
 // GetMaxGrantPerUser returns the maximum grant amount per user for a contract
-// Returns an error if no sponsor exists or MaxGrantPerUser is not configured
+// Returns an error if no sponsor exists or MaxGrantPerUser is not configured when sponsorship is enabled
 func (k Keeper) GetMaxGrantPerUser(ctx sdk.Context, contractAddr string) (sdk.Coins, error) {
 	sponsor, found := k.GetSponsor(ctx, contractAddr)
 	if !found {
 		return sdk.Coins{}, sdkerrors.Wrap(types.ErrSponsorNotFound, fmt.Sprintf("no sponsor configuration found for contract %s", contractAddr))
+	}
+	
+	// If sponsorship is disabled, max_grant_per_user is not relevant
+	if !sponsor.IsSponsored {
+		return sdk.Coins{}, sdkerrors.Wrap(types.ErrSponsorshipDisabled, fmt.Sprintf("sponsorship is disabled for contract %s", contractAddr))
 	}
 	
 	if len(sponsor.MaxGrantPerUser) == 0 {

@@ -52,6 +52,43 @@ func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
 	return nil
 }
 
+// ValidateMaxGrantPerUserConditional validates MaxGrantPerUser based on sponsorship status
+// If isSponsored is true, MaxGrantPerUser is required
+// If isSponsored is false, MaxGrantPerUser can be empty
+func ValidateMaxGrantPerUserConditional(maxGrantPerUser []*sdk.Coin, isSponsored bool) error {
+	if !isSponsored {
+		// When sponsorship is disabled, max_grant_per_user can be empty
+		// But if provided, it should still be valid
+		if len(maxGrantPerUser) == 0 {
+			return nil // Allow empty when sponsorship is disabled
+		}
+		// If provided when sponsorship is disabled, validate the format but don't require it
+		return validateMaxGrantPerUserFormat(maxGrantPerUser)
+	}
+
+	// When sponsorship is enabled, require and validate max_grant_per_user
+	return ValidateMaxGrantPerUser(maxGrantPerUser)
+}
+
+// validateMaxGrantPerUserFormat validates only the format of MaxGrantPerUser without requiring it to be non-empty
+func validateMaxGrantPerUserFormat(maxGrantPerUser []*sdk.Coin) error {
+	for _, coin := range maxGrantPerUser {
+		if coin == nil {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+		}
+
+		if coin.Denom != "peaka" {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
+		}
+
+		if !coin.Amount.IsPositive() {
+			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
+		}
+	}
+
+	return nil
+}
+
 // GetCommonSigners returns the signers for sponsor messages
 func (b BaseSponsorMsg) GetCommonSigners() []sdk.AccAddress {
 	signer, err := sdk.AccAddressFromBech32(b.Creator)
@@ -128,8 +165,8 @@ func (msg MsgSetSponsor) ValidateBasic() error {
 		return err
 	}
 
-	// Validate MaxGrantPerUser field
-	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+	// Validate MaxGrantPerUser field based on sponsorship status
+	if err := ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
 		return err
 	}
 
@@ -193,8 +230,8 @@ func (msg MsgUpdateSponsor) ValidateBasic() error {
 		return err
 	}
 
-	// Validate MaxGrantPerUser field
-	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+	// Validate MaxGrantPerUser field based on sponsorship status
+	if err := ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
 		return err
 	}
 
