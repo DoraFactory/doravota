@@ -35,6 +35,18 @@ func GetTxCmd() *cobra.Command {
 	return cmd
 }
 
+// parseBoolParameter parses boolean parameter with proper validation
+func parseBoolParameter(value string) (bool, error) {
+	switch value {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid boolean value: %s", value)
+	}
+}
+
 // parseCoinsWithDORASupport parses coins string with support for DORA to peaka conversion
 // 1 DORA = 10^18 peaka
 // Only supports uppercase "DORA" and "peaka" denominations
@@ -101,7 +113,10 @@ If not provided, no grant limit will be set.`,
 				return err
 			}
 
-			isSponsored := args[1] == "true"
+			isSponsored, err := parseBoolParameter(args[1])
+		if err != nil {
+			return fmt.Errorf("invalid is-sponsored parameter '%s': must be 'true' or 'false'", args[1])
+		}
 
 			var maxGrantPerUser sdk.Coins
 			if len(args) > 2 && args[2] != "" {
@@ -137,7 +152,10 @@ If not provided, no grant limit will be set.`,
 				return err
 			}
 
-			isSponsored := args[1] == "true"
+			isSponsored, err := parseBoolParameter(args[1])
+		if err != nil {
+			return fmt.Errorf("invalid is-sponsored parameter '%s': must be 'true' or 'false'", args[1])
+		}
 
 			var maxGrantPerUser sdk.Coins
 			if len(args) > 2 && args[2] != "" {
