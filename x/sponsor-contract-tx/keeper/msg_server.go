@@ -58,6 +58,11 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can set sponsor")
 	}
 
+	// Additional validation for MaxGrantPerUser - server-side safety check
+	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
+		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
+	}
+
 	// Create and set the sponsor
 	now := ctx.BlockTime().Unix()
 	sponsor := types.ContractSponsor{
@@ -126,6 +131,11 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	if !found {
 		// This shouldn't happen since we checked above, but handle gracefully
 		existingSponsor.CreatedAt = ctx.BlockTime().Unix()
+	}
+
+	// Additional validation for MaxGrantPerUser - server-side safety check
+	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
+		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
 	}
 
 	// Update the sponsor
