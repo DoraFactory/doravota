@@ -127,41 +127,44 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"contract policy check exceeded gas limit: %d, used: %d",
 							gasLimit, limitedGasMeter.GasConsumed())
 					} else {
-						// Re-panic for other types of panics
-						panic(r)
+						// Handle all other types of panics gracefully to prevent chain halt
+						// Log the error for debugging but don't crash the node
+						sctd.keeper.Logger(ctx).Error("unexpected panic during contract policy check",
+							"contract", contractAddr,
+							"error", r,
+							"gas_used", limitedGasMeter.GasConsumed())
+						err = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
+							"contract policy check failed due to unexpected error: %v", r)
 					}
 				}
 			}()
 			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
 		}()
 
-		// Add the consumed gas back to the original context
+		// Only consume gas from main context if policy check was successful
 		gasUsed := limitedGasMeter.GasConsumed()
-		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
-		if err != nil {
-			// If contract policy check fails, we must reject the sponsored transaction
-			// This is critical for security - we cannot sponsor transactions without verifying eligibility
+		if err == nil {
+			ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+			if !eligible {
+				// User is not eligible according to contract policy
+				return ctx, sdkerrors.Wrapf(
+					sdkerrors.ErrUnauthorized,
+					"user %s is not eligible for sponsored transaction according to contract %s policy",
+					userAddr.String(),
+					contractAddr,
+				)
+			}
+		} else {
+			// Policy check failed, log the failure but don't consume gas from main context
+			// This prevents malicious contracts from draining gas through failed policy checks
 			ctx.Logger().With("module", "sponsor-contract-tx").Error(
 				"Contract policy check failed, rejecting sponsored transaction",
 				"contract", contractAddr,
 				"user", userAddr.String(),
 				"error", err.Error(),
+				"gas_wasted", gasUsed,
 			)
-			return ctx, sdkerrors.Wrapf(
-				types.ErrPolicyCheckFailed,
-				"contract policy check failed for user %s on contract %s: %s",
-				userAddr.String(),
-				contractAddr,
-				err.Error(),
-			)
-		} else if !eligible {
-			// User is not eligible according to contract policy
-			return ctx, sdkerrors.Wrapf(
-				sdkerrors.ErrUnauthorized,
-				"user %s is not eligible for sponsored transaction according to contract %s policy",
-				userAddr.String(),
-				contractAddr,
-			)
+			return ctx, err // Return the already wrapped error from recover
 		}
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
