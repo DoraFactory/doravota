@@ -10,6 +10,7 @@ const (
 	EventTypeSponsorInsufficient = "sponsor_insufficient_funds" // New: sponsor can't pay
 	EventTypeUserSelfPay         = "user_self_pay"              // New: user paid themselves
 	EventTypeSponsorshipDisabled = "sponsorship_disabled"       // New: sponsorship globally disabled
+	EventTypeUpdateParams        = "update_params"              // New: governance parameter updates
 
 	// Read operation events
 	EventTypeGetSponsor        = "get_sponsor"
@@ -33,8 +34,11 @@ const (
 	AttributeKeyPolicyCheck     = "policy_check"
 	AttributeKeyFound           = "found"
 	AttributeKeyCount           = "count"
-	AttributeKeyQueryType       = "query_type"
-	AttributeKeyReason          = "reason"
+	AttributeKeyQueryType              = "query_type"
+	AttributeKeyReason                 = "reason"
+	AttributeKeyAuthority              = "authority"
+	AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
+	AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
 )
 
 // Event attribute values

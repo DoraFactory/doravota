@@ -22,4 +22,5 @@ var (
 	ErrInvalidCreator         = sdkerrors.Register(ModuleName, 14, "invalid creator address")
 	ErrContractNotAdmin       = sdkerrors.Register(ModuleName, 15, "not contract admin")
 	ErrUserGrantLimitExceeded = sdkerrors.Register(ModuleName, 16, "user grant limit exceeded")
+	ErrInvalidAuthority       = sdkerrors.Register(ModuleName, 17, "invalid authority")
 )

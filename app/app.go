@@ -664,6 +664,7 @@ func New(
 		appCodec,
 		keys[sponsortypes.StoreKey],
 		app.WasmKeeper,
+		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
 	// The gov proposal types can be individually enabled

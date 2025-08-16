@@ -216,3 +216,35 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 
 	return &types.MsgDeleteSponsorResponse{}, nil
 }
+
+// UpdateParams handles MsgUpdateParams for governance
+func (k msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Validate authority
+	if k.Keeper.authority != msg.Authority {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidAuthority, "invalid authority; expected %s, got %s", k.Keeper.authority, msg.Authority)
+	}
+
+	// Validate the new parameters
+	if err := msg.Params.Validate(); err != nil {
+		return nil, sdkerrors.Wrap(types.ErrInvalidParams, err.Error())
+	}
+
+	// Update the parameters
+	if err := k.Keeper.SetParams(ctx, msg.Params); err != nil {
+		return nil, sdkerrors.Wrap(err, "failed to set parameters")
+	}
+
+	// Emit event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeUpdateParams,
+			sdk.NewAttribute(types.AttributeKeyAuthority, msg.Authority),
+			sdk.NewAttribute(types.AttributeKeySponsorshipEnabled, fmt.Sprintf("%t", msg.Params.SponsorshipEnabled)),
+			sdk.NewAttribute(types.AttributeKeyMaxGasPerSponsorship, fmt.Sprintf("%d", msg.Params.MaxGasPerSponsorship)),
+		),
+	)
+
+	return &types.MsgUpdateParamsResponse{}, nil
+}

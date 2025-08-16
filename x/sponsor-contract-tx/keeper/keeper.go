@@ -33,20 +33,30 @@ type Keeper struct {
 	cdc        codec.BinaryCodec
 	storeKey   storetypes.StoreKey
 	wasmKeeper WasmKeeperInterface
+	
+	// authority is the address capable of executing governance proposals
+	// typically the gov module account
+	authority string
 }
 
 // NewKeeper creates a new sponsor Keeper instance
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper WasmKeeperInterface) *Keeper {
+func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper WasmKeeperInterface, authority string) *Keeper {
 	return &Keeper{
 		cdc:        cdc,
 		storeKey:   storeKey,
 		wasmKeeper: wasmKeeper,
+		authority:  authority,
 	}
 }
 
 // Logger returns a module-specific logger
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", types.ModuleName))
+}
+
+// GetAuthority returns the authority address for governance
+func (k Keeper) GetAuthority() string {
+	return k.authority
 }
 
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
