@@ -1,7 +1,6 @@
 package keeper
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
@@ -55,7 +54,7 @@ func coinsToProtoCoins(coins sdk.Coins) []*sdk.Coin {
 
 // TestQuerySponsor tests the Sponsor gRPC query
 func (suite *GRPCQueryTestSuite) TestQuerySponsor() {
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	testCases := []struct {
 		name        string
@@ -152,7 +151,7 @@ func (suite *GRPCQueryTestSuite) TestQuerySponsor() {
 
 // TestQueryAllSponsors tests the AllSponsors gRPC query
 func (suite *GRPCQueryTestSuite) TestQueryAllSponsors() {
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	testCases := []struct {
 		name        string
@@ -272,7 +271,7 @@ func (suite *GRPCQueryTestSuite) TestQueryAllSponsors() {
 
 // TestQueryParams tests the Params gRPC query
 func (suite *GRPCQueryTestSuite) TestQueryParams() {
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	testCases := []struct {
 		name        string
@@ -349,7 +348,7 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 
 // TestQueryUserGrantUsage tests the UserGrantUsage gRPC query
 func (suite *GRPCQueryTestSuite) TestQueryUserGrantUsage() {
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	testCases := []struct {
 		name        string
@@ -470,7 +469,7 @@ func (suite *GRPCQueryTestSuite) TestQueryServerInterface() {
 	var _ types.QueryServer = suite.queryServer
 
 	// Test that all methods are callable
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	// Test Sponsor method signature
 	_, err := suite.queryServer.Sponsor(ctx, &types.QuerySponsorRequest{
@@ -496,7 +495,7 @@ func (suite *GRPCQueryTestSuite) TestQueryServerInterface() {
 
 // TestQueryErrorHandling tests comprehensive error handling in queries
 func (suite *GRPCQueryTestSuite) TestQueryErrorHandling() {
-	ctx := context.Background()
+	ctx := sdk.WrapSDKContext(suite.ctx)
 
 	// Test various error conditions
 	errorTests := []struct {
