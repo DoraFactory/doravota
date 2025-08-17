@@ -180,6 +180,8 @@ func GetCmdDeleteSponsor() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete-sponsor [contract-address]",
 		Short: "Delete a sponsor contract",
+		Long: `Delete a sponsor contract.
+This will remove the sponsorship configuration for the specified contract address.`,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
