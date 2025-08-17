@@ -29,24 +29,72 @@ func (b BaseSponsorMsg) ValidateBasicFields() error {
 	return nil
 }
 
-// ValidateMaxGrantPerUser validates that MaxGrantPerUser is required and only contains peaka denomination
-func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
+// NormalizeMaxGrantPerUser normalizes and validates MaxGrantPerUser coins
+// It merges duplicate denominations, sorts, and validates the result
+func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) {
 	if len(maxGrantPerUser) == 0 {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "max_grant_per_user is required and cannot be empty")
+		return []*sdk.Coin{}, nil
 	}
 
-	for _, coin := range maxGrantPerUser {
+	// Convert to sdk.Coins for normalization
+	coins := make(sdk.Coins, len(maxGrantPerUser))
+	for i, coin := range maxGrantPerUser {
 		if coin == nil {
-			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
 		}
+		coins[i] = *coin
+	}
 
+	// First validate and manually merge duplicates
+	denominationTotals := make(map[string]sdk.Int)
+	
+	for _, coin := range coins {
 		if coin.Denom != "peaka" {
-			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
 		}
-
 		if !coin.Amount.IsPositive() {
-			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
 		}
+		
+		// Accumulate amounts for same denomination
+		if existing, found := denominationTotals[coin.Denom]; found {
+			denominationTotals[coin.Denom] = existing.Add(coin.Amount)
+		} else {
+			denominationTotals[coin.Denom] = coin.Amount
+		}
+	}
+	
+	// Convert back to coins slice with merged amounts
+	mergedCoins := make(sdk.Coins, 0, len(denominationTotals))
+	for denom, amount := range denominationTotals {
+		mergedCoins = append(mergedCoins, sdk.NewCoin(denom, amount))
+	}
+	
+	// Sort the final result
+	coins = mergedCoins.Sort()
+	if !coins.IsValid() {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "invalid coins after normalization")
+	}
+
+	// Convert back to []*sdk.Coin
+	result := make([]*sdk.Coin, len(coins))
+	for i, coin := range coins {
+		coinCopy := coin // Create a copy to avoid pointer issues
+		result[i] = &coinCopy
+	}
+
+	return result, nil
+}
+
+// ValidateMaxGrantPerUser validates that MaxGrantPerUser is required and only contains peaka denomination
+func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
+	normalized, err := NormalizeMaxGrantPerUser(maxGrantPerUser)
+	if err != nil {
+		return err
+	}
+
+	if len(normalized) == 0 {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "max_grant_per_user is required and cannot be empty")
 	}
 
 	return nil

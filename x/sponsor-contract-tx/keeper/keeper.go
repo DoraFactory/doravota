@@ -176,6 +176,13 @@ func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string)
 
 // SetSponsor sets a sponsor in the store
 func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error {
+	// Normalize MaxGrantPerUser before storing to merge duplicates
+	normalized, err := types.NormalizeMaxGrantPerUser(sponsor.MaxGrantPerUser)
+	if err != nil {
+		return sdkerrors.Wrap(err, "failed to normalize max grant per user")
+	}
+	sponsor.MaxGrantPerUser = normalized
+
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(sponsor.ContractAddress)
 

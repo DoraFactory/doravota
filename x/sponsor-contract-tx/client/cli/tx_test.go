@@ -259,6 +259,30 @@ func (s *TxTestSuite) TestCoinParsing() {
 			false,
 			"Should accept empty max grant",
 		},
+		{
+			"precise decimal parsing - 18 decimal places",
+			"0.000000000000000001DORA", // 1 wei = smallest unit of peaka
+			false,
+			"Should handle maximum precision without loss",
+		},
+		{
+			"precise decimal parsing - large number with decimals",
+			"123456789.123456789123456789DORA",
+			false,
+			"Should handle large numbers with maximum decimal precision",
+		},
+		{
+			"invalid precision - too many decimal places",
+			"1.0000000000000000001DORA", // 19 decimal places - should reject
+			true,
+			"Should reject amounts with more than 18 decimal places",
+		},
+		{
+			"edge case - zero with decimals",
+			"0.000000000000000000DORA",
+			false,
+			"Should handle zero with decimal places",
+		},
 	}
 
 	for _, tc := range testCases {

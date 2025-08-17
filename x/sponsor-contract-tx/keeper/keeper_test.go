@@ -396,10 +396,9 @@ func TestMaxGrantPerUser(t *testing.T) {
 	})
 
 	t.Run("custom max grant per user", func(t *testing.T) {
-		// Create custom limit
+		// Create custom limit with only peaka denomination
 		customLimit := sdk.NewCoins(
-			sdk.NewCoin("dora", sdk.NewInt(500000)),
-			sdk.NewCoin("uatom", sdk.NewInt(100000)),
+			sdk.NewCoin("peaka", sdk.NewInt(1000000)),
 		)
 
 		// Convert to protobuf coins
@@ -418,7 +417,8 @@ func TestMaxGrantPerUser(t *testing.T) {
 			IsSponsored:     true,
 			MaxGrantPerUser: pbCoins,
 		}
-		keeper.SetSponsor(ctx, sponsor)
+		err := keeper.SetSponsor(ctx, sponsor)
+		assert.NoError(t, err)
 
 		maxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
 		assert.NoError(t, err)
@@ -427,6 +427,32 @@ func TestMaxGrantPerUser(t *testing.T) {
 		customLimit = customLimit.Sort()
 		maxGrant = maxGrant.Sort()
 		assert.Equal(t, customLimit, maxGrant)
+	})
+
+	t.Run("normalization merges duplicate peaka denominations", func(t *testing.T) {
+		// Create duplicate peaka entries that should be merged
+		pbCoins := []*sdk.Coin{
+			{Denom: "peaka", Amount: sdk.NewInt(100000)},
+			{Denom: "peaka", Amount: sdk.NewInt(200000)},
+			{Denom: "peaka", Amount: sdk.NewInt(300000)},
+		}
+
+		sponsor := types.ContractSponsor{
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+		err := keeper.SetSponsor(ctx, sponsor)
+		assert.NoError(t, err)
+
+		// Retrieve and verify normalization
+		retrievedSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		assert.True(t, found)
+		
+		// Should have only one peaka entry with merged amount
+		assert.Len(t, retrievedSponsor.MaxGrantPerUser, 1)
+		assert.Equal(t, "peaka", retrievedSponsor.MaxGrantPerUser[0].Denom)
+		assert.Equal(t, sdk.NewInt(600000), retrievedSponsor.MaxGrantPerUser[0].Amount) // 100000 + 200000 + 300000
 	})
 }
 

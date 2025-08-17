@@ -2,10 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"math/big"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
@@ -47,9 +49,83 @@ func parseBoolParameter(value string) (bool, error) {
 	}
 }
 
+// convertDORAToPeaka converts a DORA amount string to peaka using exact decimal math
+// Supports integer and decimal inputs with up to 18 decimal places
+// Returns error for amounts that cannot be exactly represented in peaka
+func convertDORAToPeaka(doraAmountStr string) (math.Int, error) {
+	// Parse the DORA amount as decimal
+	parts := strings.Split(doraAmountStr, ".")
+	if len(parts) > 2 {
+		return math.Int{}, fmt.Errorf("invalid decimal format: %s", doraAmountStr)
+	}
+
+	// Parse integer part
+	integerPart, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return math.Int{}, fmt.Errorf("invalid integer part: %s", parts[0])
+	}
+
+	// Parse decimal part if present
+	var decimalPart uint64 = 0
+	var decimalDigits int = 0
+	
+	if len(parts) == 2 {
+		decimalStr := parts[1]
+		decimalDigits = len(decimalStr)
+		
+		// Reject if more than 18 decimal places (can't be exactly represented in peaka)
+		if decimalDigits > 18 {
+			return math.Int{}, fmt.Errorf("too many decimal places: %d (max 18)", decimalDigits)
+		}
+		
+		if decimalDigits > 0 {
+			decimalPart, err = strconv.ParseUint(decimalStr, 10, 64)
+			if err != nil {
+				return math.Int{}, fmt.Errorf("invalid decimal part: %s", decimalStr)
+			}
+		}
+	}
+
+	// Convert to peaka: DORA * 10^18 = (integerPart * 10^18) + (decimalPart * 10^(18-decimalDigits))
+	
+	// Integer part contribution
+	integerContribution := math.NewIntFromUint64(integerPart)
+	multiplier := math.NewIntFromUint64(1000000000000000000) // 10^18
+	integerContribution = integerContribution.Mul(multiplier)
+	
+	// Decimal part contribution
+	var decimalContribution math.Int
+	if decimalPart > 0 {
+		decimalContribution = math.NewIntFromUint64(decimalPart)
+		// Multiply by 10^(18-decimalDigits)
+		decimalMultiplier := math.NewIntFromUint64(1)
+		for i := 0; i < 18-decimalDigits; i++ {
+			decimalMultiplier = decimalMultiplier.MulRaw(10)
+		}
+		decimalContribution = decimalContribution.Mul(decimalMultiplier)
+	} else {
+		decimalContribution = math.ZeroInt()
+	}
+	
+	// Sum the contributions
+	totalPeaka := integerContribution.Add(decimalContribution)
+	
+	// Validate the result is positive
+	if !totalPeaka.IsPositive() && !totalPeaka.IsZero() {
+		return math.Int{}, fmt.Errorf("result must be non-negative")
+	}
+	
+	if totalPeaka.IsZero() && (integerPart > 0 || decimalPart > 0) {
+		return math.Int{}, fmt.Errorf("amount too small to represent in peaka")
+	}
+
+	return totalPeaka, nil
+}
+
 // parseCoinsWithDORASupport parses coins string with support for DORA to peaka conversion
 // 1 DORA = 10^18 peaka
 // Only supports uppercase "DORA" and "peaka" denominations
+// Uses exact decimal math to avoid precision loss
 func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 	// Convert DORA to peaka if present (case sensitive, only uppercase)
 	doraPattern := regexp.MustCompile(`(\d+(?:\.\d+)?)(DORA)`)
@@ -61,22 +137,13 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		}
 		amountStr := submatches[1]
 
-		// Convert to big.Float for precision
-		amount := new(big.Float)
-		amount.SetString(amountStr)
+		// Convert DORA to peaka using exact decimal math
+		peakaAmount, err := convertDORAToPeaka(amountStr)
+		if err != nil {
+			return match // Fallback to original on error - will be caught by validation later
+		}
 
-		// Multiply by 10^18
-		multiplier := new(big.Float)
-		multiplier.SetString("1000000000000000000") // 10^18
-
-		result := new(big.Float)
-		result.Mul(amount, multiplier)
-
-		// Convert to integer
-		resultInt := new(big.Int)
-		result.Int(resultInt)
-
-		return resultInt.String() + "peaka"
+		return peakaAmount.String() + "peaka"
 	})
 
 	// Parse the converted string
