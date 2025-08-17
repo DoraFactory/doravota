@@ -22,7 +22,7 @@ import (
 func GetTxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                        types.ModuleName,
-		Short:                      "Sponsor transaction subcommands",
+		Short:                      "Cosmwasm Contract Sponsor transaction subcommands",
 		DisableFlagParsing:         true,
 		SuggestionsMinimumDistance: 2,
 		RunE:                       client.ValidateCmd,
