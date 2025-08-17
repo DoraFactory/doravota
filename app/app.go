@@ -320,7 +320,7 @@ type App struct {
 	ICAHostKeeper       icahostkeeper.Keeper
 	TransferKeeper      ibctransferkeeper.Keeper
 	WasmKeeper          wasm.Keeper
-	SponsorKeeper       sponsorkeeper.Keeper
+	SponsorKeeper       *sponsorkeeper.Keeper
 
 	// make scoped keepers public for test purposes
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
@@ -660,7 +660,7 @@ func New(
 	)
 
 	// Create sponsor keeper
-	app.SponsorKeeper = *sponsorkeeper.NewKeeper(
+	app.SponsorKeeper = sponsorkeeper.NewKeeper(
 		appCodec,
 		keys[sponsortypes.StoreKey],
 		app.WasmKeeper,
@@ -761,7 +761,7 @@ func New(
 		icaModule,
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 		// sponsor module
-		sponsormodule.NewAppModule(appCodec, app.SponsorKeeper),
+		sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that

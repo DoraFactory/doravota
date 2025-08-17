@@ -8,7 +8,6 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
@@ -16,7 +15,7 @@ import (
 // and handles sponsor fee payments
 type SponsorAwareDeductFeeDecorator struct {
 	standardDecorator ante.DeductFeeDecorator
-	sponsorKeeper     keeper.Keeper
+	sponsorKeeper     types.SponsorKeeperInterface
 	bankKeeper        bankkeeper.Keeper
 	feegrantKeeper    ante.FeegrantKeeper
 	txFeeChecker      ante.TxFeeChecker
@@ -27,7 +26,7 @@ func NewSponsorAwareDeductFeeDecorator(
 	ak authkeeper.AccountKeeper,
 	bk bankkeeper.Keeper,
 	fgk ante.FeegrantKeeper,
-	sponsorKeeper keeper.Keeper,
+	sponsorKeeper types.SponsorKeeperInterface,
 	txFeeChecker ante.TxFeeChecker,
 ) SponsorAwareDeductFeeDecorator {
 	return SponsorAwareDeductFeeDecorator{

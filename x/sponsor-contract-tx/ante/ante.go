@@ -7,7 +7,6 @@ import (
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
@@ -24,13 +23,13 @@ type SponsorPaymentInfo struct {
 
 // SponsorContractTxAnteDecorator handles sponsoring contract transactions
 type SponsorContractTxAnteDecorator struct {
-	keeper        keeper.Keeper
+	keeper        types.SponsorKeeperInterface
 	accountKeeper authkeeper.AccountKeeper
 	bankKeeper    bankkeeper.Keeper
 }
 
 // NewSponsorContractTxAnteDecorator creates a new ante decorator for sponsored contract transactions
-func NewSponsorContractTxAnteDecorator(k keeper.Keeper, ak authkeeper.AccountKeeper, bk bankkeeper.Keeper) SponsorContractTxAnteDecorator {
+func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authkeeper.AccountKeeper, bk bankkeeper.Keeper) SponsorContractTxAnteDecorator {
 	return SponsorContractTxAnteDecorator{
 		keeper:        k,
 		accountKeeper: ak,
