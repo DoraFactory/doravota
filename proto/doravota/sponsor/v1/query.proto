@@ -5,23 +5,32 @@ package doravota.sponsor.v1;
 import "doravota/sponsor/v1/sponsor.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
 import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
 
 option go_package = "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types";
 
 // Query defines the gRPC query service for the sponsor module
 service Query {
   // Sponsor queries the sponsor information for a contract
-  rpc Sponsor(QuerySponsorRequest) returns (QuerySponsorResponse);
+  rpc Sponsor(QuerySponsorRequest) returns (QuerySponsorResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/sponsor/{contract_address}";
+  }
 
   // AllSponsors queries all sponsors with pagination support
-  rpc AllSponsors(QueryAllSponsorsRequest) returns (QueryAllSponsorsResponse);
+  rpc AllSponsors(QueryAllSponsorsRequest) returns (QueryAllSponsorsResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/sponsors";
+  }
 
   // UserGrantUsage queries the grant usage for a specific user and contract
   rpc UserGrantUsage(QueryUserGrantUsageRequest)
-      returns (QueryUserGrantUsageResponse);
+      returns (QueryUserGrantUsageResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/usage/{user_address}/{contract_address}";
+  }
 
   // Params queries the parameters of the sponsor module
-  rpc Params(QueryParamsRequest) returns (QueryParamsResponse);
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/params";
+  }
 }
 
 // QuerySponsorRequest is the request type for the Query/Sponsor RPC method

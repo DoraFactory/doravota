@@ -38,3 +38,7 @@ coverage.html
 # OS specific files
 Thumbs.db
 .DS_Store
+
+# Contract
+contracts/counter/artifacts
+contracts/counter/target

@@ -27,6 +27,12 @@ var _ types.MsgServer = msgServer{}
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
+
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
 		return nil, err
@@ -52,11 +58,16 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can set sponsor")
 	}
 
+	// Additional validation for MaxGrantPerUser - server-side safety check
+	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
+		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
+	}
+
 	// Create and set the sponsor
 	now := ctx.BlockTime().Unix()
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
-		SponsorAddress:  msg.Creator,
+		CreatorAddress:  msg.Creator, // The address that created this sponsor configuration
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -83,6 +94,12 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 // UpdateSponsor handles MsgUpdateSponsor
 func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSponsor) (*types.MsgUpdateSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -116,10 +133,15 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		existingSponsor.CreatedAt = ctx.BlockTime().Unix()
 	}
 
+	// Additional validation for MaxGrantPerUser - server-side safety check
+	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
+		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
+	}
+
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
-		SponsorAddress:  existingSponsor.SponsorAddress, // Preserve original sponsor address
+		CreatorAddress:  existingSponsor.CreatorAddress, // Preserve original creator address
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       existingSponsor.CreatedAt,
 		UpdatedAt:       ctx.BlockTime().Unix(),
@@ -146,6 +168,12 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 // DeleteSponsor handles MsgDeleteSponsor
 func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSponsor) (*types.MsgDeleteSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Check if sponsorship is globally enabled
+	params := k.Keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -187,4 +215,36 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	)
 
 	return &types.MsgDeleteSponsorResponse{}, nil
+}
+
+// UpdateParams handles MsgUpdateParams for governance
+func (k msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParams) (*types.MsgUpdateParamsResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Validate authority
+	if k.Keeper.authority != msg.Authority {
+		return nil, sdkerrors.Wrapf(types.ErrInvalidAuthority, "invalid authority; expected %s, got %s", k.Keeper.authority, msg.Authority)
+	}
+
+	// Validate the new parameters
+	if err := msg.Params.Validate(); err != nil {
+		return nil, sdkerrors.Wrap(types.ErrInvalidParams, err.Error())
+	}
+
+	// Update the parameters
+	if err := k.Keeper.SetParams(ctx, msg.Params); err != nil {
+		return nil, sdkerrors.Wrap(err, "failed to set parameters")
+	}
+
+	// Emit event
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeUpdateParams,
+			sdk.NewAttribute(types.AttributeKeyAuthority, msg.Authority),
+			sdk.NewAttribute(types.AttributeKeySponsorshipEnabled, fmt.Sprintf("%t", msg.Params.SponsorshipEnabled)),
+			sdk.NewAttribute(types.AttributeKeyMaxGasPerSponsorship, fmt.Sprintf("%d", msg.Params.MaxGasPerSponsorship)),
+		),
+	)
+
+	return &types.MsgUpdateParamsResponse{}, nil
 }

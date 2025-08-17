@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -18,6 +19,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -72,25 +74,20 @@ func (AppModuleBasic) RegisterRESTRoutes(clientCtx client.Context, rtr *mux.Rout
 
 // RegisterGRPCGatewayRoutes registers the gRPC Gateway routes for the sponsor module
 func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
-	// TODO: gRPC Gateway registration requires protoc-gen-grpc-gateway plugin to generate query.pb.gw.go
-	// To enable this, install the plugin and run:
-	// go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-	// Then generate with: make proto-gen (or the equivalent protoc command with --grpc-gateway_out)
-	// After generation, uncomment:
-	// err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx))
-	// if err != nil {
-	//     panic(err)
-	// }
+	err := types.RegisterQueryHandlerClient(context.Background(), mux, types.NewQueryClient(clientCtx))
+	if err != nil {
+		panic(err)
+	}
 }
 
 // GetTxCmd returns the sponsor module's root tx command
 func (a AppModuleBasic) GetTxCmd() *cobra.Command {
-	return GetTxCmd()
+	return cli.GetTxCmd()
 }
 
 // GetQueryCmd returns the sponsor module's root query command
 func (AppModuleBasic) GetQueryCmd() *cobra.Command {
-	return GetQueryCmd()
+	return cli.GetQueryCmd()
 }
 
 // AppModule implements the AppModule interface for the sponsor module

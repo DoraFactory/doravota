@@ -380,10 +380,22 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 		// Set up the contract with adminAddr as admin
 		mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
+		// Create MaxGrantPerUser since IsSponsored is true
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
 		msg := &types.MsgSetSponsor{
 			Creator:         adminAddr,
 			ContractAddress: contractAddr,
 			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
 		}
 
 		_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), msg)
@@ -675,8 +687,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 	t.Run("SetSponsor with max grant per user", func(t *testing.T) {
 		// Create message with max grant per user
 		maxGrant := sdk.NewCoins(
-			sdk.NewCoin("dora", sdk.NewInt(1000000)),
-			sdk.NewCoin("uatom", sdk.NewInt(500000)),
+			sdk.NewCoin("peaka", sdk.NewInt(1000000)),
 		)
 		pbCoins := make([]*sdk.Coin, len(maxGrant))
 		for i, coin := range maxGrant {
@@ -702,10 +713,11 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		sponsor, found := keeper.GetSponsor(ctx, contractAddr)
 		require.True(t, found)
 		require.True(t, sponsor.IsSponsored)
-		require.Len(t, sponsor.MaxGrantPerUser, 2)
+		require.Len(t, sponsor.MaxGrantPerUser, 1)
 		
 		// Check the saved max grant per user
-		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		require.NoError(t, err)
 		expectedMaxGrant := maxGrant.Sort()
 		actualMaxGrant = actualMaxGrant.Sort()
 		require.Equal(t, expectedMaxGrant, actualMaxGrant)
@@ -713,7 +725,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 
 	t.Run("UpdateSponsor with max grant per user", func(t *testing.T) {
 		// Update with different max grant per user
-		newMaxGrant := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(2000000)))
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000000)))
 		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
 		for i, coin := range newMaxGrant {
 			newCoin := sdk.Coin{
@@ -735,7 +747,8 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.NotNil(t, resp)
 
 		// Verify max grant per user was updated
-		actualMaxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		require.NoError(t, err)
 		require.Equal(t, newMaxGrant, actualMaxGrant)
 	})
 }

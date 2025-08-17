@@ -19,6 +19,11 @@ const (
 
 	// QuerierRoute defines the module's query routing key
 	QuerierRoute = ModuleName
+
+	// Message types
+	TypeMsgSetSponsor    = "set_sponsor"
+	TypeMsgUpdateSponsor = "update_sponsor"
+	TypeMsgDeleteSponsor = "delete_sponsor"
 )
 
 var (
@@ -30,6 +35,10 @@ var (
 	
 	// UserGrantUsageKeyPrefix defines the prefix for user grant usage records
 	UserGrantUsageKeyPrefix = []byte{0x03}
+
+	// Parameter store keys
+	KeySponsorshipEnabled    = []byte("SponsorshipEnabled")
+	KeyMaxGasPerSponsorship = []byte("MaxGasPerSponsorship")
 )
 
 // GetSponsorKey returns the store key for a sponsor record

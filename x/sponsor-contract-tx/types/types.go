@@ -29,12 +29,97 @@ func (b BaseSponsorMsg) ValidateBasicFields() error {
 	return nil
 }
 
-// ValidateMaxGrantPerUser validates that MaxGrantPerUser only contains peaka denomination
-func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
-	if maxGrantPerUser == nil {
-		return nil // nil is allowed
+// NormalizeMaxGrantPerUser normalizes and validates MaxGrantPerUser coins
+// It merges duplicate denominations, sorts, and validates the result
+func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) {
+	if len(maxGrantPerUser) == 0 {
+		return []*sdk.Coin{}, nil
 	}
 
+	// Convert to sdk.Coins for normalization
+	coins := make(sdk.Coins, len(maxGrantPerUser))
+	for i, coin := range maxGrantPerUser {
+		if coin == nil {
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+		}
+		coins[i] = *coin
+	}
+
+	// First validate and manually merge duplicates
+	denominationTotals := make(map[string]sdk.Int)
+	
+	for _, coin := range coins {
+		if coin.Denom != "peaka" {
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
+		}
+		if !coin.Amount.IsPositive() {
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
+		}
+		
+		// Accumulate amounts for same denomination
+		if existing, found := denominationTotals[coin.Denom]; found {
+			denominationTotals[coin.Denom] = existing.Add(coin.Amount)
+		} else {
+			denominationTotals[coin.Denom] = coin.Amount
+		}
+	}
+	
+	// Convert back to coins slice with merged amounts
+	mergedCoins := make(sdk.Coins, 0, len(denominationTotals))
+	for denom, amount := range denominationTotals {
+		mergedCoins = append(mergedCoins, sdk.NewCoin(denom, amount))
+	}
+	
+	// Sort the final result
+	coins = mergedCoins.Sort()
+	if !coins.IsValid() {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "invalid coins after normalization")
+	}
+
+	// Convert back to []*sdk.Coin
+	result := make([]*sdk.Coin, len(coins))
+	for i, coin := range coins {
+		coinCopy := coin // Create a copy to avoid pointer issues
+		result[i] = &coinCopy
+	}
+
+	return result, nil
+}
+
+// ValidateMaxGrantPerUser validates that MaxGrantPerUser is required and only contains peaka denomination
+func ValidateMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) error {
+	normalized, err := NormalizeMaxGrantPerUser(maxGrantPerUser)
+	if err != nil {
+		return err
+	}
+
+	if len(normalized) == 0 {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "max_grant_per_user is required and cannot be empty")
+	}
+
+	return nil
+}
+
+// ValidateMaxGrantPerUserConditional validates MaxGrantPerUser based on sponsorship status
+// If isSponsored is true, MaxGrantPerUser is required
+// If isSponsored is false, MaxGrantPerUser can be empty
+func ValidateMaxGrantPerUserConditional(maxGrantPerUser []*sdk.Coin, isSponsored bool) error {
+	if !isSponsored {
+		// When sponsorship is disabled, max_grant_per_user can be empty
+		// But if provided, it should still be valid
+		if len(maxGrantPerUser) == 0 {
+			return nil // Allow empty when sponsorship is disabled
+		}
+		// If provided when sponsorship is disabled, validate the format but don't require it
+		return validateMaxGrantPerUserFormat(maxGrantPerUser)
+	}
+
+	// When sponsorship is enabled, require and validate max_grant_per_user
+	return ValidateMaxGrantPerUser(maxGrantPerUser)
+}
+
+// validateMaxGrantPerUserFormat validates only the format of MaxGrantPerUser without requiring it to be non-empty
+func validateMaxGrantPerUserFormat(maxGrantPerUser []*sdk.Coin) error {
 	for _, coin := range maxGrantPerUser {
 		if coin == nil {
 			return sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
@@ -128,8 +213,8 @@ func (msg MsgSetSponsor) ValidateBasic() error {
 		return err
 	}
 
-	// Validate MaxGrantPerUser field
-	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+	// Validate MaxGrantPerUser field based on sponsorship status
+	if err := ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
 		return err
 	}
 
@@ -193,8 +278,8 @@ func (msg MsgUpdateSponsor) ValidateBasic() error {
 		return err
 	}
 
-	// Validate MaxGrantPerUser field
-	if err := ValidateMaxGrantPerUser(msg.MaxGrantPerUser); err != nil {
+	// Validate MaxGrantPerUser field based on sponsorship status
+	if err := ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
 		return err
 	}
 
@@ -300,22 +385,13 @@ func ValidateGenesis(data GenesisState) error {
 // DefaultParams returns default parameters
 func DefaultParams() Params {
 	return Params{
-		MaxSponsorsPerContract: 1000,
-		SponsorshipEnabled:     true,
-		MaxGasPerSponsorship:   1000000, // 1M gas
-		MinContractAge:         0,       // No minimum age requirement
+		SponsorshipEnabled:   true,
+		MaxGasPerSponsorship: 1000000, // 1M gas
 	}
 }
 
 // Validate validates the parameters
 func (p Params) Validate() error {
-	if p.MaxSponsorsPerContract == 0 {
-		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract must be greater than 0")
-	}
-	if p.MaxSponsorsPerContract > 1000 { // Reasonable upper limit
-		return sdkerrors.Wrap(ErrInvalidParams, "max sponsors per contract cannot exceed 1000")
-	}
-
 	if p.MaxGasPerSponsorship == 0 {
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship must be greater than 0")
 	}
@@ -323,10 +399,49 @@ func (p Params) Validate() error {
 		return sdkerrors.Wrap(ErrInvalidParams, "max gas per sponsorship cannot exceed 50,000,000")
 	}
 
-	// MinContractAge validation - should be reasonable
-	if p.MinContractAge > 86400*365 { // 1 year max
-		return sdkerrors.Wrap(ErrInvalidParams, "min contract age cannot exceed 1 year")
+	return nil
+}
+
+// === Message implementations for MsgUpdateParams ===
+
+// Route returns the message route
+func (msg MsgUpdateParams) Route() string {
+	return RouterKey
+}
+
+// Type returns the message type
+func (msg MsgUpdateParams) Type() string {
+	return "update_params"
+}
+
+// GetSigners returns the signers
+func (msg MsgUpdateParams) GetSigners() []sdk.AccAddress {
+	signer, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		panic(err)
+	}
+	return []sdk.AccAddress{signer}
+}
+
+// GetSignBytes returns the sign bytes
+func (msg MsgUpdateParams) GetSignBytes() []byte {
+	bz := ModuleCdc.MustMarshalJSON(&msg)
+	return sdk.MustSortJSON(bz)
+}
+
+// ValidateBasic performs basic validation
+func (msg MsgUpdateParams) ValidateBasic() error {
+	// Validate authority address
+	_, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid authority address: %s", msg.Authority)
 	}
 
-	return nil
+	// Validate parameters
+	return msg.Params.Validate()
+}
+
+// TypeURL returns the TypeURL for this message
+func (msg *MsgUpdateParams) XXX_MessageName() string {
+	return "doravota.sponsor.v1.MsgUpdateParams"
 }

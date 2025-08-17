@@ -15,8 +15,8 @@ import (
 	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	// sponsor module
-	sponsorante "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
-	sponsorkeeper "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	sponsorante "github.com/DoraFactory/doravota/x/sponsor-contract-tx/ante"
+	sponsortypes "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // HandlerOptions extend the SDK's AnteHandler options by requiring the IBC
@@ -27,7 +27,7 @@ type HandlerOptions struct {
 	IBCKeeper         *keeper.Keeper
 	WasmConfig        *wasmTypes.WasmConfig
 	TXCounterStoreKey storetypes.StoreKey
-	SponsorKeeper     sponsorkeeper.Keeper
+	SponsorKeeper     sponsortypes.SponsorKeeperInterface
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {

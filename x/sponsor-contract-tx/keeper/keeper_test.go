@@ -67,7 +67,7 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
 
 	// Create keeper with mock wasm keeper
 	mockWasmKeeper := NewMockWasmKeeper()
-	keeper := NewKeeper(cdc, storeKey, mockWasmKeeper)
+	keeper := NewKeeper(cdc, storeKey, mockWasmKeeper, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
 
 	// Create context
 	ctx := sdk.NewContext(
@@ -376,14 +376,13 @@ func TestMaxGrantPerUser(t *testing.T) {
 
 	contractAddr := "dora1contract123"
 
-	t.Run("default limit when sponsor not configured", func(t *testing.T) {
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		// Default is 1 DORA = 10^18 peaka
-		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
-		assert.Equal(t, expected, maxGrant)
+	t.Run("error when sponsor not configured", func(t *testing.T) {
+		_, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "no sponsor configuration found")
 	})
 
-	t.Run("default limit when sponsor has no max grant configured", func(t *testing.T) {
+	t.Run("error when sponsor has no max grant configured", func(t *testing.T) {
 		sponsor := types.ContractSponsor{
 			ContractAddress: contractAddr,
 			IsSponsored:     true,
@@ -391,17 +390,15 @@ func TestMaxGrantPerUser(t *testing.T) {
 		err := keeper.SetSponsor(ctx, sponsor)
 		assert.NoError(t, err)
 
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
-		// Default is 1 DORA = 10^18 peaka
-		expected := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewIntFromUint64(1000000000000000000)))
-		assert.Equal(t, expected, maxGrant)
+		_, err = keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "max_grant_per_user is required but not configured")
 	})
 
 	t.Run("custom max grant per user", func(t *testing.T) {
-		// Create custom limit
+		// Create custom limit with only peaka denomination
 		customLimit := sdk.NewCoins(
-			sdk.NewCoin("dora", sdk.NewInt(500000)),
-			sdk.NewCoin("uatom", sdk.NewInt(100000)),
+			sdk.NewCoin("peaka", sdk.NewInt(1000000)),
 		)
 
 		// Convert to protobuf coins
@@ -420,14 +417,42 @@ func TestMaxGrantPerUser(t *testing.T) {
 			IsSponsored:     true,
 			MaxGrantPerUser: pbCoins,
 		}
-		keeper.SetSponsor(ctx, sponsor)
+		err := keeper.SetSponsor(ctx, sponsor)
+		assert.NoError(t, err)
 
-		maxGrant := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		maxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
+		assert.NoError(t, err)
 
 		// Sort both for consistent comparison since coin order might differ
 		customLimit = customLimit.Sort()
 		maxGrant = maxGrant.Sort()
 		assert.Equal(t, customLimit, maxGrant)
+	})
+
+	t.Run("normalization merges duplicate peaka denominations", func(t *testing.T) {
+		// Create duplicate peaka entries that should be merged
+		pbCoins := []*sdk.Coin{
+			{Denom: "peaka", Amount: sdk.NewInt(100000)},
+			{Denom: "peaka", Amount: sdk.NewInt(200000)},
+			{Denom: "peaka", Amount: sdk.NewInt(300000)},
+		}
+
+		sponsor := types.ContractSponsor{
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+		err := keeper.SetSponsor(ctx, sponsor)
+		assert.NoError(t, err)
+
+		// Retrieve and verify normalization
+		retrievedSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		assert.True(t, found)
+		
+		// Should have only one peaka entry with merged amount
+		assert.Len(t, retrievedSponsor.MaxGrantPerUser, 1)
+		assert.Equal(t, "peaka", retrievedSponsor.MaxGrantPerUser[0].Denom)
+		assert.Equal(t, sdk.NewInt(600000), retrievedSponsor.MaxGrantPerUser[0].Amount) // 100000 + 200000 + 300000
 	})
 }
 
@@ -446,7 +471,7 @@ func TestUserGrantUsage(t *testing.T) {
 	})
 
 	t.Run("update user grant usage", func(t *testing.T) {
-		consumedAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		consumedAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
 
@@ -465,11 +490,11 @@ func TestUserGrantUsage(t *testing.T) {
 
 	t.Run("accumulate user grant usage", func(t *testing.T) {
 		// Add more usage
-		additionalAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		additionalAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, additionalAmount)
 
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
-		expectedTotal := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000))) // 100000 + 50000
+		expectedTotal := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000))) // 100000 + 50000
 		// Convert []*sdk.Coin to sdk.Coins for comparison
 		actualUsed := sdk.Coins{}
 		for _, coin := range usage.TotalGrantUsed {
@@ -487,8 +512,8 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	userAddr := "dora1user123"
 	contractAddr := "dora1contract456"
 
-	// Set up sponsor with custom limit
-	customLimit := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+	// Set up sponsor with custom limit (using peaka denomination)
+	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
 	pbCoins := make([]*sdk.Coin, len(customLimit))
 	for i, coin := range customLimit {
 		pbCoins[i] = &coin
@@ -502,19 +527,19 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	keeper.SetSponsor(ctx, sponsor)
 
 	t.Run("within limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exactly at limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exceeds limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(300000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(300000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -522,11 +547,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 
 	t.Run("exceeds limit after previous usage", func(t *testing.T) {
 		// Simulate previous usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, previousUsage)
 
 		// Try to use more than remaining limit
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -537,11 +562,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 		newUserAddr := "dora1user789"
 
 		// Simulate some usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		keeper.UpdateUserGrantUsage(ctx, newUserAddr, contractAddr, previousUsage)
 
 		// Request amount within remaining limit (200000 - 100000 = 100000 remaining)
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
 		err := keeper.CheckUserGrantLimit(ctx, newUserAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})

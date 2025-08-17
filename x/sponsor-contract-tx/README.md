@@ -46,13 +46,18 @@ A dedicated sponsorship module that provides:
 ```protobuf
 message ContractSponsor {
   string contract_address = 1;
-  string sponsor_address = 2;
+  string creator_address = 2;    // Address of the sponsor registration creator (admin)
   bool is_sponsored = 3;
   int64 created_at = 4;
   int64 updated_at = 5;
   repeated cosmos.base.v1beta1.Coin max_grant_per_user = 6;
 }
 ```
+
+**Important: Funding Mechanism**
+- `creator_address`: Address of the creator who sets contract sponsorship status (used only for permission verification)
+- **Actual funding account**: The contract address itself bears all sponsorship fees
+- **Workflow**: Admin sets up sponsorship → Transfer funds to contract address → Contract account automatically pays user fees
 
 #### 2. User Grant Tracking (`UserGrantUsage`)
 
@@ -249,7 +254,8 @@ dorad tx sponsor delete-sponsor [contract-address] \
 #### Transfer Funds to Contract (for sponsorship)
 
 ```bash
-# Contract needs funds to sponsor user transactions
+# IMPORTANT: Contract address itself pays for sponsorship fees
+# Transfer funds TO the contract address, not the creator/admin address
 dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka \
   --from admin \
   --chain-id [chain-id] \
@@ -257,6 +263,11 @@ dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka 
   --gas-adjustment 1.5 \
   --gas-prices 100000000000peaka
 ```
+
+**Key Points**:
+- Funds must be transferred to the **contract address**, not the creator address
+- Contract address directly serves as the funding account for all sponsorship fees
+- `creator_address` is only used for permission verification and does not participate in actual funding
 
 ## Query Commands
 
@@ -274,13 +285,14 @@ dorad query sponsor status [contract-address] \
 # Example output:
 # sponsor:
 #   contract_address: dora1contract...
-#   sponsor_address: dora1admin...
+#   creator_address: dora1admin...    # Admin who registered sponsorship
 #   is_sponsored: true
 #   created_at: "1640995200"
 #   updated_at: "1640995200"
 #   max_grant_per_user:
 #   - denom: peaka
 #     amount: "1000000000000000000"
+# Note: Contract address (dora1contract...) is the actual funding source
 ```
 
 #### 2. List All Sponsors
