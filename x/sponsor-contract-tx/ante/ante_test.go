@@ -2007,6 +2007,109 @@ func (suite *AnteTestSuite) TestEventEmissionCompleteness() {
 	suite.T().Logf("Emitted event types: %v", eventTypes)
 }
 
+// TestEventEmissionOnlyInDeliverTx tests that user_self_pay and sponsor_insufficient_funds events
+// are only emitted in DeliverTx mode, not in CheckTx mode
+func (suite *AnteTestSuite) TestEventEmissionOnlyInDeliverTx() {
+	// Test Case 1: user_self_pay event should only be emitted in DeliverTx
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Give user sufficient balance to trigger self-pay logic
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Test in CheckTx mode - should NOT emit user_self_pay event
+	checkTxCtx := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+	_, err = suite.anteDecorator.AnteHandle(checkTxCtx, tx, false, next)
+	suite.Require().NoError(err)
+
+	// Verify no user_self_pay event in CheckTx
+	checkTxEvents := checkTxCtx.EventManager().Events()
+	selfPayEventFound := false
+	for _, event := range checkTxEvents {
+		if event.Type == types.EventTypeUserSelfPay {
+			selfPayEventFound = true
+			break
+		}
+	}
+	suite.Require().False(selfPayEventFound, "user_self_pay event should NOT be emitted in CheckTx mode")
+
+	// Test in DeliverTx mode - should emit user_self_pay event
+	deliverTxCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	_, err = suite.anteDecorator.AnteHandle(deliverTxCtx, tx, false, next)
+	suite.Require().NoError(err)
+
+	// Verify user_self_pay event in DeliverTx
+	deliverTxEvents := deliverTxCtx.EventManager().Events()
+	selfPayEventFound = false
+	for _, event := range deliverTxEvents {
+		if event.Type == types.EventTypeUserSelfPay {
+			selfPayEventFound = true
+			break
+		}
+	}
+	suite.Require().True(selfPayEventFound, "user_self_pay event should be emitted in DeliverTx mode")
+
+	// Test Case 2: sponsor_insufficient_funds event should only be emitted in DeliverTx
+	// Remove user balance to trigger sponsor insufficient funds logic
+	err = suite.bankKeeper.SendCoinsFromAccountToModule(suite.ctx, suite.user, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	
+	// Create insufficient sponsor balance scenario (don't fund the sponsor)
+	largerFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+	txInsufficientSponsor := suite.createContractExecuteTx(suite.contract, suite.user, largerFee)
+
+	// Test in CheckTx mode - should NOT emit sponsor_insufficient_funds event
+	checkTxCtx2 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+	_, err = suite.anteDecorator.AnteHandle(checkTxCtx2, txInsufficientSponsor, false, next)
+	suite.Require().Error(err) // Should still return error
+
+	// Verify no sponsor_insufficient_funds event in CheckTx
+	checkTxEvents2 := checkTxCtx2.EventManager().Events()
+	sponsorInsufficientEventFound := false
+	for _, event := range checkTxEvents2 {
+		if event.Type == types.EventTypeSponsorInsufficient {
+			sponsorInsufficientEventFound = true
+			break
+		}
+	}
+	suite.Require().False(sponsorInsufficientEventFound, "sponsor_insufficient_funds event should NOT be emitted in CheckTx mode")
+
+	// Test in DeliverTx mode - should emit sponsor_insufficient_funds event
+	deliverTxCtx2 := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	_, err = suite.anteDecorator.AnteHandle(deliverTxCtx2, txInsufficientSponsor, false, next)
+	suite.Require().Error(err) // Should still return error
+
+	// Verify sponsor_insufficient_funds event in DeliverTx
+	deliverTxEvents2 := deliverTxCtx2.EventManager().Events()
+	sponsorInsufficientEventFound = false
+	for _, event := range deliverTxEvents2 {
+		if event.Type == types.EventTypeSponsorInsufficient {
+			sponsorInsufficientEventFound = true
+			break
+		}
+	}
+	suite.Require().True(sponsorInsufficientEventFound, "sponsor_insufficient_funds event should be emitted in DeliverTx mode")
+}
+
 // TestContractMessageDataIntegrity tests that contract message data is preserved correctly
 // This ensures message data isn't corrupted during policy checking
 func (suite *AnteTestSuite) TestContractMessageDataIntegrity() {

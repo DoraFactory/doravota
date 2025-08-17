@@ -195,15 +195,17 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 						"required_fee", fee.String(),
 					)
 
-					// Emit user self pay event
-					ctx.EventManager().EmitEvent(
-						sdk.NewEvent(
-							types.EventTypeUserSelfPay,
-							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-							sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-							sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-						),
-					)
+					// Emit user self pay event only in DeliverTx mode
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeUserSelfPay,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+							),
+						)
+					}
 
 					// Don't sponsor - let standard fee processing handle this
 					return next(ctx, tx, simulate)
@@ -224,15 +226,17 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				// Check if sponsor has sufficient balance
 				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
 				if !sponsorBalance.IsAllGTE(fee) {
-					// Emit sponsor insufficient funds event
-					ctx.EventManager().EmitEvent(
-						sdk.NewEvent(
-							types.EventTypeSponsorInsufficient,
-							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-							sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-							sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-						),
-					)
+					// Emit sponsor insufficient funds event only in DeliverTx mode
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeSponsorInsufficient,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+							),
+						)
+					}
 					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
 				}
 
