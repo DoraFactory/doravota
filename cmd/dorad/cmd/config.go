@@ -48,7 +48,7 @@ func initSDKConfig() {
 const (
 	name = "doravota"
 	app_name = "dorad"
-    Version  = "0.4.3"
+    Version  = "v1.0.0"
 )
 
 func setVersionInfo() {

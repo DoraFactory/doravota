@@ -15,6 +15,7 @@ import (
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
+	v1_0_0 "github.com/DoraFactory/doravota/app/upgrades/v1_0_0"
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -1192,6 +1193,24 @@ func (app *App) setupUpgradeHandlers() {
 		},
 	)
 
+	// v1.0.0 upgrade handler
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v1_0_0.UpgradeName,
+		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			logger := ctx.Logger().With("upgrade", v1_0_0.UpgradeName)
+			logger.Info("Upgrading to v1.0.0(Add contract sponsor module)")
+
+			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+			if err != nil {
+				logger.Error("failed to run migrations", "error", err)
+				return nil, err
+			}
+
+			logger.Info("Upgrade completed successfully")
+			return vm, nil
+		},
+	)
+
 	// setup store loader
 	// load the upgrade info from the disk
 	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
@@ -1217,6 +1236,10 @@ func (app *App) setupUpgradeHandlers() {
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_4_3.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
+	case v1_0_0.UpgradeName:
+		storeUpgrades = &storetypes.StoreUpgrades{
+			Added: []string{sponsortypes.ModuleName},
+		}
 	}
 
 	if storeUpgrades != nil {
