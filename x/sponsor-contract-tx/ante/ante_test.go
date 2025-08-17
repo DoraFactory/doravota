@@ -154,6 +154,7 @@ func (suite *AnteTestSuite) SetupTest() {
 		codec,
 		sponsorStoreKey,
 		suite.wasmKeeper,
+		"cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn", // mock authority for tests
 	)
 
 	// Create ante decorator

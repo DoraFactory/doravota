@@ -39,7 +39,7 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 	}
 
 	// Create keeper
-	k := keeper.NewKeeper(cdc, storeKey, nil) // Mock wasm keeper not needed for genesis tests
+	k := keeper.NewKeeper(cdc, storeKey, nil, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn") // Mock wasm keeper not needed for genesis tests
 
 	// Create context
 	ctx := sdk.NewContext(

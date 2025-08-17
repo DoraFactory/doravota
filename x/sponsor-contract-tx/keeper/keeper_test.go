@@ -67,7 +67,7 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
 
 	// Create keeper with mock wasm keeper
 	mockWasmKeeper := NewMockWasmKeeper()
-	keeper := NewKeeper(cdc, storeKey, mockWasmKeeper)
+	keeper := NewKeeper(cdc, storeKey, mockWasmKeeper, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
 
 	// Create context
 	ctx := sdk.NewContext(

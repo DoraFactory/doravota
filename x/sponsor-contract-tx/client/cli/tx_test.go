@@ -24,9 +24,9 @@ type TxTestSuite struct {
 func (s *TxTestSuite) SetupSuite() {
 	s.T().Log("setting up tx test suite")
 
-	// Set up test data
-	s.contractAddr = "dora1contractexampleaddr000000000000000000"
-	s.userAddr = "dora1userexampleaddr0000000000000000000000"
+	// Set up test data with valid bech32 addresses
+	s.contractAddr = sdk.AccAddress([]byte("test_contract_addr_12")).String()
+	s.userAddr = sdk.AccAddress([]byte("test_user_address_123")).String()
 }
 
 // TestSetSponsorCmd tests the set-sponsor command structure and validation
@@ -103,7 +103,7 @@ func (s *TxTestSuite) TestSetSponsorCmd() {
 			} else {
 				// For valid cases, command should exist and be properly configured
 				s.Require().NotNil(cmd, "Command should exist")
-				s.Require().Equal("set-sponsor", cmd.Use[:10], "Command name should match")
+				s.Require().Contains(cmd.Use, "set-sponsor", "Command name should match")
 			}
 			
 			s.T().Logf("Command test '%s' completed with args: %v", tc.name, tc.args)
@@ -310,8 +310,8 @@ func (s *TxTestSuite) TestCommandHelp() {
 			cmd := cmdTest.cmd()
 			s.Require().Contains(cmd.Short, cmdTest.expectedTxt)
 			
-			// Test command structure (help text is built-in to cobra)
-			s.Require().NotNil(cmd.Help(), "Command should have help text")
+			// Test command structure (help text should be in Long field)
+			s.Require().NotEmpty(cmd.Long, "Command should have long help text")
 		})
 	}
 }
