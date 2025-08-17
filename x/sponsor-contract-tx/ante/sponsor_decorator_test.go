@@ -47,8 +47,8 @@ type SponsorDecoratorTestSuite struct {
 
 // MockTxFeeChecker implements ante.TxFeeChecker for testing
 func mockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
-	// Return minimum fee of 100stake for testing
-	minFee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(100)))
+	// Return minimum fee of 100peaka for testing
+	minFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
 	priority := int64(1)
 	return minFee, priority, nil
 }
@@ -163,7 +163,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 // TestStandardDecoratorFallback tests that transactions without sponsor context use standard decorator
 // This ensures non-sponsored transactions are processed normally
 func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(100))) // Use minimum fee
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))) // Use minimum fee
 	
 	// Give user enough balance to pay fee
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
@@ -191,7 +191,7 @@ func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
 // TestSponsorContextDetection tests detection of sponsor payment info in context
 // This ensures the decorator correctly identifies sponsored transactions
 func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Fund the sponsor account
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
@@ -225,7 +225,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 // TestFeegrantPriorityOverSponsor tests that feegrant takes priority over sponsor payment
 // This ensures proper fee payment hierarchy: feegrant > sponsor > standard
 func (suite *SponsorDecoratorTestSuite) TestFeegrantPriorityOverSponsor() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Create sponsor payment info
 	sponsorPayment := SponsorPaymentInfo{
@@ -261,7 +261,7 @@ func (suite *SponsorDecoratorTestSuite) TestFeegrantPriorityOverSponsor() {
 // This ensures sponsor fees respect min-gas-price settings
 func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 	// Test case 1: Fee meets minimum requirement (should succeed)
-	validFee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(200))) // Above 100stake minimum
+	validFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200))) // Above 100peaka minimum
 	
 	// Fund the sponsor account
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, validFee)
@@ -287,7 +287,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 	suite.Require().NoError(err)
 
 	// Test case 2: Fee below minimum requirement (should fail)
-	invalidFee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(50))) // Below 100stake minimum
+	invalidFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50))) // Below 100peaka minimum
 	
 	sponsorPaymentInvalid := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
@@ -307,18 +307,18 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 // TestSponsorFeeDeduction tests actual fee deduction from sponsor account
 // This ensures sponsor account balance is properly debited
 func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Fund the sponsor account with more than fee amount
-	initialBalance := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(5000)))
+	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, initialBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, initialBalance)
 	suite.Require().NoError(err)
 
 	// Record initial balances
-	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "stake")
-	initialFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "stake")
+	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	initialFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
@@ -339,8 +339,8 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	suite.Require().NoError(err)
 
 	// Verify balances changed correctly
-	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "stake")
-	finalFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "stake")
+	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	finalFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	// Sponsor should have less balance
 	expectedSponsorBalance := initialSponsorBalance.Sub(fee[0])
@@ -354,17 +354,17 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 // TestSimulationModeNoDeduction tests that simulation mode doesn't deduct fees
 // This ensures simulation doesn't affect actual balances
 func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Fund the sponsor account
-	initialBalance := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(5000)))
+	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, initialBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, initialBalance)
 	suite.Require().NoError(err)
 
 	// Record initial balance
-	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "stake")
+	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
@@ -385,17 +385,17 @@ func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
 	suite.Require().NoError(err)
 
 	// Verify balance unchanged in simulation
-	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "stake")
+	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
 	suite.Require().True(finalSponsorBalance.IsEqual(initialSponsorBalance))
 }
 
 // TestCheckTxVsDeliverTxBehavior tests different behavior between CheckTx and DeliverTx
 // This ensures usage updates and events only happen in DeliverTx
 func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Set up contract sponsorship
-	maxGrant := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
 		CreatorAddress:  suite.admin.String(),
@@ -468,7 +468,7 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 // TestInsufficientSponsorBalance tests handling of insufficient sponsor balance
 // This ensures proper error handling when sponsor cannot pay fees
 func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Don't fund the sponsor account (insufficient balance)
 	sponsorPayment := SponsorPaymentInfo{
@@ -494,10 +494,10 @@ func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 // TestUserGrantUsageUpdate tests that user grant usage is properly updated in DeliverTx
 // This ensures usage tracking works correctly
 func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
-	fee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	
 	// Set up contract sponsorship
-	maxGrant := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
 		CreatorAddress:  suite.admin.String(),

@@ -471,7 +471,7 @@ func TestUserGrantUsage(t *testing.T) {
 	})
 
 	t.Run("update user grant usage", func(t *testing.T) {
-		consumedAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		consumedAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
 
@@ -490,11 +490,11 @@ func TestUserGrantUsage(t *testing.T) {
 
 	t.Run("accumulate user grant usage", func(t *testing.T) {
 		// Add more usage
-		additionalAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		additionalAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, additionalAmount)
 
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
-		expectedTotal := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000))) // 100000 + 50000
+		expectedTotal := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000))) // 100000 + 50000
 		// Convert []*sdk.Coin to sdk.Coins for comparison
 		actualUsed := sdk.Coins{}
 		for _, coin := range usage.TotalGrantUsed {
@@ -512,8 +512,8 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	userAddr := "dora1user123"
 	contractAddr := "dora1contract456"
 
-	// Set up sponsor with custom limit
-	customLimit := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+	// Set up sponsor with custom limit (using peaka denomination)
+	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
 	pbCoins := make([]*sdk.Coin, len(customLimit))
 	for i, coin := range customLimit {
 		pbCoins[i] = &coin
@@ -527,19 +527,19 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	keeper.SetSponsor(ctx, sponsor)
 
 	t.Run("within limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exactly at limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(200000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exceeds limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(300000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(300000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -547,11 +547,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 
 	t.Run("exceeds limit after previous usage", func(t *testing.T) {
 		// Simulate previous usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(150000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, previousUsage)
 
 		// Try to use more than remaining limit
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -562,11 +562,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 		newUserAddr := "dora1user789"
 
 		// Simulate some usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(100000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
 		keeper.UpdateUserGrantUsage(ctx, newUserAddr, contractAddr, previousUsage)
 
 		// Request amount within remaining limit (200000 - 100000 = 100000 remaining)
-		requestAmount := sdk.NewCoins(sdk.NewCoin("dora", sdk.NewInt(50000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
 		err := keeper.CheckUserGrantLimit(ctx, newUserAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})

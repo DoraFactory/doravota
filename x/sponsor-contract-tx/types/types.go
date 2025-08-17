@@ -401,3 +401,47 @@ func (p Params) Validate() error {
 
 	return nil
 }
+
+// === Message implementations for MsgUpdateParams ===
+
+// Route returns the message route
+func (msg MsgUpdateParams) Route() string {
+	return RouterKey
+}
+
+// Type returns the message type
+func (msg MsgUpdateParams) Type() string {
+	return "update_params"
+}
+
+// GetSigners returns the signers
+func (msg MsgUpdateParams) GetSigners() []sdk.AccAddress {
+	signer, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		panic(err)
+	}
+	return []sdk.AccAddress{signer}
+}
+
+// GetSignBytes returns the sign bytes
+func (msg MsgUpdateParams) GetSignBytes() []byte {
+	bz := ModuleCdc.MustMarshalJSON(&msg)
+	return sdk.MustSortJSON(bz)
+}
+
+// ValidateBasic performs basic validation
+func (msg MsgUpdateParams) ValidateBasic() error {
+	// Validate authority address
+	_, err := sdk.AccAddressFromBech32(msg.Authority)
+	if err != nil {
+		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid authority address: %s", msg.Authority)
+	}
+
+	// Validate parameters
+	return msg.Params.Validate()
+}
+
+// TypeURL returns the TypeURL for this message
+func (msg *MsgUpdateParams) XXX_MessageName() string {
+	return "doravota.sponsor.v1.MsgUpdateParams"
+}
