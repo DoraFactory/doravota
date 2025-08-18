@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [v1.0.0] - 2025-08-18
+This is a major update version.
+### Update
+Add a contract sponsor module to support CosmWasm contracts in sponsoring their contract transactions. For detailed module functionality implementation, please refer to README of `x/sponsor-contract-tx`.
+
 ## [0.4.3] - 2025-05-22
 This is a patch to the 0.4.0 release line.
 ### Update
