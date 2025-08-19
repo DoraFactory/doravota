@@ -1,6 +1,6 @@
 swagger: '2.0'
 info:
-  title: HTTP API Console
+  title: Dora Vota API Reference
   name: ''
   description: ''
   version: v1.0.0
