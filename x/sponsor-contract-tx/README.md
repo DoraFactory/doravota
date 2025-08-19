@@ -354,12 +354,17 @@ Your contract must implement the following query method:
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(CheckPolicyResponse)]
-    CheckPolicy { address: String },
+    CheckPolicy { 
+        sender: String,
+        msg_type: String,
+        msg_data: String,
+    },
 }
 
 #[cw_serde]
 pub struct CheckPolicyResponse {
     pub eligible: bool,
+    pub reason: Option<String>,
 }
 
 pub fn query_check_policy(
@@ -373,8 +378,8 @@ pub fn query_check_policy(
     // - Check usage patterns(like period limit)
     // - Validate business rules(like zero knowledge proof verfication)
 
-    let eligible = check_user_eligibility(&deps, &address)?;
-    Ok(CheckPolicyResponse { eligible })
+    let (eligible, reason) = check_user_eligibility(&deps, &address)?;
+    Ok(CheckPolicyResponse { eligible, reason })
 }
 ```
 
