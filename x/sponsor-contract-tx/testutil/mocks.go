@@ -1,6 +1,8 @@
 package testutil
 
 import (
+	"fmt"
+	
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -33,14 +35,24 @@ func (m *MockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress
 		ctx.GasMeter().ConsumeGas(m.gasUsed, "mock query gas")
 	}
 
-	// Return configured query result or default
+	// Check if this should return an error
 	if result, exists := m.queryResults[contractAddr.String()]; exists {
+		if len(result) > 9 && string(result[:9]) == "__ERROR__" {
+			return nil, fmt.Errorf("%s", string(result[9:]))
+		}
 		return result, nil
 	}
 	
 	// Default response: eligible = true
 	return []byte(`{"eligible": true}`), nil
 }
+
+// SetQueryError sets a query to return an error (simulating contract without check_policy method)
+func (m *MockWasmKeeper) SetQueryError(contractAddr sdk.AccAddress, errMsg string) {
+	// Store a special marker that indicates this should return an error
+	m.queryResults[contractAddr.String()] = []byte("__ERROR__:" + errMsg)
+}
+
 
 // SetContractInfo sets contract info for testing
 func (m *MockWasmKeeper) SetContractInfo(contractAddr sdk.AccAddress, admin string) {

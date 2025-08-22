@@ -145,25 +145,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if err == nil {
 			ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
 			if !eligible {
-				// User is not eligible according to contract policy
-				return ctx, sdkerrors.Wrapf(
-					sdkerrors.ErrUnauthorized,
-					"user %s is not eligible for sponsored transaction according to contract %s policy",
-					userAddr.String(),
-					contractAddr,
-				)
+				// User is not eligible according to contract policy, check if they can afford to pay themselves
+				return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "not_eligible_for_sponsorship")
 			}
 		} else {
-			// Policy check failed, log the failure but don't consume gas from main context
-			// This prevents malicious contracts from draining gas through failed policy checks
-			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"Contract policy check failed, rejecting sponsored transaction",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-				"error", err.Error(),
-				"gas_wasted", gasUsed,
-			)
-			return ctx, err // Return the already wrapped error from recover
+			// Policy check failed, check if user can afford to pay themselves
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy_check_failed")
 		}
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -299,6 +286,72 @@ func validateSponsoredTransaction(tx sdk.Tx) (string, error) {
 	}
 
 	return sponsoredContract, nil
+}
+
+// handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves
+// It checks user balance and provides clear error messages if they can't afford the fees
+func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
+	ctx sdk.Context,
+	tx sdk.Tx,
+	simulate bool,
+	next sdk.AnteHandler,
+	contractAddr string,
+	userAddr sdk.AccAddress,
+	reason string,
+) (newCtx sdk.Context, err error) {
+	// Get transaction fee to check if user can afford it
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		// If we can't get fee info, just proceed with standard processing
+		return next(ctx, tx, simulate)
+	}
+
+	fee := feeTx.GetFee()
+	if fee.IsZero() {
+		// Zero fee transaction, just proceed
+		return next(ctx, tx, simulate)
+	}
+
+	// Check if user has sufficient balance to pay the fee themselves
+	userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+	if !userBalance.IsAllGTE(fee) {
+		// User cannot afford the fee and sponsorship was denied
+		// Return a clear error message explaining the situation
+		return ctx, sdkerrors.Wrapf(
+			sdkerrors.ErrInsufficientFunds,
+			"sponsorship denied for contract %s (reason: %s) and user %s has insufficient balance to pay fees. Required: %s, Available: %s. User needs either sponsorship approval or sufficient balance to pay transaction fees",
+			contractAddr,
+			reason,
+			userAddr.String(),
+			fee.String(),
+			userBalance.String(),
+		)
+	}
+
+	// User has sufficient balance, proceed with fallback to standard fee processing
+	ctx.Logger().With("module", "sponsor-contract-tx").Info(
+		"sponsorship denied but user has sufficient balance, falling back to standard fee processing",
+		"contract", contractAddr,
+		"user", userAddr.String(),
+		"reason", reason,
+		"user_balance", userBalance.String(),
+		"required_fee", fee.String(),
+	)
+
+	// Emit event to notify that sponsorship was attempted but user will pay themselves
+	if !ctx.IsCheckTx() {
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeUserSelfPay,
+				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+				sdk.NewAttribute(types.AttributeKeyReason, reason),
+				sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+			),
+		)
+	}
+
+	return next(ctx, tx, simulate)
 }
 
 // getUserAddressForSponsorship determines the appropriate user address for sponsorship

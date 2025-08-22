@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -71,6 +72,10 @@ func (m *MockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.Ac
 
 func (m *MockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
 	if result, exists := m.queryResults[contractAddr.String()]; exists {
+		// Check if this should return an error
+		if len(result) > 9 && string(result[:9]) == "__ERROR__" {
+			return nil, fmt.Errorf("%s", string(result[9:]))
+		}
 		return result, nil
 	}
 	return []byte(`{"eligible": true}`), nil
@@ -84,6 +89,12 @@ func (m *MockWasmKeeper) SetContractInfo(contractAddr sdk.AccAddress, admin stri
 
 func (m *MockWasmKeeper) SetQueryResult(contractAddr sdk.AccAddress, result []byte) {
 	m.queryResults[contractAddr.String()] = result
+}
+
+// SetQueryError sets a query to return an error (simulating contract without check_policy method)
+func (m *MockWasmKeeper) SetQueryError(contractAddr sdk.AccAddress, errMsg string) {
+	// Store a special marker that indicates this should return an error
+	m.queryResults[contractAddr.String()] = []byte("__ERROR__:" + errMsg)
 }
 
 func (suite *AnteTestSuite) SetupTest() {
@@ -312,6 +323,13 @@ func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
 	suite.Require().NoError(err)
 
+	// Fund user with enough balance to pay fees themselves when sponsorship fails
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
 	// Create contract execution transaction
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
 
@@ -320,12 +338,135 @@ func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 		return ctx, nil
 	}
 
-	// Execute ante handler - should fail
+	// Execute ante handler - should fallback to standard processing
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
-	// Verify error
+	// Should succeed with fallback
+	suite.Require().NoError(err)
+}
+
+// Test case: User ineligible for sponsorship and has insufficient balance
+func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "user not whitelisted"}`))
+	
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Do NOT fund user - leave them with insufficient balance
+	// Create contract execution transaction
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	// Mock next handler
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should return clear error message
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	// Should get detailed error explaining the situation
 	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "not eligible")
+	suite.Require().Contains(err.Error(), "sponsorship denied")
+	suite.Require().Contains(err.Error(), "insufficient balance")
+	suite.Require().Contains(err.Error(), "Required: 1000peaka")
+	suite.Require().Contains(err.Error(), "Available:")
+	suite.Require().Contains(err.Error(), "User needs either sponsorship approval or sufficient balance")
+	
+	// Log the actual error for verification
+	suite.T().Logf("Detailed error message: %s", err.Error())
+}
+
+// Test case: Contract without check_policy method and user has insufficient balance
+func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Simulate contract without check_policy method
+	suite.wasmKeeper.SetQueryError(suite.contract, "contract: query wasm contract failed: unknown variant `check_policy`")
+
+	// Do NOT fund user - leave them with insufficient balance
+	// Create contract execution transaction
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	// Mock next handler
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should return clear error message
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	// Should get detailed error explaining the situation
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "sponsorship denied")
+	suite.Require().Contains(err.Error(), "insufficient balance")
+	suite.Require().Contains(err.Error(), "Required: 1000peaka")
+	suite.Require().Contains(err.Error(), "Available:")
+	suite.Require().Contains(err.Error(), "User needs either sponsorship approval or sufficient balance")
+	
+	// Log the actual error for verification
+	suite.T().Logf("Contract without check_policy error: %s", err.Error())
+}
+
+// Test case: Contract without check_policy method but user has sufficient balance
+func (suite *AnteTestSuite) TestContractWithoutCheckPolicyButUserCanAfford() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Fund user with enough balance to pay fees themselves
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
+	// Simulate contract without check_policy method
+	suite.wasmKeeper.SetQueryError(suite.contract, "contract: query wasm contract failed: unknown variant `check_policy`")
+
+	// Create contract execution transaction
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	// Mock next handler
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should succeed with fallback to user payment
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	// Should succeed - user pays with their own funds
+	suite.Require().NoError(err)
+	
+	suite.T().Logf("Contract without check_policy but user can afford - transaction succeeded")
 }
 
 // Test case: User has sufficient balance, should pay own fees
@@ -661,6 +802,13 @@ func (suite *AnteTestSuite) TestContractPolicyErrorHandling() {
 	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
 	suite.Require().NoError(err)
 
+	// Fund user with enough balance to pay fees themselves when sponsorship fails
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
 	// Test case 1: Malformed JSON response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"invalid_json": malformed}`))
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
@@ -669,19 +817,16 @@ func (suite *AnteTestSuite) TestContractPolicyErrorHandling() {
 		return ctx, nil
 	}
 
-	// Should fail due to malformed JSON
+	// Should fallback to standard fee processing due to malformed JSON
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "unmarshal")
+	suite.Require().NoError(err) // Now succeeds with fallback
 
 	// Test case 2: Contract returning error response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "insufficient privilege"}`))
 	
-	// Should fail due to ineligible response
+	// Should fallback to standard fee processing due to ineligible response
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "not eligible")
-	suite.Require().Contains(err.Error(), "insufficient privilege")
+	suite.Require().NoError(err) // Now succeeds with fallback
 }
 
 // TestMaxGrantValidationWhenSponsorshipDisabled tests conditional max_grant_per_user validation
@@ -816,6 +961,13 @@ func (suite *AnteTestSuite) TestPolicyBypassPrevention() {
 	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
 	suite.Require().NoError(err)
 
+	// Fund user with enough balance to pay fees themselves when sponsorship fails
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
 	// Test case 1: Contract returning inconsistent eligible status
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": "maybe"}`))
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
@@ -824,9 +976,9 @@ func (suite *AnteTestSuite) TestPolicyBypassPrevention() {
 		return ctx, nil
 	}
 
-	// Should fail due to malformed eligible field
+	// Should fallback to standard fee processing due to malformed eligible field
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
-	suite.Require().Error(err)
+	suite.Require().NoError(err) // Now succeeds with fallback
 }
 
 // TestZeroFeeSkipsSponsor tests that zero-fee transactions skip sponsor logic
@@ -1261,6 +1413,13 @@ func (suite *AnteTestSuite) TestPartiallyEligibleMessagesRejected() {
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
 	suite.Require().NoError(err)
 
+	// Fund user with enough balance to pay fees themselves when sponsorship fails
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
 	// Create transaction with multiple messages
 	var msgs []sdk.Msg
 	msg1 := &wasmtypes.MsgExecuteContract{
@@ -1288,10 +1447,9 @@ func (suite *AnteTestSuite) TestPartiallyEligibleMessagesRejected() {
 		return ctx, nil
 	}
 
-	// Execute ante handler - should reject due to ineligible message
+	// Execute ante handler - should fallback to standard processing due to ineligible message
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, multiMsgTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "not eligible")
+	suite.Require().NoError(err) // Now succeeds with fallback
 }
 
 // TestEmptyContractMessageHandling tests handling of empty or malformed contract messages
@@ -1315,6 +1473,13 @@ func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
+	suite.Require().NoError(err)
+
+	// Fund user with enough balance to pay fees themselves when sponsorship fails
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
 	suite.Require().NoError(err)
 
 	// Test case 1: Empty message
@@ -1349,10 +1514,9 @@ func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 	
 	malformedTx := suite.createTx([]sdk.Msg{malformedMsg}, []sdk.AccAddress{suite.user}, fee, nil)
 
-	// This should fail due to malformed JSON
+	// This should fallback to standard processing due to malformed JSON
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, malformedTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "parse")
+	suite.Require().NoError(err) // Now succeeds with fallback
 }
 
 // TestConcurrentUserAccessControl tests that multiple users can access sponsored contract correctly
