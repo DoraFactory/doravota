@@ -59,9 +59,10 @@ func (k Keeper) GetAuthority() string {
 	return k.authority
 }
 
+
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
 // It checks ALL contract execution messages for the specified contract to prevent hitchhiking attacks
-func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (bool, error) {
+func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*types.CheckContractPolicyResult, error) {
 	// NOTE: JSON is required for CosmWasm smart contract communication
 	// CosmWasm contracts expect JSON queries and return JSON responses
 	// This cannot be changed to protobuf without breaking contract compatibility
@@ -69,16 +70,16 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 	// Extract all contract messages for security - prevent hitchhiking attacks
 	contractMessages, err := k.extractAllContractMessages(tx, contractAddr)
 	if err != nil {
-		return false, sdkerrors.Wrap(err, "failed to extract contract messages")
+		return nil, sdkerrors.Wrap(err, "failed to extract contract messages")
 	}
 
 	if len(contractMessages) == 0 {
-		return false, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("no contract execution messages found for contract %s", contractAddr))
+		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("no contract execution messages found for contract %s", contractAddr))
 	}
 
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
-		return false, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
 	}
 
 	// Check EVERY contract message for permission - critical for security
@@ -94,12 +95,12 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 
 		queryBytes, err := json.Marshal(queryMsg)
 		if err != nil {
-			return false, sdkerrors.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
+			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
 		}
 
 		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
 		if err != nil {
-			return false, sdkerrors.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
+			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
 		}
 
 		// parse query result
@@ -108,10 +109,10 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 			Reason   *string `json:"reason"`
 		}
 		if err := json.Unmarshal(result, &response); err != nil {
-			return false, sdkerrors.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
+			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
 		}
 
-		// If ANY message is not eligible, reject the entire transaction
+		// If ANY message is not eligible, return with detailed reason
 		if !response.Eligible {
 			reason := "no reason provided"
 			if response.Reason != nil {
@@ -124,7 +125,12 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 				"message_type", contractMsg.MsgType,
 				"reason", reason,
 			)
-			return false, sdkerrors.Wrap(types.ErrUnauthorized, fmt.Sprintf("message %d (%s) not eligible: %s", i, contractMsg.MsgType, reason))
+			// Return detailed reason in result structure
+			detailedReason := fmt.Sprintf("message %d (%s) not eligible: %s", i, contractMsg.MsgType, reason)
+			return &types.CheckContractPolicyResult{
+				Eligible: false,
+				Reason:   detailedReason,
+			}, nil
 		}
 
 		k.Logger(ctx).Debug("message eligible for sponsorship",
@@ -136,7 +142,10 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 	}
 
 	// All messages are eligible
-	return true, nil
+	return &types.CheckContractPolicyResult{
+		Eligible: true,
+		Reason:   "",
+	}, nil
 }
 
 // extractAllContractMessages extracts ALL contract execution messages for the specified contract

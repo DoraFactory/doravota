@@ -33,11 +33,17 @@ type WasmKeeperInterface interface {
 	QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error)
 }
 
+// CheckContractPolicyResult holds the result of a contract policy check
+type CheckContractPolicyResult struct {
+	Eligible bool
+	Reason   string
+}
+
 // SponsorKeeperInterface defines the expected interface for the SponsorKeeper
 type SponsorKeeperInterface interface {
 	GetParams(ctx sdk.Context) Params
 	IsSponsored(ctx sdk.Context, contractAddr string) bool
-	CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (bool, error)
+	CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*CheckContractPolicyResult, error)
 	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
 	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
 	Logger(ctx sdk.Context) log.Logger

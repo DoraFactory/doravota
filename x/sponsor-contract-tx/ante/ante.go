@@ -117,12 +117,14 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		limitedGasMeter := sdk.NewGasMeter(gasLimit)
 		limitedCtx := ctx.WithGasMeter(limitedGasMeter)
 
-		eligible, err := func() (bool, error) {
+		var policyResult *types.CheckContractPolicyResult
+		var policyErr error
+		policyErr = func() error {
 			defer func() {
 				if r := recover(); r != nil {
 					// Handle gas limit exceeded panic
 					if _, ok := r.(sdk.ErrorOutOfGas); ok {
-						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
+						policyErr = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
 							"contract policy check exceeded gas limit: %d, used: %d",
 							gasLimit, limitedGasMeter.GasConsumed())
 					} else {
@@ -132,25 +134,31 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"contract", contractAddr,
 							"error", r,
 							"gas_used", limitedGasMeter.GasConsumed())
-						err = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
+						policyErr = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
 							"contract policy check failed due to unexpected error: %v", r)
 					}
 				}
 			}()
-			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
+			policyResult, policyErr = sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
+			return policyErr
 		}()
 
-		// Only consume gas from main context if policy check was successful
+		// Only consume gas from main context if policy check completed successfully
 		gasUsed := limitedGasMeter.GasConsumed()
-		if err == nil {
-			ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
-			if !eligible {
-				// User is not eligible according to contract policy, check if they can afford to pay themselves
-				return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "not_eligible_for_sponsorship")
-			}
-		} else {
-			// Policy check failed, check if user can afford to pay themselves
-			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy_check_failed")
+		if policyErr != nil {
+			// Policy check failed with error (contract query failed, parsing failed, etc.)
+			reasonFromError := "policy_check_failed"
+			// The error contains technical failure details (query failed, parsing failed, etc.)
+			reasonFromError = policyErr.Error()
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
+		}
+
+		// Policy check succeeded, consume gas and check eligibility
+		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+		
+		if !policyResult.Eligible {
+			// User is not eligible according to contract policy, use the specific reason from contract
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
 		}
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
