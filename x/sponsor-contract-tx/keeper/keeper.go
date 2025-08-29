@@ -163,9 +163,9 @@ func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string)
 				}
 
 				// Extract message type and data (assumes single message type per execution)
-				for msgType, msgData := range msgMap {
-					// Convert message data back to JSON string
-					msgDataBytes, err := json.Marshal(msgData)
+				for msgType, _ := range msgMap {
+					// Send the complete ExecuteMsg instead of just the parameters
+					msgDataBytes, err := json.Marshal(msgMap)
 					if err != nil {
 						return nil, sdkerrors.Wrap(err, "failed to marshal message data")
 					}
