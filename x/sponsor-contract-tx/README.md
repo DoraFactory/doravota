@@ -79,21 +79,34 @@ message UserGrantUsage {
 
 ```mermaid
 graph TD
-    A[User submits tx] --> B[Ante Handler validation]
-    B --> C{Is contract sponsored?}
-    C -->|No| D[Standard fee processing]
-    C -->|Yes| E[Check user eligibility via contract policy]
-    E -->|Rejected| F[Transaction rejected]
-    E -->|Approved| G{User has sufficient balance?}
-    G -->|Yes| H[User pays own fees - emit event]
-    G -->|No| I{Sponsor has funds?}
-    I -->|No| J[Emit insufficient funds event]
-    I -->|Yes| K[Check user grant limit]
-    K -->|Exceeded| L[Transaction rejected]
-    K -->|OK| M[Sponsor pays fees]
-    M --> N[Update user grant usage]
-    N --> O[Emit sponsored transaction event]
-    O --> P[Transaction execution]
+    A[User submits tx] --> B[SponsorContractTxAnteDecorator]
+    B --> C{Sponsorship globally enabled?}
+    C -->|No| D[Standard fee processing - emit event]
+    C -->|Yes| E{Has feegrant?}
+    E -->|Yes| D
+    E -->|No| F[Validate transaction structure]
+    F --> G{Is contract sponsored?}
+    G -->|No| D
+    G -->|Yes| H[Check user eligibility via contract policy]
+    H -->|Policy check failed| I{User has sufficient balance?}
+    H -->|Rejected by policy| I
+    H -->|Approved| J{User has sufficient balance?}
+    I -->|No| K[Return error with detailed message]
+    I -->|Yes| L[User pays own fees - emit UserSelfPay event]
+    J -->|Yes| L
+    J -->|No| M[Check user grant limit]
+    M -->|Exceeded| N[Return grant limit exceeded error]
+    M -->|OK| O{Sponsor has sufficient funds?}
+    O -->|No| P[Return insufficient sponsor funds error]
+    O -->|Yes| Q[Store sponsor payment info in context]
+    Q --> R[SponsorAwareDeductFeeDecorator]
+    R --> S[Validate fee requirements]
+    S --> T[Deduct fee from sponsor account]
+    T --> U[Update user grant usage]
+    U --> V[Emit SponsoredTx event]
+    V --> W[Transaction execution continues]
+    L --> W
+    D --> W
 ```
 
 ## Security Model
@@ -151,9 +164,13 @@ graph TD
 ### Anti-Abuse Mechanisms
 
 1. **User Grant Limits**: Per-user spending caps per contract
-2. **Policy Queries**: Contract-defined eligibility checks
-3. **Balance Checks**: Users with sufficient funds pay their own fees
+2. **Policy Queries**: Contract-defined eligibility checks with gas limiting
+3. **Balance Checks**: Users with sufficient funds pay their own fees (anti-abuse priority)
 4. **Usage Tracking**: Comprehensive monitoring of grant consumption
+5. **Gas Limiting**: Contract policy queries are limited by `max_gas_per_sponsorship` parameter
+6. **Transaction Structure Validation**: Only single-contract, multiple-message transactions allowed
+7. **Feegrant Priority**: Feegrant takes precedence over sponsorship to prevent conflicts
+8. **Global Toggle**: Sponsorship can be globally disabled via governance parameters
 
 ## Event System
 
@@ -162,15 +179,25 @@ The module emits comprehensive events for monitoring and auditing:
 ### Transaction Events
 
 - `sponsored_transaction`: Successful sponsored transaction
+  - Attributes: `contract_address`, `user`, `sponsor_amount`, `is_sponsored`
 - `sponsor_insufficient_funds`: Sponsor cannot pay fees
-- `user_self_pay`: User paid own fees despite sponsorship availability
-- `sponsor_usage_updated`: User grant usage updated
+  - Attributes: `contract_address`, `user`, `fee_amount`
+- `user_self_pay`: User paid own fees (eligible but has sufficient balance)
+  - Attributes: `contract_address`, `user`, `reason`, `fee_amount`
+- `sponsor_usage_updated`: User grant usage updated (internal tracking)
+- `sponsorship_disabled`: Sponsorship globally disabled
+  - Attributes: `reason`
 
 ### Management Events
 
 - `set_sponsor`: Contract sponsorship registered
+  - Attributes: `contract_address`, `creator_address`, `is_sponsored`, `max_grant_per_user`
 - `update_sponsor`: Contract sponsorship settings updated
+  - Attributes: `contract_address`, `creator_address`, `is_sponsored`, `max_grant_per_user`
 - `delete_sponsor`: Contract sponsorship removed
+  - Attributes: `contract_address`, `creator_address`
+- `update_params`: Module parameters updated via governance
+  - Attributes: Updated parameter values
 
 ### Query Events
 
@@ -178,6 +205,7 @@ The module emits comprehensive events for monitoring and auditing:
 - `get_user_grant_usage`: User grant usage queried
 - `check_sponsorship`: Sponsorship status checked
 - `query_sponsors`: Sponsor list queried
+- `get_params`: Module parameters queried
 
 ## CLI Usage Guide
 
@@ -332,12 +360,18 @@ dorad query sponsor params
 
 # Example output:
 # params:
-#   params:
-#   max_gas_per_sponsorship: "1000000"
-#   max_sponsors_per_contract: "1000"
-#   min_contract_age: "0"
 #   sponsorship_enabled: true
+#   max_gas_per_sponsorship: "1000000"
 ```
+
+**Parameter Details:**
+
+- `sponsorship_enabled`: Global toggle for sponsorship functionality (default: `true`)
+- `max_gas_per_sponsorship`: Maximum gas limit for contract policy queries (default: `1000000`, max: `50000000`)
+
+**Governance Control:**
+
+Parameters can be updated via governance proposals using `MsgUpdateParams`.
 
 ## Integration Guide
 > We have implemented a sample contract in the  `doravota/contracts` directory, which is a `counter` contract that records user addresses as a `whitelist`. In our business logic, we want users on the whitelist to be able to have their transactions sponsored by our contract address. Therefore, we first need to register the contract address with the `sponsor-contract-tx` module through the admin of the counter contract, set the appropriate `Usage limit`, and ensure that the contract address has `sufficient balance` to sponsor transactions.
@@ -357,7 +391,7 @@ pub enum QueryMsg {
     CheckPolicy { 
         sender: String,
         msg_type: String,
-        msg_data: String,
+        msg_data: String, // Complete ExecuteMsg JSON
     },
 }
 
@@ -368,17 +402,39 @@ pub struct CheckPolicyResponse {
 }
 
 pub fn query_check_policy(
-    deps: Deps,
-    address: String,
+    deps: Deps, 
+    sender: String, 
+    msg_type: String, 
+    msg_data: String
 ) -> StdResult<CheckPolicyResponse> {
-    // Implement your custom logic here
+    // IMPORTANT: msg_data contains the complete ExecuteMsg JSON
+    // For example: {"increment": {"amount": 3}} NOT just {"amount": 3}
+    
+    // Parse the complete ExecuteMsg from msg_data
+    let exec_msg: ExecuteMsg = serde_json::from_str(&msg_data)
+        .map_err(|e| cosmwasm_std::StdError::generic_err(
+            format!("Failed to parse ExecuteMsg from msg_data: {}", e)
+        ))?;
+
+    // Implement your custom logic here based on the parsed ExecuteMsg
     // Examples:
     // - Check whitelist
-    // - Verify user registration
-    // - Check usage patterns(like period limit)
-    // - Validate business rules(like zero knowledge proof verfication)
+    // - Verify user registration  
+    // - Check usage patterns (like period limit)
+    // - Validate business rules (like zero knowledge proof verification)
+    // - Validate message parameters (amount limits, etc.)
 
-    let (eligible, reason) = check_user_eligibility(&deps, &address)?;
+    let (eligible, reason) = match exec_msg {
+        ExecuteMsg::Increment { amount } => {
+            check_increment_eligibility(&deps, &sender, amount)?
+        }
+        ExecuteMsg::Decrement {} => {
+            check_decrement_eligibility(&deps, &sender)?
+        }
+        // Add other message types as needed
+        _ => (false, Some("Message type not supported for sponsorship".to_string())),
+    };
+
     Ok(CheckPolicyResponse { eligible, reason })
 }
 ```
@@ -413,17 +469,63 @@ Transactions are automatically sponsored if:
 
 - Contract is registered for sponsorship
 - User passes contract's CheckPolicy
-- User has insufficient funds for fees
+- User has insufficient funds for fees (anti-abuse: users with sufficient balance pay themselves)
 - Contract has sufficient balance
 - User hasn't exceeded grant limits
+- No feegrant is set (feegrant takes priority)
+- Sponsorship is globally enabled
 
 ```bash
 # Normal transaction - will be automatically sponsored if eligible
-dorad tx wasm execute [contract-address] '{"increment":{}}' \
+dorad tx wasm execute [contract-address] '{"increment":{"amount":3}}' \
   --from user \
   --gas-adjustment 1.5 \
   --gas-prices 100000000000peaka
+
+# The contract will receive CheckPolicy query with:
+# {
+#   "check_policy": {
+#     "sender": "dora1user...",
+#     "msg_type": "increment",
+#     "msg_data": "{\"increment\":{\"amount\":3}}"
+#   }
+# }
 ```
+
+## Implementation Details
+
+### Contract Policy Query Format
+
+When a sponsored transaction is submitted, the module calls the contract with the following query:
+
+```json
+{
+  "check_policy": {
+    "sender": "dora1user...",
+    "msg_type": "increment", 
+    "msg_data": "{\"increment\":{\"amount\":3}}"
+  }
+}
+```
+
+**Important Notes:**
+- `msg_type`: The top-level key from the ExecuteMsg (e.g., "increment", "decrement")
+- `msg_data`: Complete ExecuteMsg JSON string, NOT just the parameters
+- The contract must parse `msg_data` as a complete `ExecuteMsg` to access parameters
+
+### AnteHandler Chain
+
+The sponsor module integrates into the Cosmos SDK AnteHandler chain:
+
+1. **SponsorContractTxAnteDecorator**: Validates transactions and checks policies
+2. **SponsorAwareDeductFeeDecorator**: Handles sponsored fee deduction
+3. Standard Cosmos SDK decorators continue processing
+
+### Gas Management
+
+- Policy queries are gas-limited by `max_gas_per_sponsorship` parameter
+- Gas consumption from policy queries is charged to the main transaction
+- Failed policy queries (due to gas limits) result in fallback to standard fee processing
 
 ## Security Considerations
 
