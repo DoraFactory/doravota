@@ -38,7 +38,7 @@ This contract integrates with the Cosmos SDK sponsor module to enable sponsored 
 Transaction -> AnteHandler -> CheckPolicy Query -> Contract -> Whitelist Check
      |                                                              |
      v                                                              v
-If eligible: Contract pays fee                           If not eligible: Transaction rejected
+If eligible: Contract pays fee                           If not eligible: User self pay(Standard deduct fee process)
 ```
 
 ## Usage

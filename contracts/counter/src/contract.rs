@@ -167,23 +167,18 @@ fn query_check_policy(deps: Deps, sender: String, msg_type: String, msg_data: St
     let sender_addr = deps.api.addr_validate(&sender)?;
     let is_whitelisted = WHITELIST.may_load(deps.storage, &sender_addr)?.unwrap_or(false);
 
-    // Check eligibility based on message type and provide detailed reasons
-    let (eligible, reason) = match msg_type.as_str() {
-        "increment" => {
+    // Parse the complete ExecuteMsg from msg_data
+    let exec_msg: ExecuteMsg = serde_json::from_str(&msg_data)
+        .map_err(|e| cosmwasm_std::StdError::generic_err(format!("Failed to parse ExecuteMsg from msg_data: {}", e)))?;
+
+    // Check eligibility based on the parsed ExecuteMsg
+    let (eligible, reason) = match exec_msg {
+        ExecuteMsg::Increment { amount } => {
             // For increment messages, only whitelisted users are eligible
             // AND the amount must be less than 5
             if !is_whitelisted {
                 (false, Some("User not in whitelist".to_string()))
             } else {
-                // Strictly parse msg_data - any parsing error will fail the transaction
-                let json_value = serde_json::from_str::<Value>(&msg_data)
-                    .map_err(|e| cosmwasm_std::StdError::generic_err(format!("Failed to parse increment msg_data as JSON: {}", e)))?;
-                
-                // Extract amount field - missing or invalid amount will fail the transaction
-                let amount = json_value.get("amount")
-                    .and_then(|v| v.as_i64())
-                    .ok_or_else(|| cosmwasm_std::StdError::generic_err("Missing or invalid 'amount' field in increment msg_data"))?;
-                
                 // Apply business logic: amount must be less than 5
                 if amount < 5 {
                     (true, None) // Eligible, no reason needed
@@ -192,16 +187,7 @@ fn query_check_policy(deps: Deps, sender: String, msg_type: String, msg_data: St
                 }
             }
         }
-        "decrement" => {
-            // For decrement messages, strictly validate that msg_data is empty object
-            let json_value = serde_json::from_str::<Value>(&msg_data)
-                .map_err(|e| cosmwasm_std::StdError::generic_err(format!("Failed to parse decrement msg_data as JSON: {}", e)))?;
-            
-            // Decrement should only accept empty object {}
-            if !json_value.as_object().map_or(false, |obj| obj.is_empty()) {
-                return Err(cosmwasm_std::StdError::generic_err("Decrement message should be empty object {}, no additional fields allowed"));
-            }
-            
+        ExecuteMsg::Decrement {} => {
             // Check authorization: only non-whitelisted users are eligible  
             if !is_whitelisted {
                 (true, None) // Eligible, no reason needed
@@ -209,18 +195,8 @@ fn query_check_policy(deps: Deps, sender: String, msg_type: String, msg_data: St
                 (false, Some("Whitelisted users cannot use decrement".to_string()))
             }
         }
-        "reset" => {
+        ExecuteMsg::Reset { count: _ } => {
             // For reset messages, we need to check if sender is the contract owner
-            // Parse msg_data to validate the reset parameters (strict validation)
-            let json_value = serde_json::from_str::<Value>(&msg_data)
-                .map_err(|e| cosmwasm_std::StdError::generic_err(format!("Failed to parse reset msg_data as JSON: {}", e)))?;
-            
-            // Validate that count field exists and is valid
-            let _count = json_value.get("count")
-                .and_then(|v| v.as_i64())
-                .ok_or_else(|| cosmwasm_std::StdError::generic_err("Missing or invalid 'count' field in reset msg_data"))?;
-            
-            // Check if sender is the contract owner
             let state = STATE.load(deps.storage)?;
             if sender_addr == state.owner {
                 (true, None) // Eligible, no reason needed
@@ -228,9 +204,14 @@ fn query_check_policy(deps: Deps, sender: String, msg_type: String, msg_data: St
                 (false, Some("Only contract owner can reset".to_string()))
             }
         }
-        _ => {
-            // For unknown message types, fail the transaction
-            return Err(cosmwasm_std::StdError::generic_err(format!("Unknown message type: {}", msg_type)));
+        ExecuteMsg::AddToWhitelist { address: _ } | ExecuteMsg::RemoveFromWhitelist { address: _ } => {
+            // Whitelist management operations - only owner eligible
+            let state = STATE.load(deps.storage)?;
+            if sender_addr == state.owner {
+                (true, None) // Eligible, no reason needed
+            } else {
+                (false, Some("Only contract owner can manage whitelist".to_string()))
+            }
         }
     };
 
@@ -327,7 +308,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": 3}"#.to_string(),
+                msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
         .unwrap();
@@ -341,7 +322,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "decrement".to_string(),
-                msg_data: "{}".to_string(),
+                msg_data: r#"{"decrement": {}}"#.to_string(),
             },
         )
         .unwrap();
@@ -383,7 +364,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "decrement".to_string(),
-                msg_data: "{}".to_string(),
+                msg_data: r#"{"decrement": {}}"#.to_string(),
             },
         )
         .unwrap();
@@ -397,7 +378,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": 3}"#.to_string(),
+                msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
         .unwrap();
@@ -426,7 +407,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": 3}"#.to_string(),
+                msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
         .unwrap();
@@ -440,7 +421,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": 5}"#.to_string(),
+                msg_data: r#"{"increment": {"amount": 5}}"#.to_string(),
             },
         )
         .unwrap();
@@ -455,7 +436,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": 10}"#.to_string(),
+                msg_data: r#"{"increment": {"amount": 10}}"#.to_string(),
             },
         )
         .unwrap();
@@ -473,10 +454,10 @@ mod tests {
                 msg_data: r#"{"invalid": "data"}"#.to_string(),
             },
         );
-        // Should fail due to missing amount field
+        // Should fail due to invalid ExecuteMsg format
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert!(err.to_string().contains("Missing or invalid 'amount' field"));
+        assert!(err.to_string().contains("Failed to parse ExecuteMsg"));
 
         // Test increment with malformed JSON - should fail with error
         let res = query(
@@ -485,37 +466,37 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "increment".to_string(),
-                msg_data: r#"{"amount": invalid_json}"#.to_string(),
+                msg_data: r#"{"increment": invalid_json}"#.to_string(),
             },
         );
         // Should fail due to JSON parsing error
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert!(err.to_string().contains("Failed to parse increment msg_data as JSON"));
+        assert!(err.to_string().contains("Failed to parse ExecuteMsg"));
 
-        // Test decrement with invalid fields - should fail with error
+        // Test decrement with invalid fields - should fail with error (using wrong ExecuteMsg format)
         let res = query(
             deps.as_ref(),
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user2".to_string(), // non-whitelisted user
                 msg_type: "decrement".to_string(),
-                msg_data: r#"{"amount": 1}"#.to_string(), // invalid field
+                msg_data: r#"{"invalid": "data"}"#.to_string(), // invalid ExecuteMsg
             },
         );
-        // Should fail due to extra fields in decrement message
+        // Should fail due to invalid ExecuteMsg format
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert!(err.to_string().contains("no additional fields allowed"));
+        assert!(err.to_string().contains("Failed to parse ExecuteMsg"));
 
-        // Test decrement with valid empty object - should succeed for non-whitelisted user
+        // Test decrement with valid format - should succeed for non-whitelisted user
         let res = query(
             deps.as_ref(),
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user2".to_string(), // non-whitelisted user (not added to whitelist)
                 msg_type: "decrement".to_string(),
-                msg_data: "{}".to_string(), // valid empty object
+                msg_data: r#"{"decrement": {}}"#.to_string(), // valid ExecuteMsg format
             },
         )
         .unwrap();
@@ -539,7 +520,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "creator".to_string(),
                 msg_type: "reset".to_string(),
-                msg_data: r#"{"count": 10}"#.to_string(),
+                msg_data: r#"{"reset": {"count": 10}}"#.to_string(),
             },
         )
         .unwrap();
@@ -553,7 +534,7 @@ mod tests {
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
                 msg_type: "reset".to_string(),
-                msg_data: r#"{"count": 10}"#.to_string(),
+                msg_data: r#"{"reset": {"count": 10}}"#.to_string(),
             },
         )
         .unwrap();
