@@ -127,9 +127,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
     // caused sponsorship logic to run even when the stored sponsor record had
     // IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
     if found && sponsor.IsSponsored {
-		// Get the appropriate user address for policy check and fee payment
-		userAddr, err := sctd.getUserAddressForSponsorship(tx)
-		if err != nil {
+        // Get the appropriate user address for policy check and fee payment
+        userAddr, err := sctd.getUserAddressForSponsorship(tx)
+        if err != nil {
 			// If we can't determine a consistent user address, fall back to standard processing
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"falling back to standard fee processing due to signer inconsistency",
@@ -143,9 +143,66 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
-		// Call contract to check if user is eligible according to contract policy
-		// Create a gas-limited context to prevent DoS attacks through contract queries
-		gasLimit := params.MaxGasPerSponsorship
+        // Early return optimization 1: if no fee, no need to run policy checks
+        if feeTx, ok := tx.(sdk.FeeTx); ok {
+            fee := feeTx.GetFee()
+            if fee.IsZero() {
+                ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                    "zero-fee tx; skipping sponsorship checks",
+                    "contract", contractAddr,
+                    "user", userAddr.String(),
+                )
+                return next(ctx, tx, simulate)
+            }
+
+            // Early return optimization 2: if user can self-pay, skip policy checks and emit event
+            userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+            if userBalance.IsAllGTE(fee) {
+                ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                    "user can self-pay; skipping sponsorship checks",
+                    "contract", contractAddr,
+                    "user", userAddr.String(),
+                    "user_balance", userBalance.String(),
+                    "required_fee", fee.String(),
+                )
+                if !ctx.IsCheckTx() {
+                    ctx.EventManager().EmitEvent(
+                        sdk.NewEvent(
+                            types.EventTypeUserSelfPay,
+                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+                            sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
+                            sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+                        ),
+                    )
+                }
+                return next(ctx, tx, simulate)
+            }
+        }
+
+        // Early return optimization 3: validate contract exists before policy checks
+        if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
+            ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                "contract not found; skipping sponsorship",
+                "contract", contractAddr,
+                "user", userAddr.String(),
+                "error", err.Error(),
+            )
+            if !ctx.IsCheckTx() {
+                ctx.EventManager().EmitEvent(
+                    sdk.NewEvent(
+                        types.EventTypeSponsorshipSkipped,
+                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                        sdk.NewAttribute(types.AttributeKeyReason, "contract_not_found"),
+                    ),
+                )
+            }
+            return next(ctx, tx, simulate)
+        }
+
+        // Call contract to check if user is eligible according to contract policy
+        // Create a gas-limited context to prevent DoS attacks through contract queries
+        gasLimit := params.MaxGasPerSponsorship
 		
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"starting contract policy check with gas limit",
