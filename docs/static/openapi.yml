@@ -372,8 +372,9 @@ paths:
           should be set.'
         in: query
         required: false
-        type: string
-        format: byte
+        schema:
+          type: string
+          format: byte
       - name: pagination.offset
         description: 'offset is a numeric offset that can be used when key is unavailable.
 
@@ -382,8 +383,9 @@ paths:
           be set.'
         in: query
         required: false
-        type: string
-        format: uint64
+        schema:
+          type: string
+          format: uint64
       - name: pagination.limit
         description: 'limit is the total number of results to be returned in the result
           page.
@@ -391,8 +393,9 @@ paths:
           If left empty it will default to a value to be set by each app.'
         in: query
         required: false
-        type: string
-        format: uint64
+        schema:
+          type: string
+          format: uint64
       - name: pagination.count_total
         description: 'count_total is set to true  to indicate that the result set
           should include
@@ -404,7 +407,8 @@ paths:
           is set.'
         in: query
         required: false
-        type: boolean
+        schema:
+          type: boolean
       - name: pagination.reverse
         description: 'reverse is set to true if results are to be returned in the
           descending order.
@@ -413,7 +417,8 @@ paths:
           Since: cosmos-sdk 0.43'
         in: query
         required: false
-        type: boolean
+        schema:
+          type: boolean
       tags:
       - Query
   /cosmos/auth/v1beta1/accounts/{address}:
@@ -49443,6 +49448,9 @@ definitions:
       creatorAddress:
         type: string
         title: The address that created/manages this sponsor configuration
+      sponsorAddress:
+        type: string
+        title: The derived address that actually pays sponsorship fees
       createdAt:
         type: string
         format: int64
@@ -49452,7 +49460,6 @@ definitions:
       maxGrantPerUser:
         type: array
         items:
-          type: object
           $ref: '#/definitions/v1beta1Coin'
     title: ContractSponsor defines the sponsor information for a contract
   v1MsgDeleteSponsorResponse:
@@ -49473,7 +49480,6 @@ definitions:
       sponsors:
         type: array
         items:
-          type: object
           $ref: '#/definitions/v1ContractSponsor'
       pagination:
         $ref: '#/definitions/v1beta1PageResponse'
