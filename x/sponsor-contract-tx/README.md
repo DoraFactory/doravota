@@ -47,17 +47,24 @@ A dedicated sponsorship module that provides:
 message ContractSponsor {
   string contract_address = 1;
   string creator_address = 2;    // Address of the sponsor registration creator (admin)
-  bool is_sponsored = 3;
-  int64 created_at = 4;
-  int64 updated_at = 5;
-  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 6;
+  string sponsor_address = 3;    // The derived address that actually pays for sponsorship fees
+  bool is_sponsored = 4;
+  int64 created_at = 5;
+  int64 updated_at = 6;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 7;
 }
 ```
 
 **Important: Funding Mechanism**
 - `creator_address`: Address of the creator who sets contract sponsorship status (used only for permission verification)
-- **Actual funding account**: The contract address itself bears all sponsorship fees
-- **Workflow**: Admin sets up sponsorship → Transfer funds to contract address → Contract account automatically pays user fees
+- `sponsor_address`: The derived address that actually pays for sponsorship fees (deterministically derived from contract address using "sponsor" suffix)
+- **Actual funding account**: The sponsor_address bears all sponsorship fees
+- **Address derivation**: `sponsor_address = address.Derive(contract_address, []byte("sponsor"))`
+- **Workflow**: 
+  1. Admin sets up sponsorship using `set-sponsor` command
+  2. Query the generated `sponsor_address` using `query sponsor status [contract-address]`
+  3. Transfer funds to the `sponsor_address` (not the contract address!)
+  4. Sponsor address automatically pays eligible user fees
 
 #### 2. User Grant Tracking (`UserGrantUsage`)
 
@@ -179,9 +186,9 @@ The module emits comprehensive events for monitoring and auditing:
 ### Transaction Events
 
 - `sponsored_transaction`: Successful sponsored transaction
-  - Attributes: `contract_address`, `user`, `sponsor_amount`, `is_sponsored`
+  - Attributes: `contract_address`, `sponsor_address`, `user`, `sponsor_amount`, `is_sponsored`
 - `sponsor_insufficient_funds`: Sponsor cannot pay fees
-  - Attributes: `contract_address`, `user`, `fee_amount`
+  - Attributes: `contract_address`, `sponsor_address`, `user`, `fee_amount`
 - `user_self_pay`: User paid own fees (eligible but has sufficient balance)
   - Attributes: `contract_address`, `user`, `reason`, `fee_amount`
 - `sponsor_usage_updated`: User grant usage updated (internal tracking)
@@ -191,9 +198,9 @@ The module emits comprehensive events for monitoring and auditing:
 ### Management Events
 
 - `set_sponsor`: Contract sponsorship registered
-  - Attributes: `contract_address`, `creator_address`, `is_sponsored`, `max_grant_per_user`
+  - Attributes: `contract_address`, `creator_address`, `sponsor_address`, `is_sponsored`, `max_grant_per_user`
 - `update_sponsor`: Contract sponsorship settings updated
-  - Attributes: `contract_address`, `creator_address`, `is_sponsored`, `max_grant_per_user`
+  - Attributes: `contract_address`, `creator_address`, `sponsor_address`, `is_sponsored`, `max_grant_per_user`
 - `delete_sponsor`: Contract sponsorship removed
   - Attributes: `contract_address`, `creator_address`
 - `update_params`: Module parameters updated via governance
@@ -221,7 +228,7 @@ dorad keys add user
 
 # Fund accounts (for testing)
 # Admin needs funds to pay for registration transactions
-# Contract needs funds to sponsor user transactions
+# Derived sponsor_address needs funds to sponsor user transactions
 ```
 
 ### Contract Sponsorship Management
@@ -279,12 +286,15 @@ dorad tx sponsor delete-sponsor [contract-address] \
 
 ### Fund Management
 
-#### Transfer Funds to Contract (for sponsorship)
+#### Transfer Funds to Sponsor Address (for sponsorship)
 
 ```bash
-# IMPORTANT: Contract address itself pays for sponsorship fees
-# Transfer funds TO the contract address, not the creator/admin address
-dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka \
+# IMPORTANT: sponsor_address pays for sponsorship fees
+# First, query to get the sponsor_address
+dorad query sponsor status [contract-address]
+
+# Then transfer funds TO the sponsor_address, not the contract or creator address
+dorad tx bank send [admin-address] [sponsor-address] 10000000000000000000peaka \
   --from admin \
   --chain-id [chain-id] \
   --gas auto \
@@ -293,8 +303,8 @@ dorad tx bank send [admin-address] [contract-address] 10000000000000000000peaka 
 ```
 
 **Key Points**:
-- Funds must be transferred to the **contract address**, not the creator address
-- Contract address directly serves as the funding account for all sponsorship fees
+- Funds must be transferred to the **sponsor_address**, not the contract or creator address
+- sponsor_address is derived from contract_address and directly serves as the funding account for all sponsorship fees
 - `creator_address` is only used for permission verification and does not participate in actual funding
 
 ## Query Commands
@@ -314,13 +324,14 @@ dorad query sponsor status [contract-address] \
 # sponsor:
 #   contract_address: dora1contract...
 #   creator_address: dora1admin...    # Admin who registered sponsorship
+#   sponsor_address: dora1sponsor...  # Derived address that actually pays fees
 #   is_sponsored: true
 #   created_at: "1640995200"
 #   updated_at: "1640995200"
 #   max_grant_per_user:
 #   - denom: peaka
 #     amount: "1000000000000000000"
-# Note: Contract address (dora1contract...) is the actual funding source
+# Note: sponsor_address (dora1sponsor...) is the actual funding source
 ```
 
 #### 2. List All Sponsors
@@ -374,8 +385,8 @@ dorad query sponsor params
 Parameters can be updated via governance proposals using `MsgUpdateParams`.
 
 ## Integration Guide
-> We have implemented a sample contract in the  `doravota/contracts` directory, which is a `counter` contract that records user addresses as a `whitelist`. In our business logic, we want users on the whitelist to be able to have their transactions sponsored by our contract address. Therefore, we first need to register the contract address with the `sponsor-contract-tx` module through the admin of the counter contract, set the appropriate `Usage limit`, and ensure that the contract address has `sufficient balance` to sponsor transactions.
-Any user on the whitelist can enjoy transaction sponsorship by the contract address.
+> We have implemented a sample contract in the  `doravota/contracts` directory, which is a `counter` contract that records user addresses as a `whitelist`. In our business logic, we want users on the whitelist to be able to have their transactions sponsored by our sponsor system. Therefore, we first need to register the contract address with the `sponsor-contract-tx` module through the admin of the counter contract, set the appropriate `Usage limit`, and ensure that the **derived sponsor_address has sufficient balance** to sponsor transactions.
+Any user on the whitelist can enjoy transaction sponsorship paid by the sponsor_address.
 
 ### For Contract Developers
 
@@ -404,7 +415,6 @@ pub struct CheckPolicyResponse {
 pub fn query_check_policy(
     deps: Deps, 
     sender: String, 
-    msg_type: String, 
     msg_data: String
 ) -> StdResult<CheckPolicyResponse> {
     // IMPORTANT: msg_data contains the complete ExecuteMsg JSON
@@ -439,11 +449,14 @@ pub fn query_check_policy(
 }
 ```
 
-#### 2. Fund Your Contract
+#### 2. Fund Your Sponsor Address
 
 ```bash
-# Ensure your contract has sufficient balance for sponsorship
-dorad tx bank send [admin] [contract-address] [amount]peaka --from admin
+# First, get the sponsor address after registration
+dorad query sponsor status [contract-address]
+
+# Ensure your sponsor address has sufficient balance for sponsorship
+dorad tx bank send [admin] [sponsor-address] [amount]peaka --from admin
 ```
 
 #### 3. Register for Sponsorship
@@ -486,7 +499,6 @@ dorad tx wasm execute [contract-address] '{"increment":{"amount":3}}' \
 # {
 #   "check_policy": {
 #     "sender": "dora1user...",
-#     "msg_type": "increment",
 #     "msg_data": "{\"increment\":{\"amount\":3}}"
 #   }
 # }
@@ -502,14 +514,12 @@ When a sponsored transaction is submitted, the module calls the contract with th
 {
   "check_policy": {
     "sender": "dora1user...",
-    "msg_type": "increment", 
     "msg_data": "{\"increment\":{\"amount\":3}}"
   }
 }
 ```
 
 **Important Notes:**
-- `msg_type`: The top-level key from the ExecuteMsg (e.g., "increment", "decrement")
 - `msg_data`: Complete ExecuteMsg JSON string, NOT just the parameters
 - The contract must parse `msg_data` as a complete `ExecuteMsg` to access parameters
 
@@ -542,8 +552,8 @@ The sponsor module integrates into the Cosmos SDK AnteHandler chain:
 
 ### 3. Fund Management
 
-- Contracts need sufficient balance monitoring
-- Implement spending alerts and automatic funding mechanisms
+- **Sponsor addresses need sufficient balance monitoring**
+- Implement spending alerts and automatic funding mechanisms for sponsor_address accounts
 - Consider setting reasonable `max_grant_per_user` limits
 
 ### 4. Abuse Prevention
@@ -626,8 +636,11 @@ dorad tx sponsor set-sponsor [contract-address] true 1000000000000000000peaka \
   --gas-adjustment 1.5 \
   --gas-prices 100000000000peaka
 
-# Fund contract for sponsorship
-dorad tx bank send $(dorad keys show admin -a) [contract-address] 10000000000000000000peaka \
+# Get sponsor address first
+SPONSOR_ADDR=$(dorad query sponsor status [contract-address] --output json | jq -r '.sponsor.sponsor_address')
+
+# Fund sponsor address for sponsorship
+dorad tx bank send $(dorad keys show admin -a) $SPONSOR_ADDR 10000000000000000000peaka \
   --from admin \
   --gas auto \ 
   --gas-adjustment 1.5 \
