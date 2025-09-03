@@ -1,10 +1,10 @@
 package sponsor
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math/rand"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math/rand"
 
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -20,7 +20,7 @@ import (
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
@@ -31,7 +31,7 @@ var (
 
 // AppModuleBasic implements the AppModuleBasic interface for the sponsor module
 type AppModuleBasic struct {
-	cdc codec.BinaryCodec
+    cdc codec.BinaryCodec
 }
 
 // Name returns the sponsor module's name
@@ -127,14 +127,6 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 
 // RegisterInvariants registers the sponsor module's invariants
 func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
-
-// QuerierRoute returns the sponsor module's query routing key
-func (AppModule) QuerierRoute() string { return types.QuerierRoute }
-
-// LegacyQuerierHandler returns the sponsor module's Querier
-func (am AppModule) LegacyQuerierHandler(legacyQuerierCdc *codec.LegacyAmino) keeper.Querier {
-	return keeper.NewQuerier(am.keeper, legacyQuerierCdc)
-}
 
 // InitGenesis performs the sponsor module's genesis initialization
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, gs json.RawMessage) []abci.ValidatorUpdate {

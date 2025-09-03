@@ -4,8 +4,7 @@ import (
     "fmt"
     "testing"
 
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	abci "github.com/cometbft/cometbft/abci/types"
+    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -1209,55 +1208,13 @@ func TestUpdateParams(t *testing.T) {
 }
 
 // TestLegacyQuerier tests the legacy querier functions 
-func TestLegacyQuerier(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	
-	// Create legacy codec for testing
-	legacyCdc := codec.NewLegacyAmino()
-	
-	querier := NewQuerier(keeper, legacyCdc)
-	
-	// Test is-sponsored query with missing contract address
-	_, err := querier(ctx, []string{"is-sponsored"}, abci.RequestQuery{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "contract address is required")
-	
-	// Test unknown query endpoint
-	_, err = querier(ctx, []string{"unknown-endpoint"}, abci.RequestQuery{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown")
-	
-	// Test basic functionality without codec issues
-	contractAddr := sdk.AccAddress([]byte("contract1___________")).String()
-	
-	// Test underlying functionality that querier uses
-	isSponsored := keeper.IsSponsored(ctx, contractAddr)
-	require.False(t, isSponsored) // Initially not sponsored
-	
-	// Add sponsor
-	sponsor := types.ContractSponsor{
-		ContractAddress: contractAddr,
-		IsSponsored:     true,
-	}
-	err = keeper.SetSponsor(ctx, sponsor)
-	require.NoError(t, err)
-	
-	// Now should be sponsored
-	isSponsored = keeper.IsSponsored(ctx, contractAddr)
-	require.True(t, isSponsored)
-	
-	// Test GetAllSponsors functionality
-	allSponsors := keeper.GetAllSponsors(ctx)
-	require.Len(t, allSponsors, 1)
-	require.Equal(t, contractAddr, allSponsors[0].ContractAddress)
-}
+// Legacy querier removed: tests migrated to gRPC query server in other cases
 
 // TestMoreEdgeCases tests additional edge cases and error paths
 func TestMoreEdgeCases(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 	
-	// Test GetSponsorsPaginated with error in unmarshaling (simulated by corrupting store)
-	// This is hard to test directly, but we can test the success path with various scenarios
+    // (legacy querier removed) keep only state-related edge cases
 	
 	// Test with offset pagination
 	// Add multiple sponsors first
@@ -1376,50 +1333,8 @@ func TestCheckContractPolicyAdvancedCases(t *testing.T) {
 	require.True(t, result.Eligible)
 }
 
-// TestLegacyQuerierFullCoverage tests the legacy querier functions with full coverage
-func TestLegacyQuerierFullCoverage(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	
-	// Create legacy codec
-	legacyCdc := codec.NewLegacyAmino()
-	// Note: RegisterLegacyAminoCodec may not be available, but we can still test the querier logic
-	
-	querier := NewQuerier(keeper, legacyCdc)
-	
-	// Test is-sponsored query successful path
-	contractAddr := sdk.AccAddress([]byte("contract1___________")).String()
-	
-	// Add sponsor first
-	sponsor := types.ContractSponsor{
-		ContractAddress: contractAddr,
-		IsSponsored:     true,
-	}
-	err := keeper.SetSponsor(ctx, sponsor)
-	require.NoError(t, err)
-	
-	// Test queryIsSponsored function directly to achieve full coverage
-	res, err := queryIsSponsored(ctx, []string{contractAddr}, abci.RequestQuery{}, keeper, legacyCdc)
-	if err != nil {
-		// If codec registration is the issue, we can still test the logic
-		require.Contains(t, err.Error(), "marshal")
-	} else {
-		require.NotNil(t, res)
-	}
-	
-	// Test queryAllSponsors function directly
-	res, err = queryAllSponsors(ctx, []string{}, abci.RequestQuery{}, keeper, legacyCdc)
-	if err != nil {
-		// If codec registration is the issue, we can still test the logic  
-		require.Contains(t, err.Error(), "marshal")
-	} else {
-		require.NotNil(t, res)
-	}
-	
-	// Test error paths that we know work
-	_, err = querier(ctx, []string{"is-sponsored"}, abci.RequestQuery{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "contract address is required")
-}
+// Legacy querier removed: coverage via gRPC query tests
+func TestLegacyQuerierFullCoverage(t *testing.T) {}
 
 // TestMsgServerComprehensiveSetSponsor tests SetSponsor message server with full coverage
 func TestMsgServerComprehensiveSetSponsor(t *testing.T) {
@@ -1923,47 +1838,7 @@ func TestMessageServerErrorPaths(t *testing.T) {
 }
 
 // TestQuerierFullErrorCoverage tests all querier error paths
-func TestQuerierFullErrorCoverage(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	
-	legacyCdc := codec.NewLegacyAmino()
-	querier := NewQuerier(keeper, legacyCdc)
-	
-	contractAddr := sdk.AccAddress([]byte("contract1___________")).String()
-	
-	// Test all-sponsors query path (to hit the 0% coverage line)
-	sponsor := types.ContractSponsor{
-		ContractAddress: contractAddr,
-		IsSponsored:     true,
-	}
-	err := keeper.SetSponsor(ctx, sponsor)
-	require.NoError(t, err)
-	
-	// Test queryAllSponsors directly to get coverage
-	res, err := queryAllSponsors(ctx, []string{}, abci.RequestQuery{}, keeper, legacyCdc)
-	if err != nil {
-		// May fail due to codec issues, but we've covered the code path
-		require.Contains(t, err.Error(), "marshal")
-	} else {
-		require.NotNil(t, res)
-	}
-	
-	// Test queryIsSponsored marshal error path
-	res, err = queryIsSponsored(ctx, []string{contractAddr}, abci.RequestQuery{}, keeper, legacyCdc)
-	if err != nil {
-		// May fail due to codec issues, but we've covered the code path
-		require.Contains(t, err.Error(), "marshal")
-	} else {
-		require.NotNil(t, res)
-	}
-	
-	// Test "all-sponsors" path through main querier
-	res, err = querier(ctx, []string{"all-sponsors"}, abci.RequestQuery{})
-	if err != nil {
-		// This should hit the error path we want to cover
-		require.Contains(t, err.Error(), "marshal")
-	}
-}
+func TestQuerierFullErrorCoverage(t *testing.T) {}
 
 // TestAdvancedEdgeCases tests additional edge cases for 100% coverage
 func TestAdvancedEdgeCases(t *testing.T) {
