@@ -88,7 +88,6 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 		queryMsg := map[string]interface{}{
 			"check_policy": map[string]interface{}{
 				"sender":   userAddr.String(),
-				"msg_type": contractMsg.MsgType,
 				"msg_data": contractMsg.MsgData,
 			},
 		}
