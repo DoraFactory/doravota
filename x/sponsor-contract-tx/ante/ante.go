@@ -274,11 +274,32 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
                 "gas_used", gasUsed,
                 "error", policyErr.Error(),
             )
-            // Account for gas consumed by the policy check even on failure
-            ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check (failed)")
+            
+            // Safely account for gas consumed by the policy check even on failure
+            // Use a defer recovery to prevent double panic if main context is also out of gas
+            func() {
+                defer func() {
+                    if r := recover(); r != nil {
+                        // If main context gas meter also panics, log it but don't re-panic
+                        ctx.Logger().With("module", "sponsor-contract-tx").Error(
+                            "failed to consume gas on main context after policy check failure",
+                            "gas_to_consume", gasUsed,
+                            "recovery_error", r,
+                        )
+                    }
+                }()
+                ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check (failed)")
+            }()
+            
+            // Provide user-friendly error message for common gas limit exceeded case
             reasonFromError := "policy_check_failed"
-            // The error contains technical failure details (query failed, parsing failed, etc.)
-            reasonFromError = policyErr.Error()
+            if strings.Contains(policyErr.Error(), "gas limit exceeded") || 
+               strings.Contains(policyErr.Error(), "out of gas") {
+                reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
+            } else {
+                // The error contains technical failure details (query failed, parsing failed, etc.)
+                reasonFromError = policyErr.Error()
+            }
             return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
         }
 
@@ -292,6 +313,16 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"gas_consumed", gasUsed,
 			"total_gas_after", ctx.GasMeter().GasConsumed(),
 		)
+		
+		// Additional safety check: ensure policyResult is not nil
+		if policyResult == nil {
+			ctx.Logger().With("module", "sponsor-contract-tx").Error(
+				"policy result is unexpectedly nil despite no error",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+			)
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy check returned nil result")
+		}
 		
 		if !policyResult.Eligible {
 			// User is not eligible according to contract policy, use the specific reason from contract
