@@ -386,7 +386,7 @@ func ValidateGenesis(data GenesisState) error {
 func DefaultParams() Params {
 	return Params{
 		SponsorshipEnabled:   true,
-		MaxGasPerSponsorship: 1000000, // 1M gas
+		MaxGasPerSponsorship: 2500000, // 2.5M gas
 	}
 }
 
