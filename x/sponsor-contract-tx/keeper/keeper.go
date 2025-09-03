@@ -375,47 +375,6 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 	return sponsors, pageRes, nil
 }
 
-// GetSponsorsByStatus returns sponsors filtered by sponsorship status
-func (k Keeper) GetSponsorsByStatus(ctx sdk.Context, isSponsored bool) []types.ContractSponsor {
-	var sponsors []types.ContractSponsor
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		if sponsor.IsSponsored == isSponsored {
-			sponsors = append(sponsors, sponsor)
-		}
-		return false // continue iteration
-	})
-
-	return sponsors
-}
-
-// GetSponsorCount returns the total number of sponsors
-func (k Keeper) GetSponsorCount(ctx sdk.Context) uint64 {
-	var count uint64
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		count++
-		return false // continue iteration
-	})
-
-	return count
-}
-
-// GetActiveSponsorCount returns the number of active sponsors
-func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
-	var count uint64
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		if sponsor.IsSponsored {
-			count++
-		}
-		return false // continue iteration
-	})
-
-	// Removed read-path event to reduce noise
-
-	return count
-}
 
 // GetParams returns the module parameters
 func (k Keeper) GetParams(ctx sdk.Context) types.Params {

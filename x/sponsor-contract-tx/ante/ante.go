@@ -526,20 +526,6 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	}
 }
 
-// validateSponsoredTransactionLegacy provides backward compatibility for tests
-// Returns (contractAddress, error) like the old function
-func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
-	validation := validateSponsoredTransaction(tx)
-	if !validation.ShouldSponsor {
-		if validation.SkipReason == "no messages in transaction" || 
-		   strings.Contains(validation.SkipReason, "non-contract message") {
-			return "", nil
-		}
-		// For mixed messages or multiple contracts, return error for test compatibility
-		return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
-	}
-	return validation.ContractAddress, nil
-}
 
 // handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves
 // It checks user balance and provides clear error messages if they can't afford the fees

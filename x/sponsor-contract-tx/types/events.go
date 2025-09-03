@@ -14,41 +14,21 @@ const (
     EventTypeUpdateParams        = "update_params"              // New: governance parameter updates
     EventTypeSponsorWithdrawal   = "sponsor_withdraw_funds"     // New: sponsor funds withdrawal
 
-	// Read operation events
-	EventTypeGetSponsor        = "get_sponsor"
-	EventTypeGetUserGrantUsage = "get_user_grant_usage"
-	EventTypeGetParams         = "get_params"
-	EventTypeQuerySponsors     = "query_sponsors"
-	EventTypeCheckSponsorship  = "check_sponsorship"
 )
 
 // Event attribute keys
 const (
-	AttributeKeyCreator         = "creator"
-	AttributeKeySponsorAddress  = "sponsor_address"
-	AttributeKeyContractAddress = "contract_address"
-	AttributeKeyIsSponsored     = "is_sponsored"
-	AttributeKeyTxHash          = "tx_hash"
-	AttributeKeyUser            = "user"
-	AttributeKeySponsorAmount   = "sponsor_amount"
-	AttributeKeyGasUsed         = "gas_used"
-	AttributeKeyFeeAmount       = "fee_amount"
-	AttributeKeyFeeDenom        = "fee_denom"
-	AttributeKeyPolicyCheck     = "policy_check"
-	AttributeKeyFound           = "found"
-	AttributeKeyCount           = "count"
-	AttributeKeyQueryType              = "query_type"
-	AttributeKeyReason                 = "reason"
-	AttributeKeyTransactionType        = "transaction_type"
-	AttributeKeyAuthority              = "authority"
-	AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
+    AttributeKeyCreator         = "creator"
+    AttributeKeySponsorAddress  = "sponsor_address"
+    AttributeKeyContractAddress = "contract_address"
+    AttributeKeyIsSponsored     = "is_sponsored"
+    AttributeKeyUser            = "user"
+    AttributeKeySponsorAmount   = "sponsor_amount"
+    AttributeKeyFeeAmount       = "fee_amount"
+    AttributeKeyReason                 = "reason"
+    AttributeKeyTransactionType        = "transaction_type"
+    AttributeKeyAuthority              = "authority"
+    AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
     AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
     AttributeKeyRecipient              = "recipient"
-)
-
-// Event attribute values
-const (
-	AttributeValueCategory = ModuleName
-	AttributeValueSuccess  = "success"
-	AttributeValueFailed   = "failed"
 )

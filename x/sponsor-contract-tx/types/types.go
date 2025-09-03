@@ -7,6 +7,13 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
+const (
+	// Message types
+	TypeMsgSetSponsor    = "set_sponsor"
+	TypeMsgUpdateSponsor = "update_sponsor"
+	TypeMsgDeleteSponsor = "delete_sponsor"
+)
+
 // BaseSponsorMsg defines common fields and methods for sponsor messages
 type BaseSponsorMsg struct {
 	Creator         string

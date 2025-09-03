@@ -11,19 +11,8 @@ const (
 	// StoreKey defines the primary module store key
 	StoreKey = ModuleName
 
-	// MemStoreKey defines the in-memory store key
-	MemStoreKey = "mem_sponsor"
-
-	// RouterKey defines the module's message routing key
-	RouterKey = ModuleName
-
-	// QuerierRoute defines the module's query routing key
-	QuerierRoute = ModuleName
-
-	// Message types
-	TypeMsgSetSponsor    = "set_sponsor"
-	TypeMsgUpdateSponsor = "update_sponsor"
-	TypeMsgDeleteSponsor = "delete_sponsor"
+    // RouterKey defines the module's message routing key
+    RouterKey = ModuleName
 )
 
 var (
@@ -46,10 +35,6 @@ func GetSponsorKey(contractAddr string) []byte {
 	return append(SponsorKeyPrefix, []byte(contractAddr)...)
 }
 
-// GetSponsorKeyFromBytes returns the contract address from a sponsor key
-func GetSponsorKeyFromBytes(key []byte) string {
-	return string(key[len(SponsorKeyPrefix):])
-}
 
 // GetUserGrantUsageKey returns the store key for a user grant usage record
 func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
@@ -59,12 +44,6 @@ func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
 	key = append(key, []byte(contractAddr)...)
 	return key
 }
-
-// GetUserGrantUsageKeyPrefix returns the prefix for all user grant usage records for a specific user
-func GetUserGrantUsageKeyPrefix(userAddr string) []byte {
-	return append(UserGrantUsageKeyPrefix, []byte(userAddr)...)
-}
-
 // ValidateContractAddress validates a contract address
 func ValidateContractAddress(addr string) error {
 	if addr == "" {

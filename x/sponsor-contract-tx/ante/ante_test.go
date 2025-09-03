@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -922,6 +922,21 @@ func (suite *AnteTestSuite) TestGetMaxGrantPerUserWithDisabledSponsorship() {
 	_, err = suite.keeper.GetMaxGrantPerUser(suite.ctx, suite.contract.String())
 	suite.Require().Error(err)
 	suite.Require().Contains(err.Error(), "sponsorship is disabled")
+}
+
+// validateSponsoredTransactionLegacy provides backward compatibility for tests
+// Returns (contractAddress, error) like the old function
+func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
+	validation := validateSponsoredTransaction(tx)
+	if !validation.ShouldSponsor {
+		if validation.SkipReason == "no messages in transaction" || 
+		   strings.Contains(validation.SkipReason, "non-contract message") {
+			return "", nil
+		}
+		// For mixed messages or multiple contracts, return error for test compatibility
+		return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
+	}
+	return validation.ContractAddress, nil
 }
 
 // TestValidateSponsoredTransactionLogic tests transaction validation logic for sponsorship
