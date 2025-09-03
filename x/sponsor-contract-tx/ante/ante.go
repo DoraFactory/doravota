@@ -16,6 +16,7 @@ type sponsorPaymentKey struct{}
 // SponsorPaymentInfo holds all sponsor payment context information
 type SponsorPaymentInfo struct {
 	ContractAddr sdk.AccAddress
+	SponsorAddr  sdk.AccAddress // The actual sponsor address that pays fees
 	UserAddr     sdk.AccAddress
 	Fee          sdk.Coins
 	IsSponsored  bool
@@ -89,7 +90,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	}
 
 	// Check if this contract is sponsored
-	IsSponsored := sctd.keeper.IsSponsored(ctx, contractAddr)
+	sponsor, IsSponsored := sctd.keeper.GetSponsor(ctx, contractAddr)
 
 	// Only apply sponsor functionality if the contract is explicitly sponsored
 	if IsSponsored {
@@ -167,7 +168,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"user", userAddr.String(),
 		)
 
-		// Validate contract address
+		// Validate sponsor address
+		sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		if err != nil {
+			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
+		}
+		
+		// Also validate contract address for context
 		contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 		if err != nil {
 			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
@@ -218,7 +225,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				}
 
 				// Check if sponsor has sufficient balance
-				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, contractAccAddr)
+				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
 				if !sponsorBalance.IsAllGTE(fee) {
 					// Emit sponsor insufficient funds event only in DeliverTx mode
 					if !ctx.IsCheckTx() {
@@ -226,18 +233,20 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							sdk.NewEvent(
 								types.EventTypeSponsorInsufficient,
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAccAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
 							),
 						)
 					}
-					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", contractAccAddr, fee, sponsorBalance)
+					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
 				}
 
 				// Store sponsor payment info in context for custom fee handling using type-safe key
 				// Don't use SetFeeGranter as it conflicts with standard feegrant system
 				sponsorPayment := SponsorPaymentInfo{
 					ContractAddr: contractAccAddr,
+					SponsorAddr:  sponsorAccAddr,
 					UserAddr:     userAddr,
 					Fee:          fee,
 					IsSponsored:  true,
@@ -246,7 +255,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 				ctx.Logger().With("module", "sponsor-contract-tx").Info(
 					"sponsor info stored in context",
-					"sponsor", contractAccAddr.String(),
+					"contract", contractAccAddr.String(),
+					"sponsor", sponsorAccAddr.String(),
 					"user", userAddr.String(),
 					"fee", fee.String(),
 				)

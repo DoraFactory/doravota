@@ -49,8 +49,8 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
 		if sponsorPayment.IsSponsored && !sponsorPayment.Fee.IsZero() {
 			// Handle sponsor fee payment directly
-			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, 
-				sponsorPayment.ContractAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
+			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
+				sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
 		}
 	}
 
@@ -64,6 +64,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	tx sdk.Tx,
 	simulate bool,
 	next sdk.AnteHandler,
+	contractAddr sdk.AccAddress,
 	sponsorAddr sdk.AccAddress,
 	userAddr sdk.AccAddress,
 	fee sdk.Coins,
@@ -114,7 +115,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		
 		// Update user grant usage only in DeliverTx period
 		if !ctx.IsCheckTx() {
-			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), sponsorAddr.String(), fee); err != nil {
+			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
 				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
 			}
 
@@ -122,7 +123,8 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 			ctx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeSponsoredTx,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, sponsorAddr.String()),
+					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+					sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
 					sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 					sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
 					sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
@@ -131,6 +133,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"sponsor fee deducted successfully and usage updated",
+				"contract", contractAddr.String(),
 				"sponsor", sponsorAddr.String(),
 				"user", userAddr.String(),
 				"fee", fee.String(),

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -63,11 +64,19 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
 	}
 
+	// Generate sponsor address from contract address
+	contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
+	}
+	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor")))
+
 	// Create and set the sponsor
 	now := ctx.BlockTime().Unix()
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
 		CreatorAddress:  msg.Creator, // The address that created this sponsor configuration
+		SponsorAddress:  sponsorAddr.String(), // The derived address that actually pays for sponsorship fees
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -84,6 +93,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 			types.EventTypeSetSponsor,
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -138,10 +148,24 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
 	}
 
+	// Generate sponsor address from contract address (preserve existing sponsor address)
+	var sponsorAddr string
+	if existingSponsor.SponsorAddress != "" {
+		sponsorAddr = existingSponsor.SponsorAddress // Preserve existing sponsor address
+	} else {
+		// Generate new sponsor address for backward compatibility
+		contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
+		if err != nil {
+			return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
+		}
+		sponsorAddr = sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
+	}
+
 	// Update the sponsor
 	sponsor := types.ContractSponsor{
 		ContractAddress: msg.ContractAddress,
 		CreatorAddress:  existingSponsor.CreatorAddress, // Preserve original creator address
+		SponsorAddress:  sponsorAddr, // Preserve or generate sponsor address
 		IsSponsored:     msg.IsSponsored,
 		CreatedAt:       existingSponsor.CreatedAt,
 		UpdatedAt:       ctx.BlockTime().Unix(),
@@ -158,6 +182,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 			types.EventTypeUpdateSponsor,
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -200,6 +225,12 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can delete sponsor")
 	}
 
+	// Get sponsor info before deletion for event
+	sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
+	if !found {
+		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+	}
+
 	// Delete the sponsor
 	if err := k.Keeper.DeleteSponsor(ctx, msg.ContractAddress); err != nil {
 		return nil, sdkerrors.Wrap(err, "failed to delete sponsor")
@@ -211,6 +242,7 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 			types.EventTypeDeleteSponsor,
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsor.SponsorAddress),
 		),
 	)
 

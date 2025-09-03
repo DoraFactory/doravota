@@ -23,6 +23,7 @@ const (
 // Event attribute keys
 const (
 	AttributeKeyCreator         = "creator"
+	AttributeKeySponsorAddress  = "sponsor_address"
 	AttributeKeyContractAddress = "contract_address"
 	AttributeKeyIsSponsored     = "is_sponsored"
 	AttributeKeyTxHash          = "tx_hash"

@@ -43,6 +43,7 @@ type CheckContractPolicyResult struct {
 type SponsorKeeperInterface interface {
 	GetParams(ctx sdk.Context) Params
 	IsSponsored(ctx sdk.Context, contractAddr string) bool
+	GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
 	CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*CheckContractPolicyResult, error)
 	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
 	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
