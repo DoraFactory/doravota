@@ -27653,8 +27653,8 @@ paths:
       - doravota.sponsor.v1.Query
   /doravota/sponsor/v1/sponsors:
     get:
-      summary: AllSponsors queries all sponsors with pagination support
-      operationId: Query_AllSponsors
+      summary: Sponsors queries all sponsors with pagination support
+      operationId: Query_Sponsors
       responses:
         '200':
           description: A successful response.
