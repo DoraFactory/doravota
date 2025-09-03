@@ -6,7 +6,7 @@ import (
 
 const (
 	// ModuleName defines the module name
-	ModuleName = "contract-sponsor"
+	ModuleName = "sponsor"
 
 	// StoreKey defines the primary module store key
 	StoreKey = ModuleName
