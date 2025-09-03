@@ -1,6 +1,9 @@
 package sponsor
 
 import (
+	"fmt"
+	"strings"
+	
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -79,21 +82,51 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	}
 
 	// Find and validate contract execution messages
-	contractAddr, err := validateSponsoredTransaction(tx)
-	if err != nil {
-		return ctx, err
-	}
-
-	// If no contract execution found, pass through
-	if contractAddr == "" {
+	validation := validateSponsoredTransaction(tx)
+	
+	// If no sponsorship should be attempted, pass through with event
+	if !validation.ShouldSponsor {
+		// Emit detailed event for why sponsorship was skipped
+		if !ctx.IsCheckTx() && validation.SkipReason != "" {
+			// Determine transaction type for better categorization
+			transactionType := "unknown"
+			if validation.SkipReason == "no messages in transaction" {
+				transactionType = "empty"
+			} else if strings.Contains(validation.SkipReason, "multiple contracts") {
+				transactionType = "multi_contract_tx"
+			} else if strings.Contains(validation.SkipReason, "mixed messages") {
+				transactionType = "mixed_messages_tx"
+			} else if strings.Contains(validation.SkipReason, "non-contract message") {
+				transactionType = "non_contract_tx"
+			}
+			
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsorshipSkipped,
+					sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
+					sdk.NewAttribute(types.AttributeKeyTransactionType, transactionType),
+				),
+			)
+			
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"sponsorship skipped",
+				"reason", validation.SkipReason,
+				"transaction_type", transactionType,
+			)
+		}
 		return next(ctx, tx, simulate)
 	}
+	
+	contractAddr := validation.ContractAddress
 
 	// Check if this contract is sponsored
-	sponsor, IsSponsored := sctd.keeper.GetSponsor(ctx, contractAddr)
+    sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
 
-	// Only apply sponsor functionality if the contract is explicitly sponsored
-	if IsSponsored {
+    // Only apply sponsor functionality if the contract is explicitly sponsored
+    // Previously, the boolean from GetSponsor (found) was used directly, which
+    // caused sponsorship logic to run even when the stored sponsor record had
+    // IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
+    if found && sponsor.IsSponsored {
 		// Get the appropriate user address for policy check and fee payment
 		userAddr, err := sctd.getUserAddressForSponsorship(tx)
 		if err != nil {
@@ -177,18 +210,20 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		
 		if policyErr != nil {
 			// Policy check failed with error (contract query failed, parsing failed, etc.)
-			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"contract policy check failed",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-				"gas_used", gasUsed,
-				"error", policyErr.Error(),
-			)
-			reasonFromError := "policy_check_failed"
-			// The error contains technical failure details (query failed, parsing failed, etc.)
-			reasonFromError = policyErr.Error()
-			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
-		}
+            ctx.Logger().With("module", "sponsor-contract-tx").Error(
+                "contract policy check failed",
+                "contract", contractAddr,
+                "user", userAddr.String(),
+                "gas_used", gasUsed,
+                "error", policyErr.Error(),
+            )
+            // Account for gas consumed by the policy check even on failure
+            ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check (failed)")
+            reasonFromError := "policy_check_failed"
+            // The error contains technical failure details (query failed, parsing failed, etc.)
+            reasonFromError = policyErr.Error()
+            return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
+        }
 
 		// Policy check succeeded, consume gas and check eligibility
 		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
@@ -308,23 +343,55 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-		// Event will be emitted in sponsor_decorator.go after successful fee deduction
+			// Event will be emitted in sponsor_decorator.go after successful fee deduction
+	} else if found && !sponsor.IsSponsored {
+		// Contract has a sponsor record but sponsorship is disabled; emit explicit skip event for clarity
+		if !ctx.IsCheckTx() {
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsorshipSkipped,
+					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+					sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+				),
+			)
+		}
+
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"sponsorship disabled for contract; using standard fee processing",
+			"contract", contractAddr,
+		)
 	}
 
 	return next(ctx, tx, simulate)
 }
 
+// TransactionValidationResult holds the result of transaction validation
+type TransactionValidationResult struct {
+	ContractAddress string // Empty if no sponsorship should be attempted
+	ShouldSponsor   bool   // Whether sponsorship should be attempted
+	SkipReason      string // Reason why sponsorship was skipped (for events)
+}
+
 // validateSponsoredTransaction validates that the transaction meets sponsor requirements
-func validateSponsoredTransaction(tx sdk.Tx) (string, error) {
+// Returns validation result instead of error to allow fallback to user payment
+func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {
-		return "", nil
+		return &TransactionValidationResult{
+			ContractAddress: "",
+			ShouldSponsor:   false,
+			SkipReason:      "no messages in transaction",
+		}
 	}
 
 	var sponsoredContract string
+	var msgTypes []string // Track message types for debugging
 
 	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
+		msgType := sdk.MsgTypeURL(msg)
+		msgTypes = append(msgTypes, msgType)
+		
 		switch execMsg := msg.(type) {
 		case *wasmtypes.MsgExecuteContract:
 			// This is a contract execution message
@@ -334,21 +401,53 @@ func validateSponsoredTransaction(tx sdk.Tx) (string, error) {
 			} else {
 				// Additional contract message - must be the same contract
 				if execMsg.Contract != sponsoredContract {
-					return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "sponsored transaction can only contain messages for the same contract")
+					return &TransactionValidationResult{
+						ContractAddress: "",
+						ShouldSponsor:   false,
+						SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and %s", sponsoredContract, execMsg.Contract),
+					}
 				}
 			}
 		default:
 			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
 			if sponsoredContract == "" {
-				return "", nil
+				return &TransactionValidationResult{
+					ContractAddress: "",
+					ShouldSponsor:   false,
+					SkipReason:      fmt.Sprintf("transaction starts with non-contract message: %s", msgType),
+				}
 			} else {
-				// Found non-contract message later in the transaction - reject immediately
-				return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "sponsored transaction cannot contain non-contract messages")
+				// Found non-contract message later in the transaction - skip sponsorship
+				return &TransactionValidationResult{
+					ContractAddress: "",
+					ShouldSponsor:   false,
+					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
+				}
 			}
 		}
 	}
 
-	return sponsoredContract, nil
+	// If we get here, all messages are contract messages for the same contract
+	return &TransactionValidationResult{
+		ContractAddress: sponsoredContract,
+		ShouldSponsor:   true,
+		SkipReason:      "",
+	}
+}
+
+// validateSponsoredTransactionLegacy provides backward compatibility for tests
+// Returns (contractAddress, error) like the old function
+func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
+	validation := validateSponsoredTransaction(tx)
+	if !validation.ShouldSponsor {
+		if validation.SkipReason == "no messages in transaction" || 
+		   strings.Contains(validation.SkipReason, "non-contract message") {
+			return "", nil
+		}
+		// For mixed messages or multiple contracts, return error for test compatibility
+		return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
+	}
+	return validation.ContractAddress, nil
 }
 
 // handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves

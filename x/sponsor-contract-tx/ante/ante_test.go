@@ -874,13 +874,13 @@ func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
 	
 	// Single contract execution message should be valid
 	tx1 := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransaction(tx1)
+	_, err := validateSponsoredTransactionLegacy(tx1)
 	suite.Require().NoError(err, "Single contract execution should be valid")
 
 	// Test case 2: Multiple different contracts should be invalid
 	contractAddr2 := sdk.AccAddress("contract2___________")
 	mixedContractTx := suite.createMultiSignerContractExecuteTx(contractAddr2, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(mixedContractTx)
+	_, err = validateSponsoredTransactionLegacy(mixedContractTx)
 	// This should pass since it's a single contract, just different from our test contract
 	suite.Require().NoError(err)
 
@@ -888,7 +888,7 @@ func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
 	// Note: validateSponsoredTransaction checks if a transaction can be sponsored
 	// It should reject transactions with non-contract messages
 	bankTx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(bankTx)
+	_, err = validateSponsoredTransactionLegacy(bankTx)
 	// Bank transactions should be rejected for sponsorship but the function might allow them to pass through
 	// Let's check the actual behavior - if no error, it means it passes validation but won't be sponsored
 	if err != nil {
@@ -1185,13 +1185,13 @@ func (suite *AnteTestSuite) TestSignerAndFeePayerConsistency() {
 	
 	// Test case: Single signer transaction should be valid
 	singleSignerTx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransaction(singleSignerTx)
+	_, err := validateSponsoredTransactionLegacy(singleSignerTx)
 	suite.Require().NoError(err)
 
 	// Test case: Multi-signer transaction validation is handled by existing TestMultiSignerTransactionRejected
 	// We can verify that the validation function properly handles this case
 	multiSignerTx := suite.createMultiSignerContractExecuteTx(suite.contract, []sdk.AccAddress{suite.user, suite.admin}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(multiSignerTx)
+	_, err = validateSponsoredTransactionLegacy(multiSignerTx)
 	// The validation should handle multiple signers appropriately
 	// Based on the existing logic, this may pass through but won't be processed for sponsorship
 	suite.Require().NoError(err)
@@ -2195,10 +2195,9 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 	
 	mixedTx := suite.createTx(mixedContractMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
-	// Should fail due to different contract addresses
+	// Should now pass through instead of failing, since user can pay with their own funds
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, mixedTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "same contract")
+	suite.Require().NoError(err)
 
 	// Test case 3: Batch transaction starting with contract message then non-contract message (should fail)
 	mixedTypeMsgs := []sdk.Msg{
@@ -2217,10 +2216,9 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 	
 	mixedTypeTx := suite.createTx(mixedTypeMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
-	// Should fail due to mixing contract and non-contract messages
+	// Should now pass through instead of failing, since user can pay with their own funds
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, mixedTypeTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "non-contract messages")
+	suite.Require().NoError(err)
 
 	// Test case 4: Batch transaction starting with non-contract message (should pass through)
 	nonContractFirstMsgs := []sdk.Msg{
@@ -2610,9 +2608,9 @@ func TestValidateSponsoredTransaction(t *testing.T) {
 		msgs: msgs,
 	}
 
-	_, err := validateSponsoredTransaction(tx)
+	_, err := validateSponsoredTransactionLegacy(tx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot contain non-contract messages")
+	require.Contains(t, err.Error(), "mixed messages")
 }
 
 func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
@@ -2632,9 +2630,9 @@ func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
 		msgs: msgs,
 	}
 
-	_, err := validateSponsoredTransaction(tx)
+	_, err := validateSponsoredTransactionLegacy(tx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "same contract")
+	require.Contains(t, err.Error(), "multiple contracts")
 }
 
 // HighGasConsumingMockWasmKeeper simulates a malicious contract that consumes excessive gas

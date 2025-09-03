@@ -9,6 +9,7 @@ const (
 	EventTypeSponsorUsage        = "sponsor_usage_updated"      // New: track usage updates
 	EventTypeSponsorInsufficient = "sponsor_insufficient_funds" // New: sponsor can't pay
 	EventTypeUserSelfPay         = "user_self_pay"              // New: user paid themselves
+	EventTypeSponsorshipSkipped  = "sponsorship_skipped"        // New: sponsorship skipped due to transaction structure
 	EventTypeSponsorshipDisabled = "sponsorship_disabled"       // New: sponsorship globally disabled
 	EventTypeUpdateParams        = "update_params"              // New: governance parameter updates
 
@@ -37,6 +38,7 @@ const (
 	AttributeKeyCount           = "count"
 	AttributeKeyQueryType              = "query_type"
 	AttributeKeyReason                 = "reason"
+	AttributeKeyTransactionType        = "transaction_type"
 	AttributeKeyAuthority              = "authority"
 	AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
 	AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
