@@ -171,18 +171,27 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		return peakaAmount.String() + "peaka"
 	})
 
-	// Parse the converted string
-	coins, err := sdk.ParseCoinsNormalized(convertedStr)
-	if err != nil {
-		return nil, err
-	}
+    // Parse the converted string
+    coins, err := sdk.ParseCoinsNormalized(convertedStr)
+    if err != nil {
+        return nil, err
+    }
 
-	// Validate that only peaka denom is present
-	for _, coin := range coins {
-		if coin.Denom != "peaka" {
-			return nil, fmt.Errorf("invalid denomination '%s': only 'peaka' and 'DORA' are supported", coin.Denom)
-		}
-	}
+    // Validate that only peaka denom is present
+    for _, coin := range coins {
+        if coin.Denom != "peaka" {
+            return nil, fmt.Errorf("invalid denomination '%s': only 'peaka' and 'DORA' are supported", coin.Denom)
+        }
+        // Friendly validation: disallow zero amounts early at CLI
+        if coin.Amount.IsZero() {
+            return nil, fmt.Errorf("amount must be greater than 0; got 0 for '%s' (if you meant 'no amount', omit the argument)", coin.Denom)
+        }
+    }
+
+    // Also reject if total parsed amount equals zero (e.g. input normalizes to empty or zero)
+    if coins.AmountOf("peaka").IsZero() {
+        return nil, fmt.Errorf("amount must be greater than 0")
+    }
 
 	return coins, nil
 }
