@@ -1,16 +1,17 @@
 package sponsor
 
 import (
-	"fmt"
-	"strings"
-	
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+    "fmt"
+    "strings"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    errorsmod "cosmossdk.io/errors"
+    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // Context key for sponsor payment information
@@ -140,7 +141,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		if userAddr.Empty() {
-			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
+			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
         // Early return optimization 1: if no fee, no need to run policy checks
@@ -233,7 +234,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"gas_used", gasUsedOnPanic,
 							"gas_overflow", gasUsedOnPanic-gasLimit,
 						)
-						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
+						err = errorsmod.Wrapf(types.ErrGasLimitExceeded,
 							"contract policy check exceeded gas limit: %d, used: %d",
 							gasLimit, gasUsedOnPanic)
 						result = nil // Ensure result is nil when error occurs
@@ -247,7 +248,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"error", r,
 							"gas_used", gasUsedOnPanic,
 						)
-						err = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
+						err = errorsmod.Wrapf(types.ErrPolicyCheckFailed,
 							"contract policy check failed due to unexpected error: %v", r)
 						result = nil // Ensure result is nil when error occurs
 					}
@@ -268,8 +269,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"gas_remaining", gasLimit-gasUsed,
 		)
 		
-		if policyErr != nil {
-			// Policy check failed with error (contract query failed, parsing failed, etc.)
+        if policyErr != nil {
+            // Policy check failed with error (contract query failed, parsing failed, etc.)
             ctx.Logger().With("module", "sponsor-contract-tx").Error(
                 "contract policy check failed",
                 "contract", contractAddr,
@@ -279,35 +280,34 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             )
             
             // Safely account for gas consumed by the policy check even on failure
-            // Use a defer recovery to prevent double panic if main context is also out of gas
-            func() {
-                defer func() {
-                    if r := recover(); r != nil {
-                        // If main context gas meter also panics, log it but don't re-panic
-                        ctx.Logger().With("module", "sponsor-contract-tx").Error(
-                            "failed to consume gas on main context after policy check failure",
-                            "gas_to_consume", gasUsed,
-                            "recovery_error", r,
-                        )
-                    }
-                }()
-                ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check (failed)")
-            }()
+            // Use a helper to prevent double panic if main context is also out of gas
+            consumeGasSafely(ctx, gasUsed, "contract policy check (failed)")
             
             // Provide user-friendly error message for common gas limit exceeded case
             reasonFromError := "policy_check_failed"
-            if strings.Contains(policyErr.Error(), "gas limit exceeded") || 
-               strings.Contains(policyErr.Error(), "out of gas") {
+            if errorsmod.IsOf(policyErr, types.ErrGasLimitExceeded) {
                 reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
             } else {
                 // The error contains technical failure details (query failed, parsing failed, etc.)
                 reasonFromError = policyErr.Error()
             }
+
+            // Emit a skip event for observability (DeliverTx only)
+            if !ctx.IsCheckTx() {
+                ctx.EventManager().EmitEvent(
+                    sdk.NewEvent(
+                        types.EventTypeSponsorshipSkipped,
+                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                        sdk.NewAttribute(types.AttributeKeyReason, reasonFromError),
+                    ),
+                )
+            }
             return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
         }
 
-		// Policy check succeeded, consume gas and check eligibility
-		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+        // Policy check succeeded, consume gas and check eligibility
+        // Note: keep default behavior (allow OOG to propagate) to avoid changing semantics
+        ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
 		
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"gas consumed for contract policy check",
@@ -341,13 +341,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// Validate sponsor address
 		sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 		if err != nil {
-			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
+			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
 		}
 		
 		// Also validate contract address for context
 		contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 		if err != nil {
-			return ctx, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
+			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
 
 		// Handle sponsored fee payment using feegrant-like mechanism
@@ -410,7 +410,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							),
 						)
 					}
-					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
+					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
 				}
 
 				// Store sponsor payment info in context for custom fee handling using type-safe key
@@ -556,7 +556,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 	if !userBalance.IsAllGTE(fee) {
 		// User cannot afford the fee and sponsorship was denied
 		// Return a clear error message explaining the situation
-		return ctx, sdkerrors.Wrapf(
+		return ctx, errorsmod.Wrapf(
 			sdkerrors.ErrInsufficientFunds,
 			"sponsorship denied for contract %s (reason: %s) and user %s has insufficient balance to pay fees. Required: %s, Available: %s. User needs either sponsorship approval or sufficient balance to pay transaction fees",
 			contractAddr,
@@ -598,7 +598,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.Tx) (sdk.AccAddress, error) {
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {
-		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "transaction has no messages")
+		return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "transaction has no messages")
 	}
 
 	// First, validate all message signers are consistent for security
@@ -608,7 +608,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 	for i, msg := range msgs {
 		msgSigners := msg.GetSigners()
 		if len(msgSigners) == 0 {
-			return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrInvalidRequest, "message at index %d has no signers", i)
+			return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "message at index %d has no signers", i)
 		}
 
 		// For the first message, record all its signers
@@ -618,13 +618,13 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 		} else {
 			// For subsequent messages, ensure signers match the first message
 			if len(msgSigners) != len(allSigners) {
-				return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, 
+				return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized, 
 					"inconsistent signer count across messages - sponsored transactions require consistent signers")
 			}
 
 			for j, signer := range msgSigners {
 				if !signer.Equals(allSigners[j]) {
-					return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrUnauthorized,
+					return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrUnauthorized,
 						"signer mismatch at message %d, position %d - sponsored transactions require consistent signers", i, j)
 				}
 			}
@@ -633,7 +633,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 
 	// Reject multi-signer transactions for security reasons
 	if len(allSigners) > 1 {
-		return sdk.AccAddress{}, sdkerrors.Wrap(sdkerrors.ErrUnauthorized,
+		return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized,
 			"multi-signer transactions are not supported for sponsorship - please use single signer transactions or separate transactions")
 	}
 
@@ -644,7 +644,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 			// Security check: FeePayer must match the validated signer to prevent abuse
 			// This prevents users from setting arbitrary FeePayer addresses
 			if !feePayer.Equals(validatedSigner) {
-				return sdk.AccAddress{}, sdkerrors.Wrapf(sdkerrors.ErrUnauthorized,
+				return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrUnauthorized,
 					"FeePayer %s does not match message signer %s - potential security risk in sponsored transactions", 
 					feePayer.String(), validatedSigner.String())
 			}
@@ -653,4 +653,19 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 	}
 
 	return validatedSigner, nil
+}
+
+// consumeGasSafely attempts to consume gas on the main context and logs an error if it panics
+// This prevents a second panic during failure-path accounting from crashing the node.
+func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
+    defer func() {
+        if r := recover(); r != nil {
+            ctx.Logger().With("module", "sponsor-contract-tx").Error(
+                "failed to consume gas on main context",
+                "gas_to_consume", gasUsed,
+                "recovery_error", r,
+            )
+        }
+    }()
+    ctx.GasMeter().ConsumeGas(gasUsed, desc)
 }

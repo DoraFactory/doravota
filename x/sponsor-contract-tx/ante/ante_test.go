@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	errorsmod "cosmossdk.io/errors"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -934,7 +935,7 @@ func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
 			return "", nil
 		}
 		// For mixed messages or multiple contracts, return error for test compatibility
-		return "", sdkerrors.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
+		return "", errorsmod.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
 	}
 	return validation.ContractAddress, nil
 }

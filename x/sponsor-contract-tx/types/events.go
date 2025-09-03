@@ -31,4 +31,5 @@ const (
     AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
     AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
     AttributeKeyRecipient              = "recipient"
+    AttributeValueTrue                 = "true"
 )

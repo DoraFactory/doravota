@@ -3,9 +3,11 @@ package keeper
 import (
 	"context"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // Ensure Server implements the protobuf QueryServer interface
@@ -28,19 +30,19 @@ func NewQueryServer(keeper Keeper) types.QueryServer {
 // Sponsor implements the gRPC Sponsor query
 func (q QueryServer) Sponsor(goCtx context.Context, req *types.QuerySponsorRequest) (*types.QuerySponsorResponse, error) {
 	if req == nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// Validate contract address
 	if req.ContractAddress == "" {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
 	}
 
 	_, err := sdk.AccAddressFromBech32(req.ContractAddress)
 	if err != nil {
-		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
 	}
 
 	// Get sponsor details
@@ -59,7 +61,7 @@ func (q QueryServer) Sponsor(goCtx context.Context, req *types.QuerySponsorReque
 // AllSponsors implements the gRPC AllSponsors query with pagination support
 func (q QueryServer) AllSponsors(goCtx context.Context, req *types.QueryAllSponsorsRequest) (*types.QueryAllSponsorsResponse, error) {
 	if req == nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
@@ -79,7 +81,7 @@ func (q QueryServer) AllSponsors(goCtx context.Context, req *types.QueryAllSpons
 // Params implements the gRPC Params query
 func (q QueryServer) Params(goCtx context.Context, req *types.QueryParamsRequest) (*types.QueryParamsResponse, error) {
 	if req == nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
@@ -95,29 +97,29 @@ func (q QueryServer) Params(goCtx context.Context, req *types.QueryParamsRequest
 // UserGrantUsage implements the gRPC UserGrantUsage query
 func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserGrantUsageRequest) (*types.QueryUserGrantUsageResponse, error) {
 	if req == nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid request")
 	}
 
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
 	// Validate user address
 	if req.UserAddress == "" {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "user address cannot be empty")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "user address cannot be empty")
 	}
 
 	_, err := sdk.AccAddressFromBech32(req.UserAddress)
 	if err != nil {
-		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", req.UserAddress)
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", req.UserAddress)
 	}
 
 	// Validate contract address
 	if req.ContractAddress == "" {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
 	}
 
 	_, err = sdk.AccAddressFromBech32(req.ContractAddress)
 	if err != nil {
-		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
 	}
 
 	// Get user grant usage

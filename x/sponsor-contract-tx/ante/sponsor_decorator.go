@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
@@ -72,7 +73,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	// Check for feegrant first - if present, delegate to standard decorator
 	feeTx, ok := tx.(sdk.FeeTx)
 	if !ok {
-		return ctx, sdkerrors.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
+		return ctx, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
 	}
 
 	feeGranter := feeTx.FeeGranter()
@@ -87,12 +88,12 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	if safd.txFeeChecker != nil {
 		requiredFee, _, err := safd.txFeeChecker(ctx, tx)
 		if err != nil {
-			return ctx, sdkerrors.Wrapf(err, "failed to check required fee")
+			return ctx, errorsmod.Wrapf(err, "failed to check required fee")
 		}
 		
 		// Ensure sponsor fee meets minimum gas price and required fee
 		if !fee.IsAllGTE(requiredFee) {
-			return ctx, sdkerrors.Wrapf(
+			return ctx, errorsmod.Wrapf(
 				sdkerrors.ErrInsufficientFee,
 				"sponsor fee %s is insufficient, required minimum fee: %s",
 				fee.String(),
@@ -110,13 +111,13 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 			fee,
 		)
 		if err != nil {
-			return ctx, sdkerrors.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
+			return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
 		}
 		
 		// Update user grant usage only in DeliverTx period
 		if !ctx.IsCheckTx() {
 			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
-				return ctx, sdkerrors.Wrapf(err, "failed to update user grant usage")
+				return ctx, errorsmod.Wrapf(err, "failed to update user grant usage")
 			}
 
 			// Emit successful sponsored transaction event only in DeliverTx period
@@ -127,7 +128,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 					sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
 					sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 					sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
-					sdk.NewAttribute(types.AttributeKeyIsSponsored, "true"),
+					sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
 				),
 			)
 

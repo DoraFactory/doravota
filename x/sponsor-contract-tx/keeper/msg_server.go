@@ -4,6 +4,7 @@ import (
     "context"
     "fmt"
 
+    errorsmod "cosmossdk.io/errors"
     sdk "github.com/cosmos/cosmos-sdk/types"
     "github.com/cosmos/cosmos-sdk/types/address"
     sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -37,7 +38,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	// Check if sponsorship is globally enabled
 	params := k.Keeper.GetParams(ctx)
 	if !params.SponsorshipEnabled {
-		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
 	}
 
 	// Validate that the contract exists and is valid
@@ -47,33 +48,33 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 
 	// Check if sponsor already exists
 	if k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(types.ErrSponsorAlreadyExists, "sponsor already exists")
+		return nil, errorsmod.Wrap(types.ErrSponsorAlreadyExists, "sponsor already exists")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
+		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can set sponsor")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can set sponsor")
 	}
 
 	// Additional validation for MaxGrantPerUser - server-side safety check
 	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
-		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
+		return nil, errorsmod.Wrap(err, "invalid max_grant_per_user in server validation")
 	}
 
 	// Generate sponsor address from contract address
 	contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
+		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
 	}
 	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor")))
 
@@ -90,7 +91,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	}
 
 	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to set sponsor")
+		return nil, errorsmod.Wrap(err, "failed to set sponsor")
 	}
 
 	// Emit event using constants
@@ -114,7 +115,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	// Check if sponsorship is globally enabled
 	params := k.Keeper.GetParams(ctx)
 	if !params.SponsorshipEnabled {
-		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
 	}
 
 	// Validate that the contract exists and is valid
@@ -124,22 +125,22 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
+		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can update sponsor")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can update sponsor")
 	}
 
 	// Get existing sponsor to preserve CreatedAt timestamp
@@ -151,7 +152,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 
 	// Additional validation for MaxGrantPerUser - server-side safety check
 	if err := types.ValidateMaxGrantPerUserConditional(msg.MaxGrantPerUser, msg.IsSponsored); err != nil {
-		return nil, sdkerrors.Wrap(err, "invalid max_grant_per_user in server validation")
+		return nil, errorsmod.Wrap(err, "invalid max_grant_per_user in server validation")
 	}
 
 	// Generate sponsor address from contract address (preserve existing sponsor address)
@@ -162,7 +163,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		// Generate new sponsor address for backward compatibility
 		contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
 		if err != nil {
-			return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
+			return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
 		}
 		sponsorAddr = sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
 	}
@@ -179,7 +180,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	}
 
 	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to update sponsor")
+		return nil, errorsmod.Wrap(err, "failed to update sponsor")
 	}
 
 	// Emit event using constants
@@ -203,7 +204,7 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	// Check if sponsorship is globally enabled
 	params := k.Keeper.GetParams(ctx)
 	if !params.SponsorshipEnabled {
-		return nil, sdkerrors.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
+		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
 	}
 
 	// Validate that the contract exists and is valid
@@ -213,33 +214,33 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 
 	// Check if sponsor exists
 	if !k.HasSponsor(ctx, msg.ContractAddress) {
-		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
 	// Verify that the creator is the admin of the contract
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
+		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
 	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
 	}
 
 	if !isAdmin {
-		return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can delete sponsor")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can delete sponsor")
 	}
 
 	// Get sponsor info before deletion for event
 	sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
 	if !found {
-		return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
 	// Delete the sponsor
 	if err := k.Keeper.DeleteSponsor(ctx, msg.ContractAddress); err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to delete sponsor")
+		return nil, errorsmod.Wrap(err, "failed to delete sponsor")
 	}
 
 	// Emit event using constants
@@ -267,66 +268,66 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
     // Check sponsor exists for contract
     sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
     if !found {
-        return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+        return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
     }
 
     // Verify that the creator is the admin of the contract
     creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
     if err != nil {
-        return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
+        return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
     }
 
     isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
     if err != nil {
-        return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+        return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
     }
     if !isAdmin {
-        return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can withdraw sponsor funds")
+        return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can withdraw sponsor funds")
     }
 
     // Parse sponsor and recipient addresses
     sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
     if err != nil {
-        return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
+        return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
     }
 
     recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
     if err != nil {
-        return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+        return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
     }
 
     // Validate amount
     if len(msg.Amount) == 0 {
-        return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
+        return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
     }
     amt := sdk.Coins{}
     for _, c := range msg.Amount {
         if c == nil {
-            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
         }
         if c.Denom != "peaka" {
-            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
         }
         if !c.Amount.IsPositive() {
-            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
         }
         amt = amt.Add(*c)
     }
 
     // Ensure bank keeper is available
     if k.bankKeeper == nil {
-        return nil, sdkerrors.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
+        return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
     }
 
     // Check sponsor balance
     spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
     if !spendable.IsAllGTE(amt) {
-        return nil, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
+        return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
     }
 
     // Transfer funds
     if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
-        return nil, sdkerrors.Wrap(err, "failed to transfer sponsor funds")
+        return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
     }
 
     // Emit event
@@ -350,17 +351,17 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParam
 
 	// Validate authority
 	if k.Keeper.authority != msg.Authority {
-		return nil, sdkerrors.Wrapf(types.ErrInvalidAuthority, "invalid authority; expected %s, got %s", k.Keeper.authority, msg.Authority)
+		return nil, errorsmod.Wrapf(types.ErrInvalidAuthority, "invalid authority; expected %s, got %s", k.Keeper.authority, msg.Authority)
 	}
 
 	// Validate the new parameters
 	if err := msg.Params.Validate(); err != nil {
-		return nil, sdkerrors.Wrap(types.ErrInvalidParams, err.Error())
+		return nil, errorsmod.Wrap(types.ErrInvalidParams, err.Error())
 	}
 
 	// Update the parameters
 	if err := k.Keeper.SetParams(ctx, msg.Params); err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to set parameters")
+		return nil, errorsmod.Wrap(err, "failed to set parameters")
 	}
 
 	// Emit event
