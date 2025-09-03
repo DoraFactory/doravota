@@ -28,13 +28,38 @@ func GetTxCmd() *cobra.Command {
 		RunE:                       client.ValidateCmd,
 	}
 
-	cmd.AddCommand(
-		GetCmdSetSponsor(),
-		GetCmdUpdateSponsor(),
-		GetCmdDeleteSponsor(),
-	)
+    cmd.AddCommand(
+        GetCmdSetSponsor(),
+        GetCmdUpdateSponsor(),
+        GetCmdDeleteSponsor(),
+        GetCmdWithdrawSponsorFunds(),
+    )
 
 	return cmd
+}
+
+// GetCmdWithdrawSponsorFunds implements the withdraw sponsor funds command
+func GetCmdWithdrawSponsorFunds() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "withdraw-sponsor-funds [contract-address] [recipient] [amount]",
+        Short: "Withdraw funds from the derived sponsor address to a recipient (admin only)",
+        Long: `Withdraw funds from the derived sponsor address to a recipient.
+Only the contract admin can execute this. Amount supports peaka and DORA (1 DORA = 10^18 peaka), e.g. 10DORA or 10000000000000000000peaka.`,
+        Args:  cobra.ExactArgs(3),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientTxContext(cmd)
+            if err != nil { return err }
+
+            coins, err := parseCoinsWithDORASupport(args[2])
+            if err != nil { return err }
+
+            msg := types.NewMsgWithdrawSponsorFunds(clientCtx.GetFromAddress().String(), args[0], args[1], coins)
+            if err := msg.ValidateBasic(); err != nil { return err }
+            return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+        },
+    }
+    flags.AddTxFlagsToCmd(cmd)
+    return cmd
 }
 
 // parseBoolParameter parses boolean parameter with proper validation

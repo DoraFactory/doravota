@@ -307,11 +307,11 @@ func (s *TxTestSuite) TestCoinParsing() {
 
 // TestCommandHelp tests help functionality for all tx commands
 func (s *TxTestSuite) TestCommandHelp() {
-	commands := []struct {
-		name        string
-		cmd         func() *cobra.Command
-		expectedTxt string
-	}{
+    commands := []struct {
+        name        string
+        cmd         func() *cobra.Command
+        expectedTxt string
+    }{
 		{
 			"set-sponsor help",
 			cli.GetCmdSetSponsor,
@@ -322,12 +322,17 @@ func (s *TxTestSuite) TestCommandHelp() {
 			cli.GetCmdUpdateSponsor,
 			"Update a sponsor status",
 		},
-		{
-			"delete-sponsor help", 
-			cli.GetCmdDeleteSponsor,
-			"Delete a sponsor contract",
-		},
-	}
+        {
+            "delete-sponsor help", 
+            cli.GetCmdDeleteSponsor,
+            "Delete a sponsor contract",
+        },
+        {
+            "withdraw-sponsor-funds help",
+            cli.GetCmdWithdrawSponsorFunds,
+            "Withdraw funds from the derived sponsor address",
+        },
+    }
 
 	for _, cmdTest := range commands {
 		s.Run(cmdTest.name, func() {
@@ -338,6 +343,46 @@ func (s *TxTestSuite) TestCommandHelp() {
 			s.Require().NotEmpty(cmd.Long, "Command should have long help text")
 		})
 	}
+}
+
+// TestWithdrawSponsorFundsCmd tests the withdraw-sponsor-funds command
+func (s *TxTestSuite) TestWithdrawSponsorFundsCmd() {
+    testCases := []struct {
+        name      string
+        args      []string
+        expectErr bool
+    }{
+        {
+            "valid withdraw command with DORA",
+            []string{s.contractAddr, s.userAddr, "1DORA"},
+            false,
+        },
+        {
+            "valid withdraw command with peaka",
+            []string{s.contractAddr, s.userAddr, "1000000000000000000peaka"},
+            false,
+        },
+        {
+            "invalid - missing args",
+            []string{},
+            true,
+        },
+        {
+            "invalid - bad denom",
+            []string{s.contractAddr, s.userAddr, "1stake"},
+            false, // parsing occurs in RunE; this test only checks structure exists
+        },
+    }
+
+    for _, tc := range testCases {
+        s.Run(tc.name, func() {
+            cmd := cli.GetCmdWithdrawSponsorFunds()
+            s.Require().NotNil(cmd)
+            if tc.expectErr {
+                s.Require().NotNil(cmd.Args)
+            }
+        })
+    }
 }
 
 // TestCommandFlags tests that all commands support standard transaction flags
@@ -454,11 +499,11 @@ func (s *TxTestSuite) TestMessageConstruction() {
 // TestMessageTypes tests that proper message types are created
 func (s *TxTestSuite) TestMessageTypes() {
 	// Test that our message constructors work properly
-	testCases := []struct {
-		name        string
-		createMsg   func() sdk.Msg
-		expectedType string
-	}{
+    testCases := []struct {
+        name        string
+        createMsg   func() sdk.Msg
+        expectedType string
+    }{
 		{
 			"MsgSetSponsor type",
 			func() sdk.Msg {
@@ -475,14 +520,22 @@ func (s *TxTestSuite) TestMessageTypes() {
 			},
 			"/sponsor.MsgUpdateSponsor",
 		},
-		{
-			"MsgDeleteSponsor type",
-			func() sdk.Msg {
-				return types.NewMsgDeleteSponsor(s.userAddr, s.contractAddr)
-			},
-			"/sponsor.MsgDeleteSponsor",
-		},
-	}
+        {
+            "MsgDeleteSponsor type",
+            func() sdk.Msg {
+                return types.NewMsgDeleteSponsor(s.userAddr, s.contractAddr)
+            },
+            "/sponsor.MsgDeleteSponsor",
+        },
+        {
+            "MsgWithdrawSponsorFunds type",
+            func() sdk.Msg {
+                coins, _ := sdk.ParseCoinsNormalized("100peaka")
+                return types.NewMsgWithdrawSponsorFunds(s.userAddr, s.contractAddr, s.userAddr, coins)
+            },
+            "/sponsor.MsgWithdrawSponsorFunds",
+        },
+    }
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {

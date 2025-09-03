@@ -92,20 +92,23 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command {
 
 // AppModule implements the AppModule interface for the sponsor module
 type AppModule struct {
-	AppModuleBasic
+    AppModuleBasic
 
-	keeper keeper.Keeper
+    keeper     keeper.Keeper
+    bankKeeper types.BankKeeper
 }
 
 // NewAppModule creates a new AppModule object
 func NewAppModule(
-	cdc codec.Codec,
-	keeper keeper.Keeper,
+    cdc codec.Codec,
+    keeper keeper.Keeper,
+    bankKeeper types.BankKeeper,
 ) AppModule {
-	return AppModule{
-		AppModuleBasic: AppModuleBasic{cdc: cdc},
-		keeper:         keeper,
-	}
+    return AppModule{
+        AppModuleBasic: AppModuleBasic{cdc: cdc},
+        keeper:         keeper,
+        bankKeeper:     bankKeeper,
+    }
 }
 
 // Name returns the sponsor module's name
@@ -115,8 +118,8 @@ func (am AppModule) Name() string {
 
 // RegisterServices registers the sponsor module's services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
-	// Register message server - follow the standard pattern
-	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
+    // Register message server with dependencies
+    types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
 
 	// Register query server
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))

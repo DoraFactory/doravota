@@ -191,6 +191,8 @@ The module emits comprehensive events for monitoring and auditing:
   - Attributes: `contract_address`, `sponsor_address`, `user`, `fee_amount`
 - `user_self_pay`: User paid own fees (eligible but has sufficient balance)
   - Attributes: `contract_address`, `user`, `reason`, `fee_amount`
+- `sponsor_withdraw_funds`: Admin withdrew funds from derived sponsor address to recipient
+  - Attributes: `creator`, `contract_address`, `sponsor_address`, `recipient`, `sponsor_amount`
 - `sponsor_usage_updated`: User grant usage updated (internal tracking)
 - `sponsorship_disabled`: Sponsorship globally disabled
   - Attributes: `reason`
@@ -306,6 +308,34 @@ dorad tx bank send [admin-address] [sponsor-address] 10000000000000000000peaka \
 - Funds must be transferred to the **sponsor_address**, not the contract or creator address
 - sponsor_address is derived from contract_address and directly serves as the funding account for all sponsorship fees
 - `creator_address` is only used for permission verification and does not participate in actual funding
+
+#### Withdraw Funds from Sponsor Address (admin only)
+
+The derived sponsor address has no private key and cannot sign. To reclaim or move funds, the contract admin must execute a module message which transfers from the sponsor address to a specified recipient.
+
+```bash
+# Withdraw 1 DORA (10^18 peaka) from the sponsor address to RECIPIENT_ADDR
+dorad tx sponsor withdraw-sponsor-funds [contract-address] [recipient-address] 1DORA \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
+
+# Alternatively specify peaka directly (example: 3,000 peaka)
+dorad tx sponsor withdraw-sponsor-funds [contract-address] [recipient-address] 3000peaka \
+  --from admin \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
+```
+
+Notes:
+- Only the contract admin (as recorded by the CosmWasm contract) can withdraw funds.
+- `recipient` is the target address to receive the withdrawn funds (e.g., project treasury, multisig, ops account).
+- The module validates denomination (`peaka` only) and available balance before transfer.
+- An event `sponsor_withdraw_funds` is emitted with attributes: creator, contract_address, sponsor_address, recipient, sponsor_amount.
 
 ## Query Commands
 

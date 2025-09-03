@@ -16,18 +16,20 @@ import (
 // and concrete types on the provided LegacyAmino codec. These types are used
 // for Amino JSON serialization.
 func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
-	legacy.RegisterAminoMsg(cdc, &MsgSetSponsor{}, "sponsor/MsgSetSponsor")
-	legacy.RegisterAminoMsg(cdc, &MsgUpdateSponsor{}, "sponsor/MsgUpdateSponsor")
-	legacy.RegisterAminoMsg(cdc, &MsgDeleteSponsor{}, "sponsor/MsgDeleteSponsor")
+    legacy.RegisterAminoMsg(cdc, &MsgSetSponsor{}, "sponsor/MsgSetSponsor")
+    legacy.RegisterAminoMsg(cdc, &MsgUpdateSponsor{}, "sponsor/MsgUpdateSponsor")
+    legacy.RegisterAminoMsg(cdc, &MsgDeleteSponsor{}, "sponsor/MsgDeleteSponsor")
+    legacy.RegisterAminoMsg(cdc, &MsgWithdrawSponsorFunds{}, "sponsor/MsgWithdrawSponsorFunds")
 }
 
 func RegisterInterfaces(registry types.InterfaceRegistry) {
-	registry.RegisterImplementations(
-		(*sdk.Msg)(nil),
-		&MsgSetSponsor{},
-		&MsgUpdateSponsor{},
-		&MsgDeleteSponsor{},
-	)
+    registry.RegisterImplementations(
+        (*sdk.Msg)(nil),
+        &MsgSetSponsor{},
+        &MsgUpdateSponsor{},
+        &MsgDeleteSponsor{},
+        &MsgWithdrawSponsorFunds{},
+    )
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
 }

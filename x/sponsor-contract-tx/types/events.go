@@ -11,7 +11,8 @@ const (
 	EventTypeUserSelfPay         = "user_self_pay"              // New: user paid themselves
 	EventTypeSponsorshipSkipped  = "sponsorship_skipped"        // New: sponsorship skipped due to transaction structure
 	EventTypeSponsorshipDisabled = "sponsorship_disabled"       // New: sponsorship globally disabled
-	EventTypeUpdateParams        = "update_params"              // New: governance parameter updates
+    EventTypeUpdateParams        = "update_params"              // New: governance parameter updates
+    EventTypeSponsorWithdrawal   = "sponsor_withdraw_funds"     // New: sponsor funds withdrawal
 
 	// Read operation events
 	EventTypeGetSponsor        = "get_sponsor"
@@ -41,7 +42,8 @@ const (
 	AttributeKeyTransactionType        = "transaction_type"
 	AttributeKeyAuthority              = "authority"
 	AttributeKeySponsorshipEnabled     = "sponsorship_enabled"
-	AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
+    AttributeKeyMaxGasPerSponsorship   = "max_gas_per_sponsorship"
+    AttributeKeyRecipient              = "recipient"
 )
 
 // Event attribute values

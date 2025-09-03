@@ -1,25 +1,31 @@
 package keeper
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/address"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/cosmos/cosmos-sdk/types/address"
+    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // msgServer implements the MsgServer interface
 type msgServer struct {
-	types.UnimplementedMsgServer
-	Keeper
+    types.UnimplementedMsgServer
+    Keeper
+    bankKeeper types.BankKeeper
 }
 
 // NewMsgServerImpl returns an implementation of the MsgServer interface
 func NewMsgServerImpl(keeper Keeper) types.MsgServer {
-	return &msgServer{Keeper: keeper}
+    return &msgServer{Keeper: keeper}
+}
+
+// NewMsgServerImplWithDeps returns a MsgServer with explicit dependencies
+func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper) types.MsgServer {
+    return &msgServer{Keeper: keeper, bankKeeper: bk}
 }
 
 var _ types.MsgServer = msgServer{}
@@ -247,6 +253,95 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	)
 
 	return &types.MsgDeleteSponsorResponse{}, nil
+}
+
+// WithdrawSponsorFunds handles MsgWithdrawSponsorFunds
+func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWithdrawSponsorFunds) (*types.MsgWithdrawSponsorFundsResponse, error) {
+    ctx := sdk.UnwrapSDKContext(goCtx)
+
+    // Validate contract exists (also required for admin check)
+    if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
+        return nil, err
+    }
+
+    // Check sponsor exists for contract
+    sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
+    if !found {
+        return nil, sdkerrors.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+    }
+
+    // Verify that the creator is the admin of the contract
+    creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+    if err != nil {
+        return nil, sdkerrors.Wrap(types.ErrInvalidCreator, "invalid creator address")
+    }
+
+    isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+    if err != nil {
+        return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+    }
+    if !isAdmin {
+        return nil, sdkerrors.Wrap(types.ErrContractNotAdmin, "only contract admin can withdraw sponsor funds")
+    }
+
+    // Parse sponsor and recipient addresses
+    sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+    if err != nil {
+        return nil, sdkerrors.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
+    }
+
+    recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+    if err != nil {
+        return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+    }
+
+    // Validate amount
+    if len(msg.Amount) == 0 {
+        return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
+    }
+    amt := sdk.Coins{}
+    for _, c := range msg.Amount {
+        if c == nil {
+            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+        }
+        if c.Denom != "peaka" {
+            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
+        }
+        if !c.Amount.IsPositive() {
+            return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
+        }
+        amt = amt.Add(*c)
+    }
+
+    // Ensure bank keeper is available
+    if k.bankKeeper == nil {
+        return nil, sdkerrors.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
+    }
+
+    // Check sponsor balance
+    spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
+    if !spendable.IsAllGTE(amt) {
+        return nil, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
+    }
+
+    // Transfer funds
+    if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
+        return nil, sdkerrors.Wrap(err, "failed to transfer sponsor funds")
+    }
+
+    // Emit event
+    ctx.EventManager().EmitEvent(
+        sdk.NewEvent(
+            types.EventTypeSponsorWithdrawal,
+            sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
+            sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
+            sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsor.SponsorAddress),
+            sdk.NewAttribute(types.AttributeKeyRecipient, msg.Recipient),
+            sdk.NewAttribute(types.AttributeKeySponsorAmount, amt.String()),
+        ),
+    )
+
+    return &types.MsgWithdrawSponsorFundsResponse{}, nil
 }
 
 // UpdateParams handles MsgUpdateParams for governance

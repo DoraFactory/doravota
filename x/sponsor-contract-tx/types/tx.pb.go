@@ -309,6 +309,81 @@ var xxx_messageInfo_MsgUpdateParams proto.InternalMessageInfo
 type MsgUpdateParamsResponse struct {
 }
 
+// MsgWithdrawSponsorFunds defines the message to withdraw funds from sponsor address
+type MsgWithdrawSponsorFunds struct {
+    Creator         string        `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+    ContractAddress string        `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+    Recipient       string        `protobuf:"bytes,3,opt,name=recipient,proto3" json:"recipient,omitempty"`
+    Amount          []*types.Coin `protobuf:"bytes,4,rep,name=amount,proto3" json:"amount,omitempty"`
+}
+
+func (m *MsgWithdrawSponsorFunds) Reset()         { *m = MsgWithdrawSponsorFunds{} }
+func (m *MsgWithdrawSponsorFunds) String() string { return proto.CompactTextString(m) }
+func (*MsgWithdrawSponsorFunds) ProtoMessage()    {}
+func (*MsgWithdrawSponsorFunds) Descriptor() ([]byte, []int) {
+    return fileDescriptor_22461c0ea8a50db3, []int{8}
+}
+func (m *MsgWithdrawSponsorFunds) XXX_Unmarshal(b []byte) error {
+    return m.Unmarshal(b)
+}
+func (m *MsgWithdrawSponsorFunds) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+    if deterministic {
+        return xxx_messageInfo_MsgWithdrawSponsorFunds.Marshal(b, m, deterministic)
+    } else {
+        b = b[:cap(b)]
+        n, err := m.MarshalToSizedBuffer(b)
+        if err != nil {
+            return nil, err
+        }
+        return b[:n], nil
+    }
+}
+func (m *MsgWithdrawSponsorFunds) XXX_Merge(src proto.Message) {
+    xxx_messageInfo_MsgWithdrawSponsorFunds.Merge(m, src)
+}
+func (m *MsgWithdrawSponsorFunds) XXX_Size() int {
+    return m.Size()
+}
+func (m *MsgWithdrawSponsorFunds) XXX_DiscardUnknown() {
+    xxx_messageInfo_MsgWithdrawSponsorFunds.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgWithdrawSponsorFunds proto.InternalMessageInfo
+
+// MsgWithdrawSponsorFundsResponse defines the response
+type MsgWithdrawSponsorFundsResponse struct{}
+
+func (m *MsgWithdrawSponsorFundsResponse) Reset()         { *m = MsgWithdrawSponsorFundsResponse{} }
+func (m *MsgWithdrawSponsorFundsResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgWithdrawSponsorFundsResponse) ProtoMessage()    {}
+func (*MsgWithdrawSponsorFundsResponse) Descriptor() ([]byte, []int) {
+    return fileDescriptor_22461c0ea8a50db3, []int{9}
+}
+func (m *MsgWithdrawSponsorFundsResponse) XXX_Unmarshal(b []byte) error {
+    return m.Unmarshal(b)
+}
+func (m *MsgWithdrawSponsorFundsResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+    if deterministic {
+        return xxx_messageInfo_MsgWithdrawSponsorFundsResponse.Marshal(b, m, deterministic)
+    } else {
+        b = b[:cap(b)]
+        n, err := m.MarshalToSizedBuffer(b)
+        if err != nil {
+            return nil, err
+        }
+        return b[:n], nil
+    }
+}
+func (m *MsgWithdrawSponsorFundsResponse) XXX_Merge(src proto.Message) {
+    xxx_messageInfo_MsgWithdrawSponsorFundsResponse.Merge(m, src)
+}
+func (m *MsgWithdrawSponsorFundsResponse) XXX_Size() int { return m.Size() }
+func (m *MsgWithdrawSponsorFundsResponse) XXX_DiscardUnknown() {
+    xxx_messageInfo_MsgWithdrawSponsorFundsResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgWithdrawSponsorFundsResponse proto.InternalMessageInfo
+
 func (m *MsgUpdateParamsResponse) Reset()         { *m = MsgUpdateParamsResponse{} }
 func (m *MsgUpdateParamsResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgUpdateParamsResponse) ProtoMessage()    {}
@@ -343,14 +418,16 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
 func init() {
-	proto.RegisterType((*MsgSetSponsor)(nil), "doravota.sponsor.v1.MsgSetSponsor")
-	proto.RegisterType((*MsgSetSponsorResponse)(nil), "doravota.sponsor.v1.MsgSetSponsorResponse")
+    proto.RegisterType((*MsgSetSponsor)(nil), "doravota.sponsor.v1.MsgSetSponsor")
+    proto.RegisterType((*MsgSetSponsorResponse)(nil), "doravota.sponsor.v1.MsgSetSponsorResponse")
 	proto.RegisterType((*MsgUpdateSponsor)(nil), "doravota.sponsor.v1.MsgUpdateSponsor")
 	proto.RegisterType((*MsgUpdateSponsorResponse)(nil), "doravota.sponsor.v1.MsgUpdateSponsorResponse")
 	proto.RegisterType((*MsgDeleteSponsor)(nil), "doravota.sponsor.v1.MsgDeleteSponsor")
 	proto.RegisterType((*MsgDeleteSponsorResponse)(nil), "doravota.sponsor.v1.MsgDeleteSponsorResponse")
-	proto.RegisterType((*MsgUpdateParams)(nil), "doravota.sponsor.v1.MsgUpdateParams")
-	proto.RegisterType((*MsgUpdateParamsResponse)(nil), "doravota.sponsor.v1.MsgUpdateParamsResponse")
+    proto.RegisterType((*MsgUpdateParams)(nil), "doravota.sponsor.v1.MsgUpdateParams")
+    proto.RegisterType((*MsgUpdateParamsResponse)(nil), "doravota.sponsor.v1.MsgUpdateParamsResponse")
+    proto.RegisterType((*MsgWithdrawSponsorFunds)(nil), "doravota.sponsor.v1.MsgWithdrawSponsorFunds")
+    proto.RegisterType((*MsgWithdrawSponsorFundsResponse)(nil), "doravota.sponsor.v1.MsgWithdrawSponsorFundsResponse")
 }
 
 func init() { proto.RegisterFile("doravota/sponsor/v1/tx.proto", fileDescriptor_22461c0ea8a50db3) }
@@ -502,8 +579,10 @@ type MsgClient interface {
 	UpdateSponsor(ctx context.Context, in *MsgUpdateSponsor, opts ...grpc.CallOption) (*MsgUpdateSponsorResponse, error)
 	// DeleteSponsor deletes a sponsor
 	DeleteSponsor(ctx context.Context, in *MsgDeleteSponsor, opts ...grpc.CallOption) (*MsgDeleteSponsorResponse, error)
-	// UpdateParams updates the module parameters via governance
-	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
+    // UpdateParams updates the module parameters via governance
+    UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
+    // WithdrawSponsorFunds withdraws funds from the sponsor address to a recipient (admin only)
+    WithdrawSponsorFunds(ctx context.Context, in *MsgWithdrawSponsorFunds, opts ...grpc.CallOption) (*MsgWithdrawSponsorFundsResponse, error)
 }
 
 type msgClient struct {
@@ -550,6 +629,15 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 	return out, nil
 }
 
+func (c *msgClient) WithdrawSponsorFunds(ctx context.Context, in *MsgWithdrawSponsorFunds, opts ...grpc.CallOption) (*MsgWithdrawSponsorFundsResponse, error) {
+    out := new(MsgWithdrawSponsorFundsResponse)
+    err := c.cc.Invoke(ctx, "/doravota.sponsor.v1.Msg/WithdrawSponsorFunds", in, out, opts...)
+    if err != nil {
+        return nil, err
+    }
+    return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
 	// SetSponsor sets a sponsor for a contract
@@ -558,8 +646,10 @@ type MsgServer interface {
 	UpdateSponsor(context.Context, *MsgUpdateSponsor) (*MsgUpdateSponsorResponse, error)
 	// DeleteSponsor deletes a sponsor
 	DeleteSponsor(context.Context, *MsgDeleteSponsor) (*MsgDeleteSponsorResponse, error)
-	// UpdateParams updates the module parameters via governance
-	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+    // UpdateParams updates the module parameters via governance
+    UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+    // WithdrawSponsorFunds withdraws funds from the sponsor address to a recipient (admin only)
+    WithdrawSponsorFunds(context.Context, *MsgWithdrawSponsorFunds) (*MsgWithdrawSponsorFundsResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
@@ -576,7 +666,10 @@ func (*UnimplementedMsgServer) DeleteSponsor(ctx context.Context, req *MsgDelete
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteSponsor not implemented")
 }
 func (*UnimplementedMsgServer) UpdateParams(ctx context.Context, req *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
+    return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
+}
+func (*UnimplementedMsgServer) WithdrawSponsorFunds(ctx context.Context, req *MsgWithdrawSponsorFunds) (*MsgWithdrawSponsorFundsResponse, error) {
+    return nil, status.Errorf(codes.Unimplemented, "method WithdrawSponsorFunds not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
@@ -655,30 +748,52 @@ func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_WithdrawSponsorFunds_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+    in := new(MsgWithdrawSponsorFunds)
+    if err := dec(in); err != nil {
+        return nil, err
+    }
+    if interceptor == nil {
+        return srv.(MsgServer).WithdrawSponsorFunds(ctx, in)
+    }
+    info := &grpc.UnaryServerInfo{
+        Server:     srv,
+        FullMethod: "/doravota.sponsor.v1.Msg/WithdrawSponsorFunds",
+    }
+    handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+        return srv.(MsgServer).WithdrawSponsorFunds(ctx, req.(*MsgWithdrawSponsorFunds))
+    }
+    return interceptor(ctx, in, info, handler)
+}
+
 var Msg_serviceDesc = _Msg_serviceDesc
 var _Msg_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "doravota.sponsor.v1.Msg",
-	HandlerType: (*MsgServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "SetSponsor",
-			Handler:    _Msg_SetSponsor_Handler,
-		},
-		{
-			MethodName: "UpdateSponsor",
-			Handler:    _Msg_UpdateSponsor_Handler,
-		},
-		{
-			MethodName: "DeleteSponsor",
-			Handler:    _Msg_DeleteSponsor_Handler,
-		},
-		{
-			MethodName: "UpdateParams",
-			Handler:    _Msg_UpdateParams_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "doravota/sponsor/v1/tx.proto",
+    ServiceName: "doravota.sponsor.v1.Msg",
+    HandlerType: (*MsgServer)(nil),
+    Methods: []grpc.MethodDesc{
+        {
+            MethodName: "SetSponsor",
+            Handler:    _Msg_SetSponsor_Handler,
+        },
+        {
+            MethodName: "UpdateSponsor",
+            Handler:    _Msg_UpdateSponsor_Handler,
+        },
+        {
+            MethodName: "DeleteSponsor",
+            Handler:    _Msg_DeleteSponsor_Handler,
+        },
+        {
+            MethodName: "UpdateParams",
+            Handler:    _Msg_UpdateParams_Handler,
+        },
+        {
+            MethodName: "WithdrawSponsorFunds",
+            Handler:    _Msg_WithdrawSponsorFunds_Handler,
+        },
+    },
+    Streams:  []grpc.StreamDesc{},
+    Metadata: "doravota/sponsor/v1/tx.proto",
 }
 
 func (m *MsgSetSponsor) Marshal() (dAtA []byte, err error) {
@@ -972,6 +1087,87 @@ func (m *MsgUpdateParamsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
+func (m *MsgWithdrawSponsorFunds) Marshal() (dAtA []byte, err error) {
+    size := m.Size()
+    dAtA = make([]byte, size)
+    n, err := m.MarshalToSizedBuffer(dAtA[:size])
+    if err != nil {
+        return nil, err
+    }
+    return dAtA[:n], nil
+}
+
+func (m *MsgWithdrawSponsorFunds) MarshalTo(dAtA []byte) (int, error) {
+    size := m.Size()
+    return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgWithdrawSponsorFunds) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+    i := len(dAtA)
+    _ = i
+    var l int
+    _ = l
+    if len(m.Amount) > 0 {
+        for iNdEx := len(m.Amount) - 1; iNdEx >= 0; iNdEx-- {
+            {
+                size, err := m.Amount[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+                if err != nil {
+                    return 0, err
+                }
+                i -= size
+                i = encodeVarintTx(dAtA, i, uint64(size))
+            }
+            i--
+            dAtA[i] = 0x22
+        }
+    }
+    if len(m.Recipient) > 0 {
+        i -= len(m.Recipient)
+        copy(dAtA[i:], m.Recipient)
+        i = encodeVarintTx(dAtA, i, uint64(len(m.Recipient)))
+        i--
+        dAtA[i] = 0x1a
+    }
+    if len(m.ContractAddress) > 0 {
+        i -= len(m.ContractAddress)
+        copy(dAtA[i:], m.ContractAddress)
+        i = encodeVarintTx(dAtA, i, uint64(len(m.ContractAddress)))
+        i--
+        dAtA[i] = 0x12
+    }
+    if len(m.Creator) > 0 {
+        i -= len(m.Creator)
+        copy(dAtA[i:], m.Creator)
+        i = encodeVarintTx(dAtA, i, uint64(len(m.Creator)))
+        i--
+        dAtA[i] = 0xa
+    }
+    return len(dAtA) - i, nil
+}
+
+func (m *MsgWithdrawSponsorFundsResponse) Marshal() (dAtA []byte, err error) {
+    size := m.Size()
+    dAtA = make([]byte, size)
+    n, err := m.MarshalToSizedBuffer(dAtA[:size])
+    if err != nil {
+        return nil, err
+    }
+    return dAtA[:n], nil
+}
+
+func (m *MsgWithdrawSponsorFundsResponse) MarshalTo(dAtA []byte) (int, error) {
+    size := m.Size()
+    return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgWithdrawSponsorFundsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+    i := len(dAtA)
+    _ = i
+    var l int
+    _ = l
+    return len(dAtA) - i, nil
+}
+
 func encodeVarintTx(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTx(v)
 	base := offset
@@ -1102,6 +1298,29 @@ func (m *MsgUpdateParamsResponse) Size() (n int) {
 	_ = l
 	return n
 }
+
+func (m *MsgWithdrawSponsorFunds) Size() (n int) {
+    if m == nil {
+        return 0
+    }
+    var l int
+    _ = l
+    l = len(m.Creator)
+    if l > 0 { n += 1 + l + sovTx(uint64(l)) }
+    l = len(m.ContractAddress)
+    if l > 0 { n += 1 + l + sovTx(uint64(l)) }
+    l = len(m.Recipient)
+    if l > 0 { n += 1 + l + sovTx(uint64(l)) }
+    if len(m.Amount) > 0 {
+        for _, e := range m.Amount {
+            l = e.Size()
+            n += 1 + l + sovTx(uint64(l))
+        }
+    }
+    return n
+}
+
+func (m *MsgWithdrawSponsorFundsResponse) Size() (n int) { if m == nil { return 0 }; return 0 }
 
 func sovTx(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
@@ -1824,6 +2043,109 @@ func (m *MsgUpdateParams) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
+func (m *MsgWithdrawSponsorFunds) Unmarshal(dAtA []byte) error {
+    l := len(dAtA)
+    iNdEx := 0
+    for iNdEx < l {
+        preIndex := iNdEx
+        var wire uint64
+        for shift := uint(0); ; shift += 7 {
+            if shift >= 64 { return ErrIntOverflowTx }
+            if iNdEx >= l { return io.ErrUnexpectedEOF }
+            b := dAtA[iNdEx]; iNdEx++
+            wire |= uint64(b&0x7F) << shift
+            if b < 0x80 { break }
+        }
+        fieldNum := int32(wire >> 3)
+        wireType := int(wire & 0x7)
+        if wireType == 4 { return fmt.Errorf("proto: MsgWithdrawSponsorFunds: wiretype end group for non-group") }
+        if fieldNum <= 0 { return fmt.Errorf("proto: MsgWithdrawSponsorFunds: illegal tag %d (wire type %d)", fieldNum, wire) }
+        switch fieldNum {
+        case 1:
+            if wireType != 2 { return fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType) }
+            var stringLen uint64
+            for shift := uint(0); ; shift += 7 {
+                if shift >= 64 { return ErrIntOverflowTx }
+                if iNdEx >= l { return io.ErrUnexpectedEOF }
+                b := dAtA[iNdEx]; iNdEx++
+                stringLen |= uint64(b&0x7F) << shift
+                if b < 0x80 { break }
+            }
+            intStringLen := int(stringLen)
+            if intStringLen < 0 { return ErrInvalidLengthTx }
+            postIndex := iNdEx + intStringLen
+            if postIndex < 0 { return ErrInvalidLengthTx }
+            if postIndex > l { return io.ErrUnexpectedEOF }
+            m.Creator = string(dAtA[iNdEx:postIndex])
+            iNdEx = postIndex
+        case 2:
+            if wireType != 2 { return fmt.Errorf("proto: wrong wireType = %d for field ContractAddress", wireType) }
+            var stringLen uint64
+            for shift := uint(0); ; shift += 7 {
+                if shift >= 64 { return ErrIntOverflowTx }
+                if iNdEx >= l { return io.ErrUnexpectedEOF }
+                b := dAtA[iNdEx]; iNdEx++
+                stringLen |= uint64(b&0x7F) << shift
+                if b < 0x80 { break }
+            }
+            intStringLen := int(stringLen)
+            if intStringLen < 0 { return ErrInvalidLengthTx }
+            postIndex := iNdEx + intStringLen
+            if postIndex < 0 { return ErrInvalidLengthTx }
+            if postIndex > l { return io.ErrUnexpectedEOF }
+            m.ContractAddress = string(dAtA[iNdEx:postIndex])
+            iNdEx = postIndex
+        case 3:
+            if wireType != 2 { return fmt.Errorf("proto: wrong wireType = %d for field Recipient", wireType) }
+            var stringLen uint64
+            for shift := uint(0); ; shift += 7 {
+                if shift >= 64 { return ErrIntOverflowTx }
+                if iNdEx >= l { return io.ErrUnexpectedEOF }
+                b := dAtA[iNdEx]; iNdEx++
+                stringLen |= uint64(b&0x7F) << shift
+                if b < 0x80 { break }
+            }
+            intStringLen := int(stringLen)
+            if intStringLen < 0 { return ErrInvalidLengthTx }
+            postIndex := iNdEx + intStringLen
+            if postIndex < 0 { return ErrInvalidLengthTx }
+            if postIndex > l { return io.ErrUnexpectedEOF }
+            m.Recipient = string(dAtA[iNdEx:postIndex])
+            iNdEx = postIndex
+        case 4:
+            if wireType != 2 { return fmt.Errorf("proto: wrong wireType = %d for field Amount", wireType) }
+            var msglen int
+            for shift := uint(0); ; shift += 7 {
+                if shift >= 64 { return ErrIntOverflowTx }
+                if iNdEx >= l { return io.ErrUnexpectedEOF }
+                b := dAtA[iNdEx]; iNdEx++
+                msglen |= int(b&0x7F) << shift
+                if b < 0x80 { break }
+            }
+            if msglen < 0 { return ErrInvalidLengthTx }
+            postIndex := iNdEx + msglen
+            if postIndex < 0 { return ErrInvalidLengthTx }
+            if postIndex > l { return io.ErrUnexpectedEOF }
+            if m.Amount == nil { m.Amount = make([]*types.Coin, 0, 1) }
+            var v types.Coin
+            if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil { return err }
+            m.Amount = append(m.Amount, &v)
+            iNdEx = postIndex
+        default:
+            iNdEx = preIndex
+            skippy, err := skipTx(dAtA[iNdEx:])
+            if err != nil { return err }
+            if (skippy < 0) || (iNdEx+skippy) < 0 { return ErrInvalidLengthTx }
+            if (iNdEx + skippy) > l { return io.ErrUnexpectedEOF }
+            iNdEx += skippy
+        }
+    }
+    if iNdEx > l { return io.ErrUnexpectedEOF }
+    return nil
+}
+
+func (m *MsgWithdrawSponsorFundsResponse) Unmarshal(dAtA []byte) error { return nil }
 func (m *MsgUpdateParamsResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
