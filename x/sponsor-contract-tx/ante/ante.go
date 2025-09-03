@@ -217,7 +217,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		var policyResult *types.CheckContractPolicyResult
 		var policyErr error
-		policyErr = func() error {
+		
+		// Use a function with named return values to ensure defer can modify the return
+		policyResult, policyErr = func() (result *types.CheckContractPolicyResult, err error) {
 			defer func() {
 				if r := recover(); r != nil {
 					gasUsedOnPanic := limitedGasMeter.GasConsumed()
@@ -231,9 +233,10 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"gas_used", gasUsedOnPanic,
 							"gas_overflow", gasUsedOnPanic-gasLimit,
 						)
-						policyErr = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
+						err = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
 							"contract policy check exceeded gas limit: %d, used: %d",
 							gasLimit, gasUsedOnPanic)
+						result = nil // Ensure result is nil when error occurs
 					} else {
 						// Handle all other types of panics gracefully to prevent chain halt
 						// Log the error for debugging but don't crash the node
@@ -244,13 +247,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							"error", r,
 							"gas_used", gasUsedOnPanic,
 						)
-						policyErr = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
+						err = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
 							"contract policy check failed due to unexpected error: %v", r)
+						result = nil // Ensure result is nil when error occurs
 					}
 				}
 			}()
-			policyResult, policyErr = sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
-			return policyErr
+			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
 		}()
 
 		// Only consume gas from main context if policy check completed successfully
