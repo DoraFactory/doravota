@@ -752,3 +752,186 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.Equal(t, newMaxGrant, actualMaxGrant)
 	})
 }
+
+// TestMsgServerSponsorAddressGeneration tests that sponsor_address is correctly derived
+func TestMsgServerSponsorAddressGeneration(t *testing.T) {
+	keeper, ctx, mockWasmKeeper := setupKeeper(t)
+	msgServer := NewMsgServerImpl(keeper)
+
+	// Set up a valid contract and admin
+	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
+	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
+	
+	// Set up mock wasm keeper
+	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+
+	t.Run("SetSponsor generates correct sponsor_address", func(t *testing.T) {
+		// Create message
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgSetSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.SetSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify sponsor was created with sponsor_address
+		sponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		require.True(t, sponsor.IsSponsored)
+		require.NotEmpty(t, sponsor.SponsorAddress, "sponsor_address should be generated")
+		
+		// Verify the sponsor_address is a valid address
+		_, err = sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		require.NoError(t, err, "sponsor_address should be a valid bech32 address")
+		
+		// Verify sponsor_address is different from contract_address
+		require.NotEqual(t, sponsor.ContractAddress, sponsor.SponsorAddress, 
+			"sponsor_address should be different from contract_address")
+	})
+
+	t.Run("UpdateSponsor preserves sponsor_address", func(t *testing.T) {
+		// Get the original sponsor
+		originalSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		originalSponsorAddr := originalSponsor.SponsorAddress
+
+		// Update the sponsor
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000000)))
+		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
+		for i, coin := range newMaxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgUpdateSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.UpdateSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify sponsor_address is preserved after update
+		updatedSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		require.Equal(t, originalSponsorAddr, updatedSponsor.SponsorAddress, 
+			"sponsor_address should be preserved during updates")
+	})
+}
+
+// TestMsgServerSponsorAddressConsistency tests sponsor address derivation consistency
+func TestMsgServerSponsorAddressConsistency(t *testing.T) {
+	keeper, ctx, mockWasmKeeper := setupKeeper(t)
+	msgServer := NewMsgServerImpl(keeper)
+
+	// Set up multiple contracts with the same admin
+	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
+	contracts := []string{
+		sdk.AccAddress([]byte("contract_1")).String(),
+		sdk.AccAddress([]byte("contract_2")).String(),
+		sdk.AccAddress([]byte("contract_3")).String(),
+	}
+
+	// Set up mock wasm keeper for all contracts
+	for _, contractAddr := range contracts {
+		mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+	}
+
+	sponsorAddresses := make([]string, len(contracts))
+
+	t.Run("Each contract gets unique sponsor_address", func(t *testing.T) {
+		// Create sponsors for all contracts
+		for i, contractAddr := range contracts {
+			maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+			pbCoins := make([]*sdk.Coin, len(maxGrant))
+			for j, coin := range maxGrant {
+				newCoin := sdk.Coin{
+					Denom:  coin.Denom,
+					Amount: coin.Amount,
+				}
+				pbCoins[j] = &newCoin
+			}
+
+			msg := &types.MsgSetSponsor{
+				Creator:         adminAddr,
+				ContractAddress: contractAddr,
+				IsSponsored:     true,
+				MaxGrantPerUser: pbCoins,
+			}
+
+			_, err := msgServer.SetSponsor(ctx, msg)
+			require.NoError(t, err)
+
+			// Get the generated sponsor address
+			sponsor, found := keeper.GetSponsor(ctx, contractAddr)
+			require.True(t, found)
+			require.NotEmpty(t, sponsor.SponsorAddress)
+			sponsorAddresses[i] = sponsor.SponsorAddress
+		}
+
+		// Verify all sponsor addresses are unique
+		for i := 0; i < len(sponsorAddresses); i++ {
+			for j := i + 1; j < len(sponsorAddresses); j++ {
+				require.NotEqual(t, sponsorAddresses[i], sponsorAddresses[j], 
+					"sponsor addresses should be unique for different contracts")
+			}
+		}
+	})
+
+	t.Run("Sponsor address derivation is deterministic", func(t *testing.T) {
+		// Delete and recreate the first sponsor to test deterministic generation
+		deleteMsg := &types.MsgDeleteSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contracts[0],
+		}
+		_, err := msgServer.DeleteSponsor(ctx, deleteMsg)
+		require.NoError(t, err)
+
+		// Recreate the sponsor
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgSetSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contracts[0],
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		_, err = msgServer.SetSponsor(ctx, msg)
+		require.NoError(t, err)
+
+		// Verify the sponsor address is the same as before
+		sponsor, found := keeper.GetSponsor(ctx, contracts[0])
+		require.True(t, found)
+		require.Equal(t, sponsorAddresses[0], sponsor.SponsorAddress,
+			"sponsor address derivation should be deterministic")
+	})
+}
