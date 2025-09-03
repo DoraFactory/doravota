@@ -311,7 +311,7 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 			postCheck: func(resp *types.QueryParamsResponse) {
 				suite.Require().NotNil(resp.Params, "Params should not be nil")
 				suite.Require().True(resp.Params.SponsorshipEnabled, "Default should have sponsorship enabled")
-				suite.Require().Equal(uint64(1000000), resp.Params.MaxGasPerSponsorship, "Should have default max gas")
+				suite.Require().Equal(uint64(2500000), resp.Params.MaxGasPerSponsorship, "Should have default max gas")
 			},
 		},
 		{

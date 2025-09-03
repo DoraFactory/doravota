@@ -1,15 +1,14 @@
-package cli_test
+package cli
 
 import (
-	"fmt"
-	"testing"
+    "fmt"
+    "testing"
 
-	"github.com/spf13/cobra"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/stretchr/testify/suite"
+    "github.com/spf13/cobra"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/stretchr/testify/suite"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // TxTestSuite tests the CLI transaction commands
@@ -89,7 +88,7 @@ func (s *TxTestSuite) TestSetSponsorCmd() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			cmd := cli.GetCmdSetSponsor()
+            cmd := GetCmdSetSponsor()
 			
 			// Test command structure and argument validation
 			expectedArgs := len(tc.args)
@@ -147,7 +146,7 @@ func (s *TxTestSuite) TestUpdateSponsorCmd() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			cmd := cli.GetCmdUpdateSponsor()
+            cmd := GetCmdUpdateSponsor()
 			
 			// Test command structure
 			if tc.expectErr {
@@ -190,7 +189,7 @@ func (s *TxTestSuite) TestDeleteSponsorCmd() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			cmd := cli.GetCmdDeleteSponsor()
+            cmd := GetCmdDeleteSponsor()
 			
 			// Test command structure
 			if tc.expectErr {
@@ -287,7 +286,7 @@ func (s *TxTestSuite) TestCoinParsing() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			cmd := cli.GetCmdSetSponsor()
+            cmd := GetCmdSetSponsor()
 			
 			// Test command structure
 			s.Require().NotNil(cmd, "Command should exist")
@@ -314,22 +313,22 @@ func (s *TxTestSuite) TestCommandHelp() {
     }{
 		{
 			"set-sponsor help",
-			cli.GetCmdSetSponsor,
+            GetCmdSetSponsor,
 			"Set a sponsor contract",
 		},
 		{
 			"update-sponsor help",
-			cli.GetCmdUpdateSponsor,
+            GetCmdUpdateSponsor,
 			"Update a sponsor status",
 		},
         {
             "delete-sponsor help", 
-            cli.GetCmdDeleteSponsor,
+            GetCmdDeleteSponsor,
             "Delete a sponsor contract",
         },
         {
             "withdraw-sponsor-funds help",
-            cli.GetCmdWithdrawSponsorFunds,
+            GetCmdWithdrawSponsorFunds,
             "Withdraw funds from the derived sponsor address",
         },
     }
@@ -376,7 +375,7 @@ func (s *TxTestSuite) TestWithdrawSponsorFundsCmd() {
 
     for _, tc := range testCases {
         s.Run(tc.name, func() {
-            cmd := cli.GetCmdWithdrawSponsorFunds()
+            cmd := GetCmdWithdrawSponsorFunds()
             s.Require().NotNil(cmd)
             if tc.expectErr {
                 s.Require().NotNil(cmd.Args)
@@ -394,17 +393,17 @@ func (s *TxTestSuite) TestCommandFlags() {
 	}{
 		{
 			"set-sponsor flags",
-			cli.GetCmdSetSponsor,
+            GetCmdSetSponsor,
 			[]string{s.contractAddr, "true"},
 		},
 		{
 			"update-sponsor flags",
-			cli.GetCmdUpdateSponsor,
+            GetCmdUpdateSponsor,
 			[]string{s.contractAddr, "false"},
 		},
 		{
 			"delete-sponsor flags",
-			cli.GetCmdDeleteSponsor,
+            GetCmdDeleteSponsor,
 			[]string{s.contractAddr},
 		},
 	}
@@ -448,9 +447,9 @@ func (s *TxTestSuite) TestMessageConstruction() {
 		args     []string
 		validate func(*testing.T, []string)
 	}{
-		{
-			"set sponsor message construction",
-			cli.GetCmdSetSponsor,
+        {
+            "set sponsor message construction",
+            GetCmdSetSponsor,
 			[]string{s.contractAddr, "true", "100DORA"},
 			func(t *testing.T, args []string) {
 				// Basic validation that we have the expected arguments
@@ -460,9 +459,9 @@ func (s *TxTestSuite) TestMessageConstruction() {
 				require.Equal("100DORA", args[2], "Max grant should match")
 			},
 		},
-		{
-			"update sponsor message construction", 
-			cli.GetCmdUpdateSponsor,
+        {
+            "update sponsor message construction", 
+            GetCmdUpdateSponsor,
 			[]string{s.contractAddr, "false", "50DORA"},
 			func(t *testing.T, args []string) {
 				require := s.Require()
@@ -471,9 +470,9 @@ func (s *TxTestSuite) TestMessageConstruction() {
 				require.Equal("50DORA", args[2], "Max grant should match")
 			},
 		},
-		{
-			"delete sponsor message construction",
-			cli.GetCmdDeleteSponsor,
+        {
+            "delete sponsor message construction",
+            GetCmdDeleteSponsor,
 			[]string{s.contractAddr},
 			func(t *testing.T, args []string) {
 				require := s.Require()
@@ -506,20 +505,20 @@ func (s *TxTestSuite) TestMessageTypes() {
     }{
 		{
 			"MsgSetSponsor type",
-			func() sdk.Msg {
-				coins, _ := sdk.ParseCoinsNormalized("100peaka")
-				return types.NewMsgSetSponsor(s.userAddr, s.contractAddr, true, coins)
-			},
-			"/sponsor.MsgSetSponsor",
-		},
+            func() sdk.Msg {
+                coins, _ := sdk.ParseCoinsNormalized("100peaka")
+                return types.NewMsgSetSponsor(s.userAddr, s.contractAddr, true, coins)
+            },
+            "/sponsor.MsgSetSponsor",
+        },
 		{
 			"MsgUpdateSponsor type",
-			func() sdk.Msg {
-				coins, _ := sdk.ParseCoinsNormalized("50peaka")
-				return types.NewMsgUpdateSponsor(s.userAddr, s.contractAddr, false, coins)
-			},
-			"/sponsor.MsgUpdateSponsor",
-		},
+            func() sdk.Msg {
+                coins, _ := sdk.ParseCoinsNormalized("50peaka")
+                return types.NewMsgUpdateSponsor(s.userAddr, s.contractAddr, false, coins)
+            },
+            "/sponsor.MsgUpdateSponsor",
+        },
         {
             "MsgDeleteSponsor type",
             func() sdk.Msg {
@@ -556,5 +555,38 @@ func (s *TxTestSuite) TestMessageTypes() {
 }
 
 func TestTxTestSuite(t *testing.T) {
-	suite.Run(t, new(TxTestSuite))
+    suite.Run(t, new(TxTestSuite))
+}
+
+// Additional CLI parsing tests (moved from tx_parse_test.go)
+
+func TestParseCoinsWithDORASupport_ZeroAmountsRejected(t *testing.T) {
+    cases := []string{
+        "0DORA",
+        "0peaka",
+    }
+
+    for _, in := range cases {
+        if _, err := parseCoinsWithDORASupport(in); err == nil {
+            t.Fatalf("expected error for zero amount input %q, got nil", in)
+        }
+    }
+}
+
+func TestParseCoinsWithDORASupport_ValidDORA(t *testing.T) {
+    // 1.000000000000000001 DORA = 1000000000000000001 peaka
+    coins, err := parseCoinsWithDORASupport("1.000000000000000001DORA")
+    if err != nil {
+        t.Fatalf("unexpected error: %v", err)
+    }
+    if len(coins) != 1 {
+        t.Fatalf("expected 1 coin, got %d", len(coins))
+    }
+    c := coins[0]
+    if c.Denom != "peaka" {
+        t.Fatalf("expected denom peaka, got %s", c.Denom)
+    }
+    if !c.Amount.IsPositive() {
+        t.Fatalf("expected positive amount, got %s", c.Amount.String())
+    }
 }

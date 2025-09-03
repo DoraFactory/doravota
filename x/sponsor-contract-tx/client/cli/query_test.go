@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/spf13/cobra"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
@@ -18,7 +18,7 @@ type QueryTestSuite struct {
 
 	cfg     network.Config
 	network *network.Network
-	
+
 	// Test data
 	contractAddr string
 	userAddr     string
@@ -30,7 +30,7 @@ func (s *QueryTestSuite) SetupSuite() {
 	// For CLI testing, we'll use a simpler approach
 	// In a real implementation, this would integrate with your app's network config
 	s.T().Skip("CLI integration tests require full network setup - implement when needed")
-	
+
 	// This is the pattern for when network testing is fully implemented:
 	// cfg := network.DefaultConfig(func() network.TestFixtureFactory { return simapp.NewTestNetworkFixture })
 	// cfg.NumValidators = 1
@@ -195,7 +195,7 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
-			cmd := cli.GetCmdQuerySponsorStatus()
+			cmd := cli.GetCmdQuerySponsorInfo()
 			out, err := clitestutil.ExecTestCLICmd(val.ClientCtx, cmd, tc.args)
 
 			if tc.expectErr {
@@ -339,13 +339,13 @@ func (s *QueryTestSuite) TestQueryCmdHelp() {
 			"Query the parameters of the sponsor module",
 		},
 		{
-			"all-sponsors help", 
+			"all-sponsors help",
 			cli.GetCmdQueryAllSponsors,
 			"Query all sponsor contracts",
 		},
 		{
 			"sponsor status help",
-			cli.GetCmdQuerySponsorStatus,
+			cli.GetCmdQuerySponsorInfo,
 			"Query the status of a sponsor contract",
 		},
 		{
@@ -375,7 +375,7 @@ func (s *QueryTestSuite) TestQueryCmdValidation() {
 	}{
 		{
 			"sponsor status with invalid address format",
-			cli.GetCmdQuerySponsorStatus,
+			cli.GetCmdQuerySponsorInfo,
 			[]string{"not-a-valid-address"},
 		},
 		{
@@ -411,14 +411,14 @@ func (s *QueryTestSuite) TestQueryCmdFlags() {
 	}{
 		{"params", cli.GetCmdQueryParams, []string{}},
 		{"all-sponsors", cli.GetCmdQueryAllSponsors, []string{}},
-		{"sponsor-status", cli.GetCmdQuerySponsorStatus, []string{s.contractAddr}},
+		{"sponsor-status", cli.GetCmdQuerySponsorInfo, []string{s.contractAddr}},
 		{"user-grant-usage", cli.GetCmdQueryUserGrantUsage, []string{s.userAddr, s.contractAddr}},
 	}
 
 	for _, cmdTest := range commands {
 		s.Run(cmdTest.name, func() {
 			cmd := cmdTest.cmd()
-			
+
 			// Test with --help flag
 			helpArgs := append(cmdTest.args, "--help")
 			out, err := clitestutil.ExecTestCLICmd(val.ClientCtx, cmd, helpArgs)

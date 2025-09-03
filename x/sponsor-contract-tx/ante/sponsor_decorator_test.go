@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	"fmt"
 	"testing"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -663,7 +664,92 @@ func (suite *SponsorDecoratorTestSuite) createTx(msgs []sdk.Msg, signers []sdk.A
 	}
 }
 
+// Test case: Transaction that doesn't implement FeeTx interface
+func (suite *SponsorDecoratorTestSuite) TestNonFeeTxInterface() {
+	// Create a transaction that doesn't implement FeeTx interface
+	nonFeeTx := &MockNonFeeTxForDecorator{
+		msgs: []sdk.Msg{&wasmtypes.MsgExecuteContract{
+			Sender:   suite.user.String(),
+			Contract: suite.contract.String(),
+			Msg:      []byte(`{"increment":{}}`),
+		}},
+	}
+
+	// Create sponsor payment info
+	sponsorPayment := SponsorPaymentInfo{
+		ContractAddr: suite.contract,
+		SponsorAddr:  suite.user, // Dummy for this test
+		UserAddr:     suite.user,
+		Fee:          sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		IsSponsored:  true,
+	}
+	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	// Execute decorator - should fail due to non-FeeTx interface
+	_, err := suite.sponsorDecorator.AnteHandle(ctxWithSponsor, nonFeeTx, false, next)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "Tx must implement FeeTx interface")
+	suite.Require().False(nextCalled)
+}
+
+// Test case: TxFeeChecker returns error
+func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerError() {
+	// Create a decorator with error-returning txFeeChecker
+	errorTxFeeChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
+		return nil, 0, fmt.Errorf("fee checker error")
+	}
+
+	errorSponsorDecorator := NewSponsorAwareDeductFeeDecorator(
+		suite.accountKeeper,
+		suite.bankKeeper,
+		nil, // Use nil feegranter for testing
+		suite.keeper,
+		errorTxFeeChecker,
+	)
+
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	
+	// Create sponsor payment info
+	sponsorPayment := SponsorPaymentInfo{
+		ContractAddr: suite.contract,
+		SponsorAddr:  suite.user, // Dummy for this test
+		UserAddr:     suite.user,
+		Fee:          fee,
+		IsSponsored:  true,
+	}
+	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	// Execute decorator - should fail due to txFeeChecker error
+	_, err := errorSponsorDecorator.AnteHandle(ctxWithSponsor, tx, false, next)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "failed to check required fee")
+	suite.Require().Contains(err.Error(), "fee checker error")
+	suite.Require().False(nextCalled)
+}
+
 // Run the test suite
 func TestSponsorDecoratorTestSuite(t *testing.T) {
 	suite.Run(t, new(SponsorDecoratorTestSuite))
 }
+
+// MockNonFeeTxForDecorator implements sdk.Tx but NOT sdk.FeeTx for sponsor decorator testing
+type MockNonFeeTxForDecorator struct {
+	msgs []sdk.Msg
+}
+
+func (tx *MockNonFeeTxForDecorator) GetMsgs() []sdk.Msg { return tx.msgs }
+func (tx *MockNonFeeTxForDecorator) ValidateBasic() error { return nil }

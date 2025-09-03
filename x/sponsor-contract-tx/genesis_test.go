@@ -86,7 +86,7 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 	// Test default values
 	suite.Require().NotNil(genesis.Params, "Default should have params")
 	suite.Require().True(genesis.Params.SponsorshipEnabled, "Default should enable sponsorship")
-	suite.Require().Equal(uint64(1000000), genesis.Params.MaxGasPerSponsorship, "Default max gas should be 1M")
+	suite.Require().Equal(uint64(2500000), genesis.Params.MaxGasPerSponsorship, "Default max gas should be 2.5M")
 	suite.Require().Empty(genesis.Sponsors, "Default should have no sponsors")
 
 	// Validate default genesis using the validation function
