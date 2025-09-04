@@ -203,6 +203,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 								types.EventTypeUserSelfPay,
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
 								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
 							),
 						)
@@ -239,7 +240,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 							),
 						)
 					}
-					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor account %s has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
+					return ctx, sdkerrors.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
 				}
 
 				// Store sponsor payment info in context for custom fee handling using type-safe key
