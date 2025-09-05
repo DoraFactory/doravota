@@ -97,8 +97,42 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
 		}
 
+		// Record gas before contract query
+		gasBefore := ctx.GasMeter().GasConsumed()
+		
+		k.Logger(ctx).Debug("executing contract policy query",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"message_index", i,
+			"message_type", contractMsg.MsgType,
+			"gas_before_query", gasBefore,
+		)
+
 		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
+		
+		// Record gas after contract query
+		gasAfter := ctx.GasMeter().GasConsumed()
+		gasUsedForQuery := gasAfter - gasBefore
+		
+		k.Logger(ctx).Debug("contract policy query completed",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"message_index", i,
+			"message_type", contractMsg.MsgType,
+			"gas_before_query", gasBefore,
+			"gas_after_query", gasAfter,
+			"gas_used_for_query", gasUsedForQuery,
+		)
+		
 		if err != nil {
+			k.Logger(ctx).Error("contract policy query failed",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"message_index", i,
+				"message_type", contractMsg.MsgType,
+				"gas_used_for_query", gasUsedForQuery,
+				"error", err.Error(),
+			)
 			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
 		}
 

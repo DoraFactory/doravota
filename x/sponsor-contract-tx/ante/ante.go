@@ -113,6 +113,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// Call contract to check if user is eligible according to contract policy
 		// Create a gas-limited context to prevent DoS attacks through contract queries
 		gasLimit := params.MaxGasPerSponsorship
+		
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"starting contract policy check with gas limit",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"gas_limit", gasLimit,
+		)
 
 		// Create a limited gas meter for the policy check
 		limitedGasMeter := sdk.NewGasMeter(gasLimit)
@@ -123,18 +130,30 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		policyErr = func() error {
 			defer func() {
 				if r := recover(); r != nil {
+					gasUsedOnPanic := limitedGasMeter.GasConsumed()
 					// Handle gas limit exceeded panic
 					if _, ok := r.(sdk.ErrorOutOfGas); ok {
+						ctx.Logger().With("module", "sponsor-contract-tx").Error(
+							"contract policy check exceeded gas limit",
+							"contract", contractAddr,
+							"user", userAddr.String(),
+							"gas_limit", gasLimit,
+							"gas_used", gasUsedOnPanic,
+							"gas_overflow", gasUsedOnPanic-gasLimit,
+						)
 						policyErr = sdkerrors.Wrapf(types.ErrGasLimitExceeded,
 							"contract policy check exceeded gas limit: %d, used: %d",
-							gasLimit, limitedGasMeter.GasConsumed())
+							gasLimit, gasUsedOnPanic)
 					} else {
 						// Handle all other types of panics gracefully to prevent chain halt
 						// Log the error for debugging but don't crash the node
-						sctd.keeper.Logger(ctx).Error("unexpected panic during contract policy check",
+						ctx.Logger().With("module", "sponsor-contract-tx").Error(
+							"unexpected panic during contract policy check",
 							"contract", contractAddr,
+							"user", userAddr.String(),
 							"error", r,
-							"gas_used", limitedGasMeter.GasConsumed())
+							"gas_used", gasUsedOnPanic,
+						)
 						policyErr = sdkerrors.Wrapf(types.ErrPolicyCheckFailed,
 							"contract policy check failed due to unexpected error: %v", r)
 					}
@@ -146,8 +165,25 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// Only consume gas from main context if policy check completed successfully
 		gasUsed := limitedGasMeter.GasConsumed()
+		
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"contract policy check completed",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"gas_used", gasUsed,
+			"gas_limit", gasLimit,
+			"gas_remaining", gasLimit-gasUsed,
+		)
+		
 		if policyErr != nil {
 			// Policy check failed with error (contract query failed, parsing failed, etc.)
+			ctx.Logger().With("module", "sponsor-contract-tx").Error(
+				"contract policy check failed",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"gas_used", gasUsed,
+				"error", policyErr.Error(),
+			)
 			reasonFromError := "policy_check_failed"
 			// The error contains technical failure details (query failed, parsing failed, etc.)
 			reasonFromError = policyErr.Error()
@@ -156,6 +192,14 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// Policy check succeeded, consume gas and check eligibility
 		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+		
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"gas consumed for contract policy check",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"gas_consumed", gasUsed,
+			"total_gas_after", ctx.GasMeter().GasConsumed(),
+		)
 		
 		if !policyResult.Eligible {
 			// User is not eligible according to contract policy, use the specific reason from contract
