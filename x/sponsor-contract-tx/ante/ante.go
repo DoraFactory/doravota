@@ -435,23 +435,59 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 			// Event will be emitted in sponsor_decorator.go after successful fee deduction
-	} else if found && !sponsor.IsSponsored {
-		// Contract has a sponsor record but sponsorship is disabled; emit explicit skip event for clarity
-		if !ctx.IsCheckTx() {
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsorshipSkipped,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-					sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-				),
-			)
-		}
+    } else if found && !sponsor.IsSponsored {
+        // Sponsorship explicitly disabled for this contract
+        // Emit an informative skip event for observability (DeliverTx only)
+        if !ctx.IsCheckTx() {
+            ctx.EventManager().EmitEvent(
+                sdk.NewEvent(
+                    types.EventTypeSponsorshipSkipped,
+                    sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                    sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+                ),
+            )
+        }
 
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"sponsorship disabled for contract; using standard fee processing",
-			"contract", contractAddr,
-		)
-	}
+        // If the user cannot afford the fee themselves, return a clearer error
+        if feeTx, ok := tx.(sdk.FeeTx); ok {
+            fee := feeTx.GetFee()
+            if !fee.IsZero() { 
+                // Determine the effective user address (validated signer / feepayer)
+                userAddr, err := sctd.getUserAddressForSponsorship(tx)
+                if err == nil && !userAddr.Empty() {
+                    userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+                    if !userBalance.IsAllGTE(fee) {
+                        // Provide a user-facing reason to explain lack of sponsorship
+                        return ctx, errorsmod.Wrapf(
+                            sdkerrors.ErrInsufficientFunds,
+                            "sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
+                            contractAddr,
+                            userAddr.String(),
+                            fee.String(),
+                            userBalance.String(),
+                        )
+                    }
+                    // If user can self-pay, record a helpful event in DeliverTx
+                    if !ctx.IsCheckTx() {
+                        ctx.EventManager().EmitEvent(
+                            sdk.NewEvent(
+                                types.EventTypeUserSelfPay,
+                                sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                                sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+                                sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+                                sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
+        ctx.Logger().With("module", "sponsor-contract-tx").Info(
+            "sponsorship disabled for contract; using standard fee processing",
+            "contract", contractAddr,
+        )
+    }
 
 	return next(ctx, tx, simulate)
 }
