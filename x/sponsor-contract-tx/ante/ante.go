@@ -166,7 +166,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
         // Early return optimization 2: if no fee, no need to run policy checks
         if feeTx, ok := tx.(sdk.FeeTx); ok {
             fee := feeTx.GetFee()
-            if fee.IsZero() && ctx.IsCheckTx() {
+            if fee.IsZero() && ctx.IsCheckTx() && !simulate {
                 ctx.Logger().With("module", "sponsor-contract-tx").Info(
                     "zero-fee tx; skipping sponsorship checks",
                     "contract", contractAddr,
