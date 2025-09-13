@@ -88,7 +88,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	// If no sponsorship should be attempted, pass through with event
 	if !validation.ShouldSponsor {
 		// Emit detailed event for why sponsorship was skipped
-		if !ctx.IsCheckTx() && validation.SkipReason != "" {
+		if validation.SkipReason != "" {
 			// Determine transaction type for better categorization
 			transactionType := "unknown"
 			if validation.SkipReason == "no messages in transaction" {
@@ -704,5 +704,5 @@ func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
             )
         }
     }()
-    ctx.GasMeter().ConsumeGas(gasUsed, desc)
+    // ctx.GasMeter().ConsumeGas(gasUsed, desc)
 }
