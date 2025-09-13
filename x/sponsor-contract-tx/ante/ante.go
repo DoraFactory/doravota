@@ -174,30 +174,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
                 )
                 return next(ctx, tx, simulate)
             }
-
-            // Early return optimization 3: if user can self-pay, skip policy checks and emit event
-            userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-            if userBalance.IsAllGTE(fee) {
-                ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                    "user can self-pay; skipping sponsorship checks",
-                    "contract", contractAddr,
-                    "user", userAddr.String(),
-                    "user_balance", userBalance.String(),
-                    "required_fee", fee.String(),
-                )
-                if !ctx.IsCheckTx() {
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeUserSelfPay,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                            sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
-                            sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-                        ),
-                    )
-                }
-                return next(ctx, tx, simulate)
-            }
         }
 
         // Call contract to check if user is eligible according to contract policy
