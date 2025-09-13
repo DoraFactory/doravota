@@ -2,7 +2,6 @@ package sponsor
 
 import (
     "fmt"
-    "strings"
 
     errorsmod "cosmossdk.io/errors"
     wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -89,30 +88,16 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	if !validation.ShouldSponsor {
 		// Emit detailed event for why sponsorship was skipped
 		if validation.SkipReason != "" {
-			// Determine transaction type for better categorization
-			transactionType := "unknown"
-			if validation.SkipReason == "no messages in transaction" {
-				transactionType = "empty"
-			} else if strings.Contains(validation.SkipReason, "multiple contracts") {
-				transactionType = "multi_contract_tx"
-			} else if strings.Contains(validation.SkipReason, "mixed messages") {
-				transactionType = "mixed_messages_tx"
-			} else if strings.Contains(validation.SkipReason, "non-contract message") {
-				transactionType = "non_contract_tx"
-			}
-			
 			ctx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeSponsorshipSkipped,
 					sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
-					sdk.NewAttribute(types.AttributeKeyTransactionType, transactionType),
 				),
 			)
 			
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"sponsorship skipped",
 				"reason", validation.SkipReason,
-				"transaction_type", transactionType,
 			)
 		}
 		return next(ctx, tx, simulate)
@@ -509,50 +494,50 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 		return &TransactionValidationResult{
 			ContractAddress: "",
 			ShouldSponsor:   false,
-			SkipReason:      "no messages in transaction",
+			SkipReason:      "",
 		}
 	}
 
 	var sponsoredContract string
-	var msgTypes []string // Track message types for debugging
 
 	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
 		msgType := sdk.MsgTypeURL(msg)
-		msgTypes = append(msgTypes, msgType)
 		
 		switch execMsg := msg.(type) {
-		case *wasmtypes.MsgExecuteContract:
-			// This is a contract execution message
-			if sponsoredContract == "" {
-				// First contract message - record the contract address
-				sponsoredContract = execMsg.Contract
-			} else {
-				// Additional contract message - must be the same contract
-				if execMsg.Contract != sponsoredContract {
+			case *wasmtypes.MsgExecuteContract:
+				// This is a contract execution message
+				if sponsoredContract == "" {
+					// First contract message - record the contract address
+					sponsoredContract = execMsg.Contract
+				} else {
+					// Additional contract message - must be the same contract
+					if execMsg.Contract != sponsoredContract {
+						return &TransactionValidationResult{
+							ContractAddress: "",
+							ShouldSponsor:   false,
+							SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and other contract %s", sponsoredContract, execMsg.Contract),
+						}
+					}
+				}
+			default:
+				// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
+				// If the first transaction is a non-contract transaction, it indicates a normal regular transaction. 
+				// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
+				if sponsoredContract == "" {
 					return &TransactionValidationResult{
 						ContractAddress: "",
 						ShouldSponsor:   false,
-						SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and %s", sponsoredContract, execMsg.Contract),
+						SkipReason:      "",
+					}
+				} else {
+					// Found non-contract message later in the transaction - skip sponsorship
+					return &TransactionValidationResult{
+						ContractAddress: "",
+						ShouldSponsor:   false,
+						SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
 					}
 				}
-			}
-		default:
-			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
-			if sponsoredContract == "" {
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					ShouldSponsor:   false,
-					SkipReason:      fmt.Sprintf("transaction starts with non-contract message: %s", msgType),
-				}
-			} else {
-				// Found non-contract message later in the transaction - skip sponsorship
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					ShouldSponsor:   false,
-					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
-				}
-			}
 		}
 	}
 
@@ -705,5 +690,8 @@ func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
             )
         }
     }()
+	// There is no charge for failed check policies here. 
+	// To protect users who want to conduct contract transactions normally from bearing the cost of check policies, 
+	//this is more reasonable. We cannot force all users to go through check policies.
     // ctx.GasMeter().ConsumeGas(gasUsed, desc)
 }
