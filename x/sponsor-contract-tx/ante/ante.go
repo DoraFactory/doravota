@@ -88,7 +88,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	// If no sponsorship should be attempted, pass through with event
 	if !validation.ShouldSponsor {
 		// Emit detailed event for why sponsorship was skipped
-		if !ctx.IsCheckTx() && validation.SkipReason != "" {
+		if validation.SkipReason != "" {
 			// Determine transaction type for better categorization
 			transactionType := "unknown"
 			if validation.SkipReason == "no messages in transaction" {
@@ -166,36 +166,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
         // Early return optimization 2: if no fee, no need to run policy checks
         if feeTx, ok := tx.(sdk.FeeTx); ok {
             fee := feeTx.GetFee()
-            if fee.IsZero() {
+            if fee.IsZero() && ctx.IsCheckTx() && !simulate {
                 ctx.Logger().With("module", "sponsor-contract-tx").Info(
                     "zero-fee tx; skipping sponsorship checks",
                     "contract", contractAddr,
                     "user", userAddr.String(),
                 )
-                return next(ctx, tx, simulate)
-            }
-
-            // Early return optimization 3: if user can self-pay, skip policy checks and emit event
-            userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-            if userBalance.IsAllGTE(fee) {
-                ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                    "user can self-pay; skipping sponsorship checks",
-                    "contract", contractAddr,
-                    "user", userAddr.String(),
-                    "user_balance", userBalance.String(),
-                    "required_fee", fee.String(),
-                )
-                if !ctx.IsCheckTx() {
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeUserSelfPay,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                            sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
-                            sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-                        ),
-                    )
-                }
                 return next(ctx, tx, simulate)
             }
         }
@@ -704,5 +680,5 @@ func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
             )
         }
     }()
-    ctx.GasMeter().ConsumeGas(gasUsed, desc)
+    // ctx.GasMeter().ConsumeGas(gasUsed, desc)
 }
