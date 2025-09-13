@@ -85,7 +85,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	validation := validateSponsoredTransaction(tx)
 	
 	// If no sponsorship should be attempted, pass through with event
-	if !validation.ShouldSponsor {
+	if !validation.OnlyOneContract {
 		// Emit detailed event for why sponsorship was skipped
 		if validation.SkipReason != "" {
 			ctx.EventManager().EmitEvent(
@@ -482,7 +482,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 // TransactionValidationResult holds the result of transaction validation
 type TransactionValidationResult struct {
 	ContractAddress string // Empty if no sponsorship should be attempted
-	ShouldSponsor   bool   // Whether sponsorship should be attempted
+	OnlyOneContract   bool   // Is there only one contract address? 
 	SkipReason      string // Reason why sponsorship was skipped (for events)
 }
 
@@ -493,7 +493,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	if len(msgs) == 0 {
 		return &TransactionValidationResult{
 			ContractAddress: "",
-			ShouldSponsor:   false,
+			OnlyOneContract:   false,
 			SkipReason:      "",
 		}
 	}
@@ -515,7 +515,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 					if execMsg.Contract != sponsoredContract {
 						return &TransactionValidationResult{
 							ContractAddress: "",
-							ShouldSponsor:   false,
+							OnlyOneContract:   false,
 							SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and other contract %s", sponsoredContract, execMsg.Contract),
 						}
 					}
@@ -527,14 +527,14 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 				if sponsoredContract == "" {
 					return &TransactionValidationResult{
 						ContractAddress: "",
-						ShouldSponsor:   false,
+						OnlyOneContract:   false,
 						SkipReason:      "",
 					}
 				} else {
 					// Found non-contract message later in the transaction - skip sponsorship
 					return &TransactionValidationResult{
 						ContractAddress: "",
-						ShouldSponsor:   false,
+						OnlyOneContract:   false,
 						SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
 					}
 				}
@@ -544,7 +544,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	// If we get here, all messages are contract messages for the same contract
 	return &TransactionValidationResult{
 		ContractAddress: sponsoredContract,
-		ShouldSponsor:   true,
+		OnlyOneContract:   true,
 		SkipReason:      "",
 	}
 }

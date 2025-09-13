@@ -929,7 +929,7 @@ func (suite *AnteTestSuite) TestGetMaxGrantPerUserWithDisabledSponsorship() {
 // Returns (contractAddress, error) like the old function
 func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
 	validation := validateSponsoredTransaction(tx)
-	if !validation.ShouldSponsor {
+	if !validation.OnlyOneContract {
 		if validation.SkipReason == "no messages in transaction" || 
 		   strings.Contains(validation.SkipReason, "non-contract message") {
 			return "", nil
