@@ -163,6 +163,43 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+		if feeTx, ok := tx.(sdk.FeeTx); ok {
+			fee := feeTx.GetFee()
+			// 1. Zero fee early exit: Only effective in mempool (CheckTx), does not affect simulate/DeliverTx.
+			if fee.IsZero() && ctx.IsCheckTx() && !simulate {
+				ctx.Logger().With("module", "sponsor-contract-tx").Info(
+					"zero-fee tx; skipping sponsorship checks",
+					"contract", contractAddr,
+					"user", userAddr.String(),
+				)
+				return next(ctx, tx, simulate)
+			}
+			// 2. Early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
+			if !fee.IsZero() {
+				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+					if userBalance.IsAllGTE(fee) {
+						ctx.Logger().With("module", "sponsor-contract-tx").Info(
+								"user can self-pay; skipping sponsorship checks",
+								"contract", contractAddr,
+								"user", userAddr.String(),
+								"user_balance", userBalance.String(),
+								"required_fee", fee.String(),
+						)
+						if !ctx.IsCheckTx() {
+							ctx.EventManager().EmitEvent(
+								sdk.NewEvent(
+									types.EventTypeUserSelfPay,
+									sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+									sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+									sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
+									sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+								),
+							)
+						}
+						return next(ctx, tx, simulate)
+				}
+			}
+		}
 
         // Call contract to check if user is eligible according to contract policy
         // Create a gas-limited context to prevent DoS attacks through contract queries
