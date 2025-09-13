@@ -102,40 +102,24 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
-	// Handle fee deduction with proper CheckTx/DeliverTx separation
-	if !simulate {
-		if ctx.IsCheckTx() {
-			// In CheckTx mode, only validate without state changes
-			// This prevents fee deduction without quota updates
-			ctx.Logger().With("module", "sponsor-contract-tx").Debug(
-				"sponsor payment validated in CheckTx mode",
-				"contract", contractAddr.String(),
-				"sponsor", sponsorAddr.String(),
-				"user", userAddr.String(),
-				"fee", fee.String(),
-			)
-		} else {
-			// In DeliverTx mode, perform atomic sponsor payment and quota update
-			// This ensures both operations succeed or both fail
-			
-			// Step 1: Deduct fee from sponsor account
-			err = safd.bankKeeper.SendCoinsFromAccountToModule(
-				ctx,
-				sponsorAddr,
-				authtypes.FeeCollectorName,
-				fee,
-			)
-			if err != nil {
-				return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
-			}
-			
-			// Step 2: Update user grant usage atomically
-			// If this fails, the entire transaction fails and fee deduction is rolled back
-			if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
-				return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
-			}
+        // Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
+		err = safd.bankKeeper.SendCoinsFromAccountToModule(
+			ctx,
+			sponsorAddr,
+			authtypes.FeeCollectorName,
+			fee,
+		)
+		if err != nil {
+			return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
+		}
 
-			// Step 3: Emit success event only after both operations succeed
+		// Step 2: Update user grant usage atomically
+		if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
+			return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
+		}
+
+		// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx)
+		if !ctx.IsCheckTx() {
 			ctx.EventManager().EmitEvent(
 				sdk.NewEvent(
 					types.EventTypeSponsoredTx,
@@ -146,16 +130,14 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 					sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
 				),
 			)
-
-			ctx.Logger().With("module", "sponsor-contract-tx").Info(
-				"sponsor fee deducted and user quota updated atomically",
-				"contract", contractAddr.String(),
-				"sponsor", sponsorAddr.String(),
-				"user", userAddr.String(),
-				"fee", fee.String(),
-			)
 		}
-	}
 
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"sponsor fee deducted and user quota updated",
+			"contract", contractAddr.String(),
+			"sponsor", sponsorAddr.String(),
+			"user", userAddr.String(),
+			"fee", fee.String(),
+		)
 	return next(ctx, tx, simulate)
 }

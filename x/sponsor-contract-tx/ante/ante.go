@@ -120,6 +120,25 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	
 	contractAddr := validation.ContractAddress
 
+	// Early return optimization 1: validate contract exists before policy checks
+    if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
+        ctx.Logger().With("module", "sponsor-contract-tx").Info(
+            "contract not found; skipping sponsorship",
+            "contract", contractAddr,
+            "error", err.Error(),
+        )
+		if !ctx.IsCheckTx() {
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsorshipSkipped,
+					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+					sdk.NewAttribute(types.AttributeKeyReason, "contract_not_found"),
+				),
+			)
+		}
+    	return next(ctx, tx, simulate)
+	}
+
 	// Check if this contract is sponsored
     sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
 
@@ -144,7 +163,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
-        // Early return optimization 1: if no fee, no need to run policy checks
+        // Early return optimization 2: if no fee, no need to run policy checks
         if feeTx, ok := tx.(sdk.FeeTx); ok {
             fee := feeTx.GetFee()
             if fee.IsZero() {
@@ -156,7 +175,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
                 return next(ctx, tx, simulate)
             }
 
-            // Early return optimization 2: if user can self-pay, skip policy checks and emit event
+            // Early return optimization 3: if user can self-pay, skip policy checks and emit event
             userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
             if userBalance.IsAllGTE(fee) {
                 ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -181,28 +200,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             }
         }
 
-        // Early return optimization 3: validate contract exists before policy checks
-        if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
-            ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                "contract not found; skipping sponsorship",
-                "contract", contractAddr,
-                "user", userAddr.String(),
-                "error", err.Error(),
-            )
-            if !ctx.IsCheckTx() {
-                ctx.EventManager().EmitEvent(
-                    sdk.NewEvent(
-                        types.EventTypeSponsorshipSkipped,
-                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                        sdk.NewAttribute(types.AttributeKeyReason, "contract_not_found"),
-                    ),
-                )
-            }
-            return next(ctx, tx, simulate)
-        }
-
         // Call contract to check if user is eligible according to contract policy
         // Create a gas-limited context to prevent DoS attacks through contract queries
+        // Note: Gas consumption is tracked consistently between simulation and execution
         gasLimit := params.MaxGasPerSponsorship
 		
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -257,7 +257,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
 		}()
 
-		// Only consume gas from main context if policy check completed successfully
+		// Always get gas consumed from policy check for consistent accounting
 		gasUsed := limitedGasMeter.GasConsumed()
 		
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -306,7 +306,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
         }
 
         // Policy check succeeded, consume gas and check eligibility
-        // Note: keep default behavior (allow OOG to propagate) to avoid changing semantics
+        // Always consume gas for policy check to ensure consistent gas estimation
+        // This prevents discrepancies between simulation and actual execution
         ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
 		
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -434,7 +435,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-			// Event will be emitted in sponsor_decorator.go after successful fee deduction
+		// Event will be emitted in sponsor_decorator.go after successful fee deduction
     } else if found && !sponsor.IsSponsored {
         // Sponsorship explicitly disabled for this contract
         // Emit an informative skip event for observability (DeliverTx only)
