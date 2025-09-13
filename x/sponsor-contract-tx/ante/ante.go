@@ -163,18 +163,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
-        // Early return optimization 2: if no fee, no need to run policy checks
-        if feeTx, ok := tx.(sdk.FeeTx); ok {
-            fee := feeTx.GetFee()
-            if fee.IsZero() && ctx.IsCheckTx() && !simulate {
-                ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                    "zero-fee tx; skipping sponsorship checks",
-                    "contract", contractAddr,
-                    "user", userAddr.String(),
-                )
-                return next(ctx, tx, simulate)
-            }
-        }
 
         // Call contract to check if user is eligible according to contract policy
         // Create a gas-limited context to prevent DoS attacks through contract queries
