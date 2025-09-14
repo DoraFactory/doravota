@@ -553,7 +553,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 					return &TransactionValidationResult{
 						ContractAddress: "",
 						SuggestSponsor:   false,
-						SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
+						SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", sponsoredContract, msgType),
 					}
 				}
 		}
