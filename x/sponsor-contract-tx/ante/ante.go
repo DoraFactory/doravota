@@ -84,24 +84,46 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	// Find and validate contract execution messages
 	validation := validateSponsoredTransaction(tx)
 	
-	// If no sponsorship should be attempted, pass through with event
-	if !validation.SuggestSponsor {
-		// Emit detailed event for why sponsorship was skipped
-		if validation.SkipReason != "" {
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsorshipSkipped,
-					sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
-				),
-			)
-			
-			ctx.Logger().With("module", "sponsor-contract-tx").Info(
-				"sponsorship skipped",
-				"reason", validation.SkipReason,
-			)
-		}
-		return next(ctx, tx, simulate)
-	}
+    // If no sponsorship should be attempted, pass through with context-aware UX
+    if !validation.SuggestSponsor {
+        if validation.SkipReason != "" {
+            // Emit event only in DeliverTx so it is indexed on-chain
+            if !ctx.IsCheckTx() {
+                ctx.EventManager().EmitEvent(
+                    sdk.NewEvent(
+                        types.EventTypeSponsorshipSkipped,
+                        sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
+                    ),
+                )
+            }
+
+            // In CheckTx/Simulate, if fee>0 and fee payer has insufficient balance,
+            // return a clearer error that includes the sponsorship skip reason.
+            if feeTx, ok := tx.(sdk.FeeTx); ok {
+                fee := feeTx.GetFee()
+                if !fee.IsZero() {
+                    // Use sponsorship-aware address derivation; it enforces signer consistency
+                    payer, derr := sctd.getUserAddressForSponsorship(tx)
+                    if derr == nil && !payer.Empty() {
+                        balance := sctd.bankKeeper.SpendableCoins(ctx, payer)
+                        if !balance.IsAllGTE(fee) {
+                            return ctx, errorsmod.Wrapf(
+                                sdkerrors.ErrInsufficientFunds,
+                                "sponsorship skipped (%s); fee payer %s has insufficient balance to pay fees. required: %s, available: %s",
+                                validation.SkipReason, payer.String(), fee.String(), balance.String(),
+                            )
+                        }
+                    }
+                }
+            }
+
+            ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                "sponsorship skipped",
+                "reason", validation.SkipReason,
+            )
+        }
+        return next(ctx, tx, simulate)
+    }
 	
 	contractAddr := validation.ContractAddress
 
