@@ -20,6 +20,7 @@ type SponsorAwareDeductFeeDecorator struct {
 	bankKeeper        bankkeeper.Keeper
 	feegrantKeeper    ante.FeegrantKeeper
 	txFeeChecker      ante.TxFeeChecker
+	accountKeeper     authkeeper.AccountKeeper
 }
 
 // NewSponsorAwareDeductFeeDecorator creates a sponsor-aware fee decorator
@@ -36,6 +37,7 @@ func NewSponsorAwareDeductFeeDecorator(
 		bankKeeper:        bk,
 		feegrantKeeper:    fgk,
 		txFeeChecker:      txFeeChecker,
+		accountKeeper:     ak,
 	}
 }
 
@@ -76,6 +78,10 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrap(sdkerrors.ErrTxDecode, "Tx must implement FeeTx interface")
 	}
 
+	if !simulate && ctx.BlockHeight() > 0 && feeTx.GetGas() == 0 {
+		return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidGasLimit, "must provide positive gas")
+	}
+
 	feeGranter := feeTx.FeeGranter()
 	// Priority: feegrant > sponsor - when FeeGranter is set, use standard fee handling
 	if feeGranter != nil && !feeGranter.Empty() {
@@ -83,61 +89,68 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
 	}
 
-	// No feegrant, proceed with sponsor payment
-	// Validate fee amount using txFeeChecker to ensure it meets minimum requirements
-	if safd.txFeeChecker != nil {
-		requiredFee, _, err := safd.txFeeChecker(ctx, tx)
+	var priority int64
+
+	// Determine effective fee consistent with Cosmos SDK behavior:
+	// - simulate: use tx-provided fee (feeTx.GetFee())
+	// - non-simulate: use txFeeChecker(ctx, tx) result (enforces min gas price, sets priority)
+	effectiveFee := fee
+	if !simulate && safd.txFeeChecker != nil {
+		effectiveFee, priority, err = safd.txFeeChecker(ctx, tx)
 		if err != nil {
 			return ctx, errorsmod.Wrapf(err, "failed to check required fee")
 		}
-		
-		// Ensure sponsor fee meets minimum gas price and required fee
-		if !fee.IsAllGTE(requiredFee) {
-			return ctx, errorsmod.Wrapf(
-				sdkerrors.ErrInsufficientFee,
-				"sponsor fee %s is insufficient, required minimum fee: %s",
-				fee.String(),
-				requiredFee.String(),
-			)
-		}
 	}
 
-        // Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
-		err = safd.bankKeeper.SendCoinsFromAccountToModule(
-			ctx,
-			sponsorAddr,
-			authtypes.FeeCollectorName,
-			fee,
+	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
+	// Defensive checks: ensure fee collector module account, sponsor account exist and fee is valid
+	if addr := safd.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName); addr == nil {
+		return ctx, sdkerrors.Wrapf(sdkerrors.ErrLogic, "fee collector module account (%s) has not been set", authtypes.FeeCollectorName)
+	}
+	if safd.accountKeeper.GetAccount(ctx, sponsorAddr) == nil {
+		return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sponsorAddr.String())
+	}
+	if !effectiveFee.IsValid() {
+		return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFee, "invalid fee amount: %s", effectiveFee)
+	}
+	err = safd.bankKeeper.SendCoinsFromAccountToModule(
+		ctx,
+		sponsorAddr,
+		authtypes.FeeCollectorName,
+		effectiveFee,
+	)
+	if err != nil {
+		return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
+	}
+
+	// Step 2: Update user grant usage atomically
+	if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), effectiveFee); err != nil {
+		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
+	}
+
+	// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx)
+	if !ctx.IsCheckTx() {
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeSponsoredTx,
+				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+				sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+				sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
+				sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
+			),
 		)
-		if err != nil {
-			return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
-		}
+	}
 
-		// Step 2: Update user grant usage atomically
-		if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), fee); err != nil {
-			return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
-		}
+	ctx.Logger().With("module", "sponsor-contract-tx").Info(
+		"sponsor fee deducted and user quota updated",
+		"contract", contractAddr.String(),
+		"sponsor", sponsorAddr.String(),
+		"user", userAddr.String(),
+		"fee", effectiveFee.String(),
+	)
 
-		// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx)
-		if !ctx.IsCheckTx() {
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsoredTx,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-					sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
-					sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-					sdk.NewAttribute(types.AttributeKeySponsorAmount, fee.String()),
-					sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
-				),
-			)
-		}
+	newCtx = ctx.WithPriority(priority)
 
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"sponsor fee deducted and user quota updated",
-			"contract", contractAddr.String(),
-			"sponsor", sponsorAddr.String(),
-			"user", userAddr.String(),
-			"fee", fee.String(),
-		)
-	return next(ctx, tx, simulate)
+	return next(newCtx, tx, simulate)
 }
