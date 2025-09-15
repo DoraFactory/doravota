@@ -93,7 +93,7 @@ func SetupFullSuite(t *testing.T) *TestSuite {
 	// Create test accounts
 	admin := sdk.AccAddress("admin_______________")
 	user := sdk.AccAddress("user________________")
-	user2 := sdk.AccAddress("user2_______________") 
+	user2 := sdk.AccAddress("user2_______________")
 	contract := sdk.AccAddress("contract____________")
 	feeGranter := sdk.AccAddress("feegranter__________")
 

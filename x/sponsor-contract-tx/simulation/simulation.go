@@ -64,7 +64,7 @@ func (am AppModuleSimulation) WeightedOperations(appParams simtypes.AppParams, c
 func NewDecodeStore(cdc codec.BinaryCodec) func(kvA, kvB []byte) string {
 	return func(kvA, kvB []byte) string {
 		// Simplified decoder for simulation
-		return fmt.Sprintf("KeyA: %X\nValueA: %X\nKeyB: %X\nValueB: %X\n", 
+		return fmt.Sprintf("KeyA: %X\nValueA: %X\nKeyB: %X\nValueB: %X\n",
 			kvA, kvA, kvB, kvB)
 	}
 }
@@ -97,7 +97,7 @@ func (sm *SimulationManager) RunSimulation(
 	// Initialize random genesis state
 	r := rand.New(rand.NewSource(config.Seed))
 	genesisState := RandomGenesisState(r, accounts)
-	
+
 	// Validate genesis state
 	if err := ValidateGenesisState(genesisState); err != nil {
 		return fmt.Errorf("invalid genesis state: %w", err)
@@ -136,7 +136,7 @@ func (sm *SimulationManager) RunSimulation(
 
 		// Select random operation
 		op := operations[r.Intn(len(operations))]
-		
+
 		// Execute operation
 		operationMsg, futureOps, err := op.Op()(r, app, ctx, accounts, config.ChainID)
 		if err != nil {
@@ -185,7 +185,7 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 	for i := 0; i < iterations; i++ {
 		// Generate random data
 		genesisState := RandomGenesisState(r, accounts)
-		
+
 		// Note: In full implementation, would clear previous state
 		// For now, we'll work with existing state
 
@@ -204,7 +204,7 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 			if len(genesisState.Sponsors) == 0 {
 				continue
 			}
-			
+
 			sponsor := genesisState.Sponsors[r.Intn(len(genesisState.Sponsors))]
 			if sponsor == nil || !sponsor.IsSponsored {
 				continue

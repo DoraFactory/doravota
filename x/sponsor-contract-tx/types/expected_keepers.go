@@ -41,12 +41,12 @@ type CheckContractPolicyResult struct {
 
 // SponsorKeeperInterface defines the expected interface for the SponsorKeeper
 type SponsorKeeperInterface interface {
-    GetParams(ctx sdk.Context) Params
-    IsSponsored(ctx sdk.Context, contractAddr string) bool
-    GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
-    ValidateContractExists(ctx sdk.Context, contractAddr string) error
-    CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*CheckContractPolicyResult, error)
-    CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
-    UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
-    Logger(ctx sdk.Context) log.Logger
+	GetParams(ctx sdk.Context) Params
+	IsSponsored(ctx sdk.Context, contractAddr string) bool
+	GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
+	ValidateContractExists(ctx sdk.Context, contractAddr string) error
+	CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*CheckContractPolicyResult, error)
+	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
+	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
+	Logger(ctx sdk.Context) log.Logger
 }

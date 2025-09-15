@@ -2,14 +2,14 @@ package sponsor
 
 import (
 	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	"math"
-	sdkmath "cosmossdk.io/math"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	"math"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -94,18 +94,18 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
 	}
 
-    var priority int64
+	var priority int64
 
 	// Determine effective fee consistent with Cosmos SDK behavior:
 	// - simulate: use tx-provided fee (feeTx.GetFee())
 	// - non-simulate: use txFeeChecker(ctx, tx) result (enforces min gas price, sets priority)
 	effectiveFee := fee
-    if !simulate && safd.txFeeChecker != nil {
-            effectiveFee, priority, err = safd.txFeeChecker(ctx, tx)
-            if err != nil {
-                return ctx, errorsmod.Wrapf(err, "failed to check required fee")
-        }
-    }
+	if !simulate && safd.txFeeChecker != nil {
+		effectiveFee, priority, err = safd.txFeeChecker(ctx, tx)
+		if err != nil {
+			return ctx, errorsmod.Wrapf(err, "failed to check required fee")
+		}
+	}
 
 	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
 	// Defensive checks: ensure fee collector module account, sponsor account exist and fee is valid
@@ -159,7 +159,6 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 
 	return next(newCtx, tx, simulate)
 }
-
 
 func SponsorTxFeeCheckerWithValidatorMinGasPrices(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
 	feeTx, ok := tx.(sdk.FeeTx)

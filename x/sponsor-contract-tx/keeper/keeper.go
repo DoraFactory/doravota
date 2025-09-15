@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	errorsmod "cosmossdk.io/errors"
-	"github.com/cometbft/cometbft/libs/log"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store/prefix"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
@@ -34,7 +34,7 @@ type Keeper struct {
 	cdc        codec.BinaryCodec
 	storeKey   storetypes.StoreKey
 	wasmKeeper WasmKeeperInterface
-	
+
 	// authority is the address capable of executing governance proposals
 	// typically the gov module account
 	authority string
@@ -59,7 +59,6 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 func (k Keeper) GetAuthority() string {
 	return k.authority
 }
-
 
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
 // It checks ALL contract execution messages for the specified contract to prevent hitchhiking attacks
@@ -100,7 +99,7 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 
 		// Record gas before contract query
 		gasBefore := ctx.GasMeter().GasConsumed()
-		
+
 		k.Logger(ctx).Debug("executing contract policy query",
 			"contract", contractAddr,
 			"user", userAddr.String(),
@@ -110,11 +109,11 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 		)
 
 		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
-		
+
 		// Record gas after contract query
 		gasAfter := ctx.GasMeter().GasConsumed()
 		gasUsedForQuery := gasAfter - gasBefore
-		
+
 		k.Logger(ctx).Debug("contract policy query completed",
 			"contract", contractAddr,
 			"user", userAddr.String(),
@@ -124,7 +123,7 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 			"gas_after_query", gasAfter,
 			"gas_used_for_query", gasUsedForQuery,
 		)
-		
+
 		if err != nil {
 			k.Logger(ctx).Error("contract policy query failed",
 				"contract", contractAddr,
@@ -376,7 +375,6 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 	return sponsors, pageRes, nil
 }
 
-
 // GetParams returns the module parameters
 func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 	store := ctx.KVStore(k.storeKey)
@@ -485,12 +483,12 @@ func (k Keeper) GetMaxGrantPerUser(ctx sdk.Context, contractAddr string) (sdk.Co
 	if !found {
 		return sdk.Coins{}, errorsmod.Wrap(types.ErrSponsorNotFound, fmt.Sprintf("no sponsor configuration found for contract %s", contractAddr))
 	}
-	
+
 	// If sponsorship is disabled, max_grant_per_user is not relevant
 	if !sponsor.IsSponsored {
 		return sdk.Coins{}, errorsmod.Wrap(types.ErrSponsorshipDisabled, fmt.Sprintf("sponsorship is disabled for contract %s", contractAddr))
 	}
-	
+
 	if len(sponsor.MaxGrantPerUser) == 0 {
 		return sdk.Coins{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("max_grant_per_user is required but not configured for contract %s", contractAddr))
 	}

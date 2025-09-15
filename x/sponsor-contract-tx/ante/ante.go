@@ -1,16 +1,16 @@
 package sponsor
 
 import (
-    "fmt"
+	"fmt"
 
-    errorsmod "cosmossdk.io/errors"
-    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	errorsmod "cosmossdk.io/errors"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // Context key for sponsor payment information
@@ -55,7 +55,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"sponsorship globally disabled, using standard fee processing",
 		)
-		
+
 		// Emit event to notify users that sponsorship is disabled
 		ctx.EventManager().EmitEvent(
 			sdk.NewEvent(
@@ -63,7 +63,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				sdk.NewAttribute(types.AttributeKeyReason, "globally_disabled"),
 			),
 		)
-		
+
 		return next(ctx, tx, simulate)
 	}
 
@@ -83,37 +83,37 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// Find and validate contract execution messages
 	validation := validateSponsoredTransaction(tx)
-	
-    // If no sponsorship should be attempted, pass through with context-aware UX
-    if !validation.SuggestSponsor {
-        if validation.SkipReason != "" {
-            // Emit event only in DeliverTx so it is indexed on-chain
-            if !ctx.IsCheckTx() {
-                ctx.EventManager().EmitEvent(
-                    sdk.NewEvent(
-                        types.EventTypeSponsorshipSkipped,
-                        sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
-                    ),
-                )
-            }
 
-            ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                "sponsorship skipped",
-                "reason", validation.SkipReason,
-            )
-        }
-        return next(ctx, tx, simulate)
-    }
-	
+	// If no sponsorship should be attempted, pass through with context-aware UX
+	if !validation.SuggestSponsor {
+		if validation.SkipReason != "" {
+			// Emit event only in DeliverTx so it is indexed on-chain
+			if !ctx.IsCheckTx() {
+				ctx.EventManager().EmitEvent(
+					sdk.NewEvent(
+						types.EventTypeSponsorshipSkipped,
+						sdk.NewAttribute(types.AttributeKeyReason, validation.SkipReason),
+					),
+				)
+			}
+
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"sponsorship skipped",
+				"reason", validation.SkipReason,
+			)
+		}
+		return next(ctx, tx, simulate)
+	}
+
 	contractAddr := validation.ContractAddress
 
 	// Early return optimization 1: validate contract exists before policy checks
-    if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
-        ctx.Logger().With("module", "sponsor-contract-tx").Info(
-            "contract not found; skipping sponsorship",
-            "contract", contractAddr,
-            "error", err.Error(),
-        )
+	if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"contract not found; skipping sponsorship",
+			"contract", contractAddr,
+			"error", err.Error(),
+		)
 		if !ctx.IsCheckTx() {
 			ctx.EventManager().EmitEvent(
 				sdk.NewEvent(
@@ -123,20 +123,20 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				),
 			)
 		}
-    	return next(ctx, tx, simulate)
+		return next(ctx, tx, simulate)
 	}
 
 	// Check if this contract is sponsored
-    sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
+	sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
 
-    // Only apply sponsor functionality if the contract is explicitly sponsored
-    // Previously, the boolean from GetSponsor (found) was used directly, which
-    // caused sponsorship logic to run even when the stored sponsor record had
-    // IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
-    if found && sponsor.IsSponsored {
-        // Get the appropriate user address for policy check and fee payment
-        userAddr, err := sctd.getUserAddressForSponsorship(tx)
-        if err != nil {
+	// Only apply sponsor functionality if the contract is explicitly sponsored
+	// Previously, the boolean from GetSponsor (found) was used directly, which
+	// caused sponsorship logic to run even when the stored sponsor record had
+	// IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
+	if found && sponsor.IsSponsored {
+		// Get the appropriate user address for policy check and fee payment
+		userAddr, err := sctd.getUserAddressForSponsorship(tx)
+		if err != nil {
 			// If we can't determine a consistent user address, fall back to standard processing
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"falling back to standard fee processing due to signer inconsistency",
@@ -164,41 +164,41 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			// 2. Early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
 			if !fee.IsZero() {
 				feeCheck := feeTx.GetFee()
-					for _, c := range feeCheck {
-						if c.Denom != "peaka" {
-							return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
-						}
+				for _, c := range feeCheck {
+					if c.Denom != "peaka" {
+						return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
 					}
+				}
 				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-					if userBalance.IsAllGTE(fee) {
-						ctx.Logger().With("module", "sponsor-contract-tx").Info(
-								"user can self-pay; skipping sponsorship checks",
-								"contract", contractAddr,
-								"user", userAddr.String(),
-								"user_balance", userBalance.String(),
-								"required_fee", fee.String(),
+				if userBalance.IsAllGTE(fee) {
+					ctx.Logger().With("module", "sponsor-contract-tx").Info(
+						"user can self-pay; skipping sponsorship checks",
+						"contract", contractAddr,
+						"user", userAddr.String(),
+						"user_balance", userBalance.String(),
+						"required_fee", fee.String(),
+					)
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeUserSelfPay,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+							),
 						)
-						if !ctx.IsCheckTx() {
-							ctx.EventManager().EmitEvent(
-								sdk.NewEvent(
-									types.EventTypeUserSelfPay,
-									sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-									sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-									sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
-									sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-								),
-							)
-						}
-						return next(ctx, tx, simulate)
+					}
+					return next(ctx, tx, simulate)
 				}
 			}
 		}
 
-        // Call contract to check if user is eligible according to contract policy
-        // Create a gas-limited context to prevent DoS attacks through contract queries
-        // Note: Gas consumption is tracked consistently between simulation and execution
-        gasLimit := params.MaxGasPerSponsorship
-		
+		// Call contract to check if user is eligible according to contract policy
+		// Create a gas-limited context to prevent DoS attacks through contract queries
+		// Note: Gas consumption is tracked consistently between simulation and execution
+		gasLimit := params.MaxGasPerSponsorship
+
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"starting contract policy check with gas limit",
 			"contract", contractAddr,
@@ -212,7 +212,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		var policyResult *types.CheckContractPolicyResult
 		var policyErr error
-		
+
 		// Use a function with named return values to ensure defer can modify the return
 		policyResult, policyErr = func() (result *types.CheckContractPolicyResult, err error) {
 			defer func() {
@@ -253,7 +253,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// Always get gas consumed from policy check for consistent accounting
 		gasUsed := limitedGasMeter.GasConsumed()
-		
+
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"contract policy check completed",
 			"contract", contractAddr,
@@ -262,44 +262,44 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"gas_limit", gasLimit,
 			"gas_remaining", gasLimit-gasUsed,
 		)
-		
-        if policyErr != nil {
-            // Policy check failed with error (contract query failed, parsing failed, etc.)
-            ctx.Logger().With("module", "sponsor-contract-tx").Error(
-                "contract policy check failed",
-                "contract", contractAddr,
-                "user", userAddr.String(),
-                "gas_used", gasUsed,
-                "error", policyErr.Error(),
-            )
-            // Do not consume gas on main context in failure path to avoid double OOG and unwanted cost
-            // Provide user-friendly error message for common gas limit exceeded case
-            reasonFromError := "policy_check_failed"
-            if errorsmod.IsOf(policyErr, types.ErrGasLimitExceeded) {
-                reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
-            } else {
-                // The error contains technical failure details (query failed, parsing failed, etc.)
-                reasonFromError = policyErr.Error()
-            }
 
-            // Emit a skip event for observability (DeliverTx only)
-            if !ctx.IsCheckTx() {
-                ctx.EventManager().EmitEvent(
-                    sdk.NewEvent(
-                        types.EventTypeSponsorshipSkipped,
-                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                        sdk.NewAttribute(types.AttributeKeyReason, reasonFromError),
-                    ),
-                )
-            }
-            return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
-        }
+		if policyErr != nil {
+			// Policy check failed with error (contract query failed, parsing failed, etc.)
+			ctx.Logger().With("module", "sponsor-contract-tx").Error(
+				"contract policy check failed",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"gas_used", gasUsed,
+				"error", policyErr.Error(),
+			)
+			// Do not consume gas on main context in failure path to avoid double OOG and unwanted cost
+			// Provide user-friendly error message for common gas limit exceeded case
+			reasonFromError := "policy_check_failed"
+			if errorsmod.IsOf(policyErr, types.ErrGasLimitExceeded) {
+				reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
+			} else {
+				// The error contains technical failure details (query failed, parsing failed, etc.)
+				reasonFromError = policyErr.Error()
+			}
 
-        // Policy check succeeded, consume gas and check eligibility
-        // Always consume gas for policy check to ensure consistent gas estimation
-        // This prevents discrepancies between simulation and actual execution
-        ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
-		
+			// Emit a skip event for observability (DeliverTx only)
+			if !ctx.IsCheckTx() {
+				ctx.EventManager().EmitEvent(
+					sdk.NewEvent(
+						types.EventTypeSponsorshipSkipped,
+						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+						sdk.NewAttribute(types.AttributeKeyReason, reasonFromError),
+					),
+				)
+			}
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
+		}
+
+		// Policy check succeeded, consume gas and check eligibility
+		// Always consume gas for policy check to ensure consistent gas estimation
+		// This prevents discrepancies between simulation and actual execution
+		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"gas consumed for contract policy check",
 			"contract", contractAddr,
@@ -307,7 +307,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"gas_consumed", gasUsed,
 			"total_gas_after", ctx.GasMeter().GasConsumed(),
 		)
-		
+
 		// Additional safety check: ensure policyResult is not nil
 		if policyResult == nil {
 			ctx.Logger().With("module", "sponsor-contract-tx").Error(
@@ -317,7 +317,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			)
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy check returned nil result")
 		}
-		
+
 		if !policyResult.Eligible {
 			// User is not eligible according to contract policy, use the specific reason from contract
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
@@ -334,7 +334,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if err != nil {
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
 		}
-		
+
 		// Also validate contract address for context
 		contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 		if err != nil {
@@ -426,59 +426,59 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Event will be emitted in sponsor_decorator.go after successful fee deduction
-    } else if found && !sponsor.IsSponsored {
-        // Sponsorship explicitly disabled for this contract
-        // Emit an informative skip event for observability (DeliverTx only)
-        if !ctx.IsCheckTx() {
-            ctx.EventManager().EmitEvent(
-                sdk.NewEvent(
-                    types.EventTypeSponsorshipSkipped,
-                    sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                    sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-                ),
-            )
-        }
+	} else if found && !sponsor.IsSponsored {
+		// Sponsorship explicitly disabled for this contract
+		// Emit an informative skip event for observability (DeliverTx only)
+		if !ctx.IsCheckTx() {
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsorshipSkipped,
+					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+					sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+				),
+			)
+		}
 
-        // If the user cannot afford the fee themselves, return a clearer error
-        if feeTx, ok := tx.(sdk.FeeTx); ok {
-            fee := feeTx.GetFee()
-            if !fee.IsZero() { 
-                // Determine the effective user address (validated signer / feepayer)
-                userAddr, err := sctd.getUserAddressForSponsorship(tx)
-                if err == nil && !userAddr.Empty() {
-                    userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-                    if !userBalance.IsAllGTE(fee) {
-                        // Provide a user-facing reason to explain lack of sponsorship
-                        return ctx, errorsmod.Wrapf(
-                            sdkerrors.ErrInsufficientFunds,
-                            "sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
-                            contractAddr,
-                            userAddr.String(),
-                            fee.String(),
-                            userBalance.String(),
-                        )
-                    }
-                    // If user can self-pay, record a helpful event in DeliverTx
-                    if !ctx.IsCheckTx() {
-                        ctx.EventManager().EmitEvent(
-                            sdk.NewEvent(
-                                types.EventTypeUserSelfPay,
-                                sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                                sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                                sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-                                sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-                            ),
-                        )
-                    }
-                }
-            }
-        }
+		// If the user cannot afford the fee themselves, return a clearer error
+		if feeTx, ok := tx.(sdk.FeeTx); ok {
+			fee := feeTx.GetFee()
+			if !fee.IsZero() {
+				// Determine the effective user address (validated signer / feepayer)
+				userAddr, err := sctd.getUserAddressForSponsorship(tx)
+				if err == nil && !userAddr.Empty() {
+					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+					if !userBalance.IsAllGTE(fee) {
+						// Provide a user-facing reason to explain lack of sponsorship
+						return ctx, errorsmod.Wrapf(
+							sdkerrors.ErrInsufficientFunds,
+							"sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
+							contractAddr,
+							userAddr.String(),
+							fee.String(),
+							userBalance.String(),
+						)
+					}
+					// If user can self-pay, record a helpful event in DeliverTx
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeUserSelfPay,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+							),
+						)
+					}
+				}
+			}
+		}
 
-        ctx.Logger().With("module", "sponsor-contract-tx").Info(
-            "sponsorship disabled for contract; using standard fee processing",
-            "contract", contractAddr,
-        )
-    }
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"sponsorship disabled for contract; using standard fee processing",
+			"contract", contractAddr,
+		)
+	}
 
 	return next(ctx, tx, simulate)
 }
@@ -486,7 +486,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 // TransactionValidationResult holds the result of transaction validation
 type TransactionValidationResult struct {
 	ContractAddress string // Empty if no sponsorship should be attempted
-	SuggestSponsor   bool   // Is there only one contract address? 
+	SuggestSponsor  bool   // Is there only one contract address?
 	SkipReason      string // Reason why sponsorship was skipped (for events)
 }
 
@@ -497,7 +497,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	if len(msgs) == 0 {
 		return &TransactionValidationResult{
 			ContractAddress: "",
-			SuggestSponsor:   false,
+			SuggestSponsor:  false,
 			SkipReason:      "",
 		}
 	}
@@ -507,52 +507,51 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
 		msgType := sdk.MsgTypeURL(msg)
-		
+
 		switch execMsg := msg.(type) {
-			case *wasmtypes.MsgExecuteContract:
-				// This is a contract execution message
-				if sponsoredContract == "" {
-					// First contract message - record the contract address
-					sponsoredContract = execMsg.Contract
-				} else {
-					// Additional contract message - must be the same contract
-					if execMsg.Contract != sponsoredContract {
-						return &TransactionValidationResult{
-							ContractAddress: "",
-							SuggestSponsor:   false,
-							SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and other contract %s", sponsoredContract, execMsg.Contract),
-						}
-					}
-				}
-			default:
-				// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
-				// If the first transaction is a non-contract transaction, it indicates a normal regular transaction. 
-				// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
-				if sponsoredContract == "" {
+		case *wasmtypes.MsgExecuteContract:
+			// This is a contract execution message
+			if sponsoredContract == "" {
+				// First contract message - record the contract address
+				sponsoredContract = execMsg.Contract
+			} else {
+				// Additional contract message - must be the same contract
+				if execMsg.Contract != sponsoredContract {
 					return &TransactionValidationResult{
 						ContractAddress: "",
-						SuggestSponsor:   false,
-						SkipReason:      "",
-					}
-				} else {
-					// Found non-contract message later in the transaction - skip sponsorship
-					return &TransactionValidationResult{
-						ContractAddress: "",
-						SuggestSponsor:   false,
-						SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", sponsoredContract, msgType),
+						SuggestSponsor:  false,
+						SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and other contract %s", sponsoredContract, execMsg.Contract),
 					}
 				}
+			}
+		default:
+			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
+			// If the first transaction is a non-contract transaction, it indicates a normal regular transaction.
+			// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
+			if sponsoredContract == "" {
+				return &TransactionValidationResult{
+					ContractAddress: "",
+					SuggestSponsor:  false,
+					SkipReason:      "",
+				}
+			} else {
+				// Found non-contract message later in the transaction - skip sponsorship
+				return &TransactionValidationResult{
+					ContractAddress: "",
+					SuggestSponsor:  false,
+					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", sponsoredContract, msgType),
+				}
+			}
 		}
 	}
 
 	// If we get here, all messages are contract messages for the same contract
 	return &TransactionValidationResult{
 		ContractAddress: sponsoredContract,
-		SuggestSponsor:   true,
+		SuggestSponsor:  true,
 		SkipReason:      "",
 	}
 }
-
 
 // handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves
 // It checks user balance and provides clear error messages if they can't afford the fees
@@ -645,7 +644,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 		} else {
 			// For subsequent messages, ensure signers match the first message
 			if len(msgSigners) != len(allSigners) {
-				return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized, 
+				return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized,
 					"inconsistent signer count across messages - sponsored transactions require consistent signers")
 			}
 
@@ -672,7 +671,7 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 			// This prevents users from setting arbitrary FeePayer addresses
 			if !feePayer.Equals(validatedSigner) {
 				return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrUnauthorized,
-					"FeePayer %s does not match message signer %s - potential security risk in sponsored transactions", 
+					"FeePayer %s does not match message signer %s - potential security risk in sponsored transactions",
 					feePayer.String(), validatedSigner.String())
 			}
 			return feePayer, nil
@@ -694,8 +693,8 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 //             )
 //         }
 //     }()
-// 	// There is no charge for failed check policies here. 
-// 	// To protect users who want to conduct contract transactions normally from bearing the cost of check policies, 
+// 	// There is no charge for failed check policies here.
+// 	// To protect users who want to conduct contract transactions normally from bearing the cost of check policies,
 // 	//this is more reasonable. We cannot force all users to go through check policies.
 //     // ctx.GasMeter().ConsumeGas(gasUsed, desc)
 // }

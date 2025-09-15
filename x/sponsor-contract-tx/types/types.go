@@ -55,7 +55,7 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 
 	// First validate and manually merge duplicates
 	denominationTotals := make(map[string]sdk.Int)
-	
+
 	for _, coin := range coins {
 		if coin.Denom != "peaka" {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
@@ -63,7 +63,7 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 		if !coin.Amount.IsPositive() {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin amount must be positive")
 		}
-		
+
 		// Accumulate amounts for same denomination
 		if existing, found := denominationTotals[coin.Denom]; found {
 			denominationTotals[coin.Denom] = existing.Add(coin.Amount)
@@ -71,13 +71,13 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 			denominationTotals[coin.Denom] = coin.Amount
 		}
 	}
-	
+
 	// Convert back to coins slice with merged amounts
 	mergedCoins := make(sdk.Coins, 0, len(denominationTotals))
 	for denom, amount := range denominationTotals {
 		mergedCoins = append(mergedCoins, sdk.NewCoin(denom, amount))
 	}
-	
+
 	// Sort the final result
 	coins = mergedCoins.Sort()
 	if !coins.IsValid() {
@@ -451,32 +451,32 @@ func (msg MsgUpdateParams) ValidateBasic() error {
 
 // TypeURL returns the TypeURL for this message
 func (msg *MsgUpdateParams) XXX_MessageName() string {
-    return "doravota.sponsor.v1.MsgUpdateParams"
+	return "doravota.sponsor.v1.MsgUpdateParams"
 }
 
 // === Message implementations for MsgWithdrawSponsorFunds ===
 
 // NewMsgWithdrawSponsorFunds creates a new MsgWithdrawSponsorFunds instance
 func NewMsgWithdrawSponsorFunds(creator, contractAddress, recipient string, amount sdk.Coins) *MsgWithdrawSponsorFunds {
-    // Convert sdk.Coins to protobuf coins
-    pbCoins := make([]*sdk.Coin, len(amount))
-    for i, coin := range amount {
-        newCoin := sdk.Coin{Denom: coin.Denom, Amount: coin.Amount}
-        pbCoins[i] = &newCoin
-    }
+	// Convert sdk.Coins to protobuf coins
+	pbCoins := make([]*sdk.Coin, len(amount))
+	for i, coin := range amount {
+		newCoin := sdk.Coin{Denom: coin.Denom, Amount: coin.Amount}
+		pbCoins[i] = &newCoin
+	}
 
-    return &MsgWithdrawSponsorFunds{
-        Creator:         creator,
-        ContractAddress: contractAddress,
-        Recipient:       recipient,
-        Amount:          pbCoins,
-    }
+	return &MsgWithdrawSponsorFunds{
+		Creator:         creator,
+		ContractAddress: contractAddress,
+		Recipient:       recipient,
+		Amount:          pbCoins,
+	}
 }
 
 // Route returns the message route
 func (msg MsgWithdrawSponsorFunds) Route() string {
-    base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
-    return base.GetCommonRoute()
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonRoute()
 }
 
 // Type returns the message type
@@ -484,40 +484,48 @@ func (msg MsgWithdrawSponsorFunds) Type() string { return "withdraw_sponsor_fund
 
 // GetSigners returns the signers
 func (msg MsgWithdrawSponsorFunds) GetSigners() []sdk.AccAddress {
-    base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
-    return base.GetCommonSigners()
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	return base.GetCommonSigners()
 }
 
 // GetSignBytes returns the sign bytes
 func (msg MsgWithdrawSponsorFunds) GetSignBytes() []byte {
-    bz := ModuleCdc.MustMarshalJSON(&msg)
-    return sdk.MustSortJSON(bz)
+	bz := ModuleCdc.MustMarshalJSON(&msg)
+	return sdk.MustSortJSON(bz)
 }
 
 // ValidateBasic performs basic validation
 func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
-    base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
-    if err := base.ValidateBasicFields(); err != nil { return err }
+	base := BaseSponsorMsg{Creator: msg.Creator, ContractAddress: msg.ContractAddress}
+	if err := base.ValidateBasicFields(); err != nil {
+		return err
+	}
 
-    // Validate recipient
-    if _, err := sdk.AccAddressFromBech32(msg.Recipient); err != nil {
-        return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid recipient address: %s", msg.Recipient)
-    }
+	// Validate recipient
+	if _, err := sdk.AccAddressFromBech32(msg.Recipient); err != nil {
+		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid recipient address: %s", msg.Recipient)
+	}
 
-    // Validate amount: only peaka, positive, non-empty
-    if len(msg.Amount) == 0 {
-        return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
-    }
-    for _, c := range msg.Amount {
-        if c == nil { return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil") }
-        if c.Denom != "peaka" { return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported") }
-        if !c.Amount.IsPositive() { return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive") }
-    }
+	// Validate amount: only peaka, positive, non-empty
+	if len(msg.Amount) == 0 {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
+	}
+	for _, c := range msg.Amount {
+		if c == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+		}
+		if c.Denom != "peaka" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
+		}
+		if !c.Amount.IsPositive() {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
+		}
+	}
 
-    return nil
+	return nil
 }
 
 // TypeURL returns the TypeURL for this message
 func (msg *MsgWithdrawSponsorFunds) XXX_MessageName() string {
-    return "doravota.sponsor.v1.MsgWithdrawSponsorFunds"
+	return "doravota.sponsor.v1.MsgWithdrawSponsorFunds"
 }

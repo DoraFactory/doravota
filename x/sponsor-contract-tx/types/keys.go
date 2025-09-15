@@ -11,22 +11,22 @@ const (
 	// StoreKey defines the primary module store key
 	StoreKey = ModuleName
 
-    // RouterKey defines the module's message routing key
-    RouterKey = ModuleName
+	// RouterKey defines the module's message routing key
+	RouterKey = ModuleName
 )
 
 var (
 	// SponsorKeyPrefix defines the prefix for sponsor records
 	SponsorKeyPrefix = []byte{0x01}
-	
+
 	// ParamsKey defines the key for module parameters
 	ParamsKey = []byte{0x02}
-	
+
 	// UserGrantUsageKeyPrefix defines the prefix for user grant usage records
 	UserGrantUsageKeyPrefix = []byte{0x03}
 
 	// Parameter store keys
-	KeySponsorshipEnabled    = []byte("SponsorshipEnabled")
+	KeySponsorshipEnabled   = []byte("SponsorshipEnabled")
 	KeyMaxGasPerSponsorship = []byte("MaxGasPerSponsorship")
 )
 
@@ -34,7 +34,6 @@ var (
 func GetSponsorKey(contractAddr string) []byte {
 	return append(SponsorKeyPrefix, []byte(contractAddr)...)
 }
-
 
 // GetUserGrantUsageKey returns the store key for a user grant usage record
 func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
@@ -44,17 +43,18 @@ func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
 	key = append(key, []byte(contractAddr)...)
 	return key
 }
+
 // ValidateContractAddress validates a contract address
 func ValidateContractAddress(addr string) error {
 	if addr == "" {
 		return ErrInvalidContractAddress.Wrap("contract address cannot be empty")
 	}
-	
+
 	// Validate bech32 format - this already ensures the address is valid
 	_, err := sdk.AccAddressFromBech32(addr)
 	if err != nil {
 		return ErrInvalidContractAddress.Wrapf("invalid bech32 address format: %s", addr)
 	}
-	
+
 	return nil
 }

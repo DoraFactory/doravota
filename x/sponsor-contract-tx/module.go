@@ -1,25 +1,25 @@
 package sponsor
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "math/rand"
+	"context"
+	"encoding/json"
+	"fmt"
+	"math/rand"
 
-    abci "github.com/cometbft/cometbft/abci/types"
-    "github.com/cosmos/cosmos-sdk/client"
-    "github.com/cosmos/cosmos-sdk/codec"
-    cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    "github.com/cosmos/cosmos-sdk/types/module"
-    simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
-    "github.com/gorilla/mux"
-    "github.com/grpc-ecosystem/grpc-gateway/runtime"
-    "github.com/spf13/cobra"
+	abci "github.com/cometbft/cometbft/abci/types"
+	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/codec"
+	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/module"
+	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+	"github.com/gorilla/mux"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/spf13/cobra"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 var (
@@ -29,7 +29,7 @@ var (
 
 // AppModuleBasic implements the AppModuleBasic interface for the sponsor module
 type AppModuleBasic struct {
-    cdc codec.BinaryCodec
+	cdc codec.BinaryCodec
 }
 
 // Name returns the sponsor module's name
@@ -90,23 +90,23 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command {
 
 // AppModule implements the AppModule interface for the sponsor module
 type AppModule struct {
-    AppModuleBasic
+	AppModuleBasic
 
-    keeper     keeper.Keeper
-    bankKeeper types.BankKeeper
+	keeper     keeper.Keeper
+	bankKeeper types.BankKeeper
 }
 
 // NewAppModule creates a new AppModule object
 func NewAppModule(
-    cdc codec.Codec,
-    keeper keeper.Keeper,
-    bankKeeper types.BankKeeper,
+	cdc codec.Codec,
+	keeper keeper.Keeper,
+	bankKeeper types.BankKeeper,
 ) AppModule {
-    return AppModule{
-        AppModuleBasic: AppModuleBasic{cdc: cdc},
-        keeper:         keeper,
-        bankKeeper:     bankKeeper,
-    }
+	return AppModule{
+		AppModuleBasic: AppModuleBasic{cdc: cdc},
+		keeper:         keeper,
+		bankKeeper:     bankKeeper,
+	}
 }
 
 // Name returns the sponsor module's name
@@ -116,8 +116,8 @@ func (am AppModule) Name() string {
 
 // RegisterServices registers the sponsor module's services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
-    // Register message server with dependencies
-    types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
+	// Register message server with dependencies
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
 
 	// Register query server
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))

@@ -59,7 +59,7 @@ func CreateTestContractExecuteMsg(sender, contract string, msg string, funds sdk
 	executeMsg := map[string]interface{}{
 		"increment": map[string]interface{}{},
 	}
-	
+
 	if msg != "" {
 		// Parse custom message if provided
 		var customMsg map[string]interface{}
@@ -69,7 +69,7 @@ func CreateTestContractExecuteMsg(sender, contract string, msg string, funds sdk
 	}
 
 	msgBytes, _ := json.Marshal(executeMsg)
-	
+
 	return &wasmtypes.MsgExecuteContract{
 		Sender:   sender,
 		Contract: contract,
@@ -199,7 +199,7 @@ var (
 // CreateTestGenesisState creates a test genesis state with sponsors
 func CreateTestGenesisState(sponsors []types.ContractSponsor) *types.GenesisState {
 	params := types.DefaultParams()
-	
+
 	// Convert to pointer slice
 	sponsorPtrs := make([]*types.ContractSponsor, len(sponsors))
 	for i := range sponsors {

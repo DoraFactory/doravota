@@ -3,15 +3,15 @@ package sponsor_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	dbm "github.com/cometbft/cometbft-db"
+	"github.com/cometbft/cometbft/libs/log"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/store"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-	dbm "github.com/cometbft/cometbft-db"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cometbft/cometbft/libs/log"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -73,7 +73,7 @@ func (suite *GenesisTestSuite) SetupTest() {
 
 	// Set up test data
 	suite.contractAddr1 = "dora1contract1____________"
-	suite.contractAddr2 = "dora1contract2____________"  
+	suite.contractAddr2 = "dora1contract2____________"
 	suite.admin = sdk.AccAddress("admin_______________")
 	suite.user1 = sdk.AccAddress("user1_______________")
 	suite.user2 = sdk.AccAddress("user2_______________")
@@ -130,7 +130,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
 			name: "invalid params - zero max gas",
 			genesis: &types.GenesisState{
 				Params: &types.Params{
-					SponsorshipEnabled:    false,
+					SponsorshipEnabled:   false,
 					MaxGasPerSponsorship: 0, // Invalid
 				},
 				Sponsors: []*types.ContractSponsor{},
@@ -236,7 +236,7 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	// Create a genesis state with test data
 	originalGenesis := &types.GenesisState{
 		Params: &types.Params{
-			SponsorshipEnabled:    true,
+			SponsorshipEnabled:   true,
 			MaxGasPerSponsorship: 1500000,
 		},
 		Sponsors: []*types.ContractSponsor{
@@ -282,7 +282,7 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	usage1 := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user1.String(), suite.contractAddr1)
 	suite.Require().Equal(suite.user1.String(), usage1.UserAddress)
 	suite.Require().Equal(suite.contractAddr1, usage1.ContractAddress)
-	suite.Require().Empty(usage1.TotalGrantUsed) // Should be empty initially
+	suite.Require().Empty(usage1.TotalGrantUsed)         // Should be empty initially
 	suite.Require().Equal(int64(0), usage1.LastUsedTime) // Should be 0 initially
 
 	// Export genesis and compare
@@ -318,7 +318,7 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	// Create original genesis state
 	originalGenesis := &types.GenesisState{
 		Params: &types.Params{
-			SponsorshipEnabled:    false,
+			SponsorshipEnabled:   false,
 			MaxGasPerSponsorship: 3000000,
 		},
 		Sponsors: []*types.ContractSponsor{
@@ -336,7 +336,7 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	// First init
 	sponsor.InitGenesis(suite.ctx, suite.keeper, *originalGenesis)
 
-	// First export  
+	// First export
 	firstExport := sponsor.ExportGenesis(suite.ctx, suite.keeper)
 
 	// Create new keeper and context for second round

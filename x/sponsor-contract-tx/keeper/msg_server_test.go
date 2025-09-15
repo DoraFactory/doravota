@@ -1,87 +1,87 @@
 package keeper
 
 import (
-    "testing"
+	"testing"
 
-    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-    "github.com/cometbft/cometbft/libs/log"
-    tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-    "github.com/cosmos/cosmos-sdk/codec"
-    codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-    "github.com/cosmos/cosmos-sdk/store"
-    storetypes "github.com/cosmos/cosmos-sdk/store/types"
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-    authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
-    banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/cometbft/cometbft/libs/log"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/store"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-    dbm "github.com/cometbft/cometbft-db"
+	dbm "github.com/cometbft/cometbft-db"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // setupKeeperWithDeps sets up keeper with auth/bank keepers for withdraw tests
 func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, authkeeper.AccountKeeper, bankkeeper.Keeper) {
-    t.Helper()
+	t.Helper()
 
-    // Interface registry and codec
-    interfaceRegistry := codectypes.NewInterfaceRegistry()
-    authtypes.RegisterInterfaces(interfaceRegistry)
-    banktypes.RegisterInterfaces(interfaceRegistry)
-    wasmtypes.RegisterInterfaces(interfaceRegistry)
-    types.RegisterInterfaces(interfaceRegistry)
-    cdc := codec.NewProtoCodec(interfaceRegistry)
+	// Interface registry and codec
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	authtypes.RegisterInterfaces(interfaceRegistry)
+	banktypes.RegisterInterfaces(interfaceRegistry)
+	wasmtypes.RegisterInterfaces(interfaceRegistry)
+	types.RegisterInterfaces(interfaceRegistry)
+	cdc := codec.NewProtoCodec(interfaceRegistry)
 
-    // Stores
-    sponsorStoreKey := sdk.NewKVStoreKey(types.StoreKey)
-    authStoreKey := sdk.NewKVStoreKey(authtypes.StoreKey)
-    bankStoreKey := sdk.NewKVStoreKey(banktypes.StoreKey)
+	// Stores
+	sponsorStoreKey := sdk.NewKVStoreKey(types.StoreKey)
+	authStoreKey := sdk.NewKVStoreKey(authtypes.StoreKey)
+	bankStoreKey := sdk.NewKVStoreKey(banktypes.StoreKey)
 
-    db := dbm.NewMemDB()
-    cms := store.NewCommitMultiStore(db)
-    cms.MountStoreWithDB(sponsorStoreKey, storetypes.StoreTypeIAVL, db)
-    cms.MountStoreWithDB(authStoreKey, storetypes.StoreTypeIAVL, db)
-    cms.MountStoreWithDB(bankStoreKey, storetypes.StoreTypeIAVL, db)
-    require.NoError(t, cms.LoadLatestVersion())
+	db := dbm.NewMemDB()
+	cms := store.NewCommitMultiStore(db)
+	cms.MountStoreWithDB(sponsorStoreKey, storetypes.StoreTypeIAVL, db)
+	cms.MountStoreWithDB(authStoreKey, storetypes.StoreTypeIAVL, db)
+	cms.MountStoreWithDB(bankStoreKey, storetypes.StoreTypeIAVL, db)
+	require.NoError(t, cms.LoadLatestVersion())
 
-    ctx := sdk.NewContext(cms, tmproto.Header{Height: 1}, false, log.NewNopLogger())
+	ctx := sdk.NewContext(cms, tmproto.Header{Height: 1}, false, log.NewNopLogger())
 
-    // Keepers
-    mockWasmKeeper := NewMockWasmKeeper()
+	// Keepers
+	mockWasmKeeper := NewMockWasmKeeper()
 
-    maccPerms := map[string][]string{
-        authtypes.FeeCollectorName: nil,
-        types.ModuleName:           {authtypes.Minter, authtypes.Burner},
-    }
+	maccPerms := map[string][]string{
+		authtypes.FeeCollectorName: nil,
+		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
+	}
 
-    accountKeeper := authkeeper.NewAccountKeeper(
-        cdc,
-        authStoreKey,
-        authtypes.ProtoBaseAccount,
-        maccPerms,
-        "dora",
-        authtypes.NewModuleAddress("gov").String(),
-    )
+	accountKeeper := authkeeper.NewAccountKeeper(
+		cdc,
+		authStoreKey,
+		authtypes.ProtoBaseAccount,
+		maccPerms,
+		"dora",
+		authtypes.NewModuleAddress("gov").String(),
+	)
 
-    bankKeeper := bankkeeper.NewBaseKeeper(
-        cdc,
-        bankStoreKey,
-        accountKeeper,
-        nil,
-        authtypes.NewModuleAddress("gov").String(),
-    )
+	bankKeeper := bankkeeper.NewBaseKeeper(
+		cdc,
+		bankStoreKey,
+		accountKeeper,
+		nil,
+		authtypes.NewModuleAddress("gov").String(),
+	)
 
-    // Create module account for sponsor module (for minting)
-    sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
-    accountKeeper.SetAccount(ctx, sponsorModuleAcc)
+	// Create module account for sponsor module (for minting)
+	sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
+	accountKeeper.SetAccount(ctx, sponsorModuleAcc)
 
-    // Create keeper
-    k := NewKeeper(cdc, sponsorStoreKey, mockWasmKeeper, authtypes.NewModuleAddress("gov").String())
+	// Create keeper
+	k := NewKeeper(cdc, sponsorStoreKey, mockWasmKeeper, authtypes.NewModuleAddress("gov").String())
 
-    return *k, ctx, mockWasmKeeper, accountKeeper, bankKeeper
+	return *k, ctx, mockWasmKeeper, accountKeeper, bankKeeper
 }
 
 func TestMsgServer_SetSponsor(t *testing.T) {
@@ -753,7 +753,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 	// Set up a valid contract and admin
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
 	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
-	
+
 	// Set up mock wasm keeper
 	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
@@ -787,7 +787,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.True(t, found)
 		require.True(t, sponsor.IsSponsored)
 		require.Len(t, sponsor.MaxGrantPerUser, 1)
-		
+
 		// Check the saved max grant per user
 		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
 		require.NoError(t, err)
@@ -834,7 +834,7 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 	// Set up a valid contract and admin
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
 	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
-	
+
 	// Set up mock wasm keeper
 	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
@@ -866,13 +866,13 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 		require.True(t, found)
 		require.True(t, sponsor.IsSponsored)
 		require.NotEmpty(t, sponsor.SponsorAddress, "sponsor_address should be generated")
-		
+
 		// Verify the sponsor_address is a valid address
 		_, err = sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 		require.NoError(t, err, "sponsor_address should be a valid bech32 address")
-		
+
 		// Verify sponsor_address is different from contract_address
-		require.NotEqual(t, sponsor.ContractAddress, sponsor.SponsorAddress, 
+		require.NotEqual(t, sponsor.ContractAddress, sponsor.SponsorAddress,
 			"sponsor_address should be different from contract_address")
 	})
 
@@ -907,7 +907,7 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 		// Verify sponsor_address is preserved after update
 		updatedSponsor, found := keeper.GetSponsor(ctx, contractAddr)
 		require.True(t, found)
-		require.Equal(t, originalSponsorAddr, updatedSponsor.SponsorAddress, 
+		require.Equal(t, originalSponsorAddr, updatedSponsor.SponsorAddress,
 			"sponsor_address should be preserved during updates")
 	})
 }
@@ -965,7 +965,7 @@ func TestMsgServerSponsorAddressConsistency(t *testing.T) {
 		// Verify all sponsor addresses are unique
 		for i := 0; i < len(sponsorAddresses); i++ {
 			for j := i + 1; j < len(sponsorAddresses); j++ {
-				require.NotEqual(t, sponsorAddresses[i], sponsorAddresses[j], 
+				require.NotEqual(t, sponsorAddresses[i], sponsorAddresses[j],
 					"sponsor addresses should be unique for different contracts")
 			}
 		}
@@ -1012,128 +1012,128 @@ func TestMsgServerSponsorAddressConsistency(t *testing.T) {
 // ===== Withdraw sponsor funds tests (moved from withdraw_test.go) =====
 
 func TestWithdrawSponsorFunds_Success(t *testing.T) {
-    keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
 
-    // Prepare admin, contract, recipient
-    admin := sdk.AccAddress("admin________________")
-    contract := sdk.AccAddress("contract____________")
-    recipient := sdk.AccAddress("recipient___________")
+	// Prepare admin, contract, recipient
+	admin := sdk.AccAddress("admin________________")
+	contract := sdk.AccAddress("contract____________")
+	recipient := sdk.AccAddress("recipient___________")
 
-    // Set contract admin in wasm mock
-    wasmMock.SetContractInfo(contract.String(), admin.String())
+	// Set contract admin in wasm mock
+	wasmMock.SetContractInfo(contract.String(), admin.String())
 
-    // Create msg server with deps
-    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	// Create msg server with deps
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
-    // Create sponsor via msg to generate sponsor address
-    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
-    setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
-    _, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
-    require.NoError(t, err)
+	// Create sponsor via msg to generate sponsor address
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
 
-    sponsor, found := keeper.GetSponsor(ctx, contract.String())
-    require.True(t, found)
-    sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-    require.NoError(t, err)
+	sponsor, found := keeper.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	require.NoError(t, err)
 
-    // Fund sponsor address
-    fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-    require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
-    require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
+	// Fund sponsor address
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
+	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
 
-    // Withdraw
-    withdrawAmt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000)))
-    wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), withdrawAmt)
+	// Withdraw
+	withdrawAmt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000)))
+	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), withdrawAmt)
 
-    // Add event manager
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
+	// Add event manager
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
 
-    _, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
-    require.NoError(t, err)
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.NoError(t, err)
 
-    // Check balances
-    balSponsor := bankKeeper.GetBalance(ctx, sponsorAddr, "peaka")
-    balRecipient := bankKeeper.GetBalance(ctx, recipient, "peaka")
-    require.Equal(t, sdk.NewInt(2000), balSponsor.Amount)   // 5000 - 3000
-    require.Equal(t, sdk.NewInt(3000), balRecipient.Amount) // 0 + 3000
+	// Check balances
+	balSponsor := bankKeeper.GetBalance(ctx, sponsorAddr, "peaka")
+	balRecipient := bankKeeper.GetBalance(ctx, recipient, "peaka")
+	require.Equal(t, sdk.NewInt(2000), balSponsor.Amount)   // 5000 - 3000
+	require.Equal(t, sdk.NewInt(3000), balRecipient.Amount) // 0 + 3000
 
-    // Verify event emission and attributes
-    var withdrawEvent sdk.Event
-    eventFound := false
-    for _, ev := range ctx.EventManager().Events() {
-        if ev.Type == types.EventTypeSponsorWithdrawal {
-            withdrawEvent = ev
-            eventFound = true
-            break
-        }
-    }
-    require.True(t, eventFound, "sponsor_withdraw_funds event should be emitted")
+	// Verify event emission and attributes
+	var withdrawEvent sdk.Event
+	eventFound := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorWithdrawal {
+			withdrawEvent = ev
+			eventFound = true
+			break
+		}
+	}
+	require.True(t, eventFound, "sponsor_withdraw_funds event should be emitted")
 
-    // Build expected attributes
-    expected := map[string]string{
-        types.AttributeKeyCreator:         admin.String(),
-        types.AttributeKeyContractAddress: contract.String(),
-        types.AttributeKeySponsorAddress:  sponsor.SponsorAddress,
-        types.AttributeKeyRecipient:       recipient.String(),
-        types.AttributeKeySponsorAmount:   withdrawAmt.String(),
-    }
+	// Build expected attributes
+	expected := map[string]string{
+		types.AttributeKeyCreator:         admin.String(),
+		types.AttributeKeyContractAddress: contract.String(),
+		types.AttributeKeySponsorAddress:  sponsor.SponsorAddress,
+		types.AttributeKeyRecipient:       recipient.String(),
+		types.AttributeKeySponsorAmount:   withdrawAmt.String(),
+	}
 
-    // Check attributes
-    got := map[string]string{}
-    for _, attr := range withdrawEvent.Attributes {
-        got[attr.Key] = attr.Value
-    }
-    for k, v := range expected {
-        require.Equalf(t, v, got[k], "event attribute %s mismatch", k)
-    }
+	// Check attributes
+	got := map[string]string{}
+	for _, attr := range withdrawEvent.Attributes {
+		got[attr.Key] = attr.Value
+	}
+	for k, v := range expected {
+		require.Equalf(t, v, got[k], "event attribute %s mismatch", k)
+	}
 }
 
 func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
-    keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
-    admin := sdk.AccAddress("admin________________")
-    nonAdmin := sdk.AccAddress("user_________________")
-    contract := sdk.AccAddress("contract____________")
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	admin := sdk.AccAddress("admin________________")
+	nonAdmin := sdk.AccAddress("user_________________")
+	contract := sdk.AccAddress("contract____________")
 
-    wasmMock.SetContractInfo(contract.String(), admin.String())
-    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
-    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
-    setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
-    _, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
-    require.NoError(t, err)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
 
-    // Try withdraw as non-admin
-    wMsg := types.NewMsgWithdrawSponsorFunds(nonAdmin.String(), contract.String(), nonAdmin.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
-    _, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
-    require.Error(t, err)
+	// Try withdraw as non-admin
+	wMsg := types.NewMsgWithdrawSponsorFunds(nonAdmin.String(), contract.String(), nonAdmin.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.Error(t, err)
 }
 
 func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
-    keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
-    admin := sdk.AccAddress("admin________________")
-    contract := sdk.AccAddress("contract____________")
-    recipient := sdk.AccAddress("recipient___________")
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	admin := sdk.AccAddress("admin________________")
+	contract := sdk.AccAddress("contract____________")
+	recipient := sdk.AccAddress("recipient___________")
 
-    wasmMock.SetContractInfo(contract.String(), admin.String())
-    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
-    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
-    setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
-    _, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
-    require.NoError(t, err)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
 
-    sponsor, found := keeper.GetSponsor(ctx, contract.String())
-    require.True(t, found)
-    sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-    require.NoError(t, err)
+	sponsor, found := keeper.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	require.NoError(t, err)
 
-    // Fund with small amount
-    fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
-    require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
-    require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
+	// Fund with small amount
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
+	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
+	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
 
-    // Try withdraw larger amount
-    wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
-    _, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
-    require.Error(t, err)
+	// Try withdraw larger amount
+	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.Error(t, err)
 }

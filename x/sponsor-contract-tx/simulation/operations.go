@@ -18,7 +18,7 @@ import (
 // Operation weights constants
 const (
 	OpWeightMsgSetSponsor    = "op_weight_msg_set_sponsor"
-	OpWeightMsgUpdateSponsor = "op_weight_msg_update_sponsor" 
+	OpWeightMsgUpdateSponsor = "op_weight_msg_update_sponsor"
 	OpWeightMsgDeleteSponsor = "op_weight_msg_delete_sponsor"
 	OpWeightSponsoredTx      = "op_weight_sponsored_tx"
 	OpWeightPolicyCheck      = "op_weight_policy_check"
@@ -112,7 +112,7 @@ func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		// Select random creator (admin)
 		creator, _ := simtypes.RandomAcc(r, accs)
-		
+
 		// Skip account keeper check if not available (for testing)
 		if ak != nil {
 			creatorAcc := ak.GetAccount(ctx, creator.Address)
@@ -121,12 +121,12 @@ func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper
 			}
 		}
 
-		// Generate random contract address  
+		// Generate random contract address
 		contractAddr := simtypes.RandomAccounts(r, 1)[0].Address
 
 		// Random sponsorship settings
 		isSponsored := r.Intn(2) == 0
-		
+
 		var maxGrantPerUser sdk.Coins
 		if isSponsored {
 			// When sponsored, require max grant per user (only peaka)
@@ -149,7 +149,7 @@ func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper
 
 		msg := &types.MsgSetSponsor{
 			Creator:         creator.Address.String(),
-			ContractAddress: contractAddr.String(), 
+			ContractAddress: contractAddr.String(),
 			IsSponsored:     isSponsored,
 			MaxGrantPerUser: protoCoins,
 		}
@@ -194,7 +194,7 @@ func SimulateMsgUpdateSponsor(ak types.AccountKeeper, bk types.BankKeeper, k kee
 
 		// Generate new random settings
 		isSponsored := r.Intn(2) == 0
-		
+
 		var maxGrantPerUser sdk.Coins
 		if isSponsored {
 			amount := sdk.NewInt(int64(r.Intn(2000000) + 1000)) // Different range for update
@@ -289,7 +289,7 @@ func SimulateSponsoredTransaction(ak types.AccountKeeper, bk types.BankKeeper, k
 		// Generate random contract execution message
 		msgTypes := []string{"increment", "decrement", "reset", "set_value"}
 		msgType := msgTypes[r.Intn(len(msgTypes))]
-		
+
 		var executeMsg map[string]interface{}
 		switch msgType {
 		case "increment":
@@ -341,7 +341,7 @@ func SimulatePolicyCheck(ak types.AccountKeeper, bk types.BankKeeper, k keeper.K
 
 		// Select random contract and test different policy scenarios
 		contract := sponsoredContracts[r.Intn(len(sponsoredContracts))]
-		
+
 		// Test different message types and edge cases
 		testScenarios := []struct {
 			msgType string
@@ -355,10 +355,10 @@ func SimulatePolicyCheck(ak types.AccountKeeper, bk types.BankKeeper, k keeper.K
 		}
 
 		scenario := testScenarios[r.Intn(len(testScenarios))]
-		
+
 		// This is a read-only operation that tests policy checking
 		// We don't actually send a transaction, just test the policy logic
-		ctx.Logger().Info("Simulating policy check", 
+		ctx.Logger().Info("Simulating policy check",
 			"contract", contract.ContractAddress,
 			"msg_type", scenario.msgType,
 		)
@@ -371,7 +371,7 @@ func SimulatePolicyCheck(ak types.AccountKeeper, bk types.BankKeeper, k keeper.K
 func SimulateUserGrantUsage(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		// Test user grant usage edge cases and limits
-		
+
 		// Get all sponsored contracts
 		allSponsors := k.GetAllSponsors(ctx)
 		var sponsoredContracts []types.ContractSponsor
@@ -391,18 +391,18 @@ func SimulateUserGrantUsage(ak types.AccountKeeper, bk types.BankKeeper, k keepe
 
 		// Test various grant usage scenarios
 		usage := k.GetUserGrantUsage(ctx, user.Address.String(), contract.ContractAddress)
-		
+
 		// Simulate different usage patterns
 		scenarios := []string{
 			"normal_usage",
-			"near_limit", 
+			"near_limit",
 			"at_limit",
 			"over_limit",
 			"multiple_requests",
 		}
-		
+
 		scenario := scenarios[r.Intn(len(scenarios))]
-		
+
 		ctx.Logger().Info("Simulating user grant usage",
 			"user", user.Address.String(),
 			"contract", contract.ContractAddress,

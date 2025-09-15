@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	
+
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -58,7 +58,7 @@ func SponsorConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 		)
 
 		sponsors := k.GetAllSponsors(ctx)
-		
+
 		// Check 1: No duplicate contract addresses
 		contractAddrs := make(map[string]bool)
 		for _, sponsor := range sponsors {
@@ -129,7 +129,7 @@ func GrantUsageConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 		// Note: For comprehensive invariant checking, we would need to iterate through all user grant usage entries
 		// However, this requires access to the internal store implementation
 		// For now, we'll validate the sponsors' consistency only
-		
+
 		// In a full implementation, this would check all user grant usage entries against their sponsors
 
 		return sdk.FormatInvariant(types.ModuleName, InvariantGrantUsageConsistency, msg), broken
@@ -176,9 +176,9 @@ func BalanceConsistencyInvariant(k keeper.Keeper, bk types.BankKeeper) sdk.Invar
 
 		// Note: Module account balance checking would require access to module account keeper
 		// For now, we skip this validation as it requires additional keeper dependencies
-		
+
 		sponsors := k.GetAllSponsors(ctx)
-		
+
 		for _, sponsor := range sponsors {
 			if sponsor.IsSponsored {
 				for _, coin := range sponsor.MaxGrantPerUser {
