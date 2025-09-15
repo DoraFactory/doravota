@@ -166,7 +166,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				feeCheck := feeTx.GetFee()
 					for _, c := range feeCheck {
 						if c.Denom != "peaka" {
-							return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "sponsorship only supports 'peaka' as fee denom; found: %s", c.Denom)
+							return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
 						}
 					}
 				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
