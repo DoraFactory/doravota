@@ -97,26 +97,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
                 )
             }
 
-            // In CheckTx/Simulate, if fee>0 and fee payer has insufficient balance,
-            // return a clearer error that includes the sponsorship skip reason.
-            if feeTx, ok := tx.(sdk.FeeTx); ok {
-                fee := feeTx.GetFee()
-                if !fee.IsZero() {
-                    // Use sponsorship-aware address derivation; it enforces signer consistency
-                    payer, derr := sctd.getUserAddressForSponsorship(tx)
-                    if derr == nil && !payer.Empty() {
-                        balance := sctd.bankKeeper.SpendableCoins(ctx, payer)
-                        if !balance.IsAllGTE(fee) {
-                            return ctx, errorsmod.Wrapf(
-                                sdkerrors.ErrInsufficientFunds,
-                                "sponsorship skipped (%s); fee payer %s has insufficient balance to pay fees. required: %s, available: %s",
-                                validation.SkipReason, payer.String(), fee.String(), balance.String(),
-                            )
-                        }
-                    }
-                }
-            }
-
             ctx.Logger().With("module", "sponsor-contract-tx").Info(
                 "sponsorship skipped",
                 "reason", validation.SkipReason,
@@ -183,6 +163,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 			// 2. Early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
 			if !fee.IsZero() {
+				feeCheck := feeTx.GetFee()
+					for _, c := range feeCheck {
+						if c.Denom != "peaka" {
+							return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "sponsorship only supports 'peaka' as fee denom; found: %s", c.Denom)
+						}
+					}
 				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
 					if userBalance.IsAllGTE(fee) {
 						ctx.Logger().With("module", "sponsor-contract-tx").Info(
