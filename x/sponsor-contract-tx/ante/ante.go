@@ -48,25 +48,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
-	// Check if sponsorship is globally enabled first
-	params := sctd.keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		// Sponsorship is globally disabled, skip all sponsor logic
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"sponsorship globally disabled, using standard fee processing",
-		)
-
-		// Emit event to notify users that sponsorship is disabled
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeSponsorshipDisabled,
-				sdk.NewAttribute(types.AttributeKeyReason, "globally_disabled"),
-			),
-		)
-
-		return next(ctx, tx, simulate)
-	}
-
 	// Check for feegrant first - if present, delegate to standard processing
 	if feeTx, ok := tx.(sdk.FeeTx); ok {
 		feeGranter := feeTx.FeeGranter()
@@ -127,6 +108,24 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	// caused sponsorship logic to run even when the stored sponsor record had
 	// IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
 	if found && sponsor.IsSponsored {
+		// Check if sponsorship is globally enabled first
+		params := sctd.keeper.GetParams(ctx)
+		if !params.SponsorshipEnabled {
+			// Sponsorship is globally disabled, skip all sponsor logic
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"sponsorship globally disabled, using standard fee processing",
+			)
+
+			// Emit event to notify users that sponsorship is disabled
+			ctx.EventManager().EmitEvent(
+				sdk.NewEvent(
+					types.EventTypeSponsorshipDisabled,
+					sdk.NewAttribute(types.AttributeKeyReason, "globally_disabled"),
+				),
+			)
+
+			return next(ctx, tx, simulate)
+		}
 		// Get the appropriate user address for policy check and fee payment
 		userAddr, err := sctd.getUserAddressForSponsorship(tx)
 		if err != nil {
