@@ -116,14 +116,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				"sponsorship globally disabled, using standard fee processing",
 			)
 
-			// Emit event to notify users that sponsorship is disabled
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsorshipDisabled,
-					sdk.NewAttribute(types.AttributeKeyReason, "globally_disabled"),
-				),
-			)
-
 			return next(ctx, tx, simulate)
 		}
 		// Get the appropriate user address for policy check and fee payment
