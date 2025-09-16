@@ -114,16 +114,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"contract", contractAddr,
 			"error", err.Error(),
 		)
-		if !ctx.IsCheckTx() {
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsorshipSkipped,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-					sdk.NewAttribute(types.AttributeKeyReason, "contract_not_found"),
-				),
-			)
+		if ctx.IsCheckTx() {
+			return ctx, errorsmod.Wrapf(types.ErrContractNotFound, "contract address %s not found", contractAddr)
 		}
-		return next(ctx, tx, simulate)
 	}
 
 	// Check if this contract is sponsored
