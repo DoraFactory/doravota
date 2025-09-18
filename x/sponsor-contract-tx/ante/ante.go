@@ -248,6 +248,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		)
 
 		if policyErr != nil {
+			// Always account for the gas burned during the policy check so low-fee
+			// transactions cannot spam expensive contract queries at zero cost.
+			consumeGasSafely(ctx, gasUsed, "contract policy check (failed)")
 			// Policy check failed with error (contract query failed, parsing failed, etc.)
 			ctx.Logger().With("module", "sponsor-contract-tx").Error(
 				"contract policy check failed",
@@ -256,8 +259,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				"gas_used", gasUsed,
 				"error", policyErr.Error(),
 			)
-			// Do not consume gas on main context in failure path to avoid double OOG and unwanted cost
-			// Provide user-friendly error message for common gas limit exceeded case
 			reasonFromError := "policy_check_failed"
 			if errorsmod.IsOf(policyErr, types.ErrGasLimitExceeded) {
 				reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
@@ -282,7 +283,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// Policy check succeeded, consume gas and check eligibility
 		// Always consume gas for policy check to ensure consistent gas estimation
 		// This prevents discrepancies between simulation and actual execution
-		ctx.GasMeter().ConsumeGas(gasUsed, "contract policy check")
+		consumeGasSafely(ctx, gasUsed, "contract policy check")
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"gas consumed for contract policy check",
@@ -665,20 +666,21 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 	return validatedSigner, nil
 }
 
-// consumeGasSafely attempts to consume gas on the main context and logs an error if it panics
+// consumeGasSafely attempts to consume gas on the main context and logs an error if it panics.
 // This prevents a second panic during failure-path accounting from crashing the node.
-// func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
-//     defer func() {
-//         if r := recover(); r != nil {
-//             ctx.Logger().With("module", "sponsor-contract-tx").Error(
-//                 "failed to consume gas on main context",
-//                 "gas_to_consume", gasUsed,
-//                 "recovery_error", r,
-//             )
-//         }
-//     }()
-// 	// There is no charge for failed check policies here.
-// 	// To protect users who want to conduct contract transactions normally from bearing the cost of check policies,
-// 	//this is more reasonable. We cannot force all users to go through check policies.
-//     // ctx.GasMeter().ConsumeGas(gasUsed, desc)
-// }
+func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
+	if gasUsed == 0 {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			ctx.Logger().With("module", "sponsor-contract-tx").Error(
+				"failed to consume gas on main context",
+				"gas_to_consume", gasUsed,
+				"recovery_error", r,
+			)
+		}
+	}()
+	// comsume gas when check failed on the main context
+	ctx.GasMeter().ConsumeGas(gasUsed, desc)
+}
