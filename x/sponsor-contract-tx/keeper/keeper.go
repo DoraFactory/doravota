@@ -455,7 +455,8 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 	// Convert back to []*sdk.Coin
 	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
 	for i, coin := range newTotal {
-		usage.TotalGrantUsed[i] = &coin
+		coinCopy := coin
+		usage.TotalGrantUsed[i] = &coinCopy
 	}
 
 	usage.LastUsedTime = ctx.BlockTime().Unix()
