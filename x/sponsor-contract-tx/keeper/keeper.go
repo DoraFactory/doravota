@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	errorsmod "cosmossdk.io/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -33,7 +34,7 @@ type Keeper struct {
 	cdc        codec.BinaryCodec
 	storeKey   storetypes.StoreKey
 	wasmKeeper WasmKeeperInterface
-	
+
 	// authority is the address capable of executing governance proposals
 	// typically the gov module account
 	authority string
@@ -59,7 +60,6 @@ func (k Keeper) GetAuthority() string {
 	return k.authority
 }
 
-
 // CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
 // It checks ALL contract execution messages for the specified contract to prevent hitchhiking attacks
 func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*types.CheckContractPolicyResult, error) {
@@ -70,16 +70,16 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 	// Extract all contract messages for security - prevent hitchhiking attacks
 	contractMessages, err := k.extractAllContractMessages(tx, contractAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(err, "failed to extract contract messages")
+		return nil, errorsmod.Wrap(err, "failed to extract contract messages")
 	}
 
 	if len(contractMessages) == 0 {
-		return nil, sdkerrors.Wrap(types.ErrContractNotFound, fmt.Sprintf("no contract execution messages found for contract %s", contractAddr))
+		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("no contract execution messages found for contract %s", contractAddr))
 	}
 
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
-		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
 	}
 
 	// Check EVERY contract message for permission - critical for security
@@ -88,19 +88,52 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 		queryMsg := map[string]interface{}{
 			"check_policy": map[string]interface{}{
 				"sender":   userAddr.String(),
-				"msg_type": contractMsg.MsgType,
 				"msg_data": contractMsg.MsgData,
 			},
 		}
 
 		queryBytes, err := json.Marshal(queryMsg)
 		if err != nil {
-			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
+			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
 		}
 
+		// Record gas before contract query
+		gasBefore := ctx.GasMeter().GasConsumed()
+
+		k.Logger(ctx).Debug("executing contract policy query",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"message_index", i,
+			"message_type", contractMsg.MsgType,
+			"gas_before_query", gasBefore,
+		)
+
 		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
+
+		// Record gas after contract query
+		gasAfter := ctx.GasMeter().GasConsumed()
+		gasUsedForQuery := gasAfter - gasBefore
+
+		k.Logger(ctx).Debug("contract policy query completed",
+			"contract", contractAddr,
+			"user", userAddr.String(),
+			"message_index", i,
+			"message_type", contractMsg.MsgType,
+			"gas_before_query", gasBefore,
+			"gas_after_query", gasAfter,
+			"gas_used_for_query", gasUsedForQuery,
+		)
+
 		if err != nil {
-			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
+			k.Logger(ctx).Error("contract policy query failed",
+				"contract", contractAddr,
+				"user", userAddr.String(),
+				"message_index", i,
+				"message_type", contractMsg.MsgType,
+				"gas_used_for_query", gasUsedForQuery,
+				"error", err.Error(),
+			)
+			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
 		}
 
 		// parse query result
@@ -109,7 +142,7 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 			Reason   *string `json:"reason"`
 		}
 		if err := json.Unmarshal(result, &response); err != nil {
-			return nil, sdkerrors.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
+			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
 		}
 
 		// If ANY message is not eligible, return with detailed reason
@@ -159,7 +192,7 @@ func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string)
 				// Parse the contract message to extract type and data
 				var msgMap map[string]interface{}
 				if err := json.Unmarshal(execMsg.Msg, &msgMap); err != nil {
-					return nil, sdkerrors.Wrap(err, "failed to parse contract message")
+					return nil, errorsmod.Wrap(err, "failed to parse contract message")
 				}
 
 				// Extract message type and data (assumes single message type per execution)
@@ -167,7 +200,7 @@ func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string)
 					// Send the complete ExecuteMsg instead of just the parameters
 					msgDataBytes, err := json.Marshal(msgMap)
 					if err != nil {
-						return nil, sdkerrors.Wrap(err, "failed to marshal message data")
+						return nil, errorsmod.Wrap(err, "failed to marshal message data")
 					}
 
 					contractMessages = append(contractMessages, ContractMessage{
@@ -188,7 +221,7 @@ func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error
 	// Normalize MaxGrantPerUser before storing to merge duplicates
 	normalized, err := types.NormalizeMaxGrantPerUser(sponsor.MaxGrantPerUser)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to normalize max grant per user")
+		return errorsmod.Wrap(err, "failed to normalize max grant per user")
 	}
 	sponsor.MaxGrantPerUser = normalized
 
@@ -197,7 +230,7 @@ func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error
 
 	bz, err := k.cdc.Marshal(&sponsor)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to marshal sponsor")
+		return errorsmod.Wrap(err, "failed to marshal sponsor")
 	}
 
 	store.Set(key, bz)
@@ -251,7 +284,7 @@ func (k Keeper) ValidateContractExists(ctx sdk.Context, contractAddr string) err
 	// Convert contract address string to AccAddress
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+		return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
 	}
 
 	// Get contract info from wasm keeper
@@ -273,7 +306,7 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	// Convert contract address string to AccAddress
 	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
 	if err != nil {
-		return false, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
 	}
 
 	// Get contract info from wasm keeper (we know it exists from validation above)
@@ -328,7 +361,7 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 
 		err := k.cdc.Unmarshal(value, &sponsor)
 		if err != nil {
-			return sdkerrors.Wrap(err, "failed to unmarshal sponsor data")
+			return errorsmod.Wrap(err, "failed to unmarshal sponsor data")
 		}
 
 		sponsors = append(sponsors, &sponsor)
@@ -340,48 +373,6 @@ func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest
 	}
 
 	return sponsors, pageRes, nil
-}
-
-// GetSponsorsByStatus returns sponsors filtered by sponsorship status
-func (k Keeper) GetSponsorsByStatus(ctx sdk.Context, isSponsored bool) []types.ContractSponsor {
-	var sponsors []types.ContractSponsor
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		if sponsor.IsSponsored == isSponsored {
-			sponsors = append(sponsors, sponsor)
-		}
-		return false // continue iteration
-	})
-
-	return sponsors
-}
-
-// GetSponsorCount returns the total number of sponsors
-func (k Keeper) GetSponsorCount(ctx sdk.Context) uint64 {
-	var count uint64
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		count++
-		return false // continue iteration
-	})
-
-	return count
-}
-
-// GetActiveSponsorCount returns the number of active sponsors
-func (k Keeper) GetActiveSponsorCount(ctx sdk.Context) uint64 {
-	var count uint64
-
-	k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
-		if sponsor.IsSponsored {
-			count++
-		}
-		return false // continue iteration
-	})
-
-	// Removed read-path event to reduce noise
-
-	return count
 }
 
 // GetParams returns the module parameters
@@ -403,7 +394,7 @@ func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
 	store := ctx.KVStore(k.storeKey)
 	bz, err := k.cdc.Marshal(&params)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to marshal params")
+		return errorsmod.Wrap(err, "failed to marshal params")
 	}
 	store.Set(types.ParamsKey, bz)
 	return nil
@@ -440,7 +431,7 @@ func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) e
 
 	bz, err := k.cdc.Marshal(&usage)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to marshal user grant usage")
+		return errorsmod.Wrap(err, "failed to marshal user grant usage")
 	}
 	store.Set(key, bz)
 	return nil
@@ -464,12 +455,13 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 	// Convert back to []*sdk.Coin
 	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
 	for i, coin := range newTotal {
-		usage.TotalGrantUsed[i] = &coin
+		coinCopy := coin
+		usage.TotalGrantUsed[i] = &coinCopy
 	}
 
 	usage.LastUsedTime = ctx.BlockTime().Unix()
 	if err := k.SetUserGrantUsage(ctx, usage); err != nil {
-		return sdkerrors.Wrap(err, "failed to set user grant usage")
+		return errorsmod.Wrap(err, "failed to set user grant usage")
 	}
 
 	// Emit sponsor usage updated event
@@ -490,16 +482,16 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 func (k Keeper) GetMaxGrantPerUser(ctx sdk.Context, contractAddr string) (sdk.Coins, error) {
 	sponsor, found := k.GetSponsor(ctx, contractAddr)
 	if !found {
-		return sdk.Coins{}, sdkerrors.Wrap(types.ErrSponsorNotFound, fmt.Sprintf("no sponsor configuration found for contract %s", contractAddr))
+		return sdk.Coins{}, errorsmod.Wrap(types.ErrSponsorNotFound, fmt.Sprintf("no sponsor configuration found for contract %s", contractAddr))
 	}
-	
+
 	// If sponsorship is disabled, max_grant_per_user is not relevant
 	if !sponsor.IsSponsored {
-		return sdk.Coins{}, sdkerrors.Wrap(types.ErrSponsorshipDisabled, fmt.Sprintf("sponsorship is disabled for contract %s", contractAddr))
+		return sdk.Coins{}, errorsmod.Wrap(types.ErrSponsorshipDisabled, fmt.Sprintf("sponsorship is disabled for contract %s", contractAddr))
 	}
-	
+
 	if len(sponsor.MaxGrantPerUser) == 0 {
-		return sdk.Coins{}, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("max_grant_per_user is required but not configured for contract %s", contractAddr))
+		return sdk.Coins{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, fmt.Sprintf("max_grant_per_user is required but not configured for contract %s", contractAddr))
 	}
 
 	// Convert from protobuf Coin to sdk.Coins
@@ -519,7 +511,7 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 	// Get the maximum grant limit for this contract
 	maxLimit, err := k.GetMaxGrantPerUser(ctx, contractAddr)
 	if err != nil {
-		return sdkerrors.Wrap(err, "failed to get max grant per user")
+		return errorsmod.Wrap(err, "failed to get max grant per user")
 	}
 
 	// Convert []*sdk.Coin to sdk.Coins for calculation

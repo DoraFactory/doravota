@@ -2,9 +2,10 @@ package cli
 
 import (
 	"context"
-	"github.com/spf13/cobra"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/spf13/cobra"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -21,7 +22,7 @@ func GetQueryCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		GetCmdQueryAllSponsors(),
-		GetCmdQuerySponsorStatus(),
+		GetCmdQuerySponsorInfo(),
 		GetCmdQueryUserGrantUsage(),
 		GetCmdQueryParams(),
 	)
@@ -29,13 +30,11 @@ func GetQueryCmd() *cobra.Command {
 	return cmd
 }
 
-
-
 // GetCmdQueryAllSponsors implements the query all-sponsors command
 func GetCmdQueryAllSponsors() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "all-sponsors",
-		Short: "Query all sponsor contracts",
+		Short: "Query all sponsor contracts' info",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)
@@ -59,11 +58,11 @@ func GetCmdQueryAllSponsors() *cobra.Command {
 	return cmd
 }
 
-// GetCmdQuerySponsorStatus implements the query sponsor status command
-func GetCmdQuerySponsorStatus() *cobra.Command {
+// GetCmdQuerySponsorInfo implements the query sponsor status command
+func GetCmdQuerySponsorInfo() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status [contract-address]",
-		Short: "Query the status of a sponsor contract",
+		Use:   "sponsor-info [contract-address]",
+		Short: "Query the info of a sponsor contract",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientQueryContext(cmd)

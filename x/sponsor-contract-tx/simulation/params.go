@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	keyEnableSponsor     = "EnableSponsor"
+	keyEnableSponsor        = "EnableSponsor"
 	keyMaxGasPerSponsorship = "MaxGasPerSponsorship"
 )
 
@@ -68,7 +68,7 @@ type ParamChangeProposals struct {
 func NewParamChangeProposals(r *rand.Rand) ParamChangeProposals {
 	return ParamChangeProposals{
 		EnableSponsorshipProposal: simulation.NewSimLegacyParamChange(
-			types.ModuleName, 
+			types.ModuleName,
 			string(types.KeySponsorshipEnabled),
 			func(r *rand.Rand) string {
 				enabled := GenEnableSponsor(r)
@@ -77,7 +77,7 @@ func NewParamChangeProposals(r *rand.Rand) ParamChangeProposals {
 		),
 		MaxGasProposal: simulation.NewSimLegacyParamChange(
 			types.ModuleName,
-			string(types.KeyMaxGasPerSponsorship), 
+			string(types.KeyMaxGasPerSponsorship),
 			func(r *rand.Rand) string {
 				maxGas := GenMaxGasPerSponsorship(r)
 				return fmt.Sprintf(`"%d"`, maxGas)

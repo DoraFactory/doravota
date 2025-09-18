@@ -153,7 +153,7 @@ pub fn execute_remove_from_whitelist(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
-        QueryMsg::CheckPolicy { sender, msg_type, msg_data } => to_binary(&query_check_policy(deps, sender, msg_type, msg_data)?),
+        QueryMsg::CheckPolicy { sender, msg_data } => to_binary(&query_check_policy(deps, sender, msg_data)?),
         QueryMsg::IsWhitelisted { address } => to_binary(&query_is_whitelisted(deps, address)?),
     }
 }
@@ -163,7 +163,7 @@ fn query_count(deps: Deps) -> StdResult<GetCountResponse> {
     Ok(GetCountResponse { count: state.count })
 }
 
-fn query_check_policy(deps: Deps, sender: String, msg_type: String, msg_data: String) -> StdResult<CheckPolicyResponse> {
+fn query_check_policy(deps: Deps, sender: String, msg_data: String) -> StdResult<CheckPolicyResponse> {
     let sender_addr = deps.api.addr_validate(&sender)?;
     let is_whitelisted = WHITELIST.may_load(deps.storage, &sender_addr)?.unwrap_or(false);
 
@@ -307,7 +307,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
@@ -321,7 +320,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "decrement".to_string(),
                 msg_data: r#"{"decrement": {}}"#.to_string(),
             },
         )
@@ -363,7 +361,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "decrement".to_string(),
                 msg_data: r#"{"decrement": {}}"#.to_string(),
             },
         )
@@ -377,7 +374,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
@@ -406,7 +402,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": {"amount": 3}}"#.to_string(),
             },
         )
@@ -420,7 +415,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": {"amount": 5}}"#.to_string(),
             },
         )
@@ -435,7 +429,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": {"amount": 10}}"#.to_string(),
             },
         )
@@ -450,7 +443,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"invalid": "data"}"#.to_string(),
             },
         );
@@ -465,7 +457,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "increment".to_string(),
                 msg_data: r#"{"increment": invalid_json}"#.to_string(),
             },
         );
@@ -480,7 +471,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user2".to_string(), // non-whitelisted user
-                msg_type: "decrement".to_string(),
                 msg_data: r#"{"invalid": "data"}"#.to_string(), // invalid ExecuteMsg
             },
         );
@@ -495,7 +485,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user2".to_string(), // non-whitelisted user (not added to whitelist)
-                msg_type: "decrement".to_string(),
                 msg_data: r#"{"decrement": {}}"#.to_string(), // valid ExecuteMsg format
             },
         )
@@ -519,7 +508,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "creator".to_string(),
-                msg_type: "reset".to_string(),
                 msg_data: r#"{"reset": {"count": 10}}"#.to_string(),
             },
         )
@@ -533,7 +521,6 @@ mod tests {
             mock_env(),
             QueryMsg::CheckPolicy {
                 sender: "user1".to_string(),
-                msg_type: "reset".to_string(),
                 msg_data: r#"{"reset": {"count": 10}}"#.to_string(),
             },
         )

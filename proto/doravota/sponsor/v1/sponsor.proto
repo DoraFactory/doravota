@@ -11,9 +11,10 @@ message ContractSponsor {
   string contract_address = 1;
   bool is_sponsored = 2;
   string creator_address = 3;  // The address that created/manages this sponsor configuration
-  int64 created_at = 4;
-  int64 updated_at = 5;
-  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 6;
+  string sponsor_address = 4;  // The derived address that actually pays for sponsorship fees
+  int64 created_at = 5;
+  int64 updated_at = 6;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 7;
 }
 
 // GenesisState defines the sponsor module's genesis state

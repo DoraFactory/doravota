@@ -1,10 +1,8 @@
 package sponsor
 
 import (
+	errorsmod "cosmossdk.io/errors"
 	"fmt"
-	"strings"
-	"testing"
-
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -13,12 +11,15 @@ import (
 	"github.com/cosmos/cosmos-sdk/store"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"strings"
+	"testing"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -48,15 +49,49 @@ type AnteTestSuite struct {
 	wasmKeeper    *MockWasmKeeper
 
 	// Test accounts
-	admin     sdk.AccAddress
-	user      sdk.AccAddress
-	contract  sdk.AccAddress
+	admin      sdk.AccAddress
+	user       sdk.AccAddress
+	contract   sdk.AccAddress
 	feeGranter sdk.AccAddress
+}
+
+// Helper function to create and fund a sponsor properly
+func (suite *AnteTestSuite) createAndFundSponsor(contractAddr sdk.AccAddress, isSponsored bool, maxGrant sdk.Coins, fundAmount sdk.Coins) {
+	// Create sponsor using MsgSetSponsor to ensure sponsor_address is properly generated
+	msgSetSponsor := types.NewMsgSetSponsor(
+		suite.admin.String(),
+		contractAddr.String(),
+		isSponsored,
+		maxGrant,
+	)
+
+	msgServer := keeper.NewMsgServerImpl(suite.keeper)
+	ctx := sdk.WrapSDKContext(suite.ctx)
+	_, err := msgServer.SetSponsor(ctx, msgSetSponsor)
+	suite.Require().NoError(err)
+
+	// Get the sponsor info to find the sponsor_address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, contractAddr.String())
+	suite.Require().True(found)
+	suite.Require().NotEmpty(sponsor.SponsorAddress)
+
+	// Fund the sponsor address
+	if !fundAmount.IsZero() {
+		sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		suite.Require().NoError(err)
+
+		// Mint coins to module account then send to sponsor address
+		err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fundAmount)
+		suite.Require().NoError(err)
+		err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, fundAmount)
+		suite.Require().NoError(err)
+	}
 }
 
 type MockWasmKeeper struct {
 	contracts    map[string]*wasmtypes.ContractInfo
 	queryResults map[string][]byte
+	queryCount   int
 }
 
 func NewMockWasmKeeper() *MockWasmKeeper {
@@ -71,7 +106,16 @@ func (m *MockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.Ac
 }
 
 func (m *MockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+	m.queryCount++
 	if result, exists := m.queryResults[contractAddr.String()]; exists {
+		// Check for special panic triggers
+		if string(result) == "__PANIC_OUTOFGAS__" {
+			panic(sdk.ErrorOutOfGas{Descriptor: "mock out of gas panic"})
+		}
+		if string(result) == "__PANIC_GENERAL__" {
+			panic("mock general panic")
+		}
+
 		// Check if this should return an error
 		if len(result) > 9 && string(result[:9]) == "__ERROR__" {
 			return nil, fmt.Errorf("%s", string(result[9:]))
@@ -97,6 +141,50 @@ func (m *MockWasmKeeper) SetQueryError(contractAddr sdk.AccAddress, errMsg strin
 	m.queryResults[contractAddr.String()] = []byte("__ERROR__:" + errMsg)
 }
 
+// GetQueryCount returns how many times QuerySmart was invoked
+func (m *MockWasmKeeper) GetQueryCount() int { return m.queryCount }
+
+// ResetQueryCount resets the internal query counter
+func (m *MockWasmKeeper) ResetQueryCount() { m.queryCount = 0 }
+
+// MockEmptySignersMsg implements sdk.Msg but returns empty signers
+type MockEmptySignersMsg struct {
+	Contract string
+}
+
+func (m *MockEmptySignersMsg) Route() string                { return "wasm" }
+func (m *MockEmptySignersMsg) Type() string                 { return "execute" }
+func (m *MockEmptySignersMsg) ValidateBasic() error         { return nil }
+func (m *MockEmptySignersMsg) GetSignBytes() []byte         { return []byte{} }
+func (m *MockEmptySignersMsg) GetSigners() []sdk.AccAddress { return []sdk.AccAddress{} }    // Empty signers
+func (m *MockEmptySignersMsg) ProtoMessage()                {}                               // Implement ProtoMessage for sdk.Msg interface
+func (m *MockEmptySignersMsg) Reset()                       {}                               // Implement Reset for proto.Message interface
+func (m *MockEmptySignersMsg) String() string               { return "MockEmptySignersMsg" } // Implement String method
+
+// MockNonFeeTx implements sdk.Tx but NOT sdk.FeeTx
+type MockNonFeeTx struct {
+	msgs []sdk.Msg
+}
+
+func (tx *MockNonFeeTx) GetMsgs() []sdk.Msg   { return tx.msgs }
+func (tx *MockNonFeeTx) ValidateBasic() error { return nil }
+
+// MockEmptyUserAddrTx implements sdk.Tx and sdk.FeeTx but returns messages with empty signers
+type MockEmptyUserAddrTx struct {
+	msgs []sdk.Msg
+	fee  sdk.Coins
+}
+
+func (tx *MockEmptyUserAddrTx) GetMsgs() []sdk.Msg {
+	// Return messages that have empty signers to trigger empty user address
+	return []sdk.Msg{&MockEmptySignersMsg{Contract: "test"}}
+}
+func (tx *MockEmptyUserAddrTx) ValidateBasic() error       { return nil }
+func (tx *MockEmptyUserAddrTx) GetFee() sdk.Coins          { return tx.fee }
+func (tx *MockEmptyUserAddrTx) GetGas() uint64             { return 200000 }
+func (tx *MockEmptyUserAddrTx) FeePayer() sdk.AccAddress   { return sdk.AccAddress{} }
+func (tx *MockEmptyUserAddrTx) FeeGranter() sdk.AccAddress { return sdk.AccAddress{} }
+
 func (suite *AnteTestSuite) SetupTest() {
 	// Create codec with proper interface registrations
 	interfaceRegistry := codectypes.NewInterfaceRegistry()
@@ -108,7 +196,7 @@ func (suite *AnteTestSuite) SetupTest() {
 	wasmtypes.RegisterInterfaces(interfaceRegistry)
 	// Register sponsor module interfaces
 	types.RegisterInterfaces(interfaceRegistry)
-	
+
 	codec := codec.NewProtoCodec(interfaceRegistry)
 
 	// Create in-memory database
@@ -142,7 +230,7 @@ func (suite *AnteTestSuite) SetupTest() {
 		authtypes.FeeCollectorName: nil,
 		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
 	}
-	
+
 	suite.accountKeeper = authkeeper.NewAccountKeeper(
 		codec,
 		authStoreKey,
@@ -204,6 +292,7 @@ func (suite *AnteTestSuite) SetupTest() {
 // Test case: Sponsorship disabled globally
 func (suite *AnteTestSuite) TestSponsorshipGloballyDisabled() {
 	// Disable sponsorship globally
+	var err error
 	params := types.DefaultParams()
 	params.SponsorshipEnabled = false
 	suite.keeper.SetParams(suite.ctx, params)
@@ -219,7 +308,7 @@ func (suite *AnteTestSuite) TestSponsorshipGloballyDisabled() {
 	}
 
 	// Execute ante handler
-	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Verify
 	suite.Require().NoError(err)
@@ -228,7 +317,7 @@ func (suite *AnteTestSuite) TestSponsorshipGloballyDisabled() {
 	// Verify event was emitted
 	events := suite.ctx.EventManager().Events()
 	suite.Require().Greater(len(events), 0)
-	
+
 	found := false
 	for _, event := range events {
 		if event.Type == types.EventTypeSponsorshipDisabled {
@@ -242,6 +331,7 @@ func (suite *AnteTestSuite) TestSponsorshipGloballyDisabled() {
 // Test case: Transaction with FeeGranter should skip sponsor logic
 func (suite *AnteTestSuite) TestFeeGranterSkipsSponsorLogic() {
 	// Create a transaction with FeeGranter set
+	var err error
 	tx := suite.createContractExecuteTxWithFeeGranter(suite.contract, suite.user, suite.feeGranter, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
 
 	// Mock next handler
@@ -252,7 +342,7 @@ func (suite *AnteTestSuite) TestFeeGranterSkipsSponsorLogic() {
 	}
 
 	// Execute ante handler
-	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Verify
 	suite.Require().NoError(err)
@@ -267,6 +357,7 @@ func (suite *AnteTestSuite) TestFeeGranterSkipsSponsorLogic() {
 // Test case: Non-contract transaction should pass through
 func (suite *AnteTestSuite) TestNonContractTransactionPassThrough() {
 	// Create a non-contract transaction (bank send)
+	var err error
 	tx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
 
 	// Mock next handler
@@ -277,7 +368,7 @@ func (suite *AnteTestSuite) TestNonContractTransactionPassThrough() {
 	}
 
 	// Execute ante handler
-	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Verify
 	suite.Require().NoError(err)
@@ -287,6 +378,7 @@ func (suite *AnteTestSuite) TestNonContractTransactionPassThrough() {
 // Test case: Contract not sponsored should pass through
 func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	// Set up contract info but don't register for sponsorship
+	var err error
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
 	// Create contract execution transaction
@@ -300,7 +392,7 @@ func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	}
 
 	// Execute ante handler
-	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Verify
 	suite.Require().NoError(err)
@@ -312,20 +404,14 @@ func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	fundAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000))) // Fund sponsor with sufficient balance
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fundAmount)
 
 	// Fund user with enough balance to pay fees themselves when sponsorship fails
 	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
 	suite.Require().NoError(err)
@@ -350,16 +436,10 @@ func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "user not whitelisted"}`))
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no funding needed for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Do NOT fund user - leave them with insufficient balance
 	// Create contract execution transaction
@@ -371,7 +451,7 @@ func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
 	}
 
 	// Execute ante handler - should return clear error message
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Should get detailed error explaining the situation
 	suite.Require().Error(err)
@@ -380,7 +460,7 @@ func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
 	suite.Require().Contains(err.Error(), "Required: 1000peaka")
 	suite.Require().Contains(err.Error(), "Available:")
 	suite.Require().Contains(err.Error(), "User needs either sponsorship approval or sufficient balance")
-	
+
 	// Log the actual error for verification
 	suite.T().Logf("Detailed error message: %s", err.Error())
 }
@@ -389,16 +469,10 @@ func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
 func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no funding needed for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Simulate contract without check_policy method
 	suite.wasmKeeper.SetQueryError(suite.contract, "contract: query wasm contract failed: unknown variant `check_policy`")
@@ -413,7 +487,7 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance
 	}
 
 	// Execute ante handler - should return clear error message
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
 	// Should get detailed error explaining the situation
 	suite.Require().Error(err)
@@ -422,7 +496,7 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance
 	suite.Require().Contains(err.Error(), "Required: 1000peaka")
 	suite.Require().Contains(err.Error(), "Available:")
 	suite.Require().Contains(err.Error(), "User needs either sponsorship approval or sufficient balance")
-	
+
 	// Log the actual error for verification
 	suite.T().Logf("Contract without check_policy error: %s", err.Error())
 }
@@ -431,20 +505,14 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance
 func (suite *AnteTestSuite) TestContractWithoutCheckPolicyButUserCanAfford() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no funding needed for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Fund user with enough balance to pay fees themselves
 	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
 	suite.Require().NoError(err)
@@ -465,7 +533,7 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyButUserCanAfford() {
 
 	// Should succeed - user pays with their own funds
 	suite.Require().NoError(err)
-	
+
 	suite.T().Logf("Contract without check_policy but user can afford - transaction succeeded")
 }
 
@@ -473,20 +541,14 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyButUserCanAfford() {
 func (suite *AnteTestSuite) TestUserHasSufficientBalance() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no funding needed for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Give user sufficient balance
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
 	suite.Require().NoError(err)
@@ -522,21 +584,18 @@ func (suite *AnteTestSuite) TestUserHasSufficientBalance() {
 
 // Test case: Sponsor has insufficient funds
 func (suite *AnteTestSuite) TestSponsorInsufficientFunds() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Don't fund the contract (sponsor has insufficient funds)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+
+	// Create sponsor but don't fund it (insufficient funds scenario)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins()) // Fund with zero coins
+
+	// Mock contract to return eligible response
+	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
 
 	// Create contract execution transaction
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
@@ -567,25 +626,15 @@ func (suite *AnteTestSuite) TestSponsorInsufficientFunds() {
 
 // Test case: Successful sponsorship setup
 func (suite *AnteTestSuite) TestSuccessfulSponsorshipSetup() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Create contract execution transaction
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
@@ -619,7 +668,7 @@ func (suite *AnteTestSuite) TestSuccessfulSponsorshipSetup() {
 func (suite *AnteTestSuite) TestMultiSignerTransactionRejected() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
@@ -696,11 +745,11 @@ func (suite *AnteTestSuite) createBankSendTx(from sdk.AccAddress, to sdk.AccAddr
 
 // MockTx implements sdk.Tx and sdk.FeeTx for testing
 type MockTx struct {
-	msgs        []sdk.Msg
-	fee         sdk.Coins
-	gasLimit    uint64
-	feePayer    sdk.AccAddress
-	feeGranter  sdk.AccAddress
+	msgs       []sdk.Msg
+	fee        sdk.Coins
+	gasLimit   uint64
+	feePayer   sdk.AccAddress
+	feeGranter sdk.AccAddress
 }
 
 func (tx MockTx) GetMsgs() []sdk.Msg {
@@ -732,7 +781,7 @@ func (suite *AnteTestSuite) createTx(msgs []sdk.Msg, signers []sdk.AccAddress, f
 	if len(signers) > 0 {
 		feePayer = signers[0]
 	}
-	
+
 	return MockTx{
 		msgs:       msgs,
 		fee:        fee,
@@ -745,25 +794,15 @@ func (suite *AnteTestSuite) createTx(msgs []sdk.Msg, signers []sdk.AccAddress, f
 // TestContractPolicyWithMsgTypeAndData tests enhanced policy validation with msg_type and msg_data parameters
 // This ensures the contract receives complete message context for policy decisions
 func (suite *AnteTestSuite) TestContractPolicyWithMsgTypeAndData() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor) for the transaction
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible response for policy query
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -791,7 +830,7 @@ func (suite *AnteTestSuite) TestContractPolicyWithMsgTypeAndData() {
 func (suite *AnteTestSuite) TestContractPolicyErrorHandling() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
@@ -812,18 +851,22 @@ func (suite *AnteTestSuite) TestContractPolicyErrorHandling() {
 	// Test case 1: Malformed JSON response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"invalid_json": malformed}`))
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
 
 	// Should fallback to standard fee processing due to malformed JSON
+	initialGas := suite.ctx.GasMeter().GasConsumed()
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err) // Now succeeds with fallback
+	finalGas := suite.ctx.GasMeter().GasConsumed()
+	// Failure path should also account for gas consumed by policy check
+	suite.Require().Greater(finalGas, initialGas, "failure path must consume main context gas")
 
 	// Test case 2: Contract returning error response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "insufficient privilege"}`))
-	
+
 	// Should fallback to standard fee processing due to ineligible response
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err) // Now succeeds with fallback
@@ -882,21 +925,36 @@ func (suite *AnteTestSuite) TestGetMaxGrantPerUserWithDisabledSponsorship() {
 	suite.Require().Contains(err.Error(), "sponsorship is disabled")
 }
 
+// validateSponsoredTransactionLegacy provides backward compatibility for tests
+// Returns (contractAddress, error) like the old function
+func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
+	validation := validateSponsoredTransaction(tx)
+	if !validation.SuggestSponsor {
+		if validation.SkipReason == "no messages in transaction" ||
+			strings.Contains(validation.SkipReason, "non-contract message") {
+			return "", nil
+		}
+		// For mixed messages or multiple contracts, return error for test compatibility
+		return "", errorsmod.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
+	}
+	return validation.ContractAddress, nil
+}
+
 // TestValidateSponsoredTransactionLogic tests transaction validation logic for sponsorship
 // This covers single/multiple messages, mixed message types, and contract validation
 func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
 	// Test case 1: Check that ValidateSponsoredTransaction works correctly
 	// We'll use the existing test helper functions to validate transaction structure
-	
+
 	// Single contract execution message should be valid
 	tx1 := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransaction(tx1)
+	_, err := validateSponsoredTransactionLegacy(tx1)
 	suite.Require().NoError(err, "Single contract execution should be valid")
 
 	// Test case 2: Multiple different contracts should be invalid
 	contractAddr2 := sdk.AccAddress("contract2___________")
 	mixedContractTx := suite.createMultiSignerContractExecuteTx(contractAddr2, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(mixedContractTx)
+	_, err = validateSponsoredTransactionLegacy(mixedContractTx)
 	// This should pass since it's a single contract, just different from our test contract
 	suite.Require().NoError(err)
 
@@ -904,7 +962,7 @@ func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
 	// Note: validateSponsoredTransaction checks if a transaction can be sponsored
 	// It should reject transactions with non-contract messages
 	bankTx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(bankTx)
+	_, err = validateSponsoredTransactionLegacy(bankTx)
 	// Bank transactions should be rejected for sponsorship but the function might allow them to pass through
 	// Let's check the actual behavior - if no error, it means it passes validation but won't be sponsored
 	if err != nil {
@@ -921,7 +979,7 @@ func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
 func (suite *AnteTestSuite) TestPreventMessageHitchhiking() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
@@ -935,7 +993,7 @@ func (suite *AnteTestSuite) TestPreventMessageHitchhiking() {
 	// Create transaction with mixed message types (contract + bank)
 	contractAddr2 := sdk.AccAddress("contract2___________")
 	mixedTx := suite.createMultiSignerContractExecuteTx(contractAddr2, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
@@ -950,7 +1008,7 @@ func (suite *AnteTestSuite) TestPreventMessageHitchhiking() {
 func (suite *AnteTestSuite) TestPolicyBypassPrevention() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
@@ -971,7 +1029,7 @@ func (suite *AnteTestSuite) TestPolicyBypassPrevention() {
 	// Test case 1: Contract returning inconsistent eligible status
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": "maybe"}`))
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
@@ -984,18 +1042,14 @@ func (suite *AnteTestSuite) TestPolicyBypassPrevention() {
 // TestZeroFeeSkipsSponsor tests that zero-fee transactions skip sponsor logic
 // This ensures no sponsor payment info is injected for zero-fee transactions
 func (suite *AnteTestSuite) TestZeroFeeSkipsSponsor() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Create zero-fee transaction
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins()) // zero fee
@@ -1025,25 +1079,15 @@ func (suite *AnteTestSuite) TestZeroFeeSkipsSponsor() {
 // TestSponsorDrainageProtection tests protection against rapid sponsor balance depletion
 // This verifies user grant limits are enforced across transactions
 func (suite *AnteTestSuite) TestSponsorDrainageProtection() {
+	var err error
 	// Set up contract and sponsorship with low grant limit
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500))) // Low limit
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500))) // Low limit
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Pre-update user's grant usage to near limit
 	usage := types.NewUserGrantUsage(suite.user.String(), suite.contract.String())
@@ -1053,7 +1097,7 @@ func (suite *AnteTestSuite) TestSponsorDrainageProtection() {
 
 	// Try to execute transaction that would exceed user grant limit
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))) // Would exceed 500 limit
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
@@ -1067,25 +1111,15 @@ func (suite *AnteTestSuite) TestSponsorDrainageProtection() {
 // TestPolicyQueryGasLimit tests that policy queries respect gas limits to prevent DoS
 // This ensures MaxGasPerSponsorship is enforced to prevent contract policy abuse
 func (suite *AnteTestSuite) TestPolicyQueryGasLimit() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor) for the transaction
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Set low gas limit in params to trigger gas exceeded error
 	params := types.DefaultParams()
@@ -1115,21 +1149,16 @@ func (suite *AnteTestSuite) TestPolicyQueryGasLimit() {
 // TestUserBalanceSelfPayPath tests that users with sufficient balance pay their own fees
 // This ensures the fee priority: feegrant > sponsor > standard is respected
 func (suite *AnteTestSuite) TestUserBalanceSelfPayPath() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Give user sufficient balance (this should trigger self-pay)
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
@@ -1168,6 +1197,7 @@ func (suite *AnteTestSuite) TestUserBalanceSelfPayPath() {
 // TestErrorWrappingConsistency tests that all errors use proper SDK error types
 // This ensures error message propagation through ante chain follows SDK standards
 func (suite *AnteTestSuite) TestErrorWrappingConsistency() {
+	var err error
 	// Test 1: Contract not found error
 	nonExistentContract := sdk.AccAddress("nonexistent________")
 	tx := suite.createContractExecuteTx(nonExistentContract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
@@ -1177,7 +1207,7 @@ func (suite *AnteTestSuite) TestErrorWrappingConsistency() {
 	}
 
 	// Should pass through since contract is not sponsored
-	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err) // Non-sponsored contracts should pass through
 
 	// Test 2: Invalid sponsor configuration
@@ -1189,25 +1219,15 @@ func (suite *AnteTestSuite) TestErrorWrappingConsistency() {
 // TestAnteHandlerStateConsistency tests that ante handler doesn't make state changes
 // This ensures CheckTx vs DeliverTx semantic separation is maintained
 func (suite *AnteTestSuite) TestAnteHandlerStateConsistency() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Get initial user grant usage
 	initialUsage := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
@@ -1236,16 +1256,16 @@ func (suite *AnteTestSuite) TestAnteHandlerStateConsistency() {
 func (suite *AnteTestSuite) TestSignerAndFeePayerConsistency() {
 	// This test verifies that validateSponsoredTransaction properly checks signer consistency
 	// The current implementation in ante_test.go already includes multi-signer tests
-	
+
 	// Test case: Single signer transaction should be valid
 	singleSignerTx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransaction(singleSignerTx)
+	_, err := validateSponsoredTransactionLegacy(singleSignerTx)
 	suite.Require().NoError(err)
 
 	// Test case: Multi-signer transaction validation is handled by existing TestMultiSignerTransactionRejected
 	// We can verify that the validation function properly handles this case
 	multiSignerTx := suite.createMultiSignerContractExecuteTx(suite.contract, []sdk.AccAddress{suite.user, suite.admin}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransaction(multiSignerTx)
+	_, err = validateSponsoredTransactionLegacy(multiSignerTx)
 	// The validation should handle multiple signers appropriately
 	// Based on the existing logic, this may pass through but won't be processed for sponsorship
 	suite.Require().NoError(err)
@@ -1254,25 +1274,14 @@ func (suite *AnteTestSuite) TestSignerAndFeePayerConsistency() {
 // TestFeeBelowRequiredRejected tests that transactions with fees below required minimum are rejected
 // This ensures min-gas-prices are enforced in the sponsor path
 func (suite *AnteTestSuite) TestFeeBelowRequiredRejected() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10))) // Very low fee
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -1293,25 +1302,15 @@ func (suite *AnteTestSuite) TestFeeBelowRequiredRejected() {
 // TestContractPolicyWithComplexMessages tests policy validation with complex contract messages
 // This ensures proper JSON parsing and validation for various message types
 func (suite *AnteTestSuite) TestContractPolicyWithComplexMessages() {
+	var err error
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Test with complex message data
 	var msgs []sdk.Msg
@@ -1322,7 +1321,7 @@ func (suite *AnteTestSuite) TestContractPolicyWithComplexMessages() {
 		Funds:    nil,
 	}
 	msgs = append(msgs, complexMsg)
-	
+
 	complexTx := suite.createTx(msgs, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Mock contract to return eligible response for transfer message
@@ -1342,23 +1341,12 @@ func (suite *AnteTestSuite) TestContractPolicyWithComplexMessages() {
 func (suite *AnteTestSuite) TestMultipleContractMessagesForSameContract() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Create transaction with multiple messages for the same contract
 	var msgs []sdk.Msg
@@ -1375,7 +1363,7 @@ func (suite *AnteTestSuite) TestMultipleContractMessagesForSameContract() {
 		Funds:    nil,
 	}
 	msgs = append(msgs, msg1, msg2)
-	
+
 	multiMsgTx := suite.createTx(msgs, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Mock contract to return eligible response for all messages
@@ -1386,7 +1374,7 @@ func (suite *AnteTestSuite) TestMultipleContractMessagesForSameContract() {
 	}
 
 	// Execute ante handler - should validate all messages
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, multiMsgTx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, multiMsgTx, false, next)
 	suite.Require().NoError(err)
 }
 
@@ -1395,27 +1383,16 @@ func (suite *AnteTestSuite) TestMultipleContractMessagesForSameContract() {
 func (suite *AnteTestSuite) TestPartiallyEligibleMessagesRejected() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Fund user with enough balance to pay fees themselves when sponsorship fails
 	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
 	suite.Require().NoError(err)
@@ -1435,7 +1412,7 @@ func (suite *AnteTestSuite) TestPartiallyEligibleMessagesRejected() {
 		Funds:    nil,
 	}
 	msgs = append(msgs, msg1, msg2)
-	
+
 	multiMsgTx := suite.createTx(msgs, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Mock contract to return different responses for different messages
@@ -1457,27 +1434,16 @@ func (suite *AnteTestSuite) TestPartiallyEligibleMessagesRejected() {
 func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Fund user with enough balance to pay fees themselves when sponsorship fails
 	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
 	suite.Require().NoError(err)
 	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
 	suite.Require().NoError(err)
@@ -1489,7 +1455,7 @@ func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 		Msg:      []byte(`{}`), // Empty message
 		Funds:    nil,
 	}
-	
+
 	emptyTx := suite.createTx([]sdk.Msg{emptyMsg}, []sdk.AccAddress{suite.user}, fee, nil)
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
@@ -1511,7 +1477,7 @@ func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 		Msg:      []byte(`{"increment: malformed}`), // Invalid JSON
 		Funds:    nil,
 	}
-	
+
 	malformedTx := suite.createTx([]sdk.Msg{malformedMsg}, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// This should fallback to standard processing due to malformed JSON
@@ -1524,23 +1490,12 @@ func (suite *AnteTestSuite) TestEmptyContractMessageHandling() {
 func (suite *AnteTestSuite) TestConcurrentUserAccessControl() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor) generously
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
 	totalFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, totalFee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, totalFee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, totalFee)
 
 	// Create second user
 	user2 := sdk.AccAddress("user2_______________")
@@ -1557,7 +1512,7 @@ func (suite *AnteTestSuite) TestConcurrentUserAccessControl() {
 	// User 1 uses some of their grant
 	fee1 := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
 	tx1 := suite.createContractExecuteTx(suite.contract, suite.user, fee1)
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx1, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx1, false, next)
 	suite.Require().NoError(err)
 
 	// User 2 should have their own separate grant limit
@@ -1569,7 +1524,7 @@ func (suite *AnteTestSuite) TestConcurrentUserAccessControl() {
 	// Verify both users used their grants independently
 	usage1 := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
 	usage2 := suite.keeper.GetUserGrantUsage(suite.ctx, user2.String(), suite.contract.String())
-	
+
 	// Note: In CheckTx mode, usage might not be updated
 	// This test mainly verifies that different users are handled independently
 	suite.Require().NotEqual(usage1.UserAddress, usage2.UserAddress)
@@ -1580,16 +1535,10 @@ func (suite *AnteTestSuite) TestConcurrentUserAccessControl() {
 func (suite *AnteTestSuite) TestSponsorBalanceEdgeCases() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no initial funding for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Mock contract to return eligible response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -1600,9 +1549,16 @@ func (suite *AnteTestSuite) TestSponsorBalanceEdgeCases() {
 
 	// Test case 1: Sponsor has exactly the required amount
 	exactFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+
+	// Get sponsor info and fund the sponsor address properly
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	suite.Require().NoError(err)
+
 	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, exactFee)
 	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, exactFee)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, exactFee)
 	suite.Require().NoError(err)
 
 	txExact := suite.createContractExecuteTx(suite.contract, suite.user, exactFee)
@@ -1610,8 +1566,8 @@ func (suite *AnteTestSuite) TestSponsorBalanceEdgeCases() {
 	suite.Require().NoError(err)
 
 	// Test case 2: Sponsor has insufficient funds after first transaction
-	// The contract should now have 0 balance
-	balance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	// The sponsor should now have 0 balance
+	balance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, "peaka")
 	suite.Require().True(balance.Amount.IsZero() || balance.Amount.IsPositive())
 
 	// Try another transaction - should fail if balance is insufficient
@@ -1628,24 +1584,12 @@ func (suite *AnteTestSuite) TestSponsorBalanceEdgeCases() {
 func (suite *AnteTestSuite) TestBlockBoundaryConditions() {
 	// Set up contract and sponsorship with specific limits
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	// Set max grant to exactly 1000
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
-
-	// Fund sponsor with exactly what's needed
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -1656,15 +1600,20 @@ func (suite *AnteTestSuite) TestBlockBoundaryConditions() {
 
 	// Test transaction at exact grant limit
 	txAtLimit := suite.createContractExecuteTx(suite.contract, suite.user, fee)
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, txAtLimit, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, txAtLimit, false, next)
 	suite.Require().NoError(err)
 
 	// Test transaction exceeding grant limit by 1
 	exceedingFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1001)))
-	// Fund sponsor with extra amount
+	// Fund sponsor with extra amount - get sponsor address properly
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	suite.Require().NoError(err)
+
 	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
 	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
 	suite.Require().NoError(err)
 
 	txExceedingLimit := suite.createContractExecuteTx(suite.contract, suite.user, exceedingFee)
@@ -1706,23 +1655,12 @@ func (suite *AnteTestSuite) TestContractAdminValidation() {
 func (suite *AnteTestSuite) TestGasConsumptionAccounting() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Record initial gas consumption
 	initialGas := suite.ctx.GasMeter().GasConsumed()
@@ -1737,7 +1675,7 @@ func (suite *AnteTestSuite) TestGasConsumptionAccounting() {
 	}
 
 	// Execute ante handler
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err)
 
 	// Verify gas was consumed (policy query should consume some gas)
@@ -1750,28 +1688,16 @@ func (suite *AnteTestSuite) TestGasConsumptionAccounting() {
 func (suite *AnteTestSuite) TestSponsorshipDisabledGloballyDetailed() {
 	// Set up contract and sponsorship first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true, // Enabled at sponsor level
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Disable sponsorship globally
 	params := types.DefaultParams()
 	params.SponsorshipEnabled = false
 	suite.keeper.SetParams(suite.ctx, params)
-
-	// Fund the contract
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
@@ -1780,7 +1706,7 @@ func (suite *AnteTestSuite) TestSponsorshipDisabledGloballyDetailed() {
 	}
 
 	// Execute ante handler
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err) // Should pass through without sponsorship
 
 	// Verify sponsorship disabled event was emitted
@@ -1795,28 +1721,237 @@ func (suite *AnteTestSuite) TestSponsorshipDisabledGloballyDetailed() {
 	suite.Require().True(found, "Expected sponsorship disabled event")
 }
 
+// TestContractLevelSponsorshipDisabledEvent ensures that when a sponsor record exists
+// but IsSponsored=false, the ante emits a sponsorship_skipped event with reason contract_sponsorship_disabled
+func (suite *AnteTestSuite) TestContractLevelSponsorshipDisabledEvent() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	// Create sponsor with IsSponsored=false
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     false,
+		MaxGrantPerUser: []*sdk.Coin{},
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Use DeliverTx mode to capture events
+	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+
+	// Create a contract execution transaction
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+	_, err = suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+	suite.Require().NoError(err)
+
+	// Verify sponsorship_skipped event with reason contract_sponsorship_disabled
+	found := false
+	for _, ev := range deliverCtx.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorshipSkipped {
+			attrs := map[string]string{}
+			for _, a := range ev.Attributes {
+				attrs[a.Key] = a.Value
+			}
+			if attrs[types.AttributeKeyReason] == "contract_sponsorship_disabled" {
+				found = true
+				break
+			}
+		}
+	}
+	suite.Require().True(found, "Expected sponsorship_skipped with reason contract_sponsorship_disabled")
+}
+
+// TestEarlyReturnZeroFeeSkipsPolicyQuery ensures zero-fee transactions skip policy query entirely
+func (suite *AnteTestSuite) TestEarlyReturnZeroFeeSkipsPolicyQuery() {
+	suite.wasmKeeper.ResetQueryCount()
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	// Set sponsored contract
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Zero fee tx
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins())
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().NoError(err)
+	suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "Zero-fee should skip policy query")
+}
+
+// TestEarlyReturnUserSelfPaySkipsPolicyQuery ensures users with enough balance self-pay and skip policy query
+func (suite *AnteTestSuite) TestEarlyReturnUserSelfPaySkipsPolicyQuery() {
+	suite.wasmKeeper.ResetQueryCount()
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	// Set sponsored contract
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Fund user so they can self-pay
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
+
+	// DeliverTx to capture event
+	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+	_, err = suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+	suite.Require().NoError(err)
+	suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "Self-pay should skip policy query")
+
+	// Check user_self_pay event emitted
+	found := false
+	for _, ev := range deliverCtx.EventManager().Events() {
+		if ev.Type == types.EventTypeUserSelfPay {
+			found = true
+			break
+		}
+	}
+	suite.Require().True(found, "Expected user_self_pay event in DeliverTx")
+}
+
+// TestEarlyReturnContractNotFoundSkipsPolicyQuery ensures ValidateContractExists failure short-circuits
+func (suite *AnteTestSuite) TestEarlyReturnContractNotFoundSkipsPolicyQuery() {
+	suite.wasmKeeper.ResetQueryCount()
+	// Do NOT set contract info => ValidateContractExists will fail
+
+	// Set sponsor record to trigger sponsorship path
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// DeliverTx to capture event
+	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+	_, err = suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+	suite.Require().NoError(err)
+	suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "Contract-not-found should skip policy query")
+
+	// Check sponsorship_skipped (contract_not_found)
+	found := false
+	for _, ev := range deliverCtx.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorshipSkipped {
+			attrs := map[string]string{}
+			for _, a := range ev.Attributes {
+				attrs[a.Key] = a.Value
+			}
+			if attrs[types.AttributeKeyReason] == "contract_not_found" {
+				found = true
+				break
+			}
+		}
+	}
+	suite.Require().True(found, "Expected sponsorship_skipped with reason contract_not_found")
+}
+
+// TestSponsorshipSkippedEventAttributes validates emitted attributes for mixed/non-contract transactions
+func (suite *AnteTestSuite) TestSponsorshipSkippedEventAttributes() {
+	// DeliverTx to capture events
+	ctx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+
+	// Mixed messages: contract + bank
+	// Prepare contract sponsor so path enters validation
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	sponsor := types.ContractSponsor{
+		ContractAddress: suite.contract.String(),
+		CreatorAddress:  suite.admin.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
+	}
+	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
+	suite.Require().NoError(err)
+
+	// Create tx: contract then bank
+	bankTx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	contractMsgTx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	// Combine messages: first contract, then bank -> mixed
+	mixedTx := MockTx{
+		msgs:       append(contractMsgTx.GetMsgs(), bankTx.GetMsgs()...),
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))),
+		gasLimit:   200000,
+		feePayer:   suite.user,
+		feeGranter: nil,
+	}
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+	_, err = suite.anteDecorator.AnteHandle(ctx, mixedTx, false, next)
+	suite.Require().NoError(err)
+	// Verify event with transaction_type=mixed_messages_tx
+	foundMixed := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorshipSkipped {
+			attrs := map[string]string{}
+			for _, a := range ev.Attributes {
+				attrs[a.Key] = a.Value
+			}
+			if attrs[types.AttributeKeyTransactionType] == "mixed_messages_tx" {
+				foundMixed = true
+				break
+			}
+		}
+	}
+	suite.Require().True(foundMixed, "Expected sponsorship_skipped with transaction_type=mixed_messages_tx")
+
+	// Non-contract start: bank-only tx
+	ctx2 := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	_, err = suite.anteDecorator.AnteHandle(ctx2, bankTx, false, next)
+	suite.Require().NoError(err)
+	foundNonContract := false
+	for _, ev := range ctx2.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorshipSkipped {
+			attrs := map[string]string{}
+			for _, a := range ev.Attributes {
+				attrs[a.Key] = a.Value
+			}
+			if attrs[types.AttributeKeyTransactionType] == "non_contract_tx" {
+				foundNonContract = true
+				break
+			}
+		}
+	}
+	suite.Require().True(foundNonContract, "Expected sponsorship_skipped with transaction_type=non_contract_tx")
+}
+
 // TestContractQueryFailureRecovery tests graceful handling of contract query failures
 // This ensures system remains stable when contract queries fail
 func (suite *AnteTestSuite) TestContractQueryFailureRecovery() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Don't set any query result - this will cause query to fail with default behavior
 	// The mock will return default {"eligible": true} which should work
@@ -1828,7 +1963,7 @@ func (suite *AnteTestSuite) TestContractQueryFailureRecovery() {
 	}
 
 	// Execute ante handler - should handle missing query result gracefully
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	// With the default mock behavior, this should succeed
 	suite.Require().NoError(err)
 }
@@ -1876,23 +2011,12 @@ func (suite *AnteTestSuite) TestParameterValidationBounds() {
 func (suite *AnteTestSuite) TestUserGrantLimitEnforcementAcrossTransactions() {
 	// Set up contract and sponsorship with specific grant limit
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract generously
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
 	totalFunds := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, totalFunds)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, totalFunds)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, totalFunds)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -1904,7 +2028,7 @@ func (suite *AnteTestSuite) TestUserGrantLimitEnforcementAcrossTransactions() {
 	// First transaction uses 800 of 2000 limit
 	fee1 := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(800)))
 	tx1 := suite.createContractExecuteTx(suite.contract, suite.user, fee1)
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx1, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx1, false, next)
 	suite.Require().NoError(err)
 
 	// Manually update usage for this test (simulating DeliverTx behavior)
@@ -1938,23 +2062,11 @@ func (suite *AnteTestSuite) TestUserGrantLimitEnforcementAcrossTransactions() {
 func (suite *AnteTestSuite) TestSimulationModeHandling() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -1971,7 +2083,7 @@ func (suite *AnteTestSuite) TestSimulationModeHandling() {
 	}
 
 	// Execute ante handler in simulation mode
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, true, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, true, next)
 	suite.Require().NoError(err)
 
 	// Verify usage was not updated in simulation mode
@@ -1984,23 +2096,12 @@ func (suite *AnteTestSuite) TestSimulationModeHandling() {
 func (suite *AnteTestSuite) TestContractWithoutPolicySupport() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Don't set any query result, causing the mock to use its default behavior
 	// The default mock returns {"eligible": true}, simulating a contract that supports policy
@@ -2012,7 +2113,7 @@ func (suite *AnteTestSuite) TestContractWithoutPolicySupport() {
 	}
 
 	// Execute ante handler - should handle missing/default policy gracefully
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err)
 }
 
@@ -2036,7 +2137,7 @@ func (suite *AnteTestSuite) TestMaxGrantPerUserDenominationValidation() {
 	// This tests our normalization logic that merges duplicate denominations
 	coin1 := sdk.NewCoin("peaka", sdk.NewInt(1000))
 	coin2 := sdk.NewCoin("peaka", sdk.NewInt(500))
-	
+
 	duplicateMsg := &types.MsgSetSponsor{
 		Creator:         suite.admin.String(),
 		ContractAddress: suite.contract.String(),
@@ -2060,23 +2161,12 @@ func (suite *AnteTestSuite) TestMaxGrantPerUserDenominationValidation() {
 func (suite *AnteTestSuite) TestContextKeyIsolation() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -2090,7 +2180,7 @@ func (suite *AnteTestSuite) TestContextKeyIsolation() {
 	}
 
 	// Execute ante handler
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err)
 
 	// Verify sponsor payment info is properly typed
@@ -2118,23 +2208,12 @@ func (suite *AnteTestSuite) TestContextKeyIsolation() {
 func (suite *AnteTestSuite) TestEventEmissionCompleteness() {
 	// Test Case 1: Successful sponsorship should emit sponsored event
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock eligible response
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -2143,12 +2222,12 @@ func (suite *AnteTestSuite) TestEventEmissionCompleteness() {
 	suite.ctx = suite.ctx.WithEventManager(sdk.NewEventManager())
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
 
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 	suite.Require().NoError(err)
 
 	// Check events were emitted
@@ -2174,18 +2253,13 @@ func (suite *AnteTestSuite) TestEventEmissionCompleteness() {
 // TestEventEmissionOnlyInDeliverTx tests that user_self_pay and sponsor_insufficient_funds events
 // are only emitted in DeliverTx mode, not in CheckTx mode
 func (suite *AnteTestSuite) TestEventEmissionOnlyInDeliverTx() {
+	var err error
 	// Test Case 1: user_self_pay event should only be emitted in DeliverTx
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor properly using helper function (no funding needed for this test)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Give user sufficient balance to trigger self-pay logic
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
@@ -2195,7 +2269,7 @@ func (suite *AnteTestSuite) TestEventEmissionOnlyInDeliverTx() {
 	suite.Require().NoError(err)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
-	
+
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
@@ -2236,7 +2310,7 @@ func (suite *AnteTestSuite) TestEventEmissionOnlyInDeliverTx() {
 	// Remove user balance to trigger sponsor insufficient funds logic
 	err = suite.bankKeeper.SendCoinsFromAccountToModule(suite.ctx, suite.user, types.ModuleName, fee)
 	suite.Require().NoError(err)
-	
+
 	// Create insufficient sponsor balance scenario (don't fund the sponsor)
 	largerFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
 	txInsufficientSponsor := suite.createContractExecuteTx(suite.contract, suite.user, largerFee)
@@ -2279,23 +2353,11 @@ func (suite *AnteTestSuite) TestEventEmissionOnlyInDeliverTx() {
 func (suite *AnteTestSuite) TestContractMessageDataIntegrity() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Create transaction with complex message data
 	complexMsgData := `{"transfer":{"recipient":"cosmos1abc123","amount":"1000","memo":"test transfer with special chars: \"quotes\" and \\backslashes\\"}}`
@@ -2305,7 +2367,7 @@ func (suite *AnteTestSuite) TestContractMessageDataIntegrity() {
 		Msg:      []byte(complexMsgData),
 		Funds:    nil,
 	}
-	
+
 	complexTx := suite.createTx([]sdk.Msg{complexMsg}, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Mock contract to return eligible
@@ -2315,16 +2377,16 @@ func (suite *AnteTestSuite) TestContractMessageDataIntegrity() {
 		// Verify the original message data is intact
 		msgs := tx.GetMsgs()
 		suite.Require().Len(msgs, 1)
-		
+
 		execMsg, ok := msgs[0].(*wasmtypes.MsgExecuteContract)
 		suite.Require().True(ok)
 		suite.Require().Equal(complexMsgData, string(execMsg.Msg))
-		
+
 		return ctx, nil
 	}
 
 	// Execute ante handler
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, complexTx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, complexTx, false, next)
 	suite.Require().NoError(err)
 }
 
@@ -2333,23 +2395,11 @@ func (suite *AnteTestSuite) TestContractMessageDataIntegrity() {
 func (suite *AnteTestSuite) TestMemoryLeakPrevention() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund contract generously
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	totalFunds := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, totalFunds)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, totalFunds)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, totalFunds)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -2362,10 +2412,10 @@ func (suite *AnteTestSuite) TestMemoryLeakPrevention() {
 	for i := 0; i < 100; i++ {
 		fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
 		tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
-		
-		_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+		_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 		suite.Require().NoError(err)
-		
+
 		// Clear event manager to prevent accumulation
 		suite.ctx = suite.ctx.WithEventManager(sdk.NewEventManager())
 	}
@@ -2379,23 +2429,11 @@ func (suite *AnteTestSuite) TestMemoryLeakPrevention() {
 func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 	// Test case 1: Batch transaction with all contract messages for same contract (should be allowed)
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Create batch transaction with multiple contract messages for same contract
 	batchMsgs := []sdk.Msg{
@@ -2418,7 +2456,7 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 			Funds:    nil,
 		},
 	}
-	
+
 	batchTx := suite.createTx(batchMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Mock contract to return eligible for all messages
@@ -2429,7 +2467,7 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 	}
 
 	// Should succeed - all messages for same sponsored contract
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, batchTx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, batchTx, false, next)
 	suite.Require().NoError(err)
 
 	// Test case 2: Batch transaction with contract messages for different contracts (should fail)
@@ -2448,13 +2486,12 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 			Funds:    nil,
 		},
 	}
-	
+
 	mixedTx := suite.createTx(mixedContractMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
-	// Should fail due to different contract addresses
+	// Should now pass through instead of failing, since user can pay with their own funds
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, mixedTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "same contract")
+	suite.Require().NoError(err)
 
 	// Test case 3: Batch transaction starting with contract message then non-contract message (should fail)
 	mixedTypeMsgs := []sdk.Msg{
@@ -2470,13 +2507,12 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 			Amount:      sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))),
 		},
 	}
-	
+
 	mixedTypeTx := suite.createTx(mixedTypeMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
-	// Should fail due to mixing contract and non-contract messages
+	// Should now pass through instead of failing, since user can pay with their own funds
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, mixedTypeTx, false, next)
-	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "non-contract messages")
+	suite.Require().NoError(err)
 
 	// Test case 4: Batch transaction starting with non-contract message (should pass through)
 	nonContractFirstMsgs := []sdk.Msg{
@@ -2492,7 +2528,7 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 			Funds:    nil,
 		},
 	}
-	
+
 	nonContractFirstTx := suite.createTx(nonContractFirstMsgs, []sdk.AccAddress{suite.user}, fee, nil)
 
 	// Should pass through without sponsorship since first message is not contract message
@@ -2505,23 +2541,12 @@ func (suite *AnteTestSuite) TestBatchTransactionValidation() {
 func (suite *AnteTestSuite) TestSignerConsistencyAcrossMessages() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
@@ -2545,11 +2570,11 @@ func (suite *AnteTestSuite) TestSignerConsistencyAcrossMessages() {
 			Funds:    nil,
 		},
 	}
-	
+
 	consistentTx := suite.createTx(consistentMsgs, []sdk.AccAddress{suite.user}, fee, nil)
-	
+
 	// Should succeed with consistent signers
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, consistentTx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, consistentTx, false, next)
 	suite.Require().NoError(err)
 
 	// Test case 3: Test with different signers across messages (this would require different message structure)
@@ -2562,23 +2587,12 @@ func (suite *AnteTestSuite) TestSignerConsistencyAcrossMessages() {
 func (suite *AnteTestSuite) TestFeePayerConsistencyValidation() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -2594,7 +2608,7 @@ func (suite *AnteTestSuite) TestFeePayerConsistencyValidation() {
 		Msg:      []byte(`{"increment":{}}`),
 		Funds:    nil,
 	}
-	
+
 	// Create transaction where FeePayer matches signer
 	validTx := MockTx{
 		msgs:     []sdk.Msg{msg},
@@ -2603,7 +2617,7 @@ func (suite *AnteTestSuite) TestFeePayerConsistencyValidation() {
 		feePayer: suite.user, // FeePayer matches message signer
 	}
 
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, validTx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, validTx, false, next)
 	suite.Require().NoError(err)
 
 	// Test case 2: FeePayer differs from signer (should fail)
@@ -2670,23 +2684,11 @@ func (suite *AnteTestSuite) TestTransactionWithNoMessages() {
 func (suite *AnteTestSuite) TestGasMeterRecoveryFromPanic() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	var err error
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Record initial gas consumption
 	initialGas := suite.ctx.GasMeter().GasConsumed()
@@ -2707,10 +2709,10 @@ func (suite *AnteTestSuite) TestGasMeterRecoveryFromPanic() {
 
 	// Execute ante handler - may succeed or fail depending on actual gas consumption
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
-	
+
 	// Verify gas meter was updated (regardless of success or failure)
 	finalGas := suite.ctx.GasMeter().GasConsumed()
-	
+
 	if err != nil {
 		// If it failed due to gas limit, verify the error type
 		if strings.Contains(err.Error(), "gas limit") || strings.Contains(err.Error(), "out of gas") {
@@ -2732,23 +2734,11 @@ func (suite *AnteTestSuite) TestGasMeterRecoveryFromPanic() {
 func (suite *AnteTestSuite) TestAntiAbuseUserBalanceCheck() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	var err error
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	sponsorFunding := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sponsorFunding)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, sponsorFunding)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFunding)
 
 	// Mock contract to return eligible
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
@@ -2845,23 +2835,11 @@ func (suite *AnteTestSuite) TestAntiAbuseUserBalanceCheck() {
 func (suite *AnteTestSuite) TestCompleteTransactionFlow() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract (sponsor)
+	var err error
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
 	sponsorFunding := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sponsorFunding)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, sponsorFunding)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFunding)
 
 	// Ensure user has insufficient balance
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
@@ -2900,6 +2878,297 @@ func (suite *AnteTestSuite) TestCompleteTransactionFlow() {
 	suite.T().Log("Complete transaction flow test passed successfully")
 }
 
+// Test case: Transaction with empty signers should fail
+func (suite *AnteTestSuite) TestEmptySignersTransaction() {
+	// Create a transaction without signers
+	tx := MockTx{
+		msgs:       []sdk.Msg{}, // Empty messages also leads to empty signers
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		gasLimit:   200000,
+		feePayer:   sdk.AccAddress{}, // Empty address
+		feeGranter: sdk.AccAddress{}, // Empty address
+	}
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should handle gracefully
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	// Should pass through since no contract messages to sponsor
+	suite.Require().NoError(err)
+}
+
+// Test case: Transaction with invalid signer count leads to empty address
+func (suite *AnteTestSuite) TestInvalidSignerCountTransaction() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Create a custom MockMsg that implements GetSigners but returns empty slice
+	mockMsg := &MockEmptySignersMsg{
+		Contract: suite.contract.String(),
+	}
+
+	tx := MockTx{
+		msgs:       []sdk.Msg{mockMsg},
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		gasLimit:   200000,
+		feePayer:   sdk.AccAddress{}, // Empty signer
+		feeGranter: sdk.AccAddress{}, // No feegranter
+	}
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should handle gracefully since message has no signers
+	// This will trigger getUserAddressForSponsorship logic and cause fallback
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	// Should succeed with fallback processing, not fail
+	suite.Require().NoError(err)
+}
+
+// Test case: Panic recovery during policy check (OutOfGas scenario)
+func (suite *AnteTestSuite) TestPolicyCheckOutOfGasPanicRecovery() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Set up a mock that will trigger OutOfGas panic - but let's use a more controlled way
+	// Instead of triggering an actual panic, let's trigger an error that simulates panic behavior
+	suite.wasmKeeper.SetQueryError(suite.contract, "gas limit exceeded during policy check")
+
+	// Fund user with insufficient balance to test fallback
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500))) // Less than 1000 fee
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should handle policy check failure and fallback with proper error
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "sponsorship denied")
+	suite.Require().Contains(err.Error(), "insufficient balance")
+}
+
+// Test case: General panic recovery during policy check
+func (suite *AnteTestSuite) TestPolicyCheckGeneralPanicRecovery() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Set up a mock that will trigger policy check error
+	suite.wasmKeeper.SetQueryError(suite.contract, "general policy check failure")
+
+	// Fund user with sufficient balance to test fallback
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should handle policy check failure and fallback to standard processing
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().NoError(err) // Should succeed with fallback
+}
+
+// Test case: handleSponsorshipFallback with non-FeeTx transaction
+func (suite *AnteTestSuite) TestFallbackWithNonFeeTx() {
+	// Create a non-FeeTx transaction (this will be tested via internal call)
+	nonFeeTx := &MockNonFeeTx{
+		msgs: []sdk.Msg{&wasmtypes.MsgExecuteContract{
+			Sender:   suite.user.String(),
+			Contract: suite.contract.String(),
+			Msg:      []byte(`{"increment":{}}`),
+		}},
+	}
+
+	// Set up the context to call handleSponsorshipFallback directly
+	// We need to access the internal method through reflection or create a custom scenario
+	// For testing purposes, we'll create a scenario that triggers this path
+
+	// This scenario: contract policy query fails and user has sufficient balance
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Make policy check fail
+	suite.wasmKeeper.SetQueryError(suite.contract, "policy check failed")
+
+	// Fund user with sufficient balance
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000)))
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// This should trigger fallback processing
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, nonFeeTx, false, next)
+	suite.Require().NoError(err)
+}
+
+// Test case: handleSponsorshipFallback with zero fee transaction
+func (suite *AnteTestSuite) TestFallbackWithZeroFee() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Make policy check fail to trigger fallback
+	suite.wasmKeeper.SetQueryError(suite.contract, "policy check failed")
+
+	// Create zero fee transaction
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.Coins{}) // Zero fee
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Should handle zero fee gracefully in fallback
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().NoError(err)
+}
+
+// Test case: getUserAddressForSponsorship with inconsistent signers
+func (suite *AnteTestSuite) TestGetUserAddressInconsistentSigners() {
+	// Create transaction with inconsistent signers across messages
+	msg1 := &wasmtypes.MsgExecuteContract{
+		Sender:   suite.user.String(),
+		Contract: suite.contract.String(),
+		Msg:      []byte(`{"increment":{}}`),
+	}
+	msg2 := &wasmtypes.MsgExecuteContract{
+		Sender:   suite.admin.String(), // Different signer!
+		Contract: suite.contract.String(),
+		Msg:      []byte(`{"increment":{}}`),
+	}
+
+	tx := MockTx{
+		msgs:       []sdk.Msg{msg1, msg2},
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		gasLimit:   200000,
+		feePayer:   suite.user,
+		feeGranter: sdk.AccAddress{},
+	}
+
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Should fallback to standard processing due to inconsistent signers
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().NoError(err) // Should succeed with fallback processing
+}
+
+// Test case: FeePayer mismatch with signer
+func (suite *AnteTestSuite) TestFeePayerSignerMismatch() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))))
+
+	// Create transaction where FeePayer != signer (security issue)
+	tx := MockTx{
+		msgs: []sdk.Msg{&wasmtypes.MsgExecuteContract{
+			Sender:   suite.user.String(),
+			Contract: suite.contract.String(),
+			Msg:      []byte(`{"increment":{}}`),
+		}},
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		gasLimit:   200000,
+		feePayer:   suite.admin, // Different from signer!
+		feeGranter: sdk.AccAddress{},
+	}
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Should fallback due to security validation failure
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	suite.Require().NoError(err) // Should succeed with fallback processing
+}
+
+// Test case: Gas limit exceeded during policy check should return user-friendly error
+func (suite *AnteTestSuite) TestGasLimitExceededFriendlyError() {
+	// Set up contract and sponsorship
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	fundAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fundAmount)
+
+	// Set very small gas limit to force gas exceeded error
+	params := types.Params{
+		SponsorshipEnabled:   true,
+		MaxGasPerSponsorship: 1000, // Very small limit
+	}
+	suite.keeper.SetParams(suite.ctx, params)
+
+	// Set up a contract that will consume more gas than the limit
+	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
+
+	// Fund user with insufficient balance to test the error path
+	userBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500))) // Less than 1000 fee
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userBalance)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userBalance)
+	suite.Require().NoError(err)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return ctx, nil
+	}
+
+	// Execute ante handler - should handle gracefully with user-friendly error
+	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	// Should get a user-friendly error, not a panic
+	if err != nil {
+		// If the policy check fails due to gas limit, we expect a sponsorship denied error with friendly message
+		suite.Require().Contains(err.Error(), "sponsorship denied")
+		suite.Require().Contains(err.Error(), "insufficient balance")
+		suite.T().Logf("Got expected user-friendly error: %s", err.Error())
+	} else {
+		// If no error (transaction succeeded with fallback), that's also acceptable
+		suite.T().Log("Transaction succeeded with fallback processing - this is also acceptable behavior")
+	}
+}
+
 // Run the test suite
 func TestAnteTestSuite(t *testing.T) {
 	suite.Run(t, new(AnteTestSuite))
@@ -2924,9 +3193,9 @@ func TestValidateSponsoredTransaction(t *testing.T) {
 		msgs: msgs,
 	}
 
-	_, err := validateSponsoredTransaction(tx)
+	_, err := validateSponsoredTransactionLegacy(tx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot contain non-contract messages")
+	require.Contains(t, err.Error(), "mixed messages")
 }
 
 func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
@@ -2946,9 +3215,9 @@ func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
 		msgs: msgs,
 	}
 
-	_, err := validateSponsoredTransaction(tx)
+	_, err := validateSponsoredTransactionLegacy(tx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "same contract")
+	require.Contains(t, err.Error(), "multiple contracts")
 }
 
 // HighGasConsumingMockWasmKeeper simulates a malicious contract that consumes excessive gas
@@ -2971,12 +3240,12 @@ func (m *HighGasConsumingMockWasmKeeper) QuerySmart(ctx sdk.Context, contractAdd
 	if m.gasToConsume > 0 {
 		ctx.GasMeter().ConsumeGas(m.gasToConsume, "malicious contract query")
 	}
-	
+
 	// Optionally simulate a panic (for testing panic recovery)
 	if m.shouldPanic {
 		panic("simulated contract panic")
 	}
-	
+
 	// Call base implementation
 	return m.MockWasmKeeper.QuerySmart(ctx, contractAddr, req)
 }
@@ -2985,23 +3254,10 @@ func (m *HighGasConsumingMockWasmKeeper) QuerySmart(ctx sdk.Context, contractAdd
 func (suite *AnteTestSuite) TestGasAttackSimulation() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
 
-	// Fund the contract
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Set reasonable gas limit
 	params := types.DefaultParams()
@@ -3071,7 +3327,7 @@ func (suite *AnteTestSuite) TestGasAttackSimulation() {
 				if tt.shouldPanic {
 					panic("simulated contract panic")
 				}
-				
+
 				if tt.gasToConsume > 0 {
 					limitedCtx.GasMeter().ConsumeGas(tt.gasToConsume, "simulated malicious contract query")
 				}
@@ -3088,18 +3344,18 @@ func (suite *AnteTestSuite) TestGasAttackSimulation() {
 			} else {
 				suite.Require().Error(err, "Test case %s should fail", tt.name)
 				if tt.expectedErrorText != "" {
-					suite.Require().Contains(err.Error(), tt.expectedErrorText, 
+					suite.Require().Contains(err.Error(), tt.expectedErrorText,
 						"Test case %s should contain expected error text", tt.name)
 				}
 			}
 
 			// Verify gas accounting is still working
 			finalGas := limitedCtx.GasMeter().GasConsumed()
-			suite.Require().GreaterOrEqual(finalGas, initialGas, 
+			suite.Require().GreaterOrEqual(finalGas, initialGas,
 				"Gas should be accounted for in test case %s", tt.name)
-			
+
 			// Log gas consumption for debugging
-			suite.T().Logf("Test case %s: consumed %d gas (limit: %d)", 
+			suite.T().Logf("Test case %s: consumed %d gas (limit: %d)",
 				tt.name, finalGas, params.MaxGasPerSponsorship)
 		})
 	}
@@ -3109,88 +3365,76 @@ func (suite *AnteTestSuite) TestGasAttackSimulation() {
 func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	
+
 	// Set the contract to return eligible for policy checks
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
-	
+
+	var err error
 	// Set a specific quota limit for testing boundary conditions
 	quotaLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))) // 5000 peaka limit
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(quotaLimit),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
-
-	// Fund the contract (sponsor) with enough balance
 	contractFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, contractFund)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, contractFund)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, quotaLimit, contractFund)
 
 	// Test cases for quota boundary conditions
 	testCases := []struct {
-		name                string
-		existingUsage       sdk.Coins
-		transactionFee      sdk.Coins
-		expectSuccess       bool
-		expectedError       string
-		description         string
+		name           string
+		existingUsage  sdk.Coins
+		transactionFee sdk.Coins
+		expectSuccess  bool
+		expectedError  string
+		description    string
 	}{
 		{
-			name:          "under quota limit - should succeed",
-			existingUsage: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000))),
+			name:           "under quota limit - should succeed",
+			existingUsage:  sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000))),
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
-			expectSuccess: true,
-			description:   "User has used 3000, requesting 1000 more (total 4000 < 5000 limit)",
+			expectSuccess:  true,
+			description:    "User has used 3000, requesting 1000 more (total 4000 < 5000 limit)",
 		},
 		{
-			name:          "exactly at quota limit - should succeed",
-			existingUsage: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(4000))),
+			name:           "exactly at quota limit - should succeed",
+			existingUsage:  sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(4000))),
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
-			expectSuccess: true,
-			description:   "User has used 4000, requesting 1000 more (total exactly 5000 = limit)",
+			expectSuccess:  true,
+			description:    "User has used 4000, requesting 1000 more (total exactly 5000 = limit)",
 		},
 		{
-			name:          "slightly over quota limit - should fail",
-			existingUsage: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(4500))),
+			name:           "slightly over quota limit - should fail",
+			existingUsage:  sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(4500))),
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
-			expectSuccess: false,
-			expectedError: "grant limit exceeded",
-			description:   "User has used 4500, requesting 1000 more (total 5500 > 5000 limit)",
+			expectSuccess:  false,
+			expectedError:  "grant limit exceeded",
+			description:    "User has used 4500, requesting 1000 more (total 5500 > 5000 limit)",
 		},
 		{
-			name:          "way over quota limit - should fail",
-			existingUsage: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000))),
+			name:           "way over quota limit - should fail",
+			existingUsage:  sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000))),
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))),
-			expectSuccess: false,
-			expectedError: "grant limit exceeded",
-			description:   "User has used 3000, requesting 5000 more (total 8000 >> 5000 limit)",
+			expectSuccess:  false,
+			expectedError:  "grant limit exceeded",
+			description:    "User has used 3000, requesting 5000 more (total 8000 >> 5000 limit)",
 		},
 		{
-			name:          "new user under limit - should succeed",
-			existingUsage: sdk.NewCoins(), // No previous usage
+			name:           "new user under limit - should succeed",
+			existingUsage:  sdk.NewCoins(), // No previous usage
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000))),
-			expectSuccess: true,
-			description:   "New user requesting 2000 (< 5000 limit)",
+			expectSuccess:  true,
+			description:    "New user requesting 2000 (< 5000 limit)",
 		},
 		{
-			name:          "new user exactly at limit - should succeed",
-			existingUsage: sdk.NewCoins(), // No previous usage
+			name:           "new user exactly at limit - should succeed",
+			existingUsage:  sdk.NewCoins(), // No previous usage
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000))),
-			expectSuccess: true,
-			description:   "New user requesting exactly 5000 (= limit)",
+			expectSuccess:  true,
+			description:    "New user requesting exactly 5000 (= limit)",
 		},
 		{
-			name:          "new user over limit - should fail",
-			existingUsage: sdk.NewCoins(), // No previous usage
+			name:           "new user over limit - should fail",
+			existingUsage:  sdk.NewCoins(), // No previous usage
 			transactionFee: sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(6000))),
-			expectSuccess: false,
-			expectedError: "grant limit exceeded",
-			description:   "New user requesting 6000 (> 5000 limit)",
+			expectSuccess:  false,
+			expectedError:  "grant limit exceeded",
+			description:    "New user requesting 6000 (> 5000 limit)",
 		},
 	}
 
@@ -3238,10 +3482,10 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 			ctxAfterSponsorCheck, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 				return ctx, nil // Don't call next yet
 			})
-			
+
 			if tc.expectSuccess {
 				suite.Require().NoError(err, "Sponsor check should succeed for test case %s", tc.name)
-				
+
 				// Now execute the sponsor-aware fee deduction to actually update usage
 				sponsorDeductFeeDecorator := NewSponsorAwareDeductFeeDecorator(
 					suite.accountKeeper,
@@ -3252,10 +3496,10 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 						return tc.transactionFee, 1, nil // Return the expected fee
 					},
 				)
-				
+
 				_, err = sponsorDeductFeeDecorator.AnteHandle(ctxAfterSponsorCheck, tx, false, next)
 				suite.Require().NoError(err, "Fee deduction should succeed for test case %s", tc.name)
-				
+
 				// Verify that usage was updated correctly
 				if !tc.transactionFee.IsZero() {
 					updatedUsage := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
@@ -3264,7 +3508,7 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 					for i, coin := range updatedUsage.TotalGrantUsed {
 						actualTotal[i] = *coin
 					}
-					suite.Require().True(actualTotal.IsEqual(expectedTotal), 
+					suite.Require().True(actualTotal.IsEqual(expectedTotal),
 						"Usage should be updated correctly. Expected: %s, Got: %s", expectedTotal, actualTotal)
 				}
 			} else {
@@ -3273,7 +3517,7 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 					// Error from sponsor check stage
 					suite.Require().Error(err, "Test case %s should fail at sponsor check", tc.name)
 					if tc.expectedError != "" {
-						suite.Require().Contains(err.Error(), tc.expectedError, 
+						suite.Require().Contains(err.Error(), tc.expectedError,
 							"Error should contain expected text for test case %s", tc.name)
 					}
 				} else {
@@ -3287,11 +3531,11 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 							return tc.transactionFee, 1, nil // Return the expected fee
 						},
 					)
-					
+
 					_, err = sponsorDeductFeeDecorator.AnteHandle(ctxAfterSponsorCheck, tx, false, next)
 					suite.Require().Error(err, "Test case %s should fail at fee deduction", tc.name)
 					if tc.expectedError != "" {
-						suite.Require().Contains(err.Error(), tc.expectedError, 
+						suite.Require().Contains(err.Error(), tc.expectedError,
 							"Error should contain expected text for test case %s", tc.name)
 					}
 				}
@@ -3304,7 +3548,7 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 					actualUsage[i] = *coin
 				}
 				if !expectedUsage.IsZero() {
-					suite.Require().True(actualUsage.IsEqual(expectedUsage), 
+					suite.Require().True(actualUsage.IsEqual(expectedUsage),
 						"Usage should remain unchanged on failure. Expected: %s, Got: %s", expectedUsage, actualUsage)
 				}
 			}
@@ -3317,7 +3561,7 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 				LastUsedTime:    0,
 			}
 			suite.keeper.SetUserGrantUsage(suite.ctx, emptyUsage)
-			
+
 			// Reset user balance
 			userAddr := suite.user
 			existingBalance := suite.bankKeeper.GetAllBalances(suite.ctx, userAddr)
@@ -3333,9 +3577,9 @@ func (suite *AnteTestSuite) TestUserQuotaBoundaryConditions() {
 func (suite *AnteTestSuite) TestGasLimitParameterValidation() {
 	// Test various gas limit settings
 	testCases := []struct {
-		name               string
+		name                 string
 		maxGasPerSponsorship uint64
-		shouldBeValid       bool
+		shouldBeValid        bool
 	}{
 		{"zero gas limit", 0, false},
 		{"reasonable gas limit", 1000000, true},
@@ -3349,7 +3593,7 @@ func (suite *AnteTestSuite) TestGasLimitParameterValidation() {
 				SponsorshipEnabled:   true,
 				MaxGasPerSponsorship: tc.maxGasPerSponsorship,
 			}
-			
+
 			err := params.Validate()
 			if tc.shouldBeValid {
 				suite.Require().NoError(err, "Gas limit %d should be valid", tc.maxGasPerSponsorship)

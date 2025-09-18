@@ -300,7 +300,7 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 			postCheck:   nil,
 		},
 		{
-			name: "default params",
+			name:    "default params",
 			request: &types.QueryParamsRequest{},
 			preRun: func() {
 				// Set default params
@@ -311,16 +311,16 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 			postCheck: func(resp *types.QueryParamsResponse) {
 				suite.Require().NotNil(resp.Params, "Params should not be nil")
 				suite.Require().True(resp.Params.SponsorshipEnabled, "Default should have sponsorship enabled")
-				suite.Require().Equal(uint64(1000000), resp.Params.MaxGasPerSponsorship, "Should have default max gas")
+				suite.Require().Equal(uint64(2500000), resp.Params.MaxGasPerSponsorship, "Should have default max gas")
 			},
 		},
 		{
-			name: "custom params",
+			name:    "custom params",
 			request: &types.QueryParamsRequest{},
 			preRun: func() {
 				// Set custom params
 				params := types.Params{
-					SponsorshipEnabled:    false,
+					SponsorshipEnabled:   false,
 					MaxGasPerSponsorship: 1000000,
 				}
 				keeper.SetParams(freshCtx, params)
@@ -484,7 +484,7 @@ func (suite *GRPCQueryTestSuite) TestQueryServerInterface() {
 	// Get fresh keeper and context for this test method
 	keeper, freshCtx, _ := setupKeeper(suite.T())
 	queryServer := NewQueryServer(keeper)
-	
+
 	// Ensure the query server implements the required interface
 	var _ types.QueryServer = queryServer
 

@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	"fmt"
 	"testing"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -27,18 +28,18 @@ import (
 type SponsorDecoratorTestSuite struct {
 	suite.Suite
 
-	ctx               sdk.Context
-	keeper            keeper.Keeper
-	sponsorDecorator  SponsorAwareDeductFeeDecorator
-	accountKeeper     authkeeper.AccountKeeper
-	bankKeeper        bankkeeper.Keeper
-	wasmKeeper        *MockWasmKeeper
+	ctx              sdk.Context
+	keeper           keeper.Keeper
+	sponsorDecorator SponsorAwareDeductFeeDecorator
+	accountKeeper    authkeeper.AccountKeeper
+	bankKeeper       bankkeeper.Keeper
+	wasmKeeper       *MockWasmKeeper
 	// mockFeegrantKeeper *MockFeegrantKeeper // Not needed due to interface complexity
 
 	// Test accounts
-	admin     sdk.AccAddress
-	user      sdk.AccAddress
-	contract  sdk.AccAddress
+	admin      sdk.AccAddress
+	user       sdk.AccAddress
+	contract   sdk.AccAddress
 	feeGranter sdk.AccAddress
 }
 
@@ -53,6 +54,39 @@ func mockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
 	return minFee, priority, nil
 }
 
+// Helper function to create and fund a sponsor properly
+func (suite *SponsorDecoratorTestSuite) createAndFundSponsor(contractAddr sdk.AccAddress, isSponsored bool, maxGrant sdk.Coins, fundAmount sdk.Coins) {
+	// Create sponsor using MsgSetSponsor to ensure sponsor_address is properly generated
+	msgSetSponsor := types.NewMsgSetSponsor(
+		suite.admin.String(),
+		contractAddr.String(),
+		isSponsored,
+		maxGrant,
+	)
+
+	msgServer := keeper.NewMsgServerImpl(suite.keeper)
+	ctx := sdk.WrapSDKContext(suite.ctx)
+	_, err := msgServer.SetSponsor(ctx, msgSetSponsor)
+	suite.Require().NoError(err)
+
+	// Get the sponsor info to find the sponsor_address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, contractAddr.String())
+	suite.Require().True(found)
+	suite.Require().NotEmpty(sponsor.SponsorAddress)
+
+	// Fund the sponsor address
+	if !fundAmount.IsZero() {
+		sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		suite.Require().NoError(err)
+
+		// Mint coins to module account then send to sponsor address
+		err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fundAmount)
+		suite.Require().NoError(err)
+		err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, fundAmount)
+		suite.Require().NoError(err)
+	}
+}
+
 func (suite *SponsorDecoratorTestSuite) SetupTest() {
 	// Create codec with proper interface registrations
 	interfaceRegistry := codectypes.NewInterfaceRegistry()
@@ -60,7 +94,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 	banktypes.RegisterInterfaces(interfaceRegistry)
 	wasmtypes.RegisterInterfaces(interfaceRegistry)
 	types.RegisterInterfaces(interfaceRegistry)
-	
+
 	codec := codec.NewProtoCodec(interfaceRegistry)
 
 	// Create in-memory database
@@ -95,7 +129,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 		authtypes.FeeCollectorName: nil,
 		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
 	}
-	
+
 	suite.accountKeeper = authkeeper.NewAccountKeeper(
 		codec,
 		authStoreKey,
@@ -164,7 +198,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 // This ensures non-sponsored transactions are processed normally
 func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))) // Use minimum fee
-	
+
 	// Give user enough balance to pay fee
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
 	suite.Require().NoError(err)
@@ -182,7 +216,7 @@ func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
 
 	// Execute decorator - should fall back to standard decorator
 	_, err = suite.sponsorDecorator.AnteHandle(suite.ctx, tx, false, next)
-	
+
 	// Should succeed using standard processing (not sponsored)
 	suite.Require().NoError(err)
 	suite.Require().True(nextCalled)
@@ -191,17 +225,25 @@ func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
 // TestSponsorContextDetection tests detection of sponsor payment info in context
 // This ensures the decorator correctly identifies sponsored transactions
 func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
-	// Fund the sponsor account
-	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
+
+	// Get the sponsor info to get the correct sponsor address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	suite.Require().NoError(err)
 
 	// Create sponsor payment info and add to context
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -226,10 +268,14 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 // This ensures proper fee payment hierarchy: feegrant > sponsor > standard
 func (suite *SponsorDecoratorTestSuite) TestFeegrantPriorityOverSponsor() {
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Create sponsor payment info
+	// Use a dummy sponsor address for this test since we're testing feegrant priority
+	dummySponsorAddr := sdk.AccAddress("sponsor_____________")
+
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  dummySponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -260,17 +306,25 @@ func (suite *SponsorDecoratorTestSuite) TestFeegrantPriorityOverSponsor() {
 // TestTxFeeCheckerValidation tests that sponsor fees meet minimum requirements
 // This ensures sponsor fees respect min-gas-price settings
 func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	// Test case 1: Fee meets minimum requirement (should succeed)
 	validFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200))) // Above 100peaka minimum
-	
-	// Fund the sponsor account
-	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, validFee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, validFee)
+
+	// Create and fund sponsor properly
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, validFee)
+
+	// Get the sponsor info to get the correct sponsor address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	suite.Require().NoError(err)
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          validFee,
 		IsSponsored:  true,
@@ -288,9 +342,10 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 
 	// Test case 2: Fee below minimum requirement (should fail)
 	invalidFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50))) // Below 100peaka minimum
-	
+
 	sponsorPaymentInvalid := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr, // Use the same sponsorAddr from above
 		UserAddr:     suite.user,
 		Fee:          invalidFee,
 		IsSponsored:  true,
@@ -307,21 +362,30 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 // TestSponsorFeeDeduction tests actual fee deduction from sponsor account
 // This ensures sponsor account balance is properly debited
 func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Fund the sponsor account with more than fee amount
 	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, initialBalance)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, initialBalance)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, initialBalance)
+
+	// Get sponsor address to check balances properly
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	suite.Require().NoError(err)
 
 	// Record initial balances
-	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, "peaka")
 	initialFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -339,7 +403,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	suite.Require().NoError(err)
 
 	// Verify balances changed correctly
-	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, "peaka")
 	finalFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	// Sponsor should have less balance
@@ -354,20 +418,29 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 // TestSimulationModeNoDeduction tests that simulation mode doesn't deduct fees
 // This ensures simulation doesn't affect actual balances
 func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Fund the sponsor account
 	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, initialBalance)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, initialBalance)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, initialBalance)
+
+	// Get sponsor address to check balance properly
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	suite.Require().NoError(err)
 
 	// Record initial balance
-	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	initialSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, "peaka")
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -385,34 +458,32 @@ func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
 	suite.Require().NoError(err)
 
 	// Verify balance unchanged in simulation
-	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.contract, "peaka")
+	finalSponsorBalance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, "peaka")
 	suite.Require().True(finalSponsorBalance.IsEqual(initialSponsorBalance))
 }
 
 // TestCheckTxVsDeliverTxBehavior tests different behavior between CheckTx and DeliverTx
 // This ensures usage updates and events only happen in DeliverTx
 func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Set up contract sponsorship
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee.MulInt(sdk.NewInt(2)))
 
-	// Fund the sponsor account
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee.MulInt(sdk.NewInt(2)))
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee.MulInt(sdk.NewInt(2)))
+	// Get the sponsor info to get the correct sponsor address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	suite.Require().NoError(err)
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -425,9 +496,9 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 	// Test CheckTx mode
 	checkTxCtx := suite.ctx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPayment)
 	checkTxCtx = checkTxCtx.WithEventManager(sdk.NewEventManager())
-	
+
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
-	
+
 	_, err = suite.sponsorDecorator.AnteHandle(checkTxCtx, tx, false, next)
 	suite.Require().NoError(err)
 
@@ -469,10 +540,14 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 // This ensures proper error handling when sponsor cannot pay fees
 func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Don't fund the sponsor account (insufficient balance)
+	// Use a dummy sponsor address for this test since we're testing insufficient funds
+	dummySponsorAddr := sdk.AccAddress("sponsor_____________")
+
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  dummySponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -494,31 +569,29 @@ func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 // TestUserGrantUsageUpdate tests that user grant usage is properly updated in DeliverTx
 // This ensures usage tracking works correctly
 func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
+	// Set up contract info first
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	
+
 	// Set up contract sponsorship
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
-
-	// Fund the sponsor account
-	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
-	suite.Require().NoError(err)
-	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.contract, fee)
-	suite.Require().NoError(err)
+	// Create and fund sponsor properly
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
 	// Get initial usage
 	initialUsage := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
 	initialUsedAmount := len(initialUsage.TotalGrantUsed)
 
+	// Get the sponsor info to get the correct sponsor address
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	suite.Require().NoError(err)
+
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -538,7 +611,7 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 	// Verify usage was updated
 	finalUsage := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
 	finalUsedAmount := len(finalUsage.TotalGrantUsed)
-	
+
 	// Usage should be updated (though exact comparison depends on implementation)
 	suite.Require().GreaterOrEqual(finalUsedAmount, initialUsedAmount)
 	// Note: LastUsedTime comparison might not work as expected in test environment
@@ -581,7 +654,7 @@ func (suite *SponsorDecoratorTestSuite) createTx(msgs []sdk.Msg, signers []sdk.A
 	if len(signers) > 0 {
 		feePayer = signers[0]
 	}
-	
+
 	return MockTx{
 		msgs:       msgs,
 		fee:        fee,
@@ -591,7 +664,92 @@ func (suite *SponsorDecoratorTestSuite) createTx(msgs []sdk.Msg, signers []sdk.A
 	}
 }
 
+// Test case: Transaction that doesn't implement FeeTx interface
+func (suite *SponsorDecoratorTestSuite) TestNonFeeTxInterface() {
+	// Create a transaction that doesn't implement FeeTx interface
+	nonFeeTx := &MockNonFeeTxForDecorator{
+		msgs: []sdk.Msg{&wasmtypes.MsgExecuteContract{
+			Sender:   suite.user.String(),
+			Contract: suite.contract.String(),
+			Msg:      []byte(`{"increment":{}}`),
+		}},
+	}
+
+	// Create sponsor payment info
+	sponsorPayment := SponsorPaymentInfo{
+		ContractAddr: suite.contract,
+		SponsorAddr:  suite.user, // Dummy for this test
+		UserAddr:     suite.user,
+		Fee:          sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		IsSponsored:  true,
+	}
+	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	// Execute decorator - should fail due to non-FeeTx interface
+	_, err := suite.sponsorDecorator.AnteHandle(ctxWithSponsor, nonFeeTx, false, next)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "Tx must implement FeeTx interface")
+	suite.Require().False(nextCalled)
+}
+
+// Test case: TxFeeChecker returns error
+func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerError() {
+	// Create a decorator with error-returning txFeeChecker
+	errorTxFeeChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
+		return nil, 0, fmt.Errorf("fee checker error")
+	}
+
+	errorSponsorDecorator := NewSponsorAwareDeductFeeDecorator(
+		suite.accountKeeper,
+		suite.bankKeeper,
+		nil, // Use nil feegranter for testing
+		suite.keeper,
+		errorTxFeeChecker,
+	)
+
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+
+	// Create sponsor payment info
+	sponsorPayment := SponsorPaymentInfo{
+		ContractAddr: suite.contract,
+		SponsorAddr:  suite.user, // Dummy for this test
+		UserAddr:     suite.user,
+		Fee:          fee,
+		IsSponsored:  true,
+	}
+	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	// Execute decorator - should fail due to txFeeChecker error
+	_, err := errorSponsorDecorator.AnteHandle(ctxWithSponsor, tx, false, next)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "failed to check required fee")
+	suite.Require().Contains(err.Error(), "fee checker error")
+	suite.Require().False(nextCalled)
+}
+
 // Run the test suite
 func TestSponsorDecoratorTestSuite(t *testing.T) {
 	suite.Run(t, new(SponsorDecoratorTestSuite))
 }
+
+// MockNonFeeTxForDecorator implements sdk.Tx but NOT sdk.FeeTx for sponsor decorator testing
+type MockNonFeeTxForDecorator struct {
+	msgs []sdk.Msg
+}
+
+func (tx *MockNonFeeTxForDecorator) GetMsgs() []sdk.Msg   { return tx.msgs }
+func (tx *MockNonFeeTxForDecorator) ValidateBasic() error { return nil }

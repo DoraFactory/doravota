@@ -3,13 +3,86 @@ package keeper
 import (
 	"testing"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	"github.com/cometbft/cometbft/libs/log"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/store"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	dbm "github.com/cometbft/cometbft-db"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
+
+// setupKeeperWithDeps sets up keeper with auth/bank keepers for withdraw tests
+func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, authkeeper.AccountKeeper, bankkeeper.Keeper) {
+	t.Helper()
+
+	// Interface registry and codec
+	interfaceRegistry := codectypes.NewInterfaceRegistry()
+	authtypes.RegisterInterfaces(interfaceRegistry)
+	banktypes.RegisterInterfaces(interfaceRegistry)
+	wasmtypes.RegisterInterfaces(interfaceRegistry)
+	types.RegisterInterfaces(interfaceRegistry)
+	cdc := codec.NewProtoCodec(interfaceRegistry)
+
+	// Stores
+	sponsorStoreKey := sdk.NewKVStoreKey(types.StoreKey)
+	authStoreKey := sdk.NewKVStoreKey(authtypes.StoreKey)
+	bankStoreKey := sdk.NewKVStoreKey(banktypes.StoreKey)
+
+	db := dbm.NewMemDB()
+	cms := store.NewCommitMultiStore(db)
+	cms.MountStoreWithDB(sponsorStoreKey, storetypes.StoreTypeIAVL, db)
+	cms.MountStoreWithDB(authStoreKey, storetypes.StoreTypeIAVL, db)
+	cms.MountStoreWithDB(bankStoreKey, storetypes.StoreTypeIAVL, db)
+	require.NoError(t, cms.LoadLatestVersion())
+
+	ctx := sdk.NewContext(cms, tmproto.Header{Height: 1}, false, log.NewNopLogger())
+
+	// Keepers
+	mockWasmKeeper := NewMockWasmKeeper()
+
+	maccPerms := map[string][]string{
+		authtypes.FeeCollectorName: nil,
+		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
+	}
+
+	accountKeeper := authkeeper.NewAccountKeeper(
+		cdc,
+		authStoreKey,
+		authtypes.ProtoBaseAccount,
+		maccPerms,
+		"dora",
+		authtypes.NewModuleAddress("gov").String(),
+	)
+
+	bankKeeper := bankkeeper.NewBaseKeeper(
+		cdc,
+		bankStoreKey,
+		accountKeeper,
+		nil,
+		authtypes.NewModuleAddress("gov").String(),
+	)
+
+	// Create module account for sponsor module (for minting)
+	sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
+	accountKeeper.SetAccount(ctx, sponsorModuleAcc)
+
+	// Create keeper
+	k := NewKeeper(cdc, sponsorStoreKey, mockWasmKeeper, authtypes.NewModuleAddress("gov").String())
+
+	return *k, ctx, mockWasmKeeper, accountKeeper, bankKeeper
+}
 
 func TestMsgServer_SetSponsor(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
@@ -680,7 +753,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 	// Set up a valid contract and admin
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
 	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
-	
+
 	// Set up mock wasm keeper
 	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
@@ -714,7 +787,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.True(t, found)
 		require.True(t, sponsor.IsSponsored)
 		require.Len(t, sponsor.MaxGrantPerUser, 1)
-		
+
 		// Check the saved max grant per user
 		actualMaxGrant, err := keeper.GetMaxGrantPerUser(ctx, contractAddr)
 		require.NoError(t, err)
@@ -751,4 +824,316 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, newMaxGrant, actualMaxGrant)
 	})
+}
+
+// TestMsgServerSponsorAddressGeneration tests that sponsor_address is correctly derived
+func TestMsgServerSponsorAddressGeneration(t *testing.T) {
+	keeper, ctx, mockWasmKeeper := setupKeeper(t)
+	msgServer := NewMsgServerImpl(keeper)
+
+	// Set up a valid contract and admin
+	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
+	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
+
+	// Set up mock wasm keeper
+	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+
+	t.Run("SetSponsor generates correct sponsor_address", func(t *testing.T) {
+		// Create message
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgSetSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.SetSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify sponsor was created with sponsor_address
+		sponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		require.True(t, sponsor.IsSponsored)
+		require.NotEmpty(t, sponsor.SponsorAddress, "sponsor_address should be generated")
+
+		// Verify the sponsor_address is a valid address
+		_, err = sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		require.NoError(t, err, "sponsor_address should be a valid bech32 address")
+
+		// Verify sponsor_address is different from contract_address
+		require.NotEqual(t, sponsor.ContractAddress, sponsor.SponsorAddress,
+			"sponsor_address should be different from contract_address")
+	})
+
+	t.Run("UpdateSponsor preserves sponsor_address", func(t *testing.T) {
+		// Get the original sponsor
+		originalSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		originalSponsorAddr := originalSponsor.SponsorAddress
+
+		// Update the sponsor
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000000)))
+		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
+		for i, coin := range newMaxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgUpdateSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contractAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		resp, err := msgServer.UpdateSponsor(ctx, msg)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+
+		// Verify sponsor_address is preserved after update
+		updatedSponsor, found := keeper.GetSponsor(ctx, contractAddr)
+		require.True(t, found)
+		require.Equal(t, originalSponsorAddr, updatedSponsor.SponsorAddress,
+			"sponsor_address should be preserved during updates")
+	})
+}
+
+// TestMsgServerSponsorAddressConsistency tests sponsor address derivation consistency
+func TestMsgServerSponsorAddressConsistency(t *testing.T) {
+	keeper, ctx, mockWasmKeeper := setupKeeper(t)
+	msgServer := NewMsgServerImpl(keeper)
+
+	// Set up multiple contracts with the same admin
+	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
+	contracts := []string{
+		sdk.AccAddress([]byte("contract_1")).String(),
+		sdk.AccAddress([]byte("contract_2")).String(),
+		sdk.AccAddress([]byte("contract_3")).String(),
+	}
+
+	// Set up mock wasm keeper for all contracts
+	for _, contractAddr := range contracts {
+		mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+	}
+
+	sponsorAddresses := make([]string, len(contracts))
+
+	t.Run("Each contract gets unique sponsor_address", func(t *testing.T) {
+		// Create sponsors for all contracts
+		for i, contractAddr := range contracts {
+			maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+			pbCoins := make([]*sdk.Coin, len(maxGrant))
+			for j, coin := range maxGrant {
+				newCoin := sdk.Coin{
+					Denom:  coin.Denom,
+					Amount: coin.Amount,
+				}
+				pbCoins[j] = &newCoin
+			}
+
+			msg := &types.MsgSetSponsor{
+				Creator:         adminAddr,
+				ContractAddress: contractAddr,
+				IsSponsored:     true,
+				MaxGrantPerUser: pbCoins,
+			}
+
+			_, err := msgServer.SetSponsor(ctx, msg)
+			require.NoError(t, err)
+
+			// Get the generated sponsor address
+			sponsor, found := keeper.GetSponsor(ctx, contractAddr)
+			require.True(t, found)
+			require.NotEmpty(t, sponsor.SponsorAddress)
+			sponsorAddresses[i] = sponsor.SponsorAddress
+		}
+
+		// Verify all sponsor addresses are unique
+		for i := 0; i < len(sponsorAddresses); i++ {
+			for j := i + 1; j < len(sponsorAddresses); j++ {
+				require.NotEqual(t, sponsorAddresses[i], sponsorAddresses[j],
+					"sponsor addresses should be unique for different contracts")
+			}
+		}
+	})
+
+	t.Run("Sponsor address derivation is deterministic", func(t *testing.T) {
+		// Delete and recreate the first sponsor to test deterministic generation
+		deleteMsg := &types.MsgDeleteSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contracts[0],
+		}
+		_, err := msgServer.DeleteSponsor(ctx, deleteMsg)
+		require.NoError(t, err)
+
+		// Recreate the sponsor
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		pbCoins := make([]*sdk.Coin, len(maxGrant))
+		for i, coin := range maxGrant {
+			newCoin := sdk.Coin{
+				Denom:  coin.Denom,
+				Amount: coin.Amount,
+			}
+			pbCoins[i] = &newCoin
+		}
+
+		msg := &types.MsgSetSponsor{
+			Creator:         adminAddr,
+			ContractAddress: contracts[0],
+			IsSponsored:     true,
+			MaxGrantPerUser: pbCoins,
+		}
+
+		_, err = msgServer.SetSponsor(ctx, msg)
+		require.NoError(t, err)
+
+		// Verify the sponsor address is the same as before
+		sponsor, found := keeper.GetSponsor(ctx, contracts[0])
+		require.True(t, found)
+		require.Equal(t, sponsorAddresses[0], sponsor.SponsorAddress,
+			"sponsor address derivation should be deterministic")
+	})
+}
+
+// ===== Withdraw sponsor funds tests (moved from withdraw_test.go) =====
+
+func TestWithdrawSponsorFunds_Success(t *testing.T) {
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+
+	// Prepare admin, contract, recipient
+	admin := sdk.AccAddress("admin________________")
+	contract := sdk.AccAddress("contract____________")
+	recipient := sdk.AccAddress("recipient___________")
+
+	// Set contract admin in wasm mock
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+
+	// Create msg server with deps
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+
+	// Create sponsor via msg to generate sponsor address
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
+
+	sponsor, found := keeper.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	require.NoError(t, err)
+
+	// Fund sponsor address
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
+	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
+
+	// Withdraw
+	withdrawAmt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000)))
+	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), withdrawAmt)
+
+	// Add event manager
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.NoError(t, err)
+
+	// Check balances
+	balSponsor := bankKeeper.GetBalance(ctx, sponsorAddr, "peaka")
+	balRecipient := bankKeeper.GetBalance(ctx, recipient, "peaka")
+	require.Equal(t, sdk.NewInt(2000), balSponsor.Amount)   // 5000 - 3000
+	require.Equal(t, sdk.NewInt(3000), balRecipient.Amount) // 0 + 3000
+
+	// Verify event emission and attributes
+	var withdrawEvent sdk.Event
+	eventFound := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type == types.EventTypeSponsorWithdrawal {
+			withdrawEvent = ev
+			eventFound = true
+			break
+		}
+	}
+	require.True(t, eventFound, "sponsor_withdraw_funds event should be emitted")
+
+	// Build expected attributes
+	expected := map[string]string{
+		types.AttributeKeyCreator:         admin.String(),
+		types.AttributeKeyContractAddress: contract.String(),
+		types.AttributeKeySponsorAddress:  sponsor.SponsorAddress,
+		types.AttributeKeyRecipient:       recipient.String(),
+		types.AttributeKeySponsorAmount:   withdrawAmt.String(),
+	}
+
+	// Check attributes
+	got := map[string]string{}
+	for _, attr := range withdrawEvent.Attributes {
+		got[attr.Key] = attr.Value
+	}
+	for k, v := range expected {
+		require.Equalf(t, v, got[k], "event attribute %s mismatch", k)
+	}
+}
+
+func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	admin := sdk.AccAddress("admin________________")
+	nonAdmin := sdk.AccAddress("user_________________")
+	contract := sdk.AccAddress("contract____________")
+
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
+
+	// Try withdraw as non-admin
+	wMsg := types.NewMsgWithdrawSponsorFunds(nonAdmin.String(), contract.String(), nonAdmin.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.Error(t, err)
+}
+
+func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	admin := sdk.AccAddress("admin________________")
+	contract := sdk.AccAddress("contract____________")
+	recipient := sdk.AccAddress("recipient___________")
+
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
+
+	sponsor, found := keeper.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	require.NoError(t, err)
+
+	// Fund with small amount
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
+	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
+	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
+
+	// Try withdraw larger amount
+	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
+	require.Error(t, err)
 }

@@ -19,6 +19,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgSetSponsor{}, "sponsor/MsgSetSponsor")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateSponsor{}, "sponsor/MsgUpdateSponsor")
 	legacy.RegisterAminoMsg(cdc, &MsgDeleteSponsor{}, "sponsor/MsgDeleteSponsor")
+	legacy.RegisterAminoMsg(cdc, &MsgWithdrawSponsorFunds{}, "sponsor/MsgWithdrawSponsorFunds")
 }
 
 func RegisterInterfaces(registry types.InterfaceRegistry) {
@@ -27,6 +28,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgSetSponsor{},
 		&MsgUpdateSponsor{},
 		&MsgDeleteSponsor{},
+		&MsgWithdrawSponsorFunds{},
 	)
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)

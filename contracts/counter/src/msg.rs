@@ -25,7 +25,6 @@ pub enum QueryMsg {
     #[returns(CheckPolicyResponse)]
     CheckPolicy { 
         sender: String,
-        msg_type: String,
         msg_data: String,
     },
     // query whitelist status
@@ -52,17 +51,3 @@ pub struct WhitelistResponse {
 
 #[cw_serde]
 pub struct MigrateMsg {}
-
-// Message types for parsing sponsor transaction data
-#[cw_serde]
-pub struct IncrementMsg {
-    pub amount: i32,
-}
-
-#[cw_serde]
-pub struct DecrementMsg {}
-
-#[cw_serde]
-pub struct ResetMsg {
-    pub count: i32,
-}

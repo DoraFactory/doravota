@@ -762,7 +762,7 @@ func New(
 		icaModule,
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 		// sponsor module
-		sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper),
+        sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that

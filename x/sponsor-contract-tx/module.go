@@ -6,18 +6,16 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/gorilla/mux"
-	"github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/spf13/cobra"
-
 	abci "github.com/cometbft/cometbft/abci/types"
-
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	cdctypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+	"github.com/gorilla/mux"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/spf13/cobra"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -94,17 +92,20 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command {
 type AppModule struct {
 	AppModuleBasic
 
-	keeper keeper.Keeper
+	keeper     keeper.Keeper
+	bankKeeper types.BankKeeper
 }
 
 // NewAppModule creates a new AppModule object
 func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
+	bankKeeper types.BankKeeper,
 ) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
+		bankKeeper:     bankKeeper,
 	}
 }
 
@@ -115,8 +116,8 @@ func (am AppModule) Name() string {
 
 // RegisterServices registers the sponsor module's services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
-	// Register message server - follow the standard pattern
-	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
+	// Register message server with dependencies
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
 
 	// Register query server
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))
@@ -124,14 +125,6 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 
 // RegisterInvariants registers the sponsor module's invariants
 func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
-
-// QuerierRoute returns the sponsor module's query routing key
-func (AppModule) QuerierRoute() string { return types.QuerierRoute }
-
-// LegacyQuerierHandler returns the sponsor module's Querier
-func (am AppModule) LegacyQuerierHandler(legacyQuerierCdc *codec.LegacyAmino) keeper.Querier {
-	return keeper.NewQuerier(am.keeper, legacyQuerierCdc)
-}
 
 // InitGenesis performs the sponsor module's genesis initialization
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, gs json.RawMessage) []abci.ValidatorUpdate {
