@@ -98,6 +98,33 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if ctx.IsCheckTx() {
 			return ctx, errorsmod.Wrapf(types.ErrContractNotFound, "contract address %s not found", contractAddr)
 		}
+
+		// In DeliverTx, fall back to user payment immediately to avoid extra queries
+		if feeTx, ok := tx.(sdk.FeeTx); ok {
+			userAddr, userErr := sctd.getUserAddressForSponsorship(tx)
+			if userErr == nil {
+				if !ctx.IsCheckTx() {
+					ctx.EventManager().EmitEvent(
+						sdk.NewEvent(
+							types.EventTypeSponsorshipSkipped,
+							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+							sdk.NewAttribute(types.AttributeKeyReason, "contract_not_found"),
+						),
+					)
+				}
+				return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "contract_not_found")
+			}
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"unable to determine user address during contract-not-found fallback",
+				"contract", contractAddr,
+				"error", userErr,
+			)
+			if fee := feeTx.GetFee(); fee.IsZero() {
+				return next(ctx, tx, simulate)
+			}
+		}
+
+		return next(ctx, tx, simulate)
 	}
 
 	// Check if this contract is sponsored
@@ -112,6 +139,15 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		params := sctd.keeper.GetParams(ctx)
 		if !params.SponsorshipEnabled {
 			// Sponsorship is globally disabled, skip all sponsor logic
+			if !ctx.IsCheckTx() {
+				ctx.EventManager().EmitEvent(
+					sdk.NewEvent(
+						types.EventTypeSponsorshipDisabled,
+						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+						sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
+					),
+				)
+			}
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"sponsorship globally disabled, using standard fee processing",
 			)
@@ -681,6 +717,6 @@ func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
 			)
 		}
 	}()
-	// comsume gas when check failed on the main context
+	// consume gas on the main context for consistency with CheckTx validation
 	ctx.GasMeter().ConsumeGas(gasUsed, desc)
 }
