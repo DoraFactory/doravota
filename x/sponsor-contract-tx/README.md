@@ -2,7 +2,7 @@
 
 ## Overview
 
-The **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) enables smart contracts to automatically sponsor transaction fees for their users on Cosmos-based blockchains. This module solves the cold start problem in Web3 applications where new users need tokens to interact with CosmWasm smart contracts.
+The **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) enables CosmWasm contracts to automatically sponsor transaction fees for their users. It removes onboarding friction (users do not need tokens up-front) while giving contract owners fine-grained control over who is sponsored, how much gas can be consumed, and how sponsor funds are spent.
 
 ## Table of Contents
 
@@ -59,7 +59,7 @@ message ContractSponsor {
 - `creator_address`: Address of the creator who sets contract sponsorship status (used only for permission verification)
 - `sponsor_address`: The derived address that actually pays for sponsorship fees (deterministically derived from contract address using "sponsor" suffix)
 - **Actual funding account**: The sponsor_address bears all sponsorship fees
-- **Address derivation**: `sponsor_address = address.Derive(contract_address, []byte("sponsor"))`
+- **Address derivation**: `sponsor_address = sdk.AccAddress(address.Derive(contract_address, []byte("sponsor")))`
 - **Workflow**: 
   1. Admin sets up sponsorship using `set-sponsor` command
   2. Query the generated `sponsor_address` using `query sponsor status [contract-address]`
@@ -120,6 +120,8 @@ graph TD
 
 ### Transaction Validation Rules
 
+All sponsored transactions must pass structural checks **before** the contract policy is evaluated:
+
 **✅ ALLOWED: Single contract, multiple messages**
 
 ```json
@@ -161,6 +163,9 @@ graph TD
   }
 ]
 ```
+
+- **❌ Multi-signer batches** are rejected – sponsored transactions must have exactly one signer to prevent signature hijacking.
+- **💡 Zero-fee optimisation** – in CheckTx a zero-fee transaction bypasses sponsorship checks (mempool optimisation). DeliverTx will still run the fallback logic.
 
 ### Access Control
 
@@ -207,14 +212,6 @@ The module emits comprehensive events for monitoring and auditing:
   - Attributes: `contract_address`, `creator_address`
 - `update_params`: Module parameters updated via governance
   - Attributes: Updated parameter values
-
-### Query Events
-
-- `get_sponsor`: Sponsor data retrieved
-- `get_user_grant_usage`: User grant usage queried
-- `check_sponsorship`: Sponsorship status checked
-- `query_sponsors`: Sponsor list queried
-- `get_params`: Module parameters queried
 
 ## CLI Usage Guide
 
@@ -293,7 +290,7 @@ dorad tx sponsor delete-sponsor [contract-address] \
 ```bash
 # IMPORTANT: sponsor_address pays for sponsorship fees
 # First, query to get the sponsor_address
-dorad query sponsor status [contract-address]
+dorad query sponsor sponsor-info [contract-address]
 
 # Then transfer funds TO the sponsor_address, not the contract or creator address
 dorad tx bank send [admin-address] [sponsor-address] 10000000000000000000peaka \
@@ -344,7 +341,7 @@ Notes:
 #### 1. Get Sponsor Details
 
 ```bash
-dorad query sponsor status [contract-address] \
+dorad query sponsor sponsor-info [contract-address] \
   --chain-id [chain-id] \
   --gas auto \
   --gas-adjustment 1.5 \
@@ -382,7 +379,7 @@ dorad query sponsor all-sponsors \
 #### 1. Get User Grant Usage
 
 ```bash
-dorad query sponsor user-grant-usage [user-address] [contract-address]
+dorad query sponsor grant-usage [user-address] [contract-address]
 
 # Example output:
 # usage:
@@ -402,13 +399,13 @@ dorad query sponsor params
 # Example output:
 # params:
 #   sponsorship_enabled: true
-#   max_gas_per_sponsorship: "1000000"
+#   max_gas_per_sponsorship: "2500000"
 ```
 
 **Parameter Details:**
 
 - `sponsorship_enabled`: Global toggle for sponsorship functionality (default: `true`)
-- `max_gas_per_sponsorship`: Maximum gas limit for contract policy queries (default: `1000000`, max: `50000000`)
+- `max_gas_per_sponsorship`: Maximum gas limit for contract policy queries (default: `2_500_000`, max: `50_000_000`)
 
 **Governance Control:**
 
@@ -483,7 +480,7 @@ pub fn query_check_policy(
 
 ```bash
 # First, get the sponsor address after registration
-dorad query sponsor status [contract-address]
+dorad query sponsor sponsor-info [contract-address]
 
 # Ensure your sponsor address has sufficient balance for sponsorship
 dorad tx bank send [admin] [sponsor-address] [amount]peaka --from admin
@@ -503,20 +500,20 @@ dorad tx sponsor set-sponsor [contract-address] true <LIMIT_AMOUNT_DORA> \
 
 ```bash
 # Before submitting transactions, check if contract supports sponsorship
-dorad query sponsor status [contract-address]
+dorad query sponsor sponsor-info [contract-address]
 ```
 
 #### 2. Submit Sponsored Transactions
 
-Transactions are automatically sponsored if:
+Transactions are automatically sponsored only if **all** of the following hold:
 
-- Contract is registered for sponsorship
-- User passes contract's CheckPolicy
-- User has insufficient funds for fees (anti-abuse: users with sufficient balance pay themselves)
-- Contract has sufficient balance
-- User hasn't exceeded grant limits
-- No feegrant is set (feegrant takes priority)
-- Sponsorship is globally enabled
+- Contract is registered and `is_sponsored=true`
+- Contract policy (`check_policy`) returns `eligible=true`
+- User has insufficient spendable balance to cover the fee (users with sufficient balance always self-pay)
+- Sponsor address has enough spendable balance
+- User has not exceeded `max_grant_per_user`
+- Transaction does not specify a feegrant (feegrant takes precedence)
+- Global parameter `sponsorship_enabled` is `true`
 
 ```bash
 # Normal transaction - will be automatically sponsored if eligible
@@ -576,28 +573,37 @@ The sponsor module integrates into the Cosmos SDK AnteHandler chain:
 
 ### 2. Policy Implementation
 
-- Contracts must implement secure and efficient `CheckPolicy` logic
+- Contracts must implement secure and efficient `check_policy` logic
 - Policy queries consume gas during ante handler execution
 - Consider gas limits in node configuration (`query_gas_limit`)
+- Return descriptive `reason` strings so users can diagnose denials
 
 ### 3. Fund Management
 
 - **Sponsor addresses need sufficient balance monitoring**
-- Implement spending alerts and automatic funding mechanisms for sponsor_address accounts
-- Consider setting reasonable `max_grant_per_user` limits
+- Implement spending alerts/auto-top-up flows for sponsor_address accounts
+- `max_grant_per_user` must be non-empty when sponsorship is enabled; tune it to your budget
+- Sponsor addresses have no private keys; withdrawals must use `withdraw-sponsor-funds`
 
 ### 4. Abuse Prevention
 
 - Strict transaction structure validation prevents fee leeching
-- Only legitimate users who cannot afford the contract transaction gas fee will be sponsored. If the user can pay the fee themselves, the contract will not sponsor them even if they meet the sponsorship requirements.
-- Per-user grant limits prevent excessive consumption(In the current design, the module only implements the usage quota limit for each user of the sponsorship contract, and it is unified; each contract can customize this configuration. If the specific sponsorship contract has special settings, it can be implemented through `check_policy` in the contract logic, such as a `period` restriction, where a legitimate user must be sponsored within this period. If it is not within this time period, it will be rejected to prevent abuse.)
-- Event monitoring enables abuse detection
+- Users with sufficient balance always self-pay, even if policy returns eligible (anti-abuse priority)
+- Per-user grant limits prevent excessive consumption; additional throttling (time windows, frequency caps) should live in `check_policy`
+- Event monitoring enables abuse detection (`sponsorship_skipped`, `user_self_pay`, `sponsor_insufficient_funds`)
 
 ### 5. Gas Considerations
 
 - Policy queries consume gas during transaction validation
 - Set appropriate gas limits for contract queries
-- Consider implementing simple boolean flags for basic use cases
+- Keep contract policy logic simple; heavy logic risks hitting `max_gas_per_sponsorship`
+
+### Operational Best Practices
+
+- Monitor sponsor balances and usage via queries/events; automate replenishment where possible.
+- Keep `max_grant_per_user` aligned with expected contract usage; update via `update-sponsor` when business logic changes.
+- Record fallback events (`sponsorship_skipped`) to diagnose policy issues or missing contracts.
+- Add integration tests that cover CheckTx and DeliverTx behaviour, contract upgrades, and admin transfers.
 
 ## Implementation Status
 
