@@ -19,11 +19,6 @@ type msgServer struct {
 	bankKeeper types.BankKeeper
 }
 
-// NewMsgServerImpl returns an implementation of the MsgServer interface
-func NewMsgServerImpl(keeper Keeper) types.MsgServer {
-	return &msgServer{Keeper: keeper}
-}
-
 // NewMsgServerImplWithDeps returns a MsgServer with explicit dependencies
 func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper) types.MsgServer {
 	return &msgServer{Keeper: keeper, bankKeeper: bk}
@@ -236,6 +231,16 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 	sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
 	if !found {
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+	}
+
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	if err != nil {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
+	}
+
+	balance := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
+	if !balance.IsZero() {
+		return nil, errorsmod.Wrapf(types.ErrSponsorBalanceNotEmpty, "sponsor address %s holds %s", sponsor.SponsorAddress, balance.String())
 	}
 
 	// Delete the sponsor

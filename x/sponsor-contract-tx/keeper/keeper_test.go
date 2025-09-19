@@ -1073,8 +1073,8 @@ func TestNewKeeperAndBasicFunctions(t *testing.T) {
 
 // TestUpdateParams tests the UpdateParams message server function
 func TestUpdateParams(t *testing.T) {
-	keeper, ctx, _ := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, _, _, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
 	// Test with valid authority
 	authority := keeper.GetAuthority()
@@ -1248,8 +1248,7 @@ func TestLegacyQuerierFullCoverage(t *testing.T) {}
 
 // TestMsgServerComprehensiveSetSponsor tests SetSponsor message server with full coverage
 func TestMsgServerComprehensiveSetSponsor(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
@@ -1311,8 +1310,7 @@ func TestMsgServerComprehensiveSetSponsor(t *testing.T) {
 
 // TestMsgServerComprehensiveUpdateSponsor tests UpdateSponsor with full coverage
 func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
@@ -1320,13 +1318,14 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 	// Set up contract and initial sponsor
 	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-	initialSponsor := types.ContractSponsor{
-		ContractAddress: contractAddr,
-		CreatorAddress:  adminAddr.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(500)}},
-	}
-	err := keeper.SetSponsor(sdk.UnwrapSDKContext(ctx), initialSponsor)
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant)
+	_, err := msgServer.SetSponsor(ctx, setMsg)
+	require.NoError(t, err)
+	storedSponsor, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
+	require.True(t, found)
+	require.NotEmpty(t, storedSponsor.SponsorAddress)
+	_, err = sdk.AccAddressFromBech32(storedSponsor.SponsorAddress)
 	require.NoError(t, err)
 
 	// Test 1: Successful UpdateSponsor
@@ -1383,8 +1382,8 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 // TestMsgServerComprehensiveDeleteSponsor tests DeleteSponsor with full coverage
 func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, wasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
@@ -1392,13 +1391,14 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 
 	// Set up contract and initial sponsor
 	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-	initialSponsor := types.ContractSponsor{
-		ContractAddress: contractAddr,
-		CreatorAddress:  adminAddr.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(500)}},
-	}
-	err := keeper.SetSponsor(sdk.UnwrapSDKContext(ctx), initialSponsor)
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant)
+	_, err := msgServer.SetSponsor(ctx, setMsg)
+	require.NoError(t, err)
+	storedSponsor, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
+	require.True(t, found)
+	require.NotEmpty(t, storedSponsor.SponsorAddress)
+	_, err = sdk.AccAddressFromBech32(storedSponsor.SponsorAddress)
 	require.NoError(t, err)
 
 	// Test 1: Invalid creator address
@@ -1438,14 +1438,13 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify sponsor was deleted
-	_, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
+	_, found = keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
 	require.False(t, found)
 }
 
 // TestMsgServerComprehensiveWithdrawFunds tests WithdrawSponsorFunds with full coverage
 func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
@@ -1708,8 +1707,7 @@ func TestCompleteErrorPathCoverage(t *testing.T) {
 
 // TestMessageServerErrorPaths tests remaining message server error paths
 func TestMessageServerErrorPaths(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
 	contractAddr := sdk.AccAddress([]byte("msgservererrors_____")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
