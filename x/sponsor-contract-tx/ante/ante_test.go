@@ -1,7 +1,6 @@
 package sponsor
 
 import (
-	errorsmod "cosmossdk.io/errors"
 	"fmt"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -11,7 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/store"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/cosmos-sdk/types/address"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
@@ -35,6 +34,10 @@ func coinsToProtoCoins(coins sdk.Coins) []*sdk.Coin {
 		result[i] = &coinCopy
 	}
 	return result
+}
+
+func deriveSponsorAddress(contract sdk.AccAddress) sdk.AccAddress {
+	return sdk.AccAddress(address.Derive(contract, []byte("sponsor")))
 }
 
 // AnteTestSuite implements a test suite for ante handler testing
@@ -86,6 +89,24 @@ func (suite *AnteTestSuite) createAndFundSponsor(contractAddr sdk.AccAddress, is
 		err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, fundAmount)
 		suite.Require().NoError(err)
 	}
+}
+
+func (suite *AnteTestSuite) assertEventWithReason(events []sdk.Event, eventType, reason string) {
+	found := false
+	for _, ev := range events {
+		if ev.Type != eventType {
+			continue
+		}
+		attrs := make(map[string]string)
+		for _, a := range ev.Attributes {
+			attrs[a.Key] = a.Value
+		}
+		if attrs[types.AttributeKeyReason] == reason {
+			found = true
+			break
+		}
+	}
+	suite.Require().True(found, fmt.Sprintf("expected %s event with reason %s", eventType, reason))
 }
 
 type MockWasmKeeper struct {
@@ -291,14 +312,25 @@ func (suite *AnteTestSuite) SetupTest() {
 
 // Test case: Sponsorship disabled globally
 func (suite *AnteTestSuite) TestSponsorshipGloballyDisabled() {
+	// Prepare contract & sponsor
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+
 	// Disable sponsorship globally
-	var err error
 	params := types.DefaultParams()
 	params.SponsorshipEnabled = false
 	suite.keeper.SetParams(suite.ctx, params)
 
+	// Fund user so fallback paths never error on insufficient balance
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
+
 	// Create a contract execution transaction
-	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
 	// Mock next handler
 	nextCalled := false
@@ -927,80 +959,67 @@ func (suite *AnteTestSuite) TestGetMaxGrantPerUserWithDisabledSponsorship() {
 
 // validateSponsoredTransactionLegacy provides backward compatibility for tests
 // Returns (contractAddress, error) like the old function
-func validateSponsoredTransactionLegacy(tx sdk.Tx) (string, error) {
-	validation := validateSponsoredTransaction(tx)
-	if !validation.SuggestSponsor {
-		if validation.SkipReason == "no messages in transaction" ||
-			strings.Contains(validation.SkipReason, "non-contract message") {
-			return "", nil
-		}
-		// For mixed messages or multiple contracts, return error for test compatibility
-		return "", errorsmod.Wrap(sdkerrors.ErrUnauthorized, validation.SkipReason)
-	}
-	return validation.ContractAddress, nil
-}
-
-// TestValidateSponsoredTransactionLogic tests transaction validation logic for sponsorship
-// This covers single/multiple messages, mixed message types, and contract validation
+// TestValidateSponsoredTransactionLogic ensures the validation helper enforces structural rules
 func (suite *AnteTestSuite) TestValidateSponsoredTransactionLogic() {
-	// Test case 1: Check that ValidateSponsoredTransaction works correctly
-	// We'll use the existing test helper functions to validate transaction structure
-
-	// Single contract execution message should be valid
+	// Single contract execution message should be suggested
 	tx1 := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransactionLegacy(tx1)
-	suite.Require().NoError(err, "Single contract execution should be valid")
+	res := validateSponsoredTransaction(tx1)
+	suite.Require().True(res.SuggestSponsor)
+	suite.Require().Equal(suite.contract.String(), res.ContractAddress)
+	suite.Require().Empty(res.SkipReason)
 
-	// Test case 2: Multiple different contracts should be invalid
-	contractAddr2 := sdk.AccAddress("contract2___________")
-	mixedContractTx := suite.createMultiSignerContractExecuteTx(contractAddr2, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransactionLegacy(mixedContractTx)
-	// This should pass since it's a single contract, just different from our test contract
-	suite.Require().NoError(err)
-
-	// Test case 3: Verify bank transaction validation
-	// Note: validateSponsoredTransaction checks if a transaction can be sponsored
-	// It should reject transactions with non-contract messages
+	// Mixed contract + bank message should skip sponsorship with reason
 	bankTx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransactionLegacy(bankTx)
-	// Bank transactions should be rejected for sponsorship but the function might allow them to pass through
-	// Let's check the actual behavior - if no error, it means it passes validation but won't be sponsored
-	if err != nil {
-		suite.Require().Contains(err.Error(), "non-contract")
-	} else {
-		// This means bank transactions pass validateSponsoredTransaction but won't be processed for sponsorship
-		// which is acceptable behavior
-		suite.T().Log("Bank transactions pass validation but won't be sponsored")
+	mixedMsgs := MockTx{
+		msgs:       append(tx1.GetMsgs(), bankTx.GetMsgs()...),
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		gasLimit:   200000,
+		feePayer:   suite.user,
+		feeGranter: nil,
 	}
+	mixedRes := validateSponsoredTransaction(mixedMsgs)
+	suite.Require().False(mixedRes.SuggestSponsor)
+	suite.Require().Contains(mixedRes.SkipReason, "mixed messages")
+
+	// Bank-only transaction should not suggest sponsorship and provide empty reason (simple passthrough)
+	bankOnlyRes := validateSponsoredTransaction(bankTx)
+	suite.Require().False(bankOnlyRes.SuggestSponsor)
+	suite.Require().Empty(bankOnlyRes.SkipReason)
+
+	// Multiple contract messages (same contract) are allowed
+	txMulti := suite.createMultiSignerContractExecuteTx(suite.contract, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+	multiRes := validateSponsoredTransaction(txMulti)
+	suite.Require().True(multiRes.SuggestSponsor)
+	suite.Require().Equal(suite.contract.String(), multiRes.ContractAddress)
 }
 
 // TestPreventMessageHitchhiking tests prevention of unauthorized message bundling
 // This ensures only sponsored contract messages are allowed in sponsored transactions
 func (suite *AnteTestSuite) TestPreventMessageHitchhiking() {
-	// Set up contract and sponsorship
+	// Set up contract and sponsorship for our contract
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: coinsToProtoCoins(maxGrant),
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins())
 
-	// Create transaction with mixed message types (contract + bank)
-	contractAddr2 := sdk.AccAddress("contract2___________")
-	mixedTx := suite.createMultiSignerContractExecuteTx(contractAddr2, []sdk.AccAddress{suite.user}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+	// Create transaction mixing contract call + bank send (should skip sponsorship)
+	bankTx := suite.createBankSendTx(suite.user, suite.admin, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	contractTx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	mixedTx := MockTx{
+		msgs:       append(contractTx.GetMsgs(), bankTx.GetMsgs()...),
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))),
+		gasLimit:   200000,
+		feePayer:   suite.user,
+		feeGranter: nil,
+	}
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
 	}
 
-	// Should be rejected due to mixed message types not being the sponsored contract
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, mixedTx, false, next)
-	suite.Require().NoError(err) // Should pass through as contract2 is not sponsored
+	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+	_, err := suite.anteDecorator.AnteHandle(deliverCtx, mixedTx, false, next)
+	suite.Require().NoError(err)
+	suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", suite.contract.String(), sdk.MsgTypeURL(bankTx.GetMsgs()[0])))
 }
 
 // TestPolicyBypassPrevention tests prevention of policy bypass attempts
@@ -1200,7 +1219,13 @@ func (suite *AnteTestSuite) TestErrorWrappingConsistency() {
 	var err error
 	// Test 1: Contract not found error
 	nonExistentContract := sdk.AccAddress("nonexistent________")
-	tx := suite.createContractExecuteTx(nonExistentContract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
+
+	tx := suite.createContractExecuteTx(nonExistentContract, suite.user, fee)
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
@@ -1208,7 +1233,7 @@ func (suite *AnteTestSuite) TestErrorWrappingConsistency() {
 
 	// Should pass through since contract is not sponsored
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
-	suite.Require().NoError(err) // Non-sponsored contracts should pass through
+	suite.Require().NoError(err) // Non-sponsored contracts should fall back to user self-pay
 
 	// Test 2: Invalid sponsor configuration
 	_, err = suite.keeper.GetMaxGrantPerUser(suite.ctx, "invalid-contract")
@@ -1251,24 +1276,32 @@ func (suite *AnteTestSuite) TestAnteHandlerStateConsistency() {
 	suite.Require().Equal(initialUsedAmount, finalUsedAmount, "Ante handler should not modify user grant usage in CheckTx")
 }
 
-// TestSignerAndFeePayerConsistency tests validation of transaction signer/fee payer relationships
-// This ensures proper authorization and prevents fee payment attacks
+// TestSignerAndFeePayerConsistency exercises getUserAddressForSponsorship helper
 func (suite *AnteTestSuite) TestSignerAndFeePayerConsistency() {
-	// This test verifies that validateSponsoredTransaction properly checks signer consistency
-	// The current implementation in ante_test.go already includes multi-signer tests
-
-	// Test case: Single signer transaction should be valid
-	singleSignerTx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err := validateSponsoredTransactionLegacy(singleSignerTx)
+	// Single signer transaction should return that signer
+	txSingle := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
+	addr, err := suite.anteDecorator.getUserAddressForSponsorship(txSingle)
 	suite.Require().NoError(err)
+	suite.Require().True(addr.Equals(suite.user))
 
-	// Test case: Multi-signer transaction validation is handled by existing TestMultiSignerTransactionRejected
-	// We can verify that the validation function properly handles this case
-	multiSignerTx := suite.createMultiSignerContractExecuteTx(suite.contract, []sdk.AccAddress{suite.user, suite.admin}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
-	_, err = validateSponsoredTransactionLegacy(multiSignerTx)
-	// The validation should handle multiple signers appropriately
-	// Based on the existing logic, this may pass through but won't be processed for sponsorship
-	suite.Require().NoError(err)
+	// Multi-signer transaction should be rejected
+	multiSignerTx := suite.createMultiSignerContractExecuteTx(suite.contract, []sdk.AccAddress{suite.user, suite.admin}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
+	_, err = suite.anteDecorator.getUserAddressForSponsorship(multiSignerTx)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "signer mismatch")
+
+	// Fee payer must match signer
+	feePayer := sdk.AccAddress("different_feepayer___")
+	txWithFeePayer := MockTx{
+		msgs:       txSingle.GetMsgs(),
+		fee:        sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))),
+		gasLimit:   200000,
+		feePayer:   feePayer,
+		feeGranter: nil,
+	}
+	_, err = suite.anteDecorator.getUserAddressForSponsorship(txWithFeePayer)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "FeePayer")
 }
 
 // TestFeeBelowRequiredRejected tests that transactions with fees below required minimum are rejected
@@ -1727,21 +1760,18 @@ func (suite *AnteTestSuite) TestContractLevelSponsorshipDisabledEvent() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	// Create sponsor with IsSponsored=false
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     false,
-		MaxGrantPerUser: []*sdk.Coin{},
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	// Create sponsor with IsSponsored=false (no funding required)
+	suite.createAndFundSponsor(suite.contract, false, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000))), sdk.Coins{})
 
 	// Use DeliverTx mode to capture events
 	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
 
 	// Create a contract execution transaction
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
@@ -1770,22 +1800,14 @@ func (suite *AnteTestSuite) TestContractLevelSponsorshipDisabledEvent() {
 func (suite *AnteTestSuite) TestEarlyReturnZeroFeeSkipsPolicyQuery() {
 	suite.wasmKeeper.ResetQueryCount()
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-
-	// Set sponsored contract
-	sponsor := types.ContractSponsor{
-		ContractAddress: suite.contract.String(),
-		CreatorAddress:  suite.admin.String(),
-		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
-	}
-	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
-	suite.Require().NoError(err)
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	// Zero fee tx
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins())
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
 
-	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
 	suite.Require().NoError(err)
 	suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "Zero-fee should skip policy query")
 }
@@ -1841,15 +1863,22 @@ func (suite *AnteTestSuite) TestEarlyReturnContractNotFoundSkipsPolicyQuery() {
 	sponsor := types.ContractSponsor{
 		ContractAddress: suite.contract.String(),
 		CreatorAddress:  suite.admin.String(),
+		SponsorAddress:  deriveSponsorAddress(suite.contract).String(),
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}},
 	}
 	err := suite.keeper.SetSponsor(suite.ctx, sponsor)
 	suite.Require().NoError(err)
 
+	// Fund user so fallback can succeed
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	err = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+	suite.Require().NoError(err)
+	err = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+	suite.Require().NoError(err)
+
 	// DeliverTx to capture event
 	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
 
@@ -1858,20 +1887,7 @@ func (suite *AnteTestSuite) TestEarlyReturnContractNotFoundSkipsPolicyQuery() {
 	suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "Contract-not-found should skip policy query")
 
 	// Check sponsorship_skipped (contract_not_found)
-	found := false
-	for _, ev := range deliverCtx.EventManager().Events() {
-		if ev.Type == types.EventTypeSponsorshipSkipped {
-			attrs := map[string]string{}
-			for _, a := range ev.Attributes {
-				attrs[a.Key] = a.Value
-			}
-			if attrs[types.AttributeKeyReason] == "contract_not_found" {
-				found = true
-				break
-			}
-		}
-	}
-	suite.Require().True(found, "Expected sponsorship_skipped with reason contract_not_found")
+	suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, "contract_not_found")
 }
 
 // TestSponsorshipSkippedEventAttributes validates emitted attributes for mixed/non-contract transactions
@@ -1905,7 +1921,7 @@ func (suite *AnteTestSuite) TestSponsorshipSkippedEventAttributes() {
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
 	_, err = suite.anteDecorator.AnteHandle(ctx, mixedTx, false, next)
 	suite.Require().NoError(err)
-	// Verify event with transaction_type=mixed_messages_tx
+	// Verify event reason mentions mixed messages
 	foundMixed := false
 	for _, ev := range ctx.EventManager().Events() {
 		if ev.Type == types.EventTypeSponsorshipSkipped {
@@ -1913,32 +1929,21 @@ func (suite *AnteTestSuite) TestSponsorshipSkippedEventAttributes() {
 			for _, a := range ev.Attributes {
 				attrs[a.Key] = a.Value
 			}
-			if attrs[types.AttributeKeyTransactionType] == "mixed_messages_tx" {
+			if reason, ok := attrs[types.AttributeKeyReason]; ok && strings.Contains(reason, "transaction contains mixed messages") {
 				foundMixed = true
 				break
 			}
 		}
 	}
-	suite.Require().True(foundMixed, "Expected sponsorship_skipped with transaction_type=mixed_messages_tx")
+	suite.Require().True(foundMixed, "expected sponsorship_skipped reason to mention mixed messages")
 
 	// Non-contract start: bank-only tx
 	ctx2 := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
 	_, err = suite.anteDecorator.AnteHandle(ctx2, bankTx, false, next)
 	suite.Require().NoError(err)
-	foundNonContract := false
 	for _, ev := range ctx2.EventManager().Events() {
-		if ev.Type == types.EventTypeSponsorshipSkipped {
-			attrs := map[string]string{}
-			for _, a := range ev.Attributes {
-				attrs[a.Key] = a.Value
-			}
-			if attrs[types.AttributeKeyTransactionType] == "non_contract_tx" {
-				foundNonContract = true
-				break
-			}
-		}
+		suite.Require().NotEqual(types.EventTypeSponsorshipSkipped, ev.Type, "non-contract transactions should pass through without sponsorship event")
 	}
-	suite.Require().True(foundNonContract, "Expected sponsorship_skipped with transaction_type=non_contract_tx")
 }
 
 // TestContractQueryFailureRecovery tests graceful handling of contract query failures
@@ -3177,47 +3182,27 @@ func TestAnteTestSuite(t *testing.T) {
 // Additional individual test functions for edge cases
 
 func TestValidateSponsoredTransaction(t *testing.T) {
-	// Test mixed message types
 	msgs := []sdk.Msg{
-		&wasmtypes.MsgExecuteContract{
-			Sender:   "sender",
-			Contract: "contract1",
-		},
-		&banktypes.MsgSend{
-			FromAddress: "sender",
-			ToAddress:   "receiver",
-		},
+		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract1"},
+		&banktypes.MsgSend{FromAddress: "sender", ToAddress: "receiver"},
 	}
 
-	tx := MockTx{
-		msgs: msgs,
-	}
-
-	_, err := validateSponsoredTransactionLegacy(tx)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "mixed messages")
+	tx := MockTx{msgs: msgs}
+	res := validateSponsoredTransaction(tx)
+	require.False(t, res.SuggestSponsor)
+	require.Contains(t, res.SkipReason, "mixed messages")
 }
 
 func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
-	// Test multiple different contracts
 	msgs := []sdk.Msg{
-		&wasmtypes.MsgExecuteContract{
-			Sender:   "sender",
-			Contract: "contract1",
-		},
-		&wasmtypes.MsgExecuteContract{
-			Sender:   "sender",
-			Contract: "contract2",
-		},
+		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract1"},
+		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract2"},
 	}
 
-	tx := MockTx{
-		msgs: msgs,
-	}
-
-	_, err := validateSponsoredTransactionLegacy(tx)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "multiple contracts")
+	tx := MockTx{msgs: msgs}
+	res := validateSponsoredTransaction(tx)
+	require.False(t, res.SuggestSponsor)
+	require.Contains(t, res.SkipReason, "multiple contracts")
 }
 
 // HighGasConsumingMockWasmKeeper simulates a malicious contract that consumes excessive gas

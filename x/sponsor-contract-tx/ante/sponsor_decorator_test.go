@@ -48,8 +48,14 @@ type SponsorDecoratorTestSuite struct {
 
 // MockTxFeeChecker implements ante.TxFeeChecker for testing
 func mockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
-	// Return minimum fee of 100peaka for testing
 	minFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return nil, 0, fmt.Errorf("tx must implement FeeTx")
+	}
+	if !feeTx.GetFee().IsAllGTE(minFee) {
+		return nil, 0, fmt.Errorf("insufficient fees; got: %s required: %s", feeTx.GetFee(), minFee)
+	}
 	priority := int64(1)
 	return minFee, priority, nil
 }
@@ -248,7 +254,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
-	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+	ctxWithSponsor := suite.ctx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
@@ -350,7 +356,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 		Fee:          invalidFee,
 		IsSponsored:  true,
 	}
-	ctxWithInvalidSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPaymentInvalid)
+	ctxWithInvalidSponsor := suite.ctx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPaymentInvalid)
 
 	txInvalid := suite.createContractExecuteTx(suite.contract, suite.user, invalidFee)
 
@@ -407,11 +413,12 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	finalFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	// Sponsor should have less balance
-	expectedSponsorBalance := initialSponsorBalance.Sub(fee[0])
+	minRequiredFee := sdk.NewCoin("peaka", sdk.NewInt(100))
+	expectedSponsorBalance := initialSponsorBalance.Sub(minRequiredFee)
 	suite.Require().True(finalSponsorBalance.IsEqual(expectedSponsorBalance))
 
 	// Fee collector should have more balance
-	expectedFeeCollectorBalance := initialFeeCollectorBalance.Add(fee[0])
+	expectedFeeCollectorBalance := initialFeeCollectorBalance.Add(minRequiredFee)
 	suite.Require().True(finalFeeCollectorBalance.IsEqual(expectedFeeCollectorBalance))
 }
 
@@ -445,7 +452,8 @@ func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
-	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
+	cacheCtx, _ := suite.ctx.CacheContext()
+	ctxWithSponsor := cacheCtx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
@@ -539,15 +547,25 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 // TestInsufficientSponsorBalance tests handling of insufficient sponsor balance
 // This ensures proper error handling when sponsor cannot pay fees
 func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
 
-	// Don't fund the sponsor account (insufficient balance)
-	// Use a dummy sponsor address for this test since we're testing insufficient funds
-	dummySponsorAddr := sdk.AccAddress("sponsor_____________")
+	// Register sponsor without funding the derived sponsor address
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	suite.Require().NoError(err)
+
+	// Create an empty account for the sponsor address so the transfer fails with insufficient funds
+	emptyAccount := suite.accountKeeper.NewAccountWithAddress(suite.ctx, sponsorAddr)
+	suite.accountKeeper.SetAccount(suite.ctx, emptyAccount)
 
 	sponsorPayment := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
-		SponsorAddr:  dummySponsorAddr,
+		SponsorAddr:  sponsorAddr,
 		UserAddr:     suite.user,
 		Fee:          fee,
 		IsSponsored:  true,
@@ -561,9 +579,9 @@ func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 	}
 
 	// Should fail due to insufficient sponsor balance
-	_, err := suite.sponsorDecorator.AnteHandle(ctxWithSponsor, tx, false, next)
+	_, err = suite.sponsorDecorator.AnteHandle(ctxWithSponsor, tx, false, next)
 	suite.Require().Error(err)
-	suite.Require().Contains(err.Error(), "failed to deduct sponsor fee")
+	suite.Require().Contains(err.Error(), "insufficient funds")
 }
 
 // TestUserGrantUsageUpdate tests that user grant usage is properly updated in DeliverTx
