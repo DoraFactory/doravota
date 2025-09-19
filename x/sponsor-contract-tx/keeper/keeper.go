@@ -350,6 +350,38 @@ func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractS
 	}
 }
 
+// IterateUserGrantUsages iterates over all user grant usage entries and calls the provided callback
+func (k Keeper) IterateUserGrantUsages(ctx sdk.Context, cb func(usage types.UserGrantUsage) (stop bool)) {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.UserGrantUsageKeyPrefix)
+	iterator := sdk.KVStorePrefixIterator(store, []byte{})
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		var usage types.UserGrantUsage
+
+		if err := k.cdc.Unmarshal(iterator.Value(), &usage); err != nil {
+			k.Logger(ctx).Error("failed to unmarshal user grant usage during iteration", "error", err)
+			continue
+		}
+
+		if cb(usage) {
+			break
+		}
+	}
+}
+
+// GetAllUserGrantUsages returns every user grant usage entry in the store
+func (k Keeper) GetAllUserGrantUsages(ctx sdk.Context) []types.UserGrantUsage {
+	var usages []types.UserGrantUsage
+
+	k.IterateUserGrantUsages(ctx, func(usage types.UserGrantUsage) bool {
+		usages = append(usages, usage)
+		return false
+	})
+
+	return usages
+}
+
 // GetSponsorsPaginated returns sponsors with pagination support
 func (k Keeper) GetSponsorsPaginated(ctx sdk.Context, pageReq *query.PageRequest) ([]*types.ContractSponsor, *query.PageResponse, error) {
 	var sponsors []*types.ContractSponsor

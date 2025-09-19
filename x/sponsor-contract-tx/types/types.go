@@ -346,9 +346,10 @@ func (msg *MsgDeleteSponsor) XXX_MessageName() string {
 // === Genesis State ===
 
 // NewGenesisState creates a new GenesisState instance
-func NewGenesisState(sponsors []*ContractSponsor) *GenesisState {
+func NewGenesisState(sponsors []*ContractSponsor, userGrantUsages []*UserGrantUsage) *GenesisState {
 	return &GenesisState{
-		Sponsors: sponsors,
+		Sponsors:        sponsors,
+		UserGrantUsages: userGrantUsages,
 	}
 }
 
@@ -356,8 +357,9 @@ func NewGenesisState(sponsors []*ContractSponsor) *GenesisState {
 func DefaultGenesisState() *GenesisState {
 	params := DefaultParams()
 	return &GenesisState{
-		Sponsors: []*ContractSponsor{},
-		Params:   &params,
+		Sponsors:        []*ContractSponsor{},
+		Params:          &params,
+		UserGrantUsages: []*UserGrantUsage{},
 	}
 }
 
@@ -378,6 +380,28 @@ func ValidateGenesis(data GenesisState) error {
 		if sponsor.ContractAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor contract address cannot be empty")
 		}
+	}
+
+	// Validate user grant usages
+	seenUsage := make(map[string]struct{})
+	for _, usage := range data.UserGrantUsages {
+		if usage == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
+		}
+
+		if usage.UserAddress == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
+		}
+
+		if usage.ContractAddress == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage contract address cannot be empty")
+		}
+
+		key := usage.UserAddress + "/" + usage.ContractAddress
+		if _, found := seenUsage[key]; found {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate user grant usage for user %s and contract %s", usage.UserAddress, usage.ContractAddress)
+		}
+		seenUsage[key] = struct{}{}
 	}
 
 	// Validate parameters

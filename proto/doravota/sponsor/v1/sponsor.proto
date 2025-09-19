@@ -21,6 +21,7 @@ message ContractSponsor {
 message GenesisState {
   repeated ContractSponsor sponsors = 1;
   Params params = 2;
+  repeated UserGrantUsage user_grant_usages = 3;
 }
 
 // UserGrantUsage tracks how much grant a user has used for a specific contract

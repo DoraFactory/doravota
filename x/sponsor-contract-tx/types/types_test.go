@@ -83,6 +83,7 @@ func TestGenesisState(t *testing.T) {
 	genState := DefaultGenesisState()
 	require.NotNil(t, genState)
 	require.Empty(t, genState.Sponsors)
+	require.Empty(t, genState.UserGrantUsages)
 
 	// Test genesis validation
 	err := ValidateGenesis(*genState)
@@ -100,7 +101,7 @@ func TestGenesisState(t *testing.T) {
 		},
 	}
 
-	genState = NewGenesisState(sponsors)
+	genState = NewGenesisState(sponsors, []*UserGrantUsage{})
 	require.Equal(t, 2, len(genState.Sponsors))
 
 	err = ValidateGenesis(*genState)
@@ -120,7 +121,7 @@ func TestGenesisValidation(t *testing.T) {
 		},
 	}
 
-	genState := NewGenesisState(sponsors)
+	genState := NewGenesisState(sponsors, []*UserGrantUsage{})
 	err := ValidateGenesis(*genState)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate sponsor contract address")
@@ -133,8 +134,51 @@ func TestGenesisValidation(t *testing.T) {
 		},
 	}
 
-	genState = NewGenesisState(sponsors)
+	genState = NewGenesisState(sponsors, []*UserGrantUsage{})
 	err = ValidateGenesis(*genState)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "contract address cannot be empty")
+
+	// Test duplicate user grant usage entries
+	usages := []*UserGrantUsage{
+		{
+			UserAddress:     "cosmos1user",
+			ContractAddress: "cosmos1test1",
+		},
+		{
+			UserAddress:     "cosmos1user",
+			ContractAddress: "cosmos1test1",
+		},
+	}
+
+	genState = NewGenesisState([]*ContractSponsor{}, usages)
+	err = ValidateGenesis(*genState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate user grant usage")
+
+	// Test empty user address in usage
+	usages = []*UserGrantUsage{
+		{
+			UserAddress:     "",
+			ContractAddress: "cosmos1test1",
+		},
+	}
+
+	genState = NewGenesisState([]*ContractSponsor{}, usages)
+	err = ValidateGenesis(*genState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user grant usage user address cannot be empty")
+
+	// Test empty contract address in usage
+	usages = []*UserGrantUsage{
+		{
+			UserAddress:     "cosmos1user",
+			ContractAddress: "",
+		},
+	}
+
+	genState = NewGenesisState([]*ContractSponsor{}, usages)
+	err = ValidateGenesis(*genState)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user grant usage contract address cannot be empty")
 }

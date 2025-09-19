@@ -255,6 +255,16 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 				MaxGrantPerUser: []*sdk.Coin{},
 			},
 		},
+		UserGrantUsages: []*types.UserGrantUsage{
+			{
+				UserAddress:     suite.user1.String(),
+				ContractAddress: suite.contractAddr1,
+				TotalGrantUsed: []*sdk.Coin{
+					{Denom: "peaka", Amount: sdk.NewInt(750)},
+				},
+				LastUsedTime: 123456789,
+			},
+		},
 	}
 
 	// Initialize genesis
@@ -277,13 +287,14 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	suite.Require().Equal(suite.contractAddr2, sponsor2.ContractAddress)
 	suite.Require().False(sponsor2.IsSponsored)
 
-	// Verify that user grant usage tracking works correctly
-	// (UserGrantUsage is not part of genesis, it's managed through keeper methods)
+	// Verify that user grant usage state was restored from genesis
 	usage1 := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user1.String(), suite.contractAddr1)
 	suite.Require().Equal(suite.user1.String(), usage1.UserAddress)
 	suite.Require().Equal(suite.contractAddr1, usage1.ContractAddress)
-	suite.Require().Empty(usage1.TotalGrantUsed)         // Should be empty initially
-	suite.Require().Equal(int64(0), usage1.LastUsedTime) // Should be 0 initially
+	suite.Require().Len(usage1.TotalGrantUsed, 1)
+	suite.Require().Equal("peaka", usage1.TotalGrantUsed[0].Denom)
+	suite.Require().True(usage1.TotalGrantUsed[0].Amount.Equal(sdk.NewInt(750)))
+	suite.Require().Equal(int64(123456789), usage1.LastUsedTime)
 
 	// Export genesis and compare
 	exportedGenesis := sponsor.ExportGenesis(suite.ctx, suite.keeper)
@@ -294,6 +305,7 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 
 	// Compare sponsors count
 	suite.Require().Len(exportedGenesis.Sponsors, len(originalGenesis.Sponsors))
+	suite.Require().Len(exportedGenesis.UserGrantUsages, len(originalGenesis.UserGrantUsages))
 
 	// Find and compare each sponsor
 	exportedSponsorMap := make(map[string]*types.ContractSponsor)
@@ -309,8 +321,22 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 		suite.Require().Equal(len(originalSponsor.MaxGrantPerUser), len(exportedSponsor.MaxGrantPerUser))
 	}
 
-	// Note: UserGrantUsages are not part of the protobuf GenesisState
-	// They are managed separately through keeper methods and not exported/imported in genesis
+	// Compare exported user grant usages
+	exportedUsageMap := make(map[string]*types.UserGrantUsage)
+	for _, usage := range exportedGenesis.UserGrantUsages {
+		exportedUsageMap[usage.UserAddress+"/"+usage.ContractAddress] = usage
+	}
+
+	for _, originalUsage := range originalGenesis.UserGrantUsages {
+		exportedUsage, found := exportedUsageMap[originalUsage.UserAddress+"/"+originalUsage.ContractAddress]
+		suite.Require().True(found, "User grant usage should be exported: %s/%s", originalUsage.UserAddress, originalUsage.ContractAddress)
+		suite.Require().Equal(originalUsage.LastUsedTime, exportedUsage.LastUsedTime)
+		suite.Require().Equal(len(originalUsage.TotalGrantUsed), len(exportedUsage.TotalGrantUsed))
+		for i := range originalUsage.TotalGrantUsed {
+			suite.Require().Equal(originalUsage.TotalGrantUsed[i].Denom, exportedUsage.TotalGrantUsed[i].Denom)
+			suite.Require().True(originalUsage.TotalGrantUsed[i].Amount.Equal(exportedUsage.TotalGrantUsed[i].Amount))
+		}
+	}
 }
 
 // TestGenesisRoundTrip tests that genesis init->export->init produces identical state
@@ -329,6 +355,16 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 				MaxGrantPerUser: []*sdk.Coin{
 					{Denom: "peaka", Amount: sdk.NewInt(10000)},
 				},
+			},
+		},
+		UserGrantUsages: []*types.UserGrantUsage{
+			{
+				UserAddress:     suite.user1.String(),
+				ContractAddress: suite.contractAddr1,
+				TotalGrantUsed: []*sdk.Coin{
+					{Denom: "peaka", Amount: sdk.NewInt(250)},
+				},
+				LastUsedTime: 987654321,
 			},
 		},
 	}
@@ -352,6 +388,7 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	suite.Require().Equal(firstExport.Params.SponsorshipEnabled, secondExport.Params.SponsorshipEnabled)
 	suite.Require().Equal(firstExport.Params.MaxGasPerSponsorship, secondExport.Params.MaxGasPerSponsorship)
 	suite.Require().Len(secondExport.Sponsors, len(firstExport.Sponsors))
+	suite.Require().Len(secondExport.UserGrantUsages, len(firstExport.UserGrantUsages))
 
 	// Compare sponsors in detail
 	if len(firstExport.Sponsors) > 0 && len(secondExport.Sponsors) > 0 {
@@ -360,15 +397,20 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 		suite.Require().Equal(firstExport.Sponsors[0].IsSponsored, secondExport.Sponsors[0].IsSponsored)
 	}
 
-	// Note: UserGrantUsages comparison not needed as they're not part of genesis
+	if len(firstExport.UserGrantUsages) > 0 && len(secondExport.UserGrantUsages) > 0 {
+		suite.Require().Equal(firstExport.UserGrantUsages[0].UserAddress, secondExport.UserGrantUsages[0].UserAddress)
+		suite.Require().Equal(firstExport.UserGrantUsages[0].ContractAddress, secondExport.UserGrantUsages[0].ContractAddress)
+		suite.Require().Equal(firstExport.UserGrantUsages[0].LastUsedTime, secondExport.UserGrantUsages[0].LastUsedTime)
+	}
 }
 
 // TestEmptyGenesis tests initialization with minimal genesis state
 func (suite *GenesisTestSuite) TestEmptyGenesis() {
 	params := types.DefaultParams()
 	emptyGenesis := &types.GenesisState{
-		Params:   &params,
-		Sponsors: []*types.ContractSponsor{},
+		Params:          &params,
+		Sponsors:        []*types.ContractSponsor{},
+		UserGrantUsages: []*types.UserGrantUsage{},
 	}
 
 	// Should not panic
@@ -377,6 +419,7 @@ func (suite *GenesisTestSuite) TestEmptyGenesis() {
 	// Export should return empty lists
 	exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
 	suite.Require().Empty(exported.Sponsors)
+	suite.Require().Empty(exported.UserGrantUsages)
 
 	// Parameters should be set to defaults
 	params = suite.keeper.GetParams(suite.ctx)
