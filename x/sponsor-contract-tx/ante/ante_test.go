@@ -68,7 +68,7 @@ func (suite *AnteTestSuite) createAndFundSponsor(contractAddr sdk.AccAddress, is
 		maxGrant,
 	)
 
-	msgServer := keeper.NewMsgServerImpl(suite.keeper)
+	msgServer := keeper.NewMsgServerImplWithDeps(suite.keeper, suite.bankKeeper)
 	ctx := sdk.WrapSDKContext(suite.ctx)
 	_, err := msgServer.SetSponsor(ctx, msgSetSponsor)
 	suite.Require().NoError(err)

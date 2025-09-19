@@ -21,4 +21,5 @@ var (
 	ErrContractNotAdmin       = sdkerrors.Register(ModuleName, 13, "not contract admin")
 	ErrUserGrantLimitExceeded = sdkerrors.Register(ModuleName, 14, "user grant limit exceeded")
 	ErrInvalidAuthority       = sdkerrors.Register(ModuleName, 15, "invalid authority")
+	ErrSponsorBalanceNotEmpty = sdkerrors.Register(ModuleName, 16, "sponsor address balance must be zero before deletion")
 )

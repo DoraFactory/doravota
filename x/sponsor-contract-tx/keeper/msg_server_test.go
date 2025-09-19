@@ -84,9 +84,14 @@ func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, au
 	return *k, ctx, mockWasmKeeper, accountKeeper, bankKeeper
 }
 
+func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *MockWasmKeeper, bankkeeper.Keeper) {
+	keeper, ctx, mockWasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
+}
+
 func TestMsgServer_SetSponsor(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	server := NewMsgServerImpl(keeper)
+	_, ctx, server, _, _ := setupMsgServerEnv(t)
 
 	msg := &types.MsgSetSponsor{
 		Creator:         "dora1xyz000000000000000000000000000000000000000000000000000000x",
@@ -102,8 +107,7 @@ func TestMsgServer_SetSponsor(t *testing.T) {
 }
 
 func TestMsgServer_UpdateSponsor(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	server := NewMsgServerImpl(keeper)
+	keeper, ctx, server, _, _ := setupMsgServerEnv(t)
 
 	contractAddr := "dora1abc000000000000000000000000000000000000000000000000000000x"
 
@@ -128,8 +132,7 @@ func TestMsgServer_UpdateSponsor(t *testing.T) {
 }
 
 func TestMsgServer_DeleteSponsor(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	server := NewMsgServerImpl(keeper)
+	keeper, ctx, server, _, _ := setupMsgServerEnv(t)
 
 	contractAddr := "dora1abc000000000000000000000000000000000000000000000000000000x"
 
@@ -153,8 +156,7 @@ func TestMsgServer_DeleteSponsor(t *testing.T) {
 }
 
 func TestMsgServerEventEmission(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	_, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	// Create event manager for testing
 	eventManager := sdk.NewEventManager()
@@ -178,8 +180,7 @@ func TestMsgServerEventEmission(t *testing.T) {
 }
 
 func TestMsgServerUpdateEventEmission(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	// First set a sponsor
 	contractAddr := "dora1abc000000000000000000000000000000000000000000000000000000x"
@@ -211,8 +212,7 @@ func TestMsgServerUpdateEventEmission(t *testing.T) {
 }
 
 func TestMsgServerDeleteEventEmission(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	// First set a sponsor
 	contractAddr := "dora1abc000000000000000000000000000000000000000000000000000000x"
@@ -243,8 +243,7 @@ func TestMsgServerDeleteEventEmission(t *testing.T) {
 }
 
 func TestMsgServerWorkflow(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	contractAddr := "dora1abc000000000000000000000000000000000000000000000000000000x"
 	signer := "dora1xyz000000000000000000000000000000000000000000000000000000x"
@@ -304,8 +303,7 @@ func TestMsgServerWorkflow(t *testing.T) {
 }
 
 func TestMsgServerMultipleSponsors(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	signer := "dora1xyz000000000000000000000000000000000000000000000000000000x"
 	contracts := []string{
@@ -394,8 +392,7 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 
 // TestMsgServerAdminPermissions tests that only contract admins can manage sponsors
 func TestMsgServerAdminPermissions(t *testing.T) {
-	keeper, ctx, mockWasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
 	// Generate base addresses for different test cases
 	baseContractAddr := "base_contract_addr"
@@ -510,8 +507,7 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 
 // TestMsgServerInvalidAddresses tests error handling for invalid addresses
 func TestMsgServerInvalidAddresses(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	_, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	invalidAddr := "invalid-bech32-address"
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
@@ -581,8 +577,7 @@ func TestMsgServerInvalidAddresses(t *testing.T) {
 
 // TestMsgServerPermissionDenied tests unauthorized access scenarios
 func TestMsgServerPermissionDenied(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	contractAddr := "dora1contract123"
 	nonAdminAddr := "dora1user456"
@@ -638,8 +633,7 @@ func TestMsgServerPermissionDenied(t *testing.T) {
 // TestMsgServerAdminAuthorizationDemo demonstrates how admin authorization works
 // Note: This test documents the expected behavior with mock limitations
 func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
-	keeper, ctx := setupKeeperSimple(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, _, _ := setupMsgServerEnv(t)
 
 	// Test data
 	contractAddr := "dora1contract123"
@@ -747,8 +741,7 @@ func TestMsgServerAdminAuthorizationDemo(t *testing.T) {
 }
 
 func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
-	keeper, ctx, mockWasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
 	// Set up a valid contract and admin
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
@@ -828,8 +821,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 
 // TestMsgServerSponsorAddressGeneration tests that sponsor_address is correctly derived
 func TestMsgServerSponsorAddressGeneration(t *testing.T) {
-	keeper, ctx, mockWasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
 	// Set up a valid contract and admin
 	contractAddr := sdk.AccAddress([]byte("test_contract_addr_12")).String()
@@ -914,8 +906,8 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 
 // TestMsgServerSponsorAddressConsistency tests sponsor address derivation consistency
 func TestMsgServerSponsorAddressConsistency(t *testing.T) {
-	keeper, ctx, mockWasmKeeper := setupKeeper(t)
-	msgServer := NewMsgServerImpl(keeper)
+	keeper, ctx, mockWasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
 
 	// Set up multiple contracts with the same admin
 	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
@@ -1086,6 +1078,43 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 	for k, v := range expected {
 		require.Equalf(t, v, got[k], "event attribute %s mismatch", k)
 	}
+}
+
+func TestDeleteSponsorFailsWhenBalanceExists(t *testing.T) {
+	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+
+	admin := sdk.AccAddress("admin________________")
+	contract := sdk.AccAddress("contract____________")
+
+	wasmMock.SetContractInfo(contract.String(), admin.String())
+
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
+	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
+	require.NoError(t, err)
+
+	sponsor, found := keeper.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	require.NoError(t, err)
+
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
+	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
+
+	deleteMsg := types.NewMsgDeleteSponsor(admin.String(), contract.String())
+	_, err = msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), deleteMsg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "balance")
+
+	withdrawMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), admin.String(), fund)
+	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), withdrawMsg)
+	require.NoError(t, err)
+
+	_, err = msgServer.DeleteSponsor(sdk.WrapSDKContext(ctx), deleteMsg)
+	require.NoError(t, err)
 }
 
 func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
