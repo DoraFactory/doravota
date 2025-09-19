@@ -22,6 +22,17 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 			panic(fmt.Errorf("failed to set sponsor during genesis initialization: %w", err))
 		}
 	}
+
+	// Set user grant usage state
+	for _, usage := range genState.UserGrantUsages {
+		if usage == nil {
+			continue
+		}
+
+		if err := k.SetUserGrantUsage(ctx, *usage); err != nil {
+			panic(fmt.Errorf("failed to set user grant usage during genesis initialization: %w", err))
+		}
+	}
 }
 
 // ExportGenesis returns the capability module's exported genesis
@@ -39,6 +50,14 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 		sponsorPtrs[i] = &sponsors[i]
 	}
 	genesis.Sponsors = sponsorPtrs
+
+	// Export user grant usage records
+	usages := k.GetAllUserGrantUsages(ctx)
+	usagePtrs := make([]*types.UserGrantUsage, len(usages))
+	for i := range usages {
+		usagePtrs[i] = &usages[i]
+	}
+	genesis.UserGrantUsages = usagePtrs
 
 	return genesis
 }
