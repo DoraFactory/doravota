@@ -110,7 +110,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
 	// Defensive checks: ensure fee collector module account, sponsor account exist and fee is valid
 	if addr := safd.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName); addr == nil {
-		return ctx, sdkerrors.Wrapf(sdkerrors.ErrLogic, "fee collector module account (%s) has not been set", authtypes.FeeCollectorName)
+		return ctx, errorsmod.Wrapf(sdkerrors.ErrLogic, "fee collector module account (%s) has not been set", authtypes.FeeCollectorName)
 	}
 	if safd.accountKeeper.GetAccount(ctx, sponsorAddr) == nil {
 		return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sponsorAddr.String())
