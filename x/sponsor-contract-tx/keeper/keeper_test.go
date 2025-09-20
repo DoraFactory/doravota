@@ -1495,13 +1495,12 @@ func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "contract not found")
 
-	// Test 5: Invalid amount (empty coins) - but check message order
+	// Test 5: Empty amount should withdraw entire balance (but balance is zero)
 	msg.ContractAddress = contractAddr
 	msg.Amount = []*sdk.Coin{}
 	_, err = msgServer.WithdrawSponsorFunds(ctx, msg)
 	require.Error(t, err)
-	// The error might be about invalid sponsor address format, let's just check for error
-	require.NotNil(t, err)
+	require.Contains(t, err.Error(), "no funds available to withdraw")
 
 	// Test 6: Invalid amount (zero coins) - address is checked first
 	msg.Amount = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(0)}}

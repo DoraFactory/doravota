@@ -530,20 +530,20 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid recipient address: %s", msg.Recipient)
 	}
 
-	// Validate amount: only peaka, positive, non-empty
-	if len(msg.Amount) == 0 {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
-	}
-	for _, c := range msg.Amount {
-		if c == nil {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+	if len(msg.Amount) > 0 {
+		for _, c := range msg.Amount {
+			if c == nil {
+				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
+			}
+			if c.Denom != "peaka" {
+				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
+			}
+			if !c.Amount.IsPositive() {
+				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
+			}
 		}
-		if c.Denom != "peaka" {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
-		}
-		if !c.Amount.IsPositive() {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
-		}
+	} else {
+		// Len==0 is allowed: means withdraw entire balance, handled server-side
 	}
 
 	return nil
@@ -552,4 +552,22 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 // TypeURL returns the TypeURL for this message
 func (msg *MsgWithdrawSponsorFunds) XXX_MessageName() string {
 	return "doravota.sponsor.v1.MsgWithdrawSponsorFunds"
+}
+
+// NormalizedAmount returns sdk.Coins representation even when Amount is empty
+func (msg MsgWithdrawSponsorFunds) NormalizedAmount() sdk.Coins {
+	coins := sdk.Coins{}
+	for _, c := range msg.Amount {
+		if c == nil {
+			continue
+		}
+		if c.Denom != "peaka" {
+			continue
+		}
+		if !c.Amount.IsPositive() {
+			continue
+		}
+		coins = coins.Add(*c)
+	}
+	return coins
 }

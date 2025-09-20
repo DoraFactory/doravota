@@ -301,23 +301,7 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
 	}
 
-	// Validate amount
-	if len(msg.Amount) == 0 {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
-	}
-	amt := sdk.Coins{}
-	for _, c := range msg.Amount {
-		if c == nil {
-			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
-		}
-		if c.Denom != "peaka" {
-			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
-		}
-		if !c.Amount.IsPositive() {
-			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
-		}
-		amt = amt.Add(*c)
-	}
+	amt := msg.NormalizedAmount()
 
 	// Ensure bank keeper is available
 	if k.bankKeeper == nil {
@@ -326,6 +310,17 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 
 	// Check sponsor balance
 	spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
+	if len(msg.Amount) == 0 {
+		amt = spendable
+	}
+
+	if amt.Empty() {
+		return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
+	}
+
+	if !amt.IsValid() {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
+	}
 	if !spendable.IsAllGTE(amt) {
 		return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
 	}
