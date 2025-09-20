@@ -43,17 +43,21 @@ func GetCmdWithdrawSponsorFunds() *cobra.Command {
 		Use:   "withdraw-sponsor-funds [contract-address] [recipient] [amount]",
 		Short: "Withdraw funds from the derived sponsor address to a recipient (admin only)",
 		Long: `Withdraw funds from the derived sponsor address to a recipient.
-Only the contract admin can execute this. Amount supports peaka and DORA (1 DORA = 10^18 peaka), e.g. 10DORA or 10000000000000000000peaka.`,
-		Args: cobra.ExactArgs(3),
+Only the contract admin can execute this. Amount supports peaka and DORA (1 DORA = 10^18 peaka), e.g. 10DORA or 10000000000000000000peaka.
+If amount is omitted the command withdraws the entire spendable balance.`,
+		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(cmd)
 			if err != nil {
 				return err
 			}
 
-			coins, err := parseCoinsWithDORASupport(args[2])
-			if err != nil {
-				return err
+			var coins sdk.Coins
+			if len(args) == 3 {
+				coins, err = parseCoinsWithDORASupport(args[2])
+				if err != nil {
+					return err
+				}
 			}
 
 			msg := types.NewMsgWithdrawSponsorFunds(clientCtx.GetFromAddress().String(), args[0], args[1], coins)
