@@ -3174,6 +3174,52 @@ func (suite *AnteTestSuite) TestGasLimitExceededFriendlyError() {
 	}
 }
 
+// Test case: Gas limit exceeded should emit sponsorship_skipped with reason equal to error text
+func (suite *AnteTestSuite) TestGasLimitExceededSkipEventReasonMatchesError() {
+    // Set up contract and sponsorship
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+
+    // Configure a small gas limit to make the reason deterministic
+    params := types.Params{SponsorshipEnabled: true, MaxGasPerSponsorship: 1234}
+    suite.keeper.SetParams(suite.ctx, params)
+
+    // Force the policy query to panic with out-of-gas to trigger the defer path
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte("__PANIC_OUTOFGAS__"))
+
+    // Build contract execute tx with non-zero fee; user has no funds to force policy path
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Next handler
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // Execute ante
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+    // Expect a sponsorship_skipped event with reason containing the inner message from defer
+    expectedInner := "contract policy check exceeded gas limit"
+
+    // Verify event reason contains expected inner string (policyErr.Error() may add a prefix)
+    events := suite.ctx.EventManager().Events()
+    found := false
+    for _, ev := range events {
+        if ev.Type != types.EventTypeSponsorshipSkipped {
+            continue
+        }
+        attrs := make(map[string]string)
+        for _, a := range ev.Attributes {
+            attrs[a.Key] = a.Value
+        }
+        if strings.Contains(attrs[types.AttributeKeyReason], expectedInner) {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found, "expected sponsorship_skipped reason to contain: %s", expectedInner)
+}
+
 // Run the test suite
 func TestAnteTestSuite(t *testing.T) {
 	suite.Run(t, new(AnteTestSuite))

@@ -41,7 +41,19 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 	}
 }
 
-// AnteHandle implements the ante handler for sponsored contract transactions
+// AnteHandle implements the ante handler for sponsored contract transactions.
+// Security and processing flow (audit-friendly summary):
+// - Feegrant precedence: if tx sets FeeGranter, sponsorship is skipped and standard fee handling applies.
+// - Transaction shape: only single-contract CosmWasm executions are considered; mixed or non-contract messages pass through and may emit a skip event.
+// - Contract existence: verified up-front; in CheckTx returns error, in DeliverTx falls back to user payment and emits a skip event.
+// - Global toggle: respects module params; when disabled, sponsorship is skipped with informative events/errors.
+// - Signer model: single-signer only; FeePayer must match the validated signer to prevent spoofing.
+// - Self-pay preference: if user has sufficient balance for the declared fee, sponsorship is skipped (see note below).
+// - Policy check: runs the contract's policy query in a gas-limited context; any panic is recovered; gas used is always charged to the main context.
+// - Failure handling: any policy error or nil-result is treated uniformly as a failure; emits a sponsorship_skipped event (DeliverTx only) and falls back.
+// - Success path: verifies user grant limit and sponsor balance, then places SponsorPaymentInfo into context for the fee decorator to deduct.
+// Notes:
+// - The self-pay decision currently uses the tx-declared fee, not the min required fee from TxFeeChecker. If strict parity with validator min gas prices is needed, consider integrating TxFeeChecker here as well.
 func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -88,7 +100,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	contractAddr := validation.ContractAddress
 
-	// Early return optimization 1: validate contract exists before policy checks
+	// Validate contract exists before proceeding (early exit):
+	// - In CheckTx: return an error to avoid entering mempool with a non-existent contract.
+	// - In DeliverTx: emit a skip event and fall back to standard fee processing.
 	if err := sctd.keeper.ValidateContractExists(ctx, contractAddr); err != nil {
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"contract not found; skipping sponsorship",
@@ -127,18 +141,15 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		return next(ctx, tx, simulate)
 	}
 
-	// Check if this contract is sponsored
+	// If contract exsit, check if contract is set as a sponsor
 	sponsor, found := sctd.keeper.GetSponsor(ctx, contractAddr)
 
-	// Only apply sponsor functionality if the contract is explicitly sponsored
-	// Previously, the boolean from GetSponsor (found) was used directly, which
-	// caused sponsorship logic to run even when the stored sponsor record had
-	// IsSponsored=false. This now strictly requires sponsor.IsSponsored to be true.
+	// If found and sponsored, proceed with sponsorship logic
 	if found && sponsor.IsSponsored {
 		// Check if sponsorship is globally enabled first
 		params := sctd.keeper.GetParams(ctx)
 		if !params.SponsorshipEnabled {
-			// Sponsorship is globally disabled, skip all sponsor logic
+			// If sponsorship is globally disabled, skip all sponsor logic
 			if !ctx.IsCheckTx() {
 				ctx.EventManager().EmitEvent(
 					sdk.NewEvent(
@@ -154,7 +165,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 			return next(ctx, tx, simulate)
 		}
-		// Get the appropriate user address for policy check and fee payment
+		// Get the appropriate user address from the tx for policy check and fee payment
 		userAddr, err := sctd.getUserAddressForSponsorship(tx)
 		if err != nil {
 			// If we can't determine a consistent user address, fall back to standard processing
@@ -170,6 +181,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+		// Check the tx-declared fee (does not recompute required fees via TxFeeChecker here).
 		if feeTx, ok := tx.(sdk.FeeTx); ok {
 			fee := feeTx.GetFee()
 			// 1. Zero fee early exit: Only effective in mempool (CheckTx), does not affect simulate/DeliverTx.
@@ -181,7 +193,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				)
 				return next(ctx, tx, simulate)
 			}
-			// 2. Early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
+			// 2. Non-zero fee and early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
 			if !fee.IsZero() {
 				feeCheck := feeTx.GetFee()
 				for _, c := range feeCheck {
@@ -214,9 +226,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-		// Call contract to check if user is eligible according to contract policy
-		// Create a gas-limited context to prevent DoS attacks through contract queries
-		// Note: Gas consumption is tracked consistently between simulation and execution
+		// Create a gas-limited context to prevent DoS attacks through contract queries.
+		// Gas used in the limited context is always charged back to the main context
+		// (both on success and failure) to ensure consistent cost accounting.
 		gasLimit := params.MaxGasPerSponsorship
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -233,7 +245,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		var policyResult *types.CheckContractPolicyResult
 		var policyErr error
 
-		// Use a function with named return values to ensure defer can modify the return
+		// Call contract to check if user is eligible according to contract policy.
+		// Use a function with named return values so the defer can convert panics to errors
+		// and set result=nil in failure cases.
 		policyResult, policyErr = func() (result *types.CheckContractPolicyResult, err error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -271,7 +285,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
 		}()
 
-		// Always get gas consumed from policy check for consistent accounting
+		// Always read gas consumed from the limited gas meter for consistent accounting
 		gasUsed := limitedGasMeter.GasConsumed()
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -283,24 +297,31 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"gas_remaining", gasLimit-gasUsed,
 		)
 
-		if policyErr != nil {
+		// Unified handling: treat any error or nil result as a failed policy check
+		if policyErr != nil || policyResult == nil {
 			// Always account for the gas burned during the policy check so low-fee
 			// transactions cannot spam expensive contract queries at zero cost.
 			consumeGasSafely(ctx, gasUsed, "contract policy check (failed)")
-			// Policy check failed with error (contract query failed, parsing failed, etc.)
-			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"contract policy check failed",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-				"gas_used", gasUsed,
-				"error", policyErr.Error(),
-			)
-			reasonFromError := "policy_check_failed"
-			if errorsmod.IsOf(policyErr, types.ErrGasLimitExceeded) {
-				reasonFromError = fmt.Sprintf("contract policy check exceeded gas limit (%d gas used, limit: %d). Consider increasing MaxGasPerSponsorship parameter", gasUsed, gasLimit)
-			} else {
-				// The error contains technical failure details (query failed, parsing failed, etc.)
+
+			var reasonFromError string
+			if policyErr != nil {
+				// Policy check failed with error (contract query failed, parsing failed, etc.)
+				ctx.Logger().With("module", "sponsor-contract-tx").Error(
+					"contract policy check failed",
+					"contract", contractAddr,
+					"user", userAddr.String(),
+					"gas_used", gasUsed,
+					"error", policyErr.Error(),
+				)
 				reasonFromError = policyErr.Error()
+			} else {
+				// Safety: nil result without error
+				ctx.Logger().With("module", "sponsor-contract-tx").Error(
+					"policy result is unexpectedly nil despite no error",
+					"contract", contractAddr,
+					"user", userAddr.String(),
+				)
+				reasonFromError = "policy check returned nil result"
 			}
 
 			// Emit a skip event for observability (DeliverTx only)
@@ -316,9 +337,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
 		}
 
-		// Policy check succeeded, consume gas and check eligibility
-		// Always consume gas for policy check to ensure consistent gas estimation
-		// This prevents discrepancies between simulation and actual execution
+		// Policy check succeeded; consume gas on the main context for consistent estimation
 		consumeGasSafely(ctx, gasUsed, "contract policy check")
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
@@ -329,18 +348,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"total_gas_after", ctx.GasMeter().GasConsumed(),
 		)
 
-		// Additional safety check: ensure policyResult is not nil
-		if policyResult == nil {
-			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"policy result is unexpectedly nil despite no error",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-			)
-			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy check returned nil result")
-		}
-
+		// check if the result is eligible
 		if !policyResult.Eligible {
-			// User is not eligible according to contract policy, use the specific reason from contract
+			// User is not eligible according to contract policy, use the specific reason from contract if provided and go back to standard fee processing
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
 		}
 
@@ -350,6 +360,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			"user", userAddr.String(),
 		)
 
+		// If result is eligible, proceed with sponsorship
 		// Validate sponsor address
 		sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 		if err != nil {
@@ -402,7 +413,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					"required_fee", fee.String(),
 				)
 
-				// Check user's grant limit before processing the transaction
+				// Check user's grant limit before processing the transaction and check if the current usage will overflow the max spend limit
 				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
 					return ctx, err
 				}
@@ -425,8 +436,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
 				}
 
-				// Store sponsor payment info in context for custom fee handling using type-safe key
-				// Don't use SetFeeGranter as it conflicts with standard feegrant system
+			// Store sponsor payment info in context (type-safe key) so the sponsor-aware
+			// fee decorator can deduct fees from the sponsor.
+			// Do not use FeeGranter here to avoid conflicting with the native feegrant module.
 				sponsorPayment := SponsorPaymentInfo{
 					ContractAddr: contractAccAddr,
 					SponsorAddr:  sponsorAccAddr,
@@ -447,8 +459,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Event will be emitted in sponsor_decorator.go after successful fee deduction
-	} else if found && !sponsor.IsSponsored {
-		// Sponsorship explicitly disabled for this contract
+	} else if found && !sponsor.IsSponsored { // If not found or not sponsored, skip sponsorship logic
+		// Sponsorship is disabled for this contract
 		// Emit an informative skip event for observability (DeliverTx only)
 		if !ctx.IsCheckTx() {
 			ctx.EventManager().EmitEvent(
@@ -530,8 +542,8 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 		msgType := sdk.MsgTypeURL(msg)
 
 		switch execMsg := msg.(type) {
+		// contract execution message
 		case *wasmtypes.MsgExecuteContract:
-			// This is a contract execution message
 			if sponsoredContract == "" {
 				// First contract message - record the contract address
 				sponsoredContract = execMsg.Contract
@@ -640,8 +652,11 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 	return next(ctx, tx, simulate)
 }
 
-// getUserAddressForSponsorship determines the appropriate user address for sponsorship
-// It first validates signer consistency, then checks FeePayer consistency for security
+// getUserAddressForSponsorship determines the appropriate user address for sponsorship.
+// Invariants enforced for auditability:
+// - All messages must have signers and the signer sets must be identical across messages.
+// - Multi-signer transactions are rejected for sponsorship.
+// - If a FeePayer is provided by the tx, it MUST equal the validated signer to prevent spoofing.
 func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.Tx) (sdk.AccAddress, error) {
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {

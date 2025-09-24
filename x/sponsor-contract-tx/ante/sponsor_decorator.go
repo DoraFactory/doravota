@@ -14,8 +14,10 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
-// SponsorAwareDeductFeeDecorator wraps the standard DeductFeeDecorator
-// and handles sponsor fee payments
+// SponsorAwareDeductFeeDecorator wraps the standard DeductFeeDecorator and
+// handles sponsor fee payments. It is intended to run AFTER
+// SponsorContractTxAnteDecorator, which injects SponsorPaymentInfo into the
+// context when a tx qualifies for sponsorship.
 type SponsorAwareDeductFeeDecorator struct {
 	standardDecorator ante.DeductFeeDecorator
 	sponsorKeeper     types.SponsorKeeperInterface
@@ -46,7 +48,11 @@ func NewSponsorAwareDeductFeeDecorator(
 	}
 }
 
-// AnteHandle implements the ante handler interface
+// AnteHandle implements the ante handler interface.
+// Behavior:
+// - If SponsorPaymentInfo is present in context and IsSponsored=true, attempt
+//   to deduct fees from the sponsor (unless FeeGranter is set on the tx).
+// - Otherwise, fall back to the standard DeductFeeDecorator.
 func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -66,7 +72,16 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
 }
 
-// handleSponsorFeePayment processes sponsor fee payment
+// handleSponsorFeePayment processes sponsor fee payment.
+// Security/consistency highlights:
+// - Respects feegrant precedence: if tx sets FeeGranter, delegate to the
+//   standard DeductFeeDecorator so the native feegrant logic applies.
+// - Computes effective fee using txFeeChecker in non-simulation paths, which
+//   enforces min gas price and sets tx priority.
+// - Deducts fees into the fee collector module account and updates per-user
+//   grant usage; emits events only in DeliverTx.
+// - Returns a context with priority set so downstream mempool prioritization is
+//   consistent with fee calculation.
 func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -107,8 +122,8 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
-	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx)
-	// Defensive checks: ensure fee collector module account, sponsor account exist and fee is valid
+	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx).
+	// Defensive checks: ensure fee collector module account, sponsor account exist, and fee is valid.
 	if addr := safd.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName); addr == nil {
 		return ctx, errorsmod.Wrapf(sdkerrors.ErrLogic, "fee collector module account (%s) has not been set", authtypes.FeeCollectorName)
 	}
@@ -118,6 +133,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	if !effectiveFee.IsValid() {
 		return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFee, "invalid fee amount: %s", effectiveFee)
 	}
+	// deduct fee from sponsor account and send to fee collector module account
 	err = safd.bankKeeper.SendCoinsFromAccountToModule(
 		ctx,
 		sponsorAddr,
@@ -128,12 +144,12 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
 	}
 
-	// Step 2: Update user grant usage atomically
+	// Step 2: Update user grant usage atomically.
 	if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), effectiveFee); err != nil {
 		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
 	}
 
-	// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx)
+	// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx).
 	if !ctx.IsCheckTx() {
 		ctx.EventManager().EmitEvent(
 			sdk.NewEvent(
