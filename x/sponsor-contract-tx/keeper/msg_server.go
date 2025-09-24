@@ -290,45 +290,59 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can withdraw sponsor funds")
 	}
 
-	// Parse sponsor and recipient addresses
-	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-	if err != nil {
-		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
-	}
+    // Parse sponsor address first (required to check balances)
+    sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+    if err != nil {
+        return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
+    }
 
-	recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
-	if err != nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
-	}
+    amt := msg.NormalizedAmount()
 
-	amt := msg.NormalizedAmount()
+    // Ensure bank keeper is available
+    if k.bankKeeper == nil {
+        return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
+    }
 
-	// Ensure bank keeper is available
-	if k.bankKeeper == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
-	}
+    // Check sponsor balance (used in both branches)
+    spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
 
-	// Check sponsor balance
-	spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
-	if len(msg.Amount) == 0 {
-		amt = spendable
-	}
-
-	if amt.Empty() {
-		return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
-	}
-
-	if !amt.IsValid() {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
-	}
-	if !spendable.IsAllGTE(amt) {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
-	}
-
-	// Transfer funds
-	if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
-		return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
-	}
+    if len(msg.Amount) == 0 {
+        // Withdraw entire balance path: decide based on sponsor's spendable balance first
+        amt = spendable
+        if amt.Empty() {
+            return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
+        }
+        // Validate recipient now that we know there are funds
+        recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+        if err != nil {
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+        }
+        // Transfer funds
+        if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
+            return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
+        }
+    } else {
+        // Explicit amount path: validate amount semantics first
+        if amt.Empty() {
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
+        }
+        if !amt.IsValid() {
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
+        }
+        // Validate recipient before checking balances (tests expect address validation first)
+        recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+        if err != nil {
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+        }
+        // Then check balances
+        if !spendable.IsAllGTE(amt) {
+            return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
+        }
+        // Transfer funds
+        if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
+            return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
+        }
+    }
 
 	// Emit event
 	ctx.EventManager().EmitEvent(
