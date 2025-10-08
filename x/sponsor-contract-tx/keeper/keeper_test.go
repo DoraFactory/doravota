@@ -671,6 +671,47 @@ func TestExtractAllContractMessages(t *testing.T) {
 	require.Equal(t, "increment", contractMsgs[1].MsgType)
 }
 
+// Test that messages with multiple top-level keys are rejected to prevent non-determinism
+func TestExtractAllContractMessages_MultipleTopLevelKeysError(t *testing.T) {
+	keeper, _ := setupKeeperSimple(t)
+
+	contractAddr := sdk.AccAddress([]byte("contractaddr_single_key")).String()
+	userAddr := sdk.AccAddress("user________________").String()
+
+	// Message with two top-level keys should be rejected
+	multiKeyMsg := &wasmtypes.MsgExecuteContract{
+		Sender:   userAddr,
+		Contract: contractAddr,
+		Msg:      []byte(`{"a": 1, "b": 2}`),
+	}
+
+	_, err := keeper.extractAllContractMessages(createMockTx([]sdk.Msg{multiKeyMsg}), contractAddr)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "exactly one top-level")
+}
+
+// Test that MsgData preserves the raw JSON bytes from the tx for determinism
+func TestExtractAllContractMessages_UsesRawMsgBytes(t *testing.T) {
+	keeper, _ := setupKeeperSimple(t)
+
+	contractAddr := sdk.AccAddress([]byte("contractaddr_raw_bytes")).String()
+	userAddr := sdk.AccAddress("user________________").String()
+
+	raw := []byte("{\n  \"increment\": { \"amount\": 1 }\n}")
+	msg := &wasmtypes.MsgExecuteContract{
+		Sender:   userAddr,
+		Contract: contractAddr,
+		Msg:      raw,
+	}
+
+	tx := createMockTx([]sdk.Msg{msg})
+	contractMsgs, err := keeper.extractAllContractMessages(tx, contractAddr)
+	require.NoError(t, err)
+	require.Len(t, contractMsgs, 1)
+	require.Equal(t, "increment", contractMsgs[0].MsgType)
+	require.Equal(t, string(raw), contractMsgs[0].MsgData)
+}
+
 // TestValidateContractExists tests the ValidateContractExists function
 func TestValidateContractExists(t *testing.T) {
 	keeper, ctx, wasmKeeper := setupKeeper(t)

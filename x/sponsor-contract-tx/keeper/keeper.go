@@ -189,26 +189,30 @@ func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string)
 	for _, msg := range tx.GetMsgs() {
 		if execMsg, ok := msg.(*wasmtypes.MsgExecuteContract); ok {
 			if execMsg.Contract == targetContractAddr {
-				// Parse the contract message to extract type and data
-				var msgMap map[string]interface{}
+				// Parse the contract message to extract type and data deterministically
+				// Use RawMessage to avoid lossy conversions and ensure we operate on the
+				// exact bytes present in the signed transaction.
+				var msgMap map[string]json.RawMessage
 				if err := json.Unmarshal(execMsg.Msg, &msgMap); err != nil {
 					return nil, errorsmod.Wrap(err, "failed to parse contract message")
 				}
 
-				// Extract message type and data (assumes single message type per execution)
-				for msgType, _ := range msgMap {
-					// Send the complete ExecuteMsg instead of just the parameters
-					msgDataBytes, err := json.Marshal(msgMap)
-					if err != nil {
-						return nil, errorsmod.Wrap(err, "failed to marshal message data")
-					}
-
-					contractMessages = append(contractMessages, ContractMessage{
-						MsgType: msgType,
-						MsgData: string(msgDataBytes),
-					})
-					break // CosmWasm messages typically have only one top-level key
+				// Enforce exactly one top-level key to avoid non-determinism.
+				if len(msgMap) != 1 {
+					return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "execute message must contain exactly one top-level field")
 				}
+
+				// Retrieve the sole key deterministically (len==1 guarantees determinism)
+				var msgType string
+				for k := range msgMap { // single iteration
+					msgType = k
+				}
+
+				// Use the original raw bytes for MsgData to preserve canonical ordering from the tx
+				contractMessages = append(contractMessages, ContractMessage{
+					MsgType: msgType,
+					MsgData: string(execMsg.Msg),
+				})
 			}
 		}
 	}
