@@ -471,9 +471,10 @@ func (suite *AnteTestSuite) TestUserIneligibleAndInsufficientBalance() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 	suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "user not whitelisted"}`))
 
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	// Create sponsor properly using helper function (no funding needed for this test)
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    // Fund sponsor so policy path is exercised and we can get a sponsorship-denied reason
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
 
 	// Do NOT fund user - leave them with insufficient balance
 	// Create contract execution transaction
@@ -504,9 +505,10 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyAndInsufficientBalance
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-	// Create sponsor properly using helper function (no funding needed for this test)
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    // Fund sponsor so policy path is exercised and we can get a sponsorship-denied reason
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
 
 	// Simulate contract without check_policy method
 	suite.wasmKeeper.SetQueryError(suite.contract, "contract: query wasm contract failed: unknown variant `check_policy`")
@@ -1095,6 +1097,42 @@ func (suite *AnteTestSuite) TestZeroFeeSkipsSponsor() {
 	sponsorPayment, ok := contextReceived.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
 	suite.Require().False(ok)
 	suite.Require().Empty(sponsorPayment.ContractAddr)
+}
+
+// Ensure that in CheckTx, when sponsor balance is insufficient, the decorator fails early
+// without invoking contract policy queries and does not emit events.
+func (suite *AnteTestSuite) TestCheckTx_SponsorInsufficientFunds_BlocksPolicyAndNoEvent() {
+    // Arrange: contract with sponsorship enabled but sponsor has zero funds
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins()) // no funding
+
+    // Provide an eligible policy response in case it ever ran (it shouldn't)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
+
+    // Build a tx with non-zero fee; leave user unfunded to force sponsor path
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Use CheckTx context with a fresh EventManager
+    checkCtx := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+
+    // Track policy query invocations
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Act
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := suite.anteDecorator.AnteHandle(checkCtx, tx, false, next)
+
+    // Assert: should error and MUST NOT run policy query
+    suite.Require().Error(err)
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "policy query must not run when sponsor balance is insufficient in CheckTx")
+
+    // And MUST NOT emit sponsor_insufficient_funds event in CheckTx
+    events := checkCtx.EventManager().Events()
+    for _, ev := range events {
+        suite.Require().NotEqual(types.EventTypeSponsorInsufficient, ev.Type, "no sponsor_insufficient_funds event in CheckTx")
+    }
 }
 
 // New tests covering txFeeChecker pre-check integration in ante decorator
@@ -3255,7 +3293,8 @@ func (suite *AnteTestSuite) TestGasLimitExceededSkipEventReasonMatchesError() {
     // Set up contract and sponsorship
     suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
     maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
-    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+    // Fund sponsor to ensure we reach policy path and trigger gas limit handling
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000))))
 
     // Configure a small gas limit to make the reason deterministic
     params := types.Params{SponsorshipEnabled: true, MaxGasPerSponsorship: 1234}

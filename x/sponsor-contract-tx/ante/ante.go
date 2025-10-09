@@ -241,6 +241,29 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					}
 					return next(ctx, tx, simulate)
 				}
+
+				// Early sponsor balance quick-check BEFORE running policy queries to avoid heavy work
+				// Validate sponsor address and ensure sponsor has enough spendable balance for this fee
+				sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+				if err != nil {
+					return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
+				}
+				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
+				if !sponsorBalance.IsAllGTE(fee) {
+					// Emit sponsor insufficient funds event only in DeliverTx mode
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeSponsorInsufficient,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAccAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+							),
+						)
+					}
+					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
+				}
 			}
 		}
 
