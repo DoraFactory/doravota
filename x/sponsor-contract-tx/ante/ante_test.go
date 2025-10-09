@@ -1,24 +1,25 @@
 package sponsor
 
 import (
-	"fmt"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/address"
-	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
-	"strings"
-	"testing"
+    "fmt"
+    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+    "github.com/cometbft/cometbft/libs/log"
+    tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+    "github.com/cosmos/cosmos-sdk/codec"
+    codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+    "github.com/cosmos/cosmos-sdk/store"
+    storetypes "github.com/cosmos/cosmos-sdk/store/types"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/cosmos/cosmos-sdk/types/address"
+    ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
+    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+    authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+    banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+    "github.com/stretchr/testify/require"
+    "github.com/stretchr/testify/suite"
+    "strings"
+    "testing"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -277,12 +278,13 @@ func (suite *AnteTestSuite) SetupTest() {
 		"cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn", // mock authority for tests
 	)
 
-	// Create ante decorator
-	suite.anteDecorator = NewSponsorContractTxAnteDecorator(
-		suite.keeper,
-		suite.accountKeeper,
-		suite.bankKeeper,
-	)
+    // Create ante decorator (no custom txFeeChecker -> default min-gas checker)
+    suite.anteDecorator = NewSponsorContractTxAnteDecorator(
+        suite.keeper,
+        suite.accountKeeper,
+        suite.bankKeeper,
+        nil,
+    )
 
 	// Set up test accounts
 	suite.admin = sdk.AccAddress("admin_______________")
@@ -1093,6 +1095,80 @@ func (suite *AnteTestSuite) TestZeroFeeSkipsSponsor() {
 	sponsorPayment, ok := contextReceived.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
 	suite.Require().False(ok)
 	suite.Require().Empty(sponsorPayment.ContractAddr)
+}
+
+// New tests covering txFeeChecker pre-check integration in ante decorator
+// Ensure that in CheckTx we enforce min-gas price via txFeeChecker BEFORE running policy queries
+func (suite *AnteTestSuite) TestCheckTx_MinGasPriceCheckerBlocksBeforePolicy() {
+    // Arrange: contract and funded sponsor; user has zero balance to force sponsor path
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // Build tx with non-zero fee
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Custom checker that always fails with insufficient fee
+    failingChecker := ante.TxFeeChecker(func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
+        return nil, 0, fmt.Errorf("insufficient fees; got: %s required: %s", fee, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(999999))))
+    })
+
+    // Create a decorator with the failing checker
+    dec := NewSponsorContractTxAnteDecorator(suite.keeper, suite.accountKeeper, suite.bankKeeper, failingChecker)
+
+    // Use CheckTx context
+    checkCtx := suite.ctx.WithIsCheckTx(true)
+
+    // Track that no policy query is executed
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Act
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := dec.AnteHandle(checkCtx, tx, false, next)
+
+    // Assert: error from txFeeChecker propagated and no QuerySmart was invoked
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "insufficient fees")
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "policy query must not run when txFeeChecker fails")
+}
+
+func (suite *AnteTestSuite) TestCheckTx_MinGasPriceCheckerPasses_AllowsPolicyQuery() {
+    // Arrange: contract and funded sponsor; user has zero balance to force sponsor path
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // Contract policy allows
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
+
+    // Build tx with non-zero fee
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Custom checker that passes
+    passingChecker := ante.TxFeeChecker(func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
+        return fee, 0, nil
+    })
+
+    // Create a decorator with the passing checker
+    dec := NewSponsorContractTxAnteDecorator(suite.keeper, suite.accountKeeper, suite.bankKeeper, passingChecker)
+
+    // Use CheckTx context
+    checkCtx := suite.ctx.WithIsCheckTx(true)
+
+    // Track policy queries
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Act
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := dec.AnteHandle(checkCtx, tx, false, next)
+
+    // Assert: no error and exactly one policy query executed
+    suite.Require().NoError(err)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
 }
 
 // TestSponsorDrainageProtection tests protection against rapid sponsor balance depletion

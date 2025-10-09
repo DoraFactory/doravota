@@ -7,6 +7,7 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
@@ -30,14 +31,19 @@ type SponsorContractTxAnteDecorator struct {
 	keeper        types.SponsorKeeperInterface
 	accountKeeper authkeeper.AccountKeeper
 	bankKeeper    bankkeeper.Keeper
+	txFeeChecker  ante.TxFeeChecker
 }
 
 // NewSponsorContractTxAnteDecorator creates a new ante decorator for sponsored contract transactions
-func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authkeeper.AccountKeeper, bk bankkeeper.Keeper) SponsorContractTxAnteDecorator {
+func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authkeeper.AccountKeeper, bk bankkeeper.Keeper, txFeeChecker ante.TxFeeChecker) SponsorContractTxAnteDecorator {
+	if txFeeChecker == nil {
+		txFeeChecker = SponsorTxFeeCheckerWithValidatorMinGasPrices
+	}
 	return SponsorContractTxAnteDecorator{
 		keeper:        k,
 		accountKeeper: ak,
 		bankKeeper:    bk,
+		txFeeChecker:  txFeeChecker,
 	}
 }
 
@@ -179,6 +185,18 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		if userAddr.Empty() {
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
+		}
+
+		// Before any potentially expensive work in CheckTx, enforce validator min gas price
+		// using the configured txFeeChecker. This rejects low-fee spam early.
+		if ctx.IsCheckTx() && !simulate {
+			checker := sctd.txFeeChecker
+			if checker == nil {
+				checker = SponsorTxFeeCheckerWithValidatorMinGasPrices
+			}
+			if _, _, feeErr := checker(ctx, tx); feeErr != nil {
+				return ctx, feeErr
+			}
 		}
 
 		// Check the tx-declared fee (does not recompute required fees via TxFeeChecker here).
@@ -436,9 +454,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
 				}
 
-			// Store sponsor payment info in context (type-safe key) so the sponsor-aware
-			// fee decorator can deduct fees from the sponsor.
-			// Do not use FeeGranter here to avoid conflicting with the native feegrant module.
+				// Store sponsor payment info in context (type-safe key) so the sponsor-aware
+				// fee decorator can deduct fees from the sponsor.
+				// Do not use FeeGranter here to avoid conflicting with the native feegrant module.
 				sponsorPayment := SponsorPaymentInfo{
 					ContractAddr: contractAccAddr,
 					SponsorAddr:  sponsorAccAddr,
