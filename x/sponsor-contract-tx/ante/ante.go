@@ -12,6 +12,8 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"sync"
+	"time"
 )
 
 // Context key for sponsor payment information
@@ -32,6 +34,244 @@ type SponsorContractTxAnteDecorator struct {
 	accountKeeper authkeeper.AccountKeeper
 	bankKeeper    bankkeeper.Keeper
 	txFeeChecker  ante.TxFeeChecker
+	cstate        *cooldownState
+}
+
+// cooldownState holds node-local cooldown entries for CheckTx-only protections.
+// It is NOT persisted and has no effect on DeliverTx/Simulate semantics.
+type cooldownEntry struct {
+    cooldownUntil time.Time
+    windowStart   time.Time
+    fails         int
+    cooldownDur   time.Duration
+}
+
+type cooldownState struct {
+    mu                     sync.RWMutex
+    entries                map[string]*cooldownEntry // key -> entry
+    enabled                bool
+    baseTTL                time.Duration   // initial cooldown duration
+    maxTTL                 time.Duration   // maximum cooldown duration cap
+    backoffFactor          float64         // multiplicative backoff factor (e.g., 2.0)
+    threshold              int             // failures needed within window to trigger cooldown
+    window                 time.Duration   // counting window for failures
+    maxEntries             int             // global cap (0 = unlimited)
+    maxEntriesPerContract  int             // per-contract cap (0 = unlimited)
+    contractCounts         map[string]int  // contract -> active entry count
+}
+
+func newCooldownState() *cooldownState {
+    return &cooldownState{
+        entries:       make(map[string]*cooldownEntry),
+        enabled:       true,
+        baseTTL:       60 * time.Second,
+        maxTTL:        30 * time.Minute,
+        backoffFactor: 2.0,
+        threshold:     1,              // default keeps previous behavior; can be raised via config
+        window:        60 * time.Second,
+        maxEntries:    0,
+        maxEntriesPerContract: 0,
+        contractCounts: make(map[string]int),
+    }
+}
+
+func (cs *cooldownState) key(contract, user string) string {
+	return contract + "|" + user
+}
+
+// onCooldown returns true if key is active; lazily cleans up expired entries.
+func (cs *cooldownState) onCooldown(contract, user string, now time.Time) (bool, time.Duration) {
+    if cs == nil || !cs.enabled {
+        return false, 0
+    }
+    k := cs.key(contract, user)
+    cs.mu.RLock()
+    ent, ok := cs.entries[k]
+    cs.mu.RUnlock()
+    if !ok || ent == nil {
+        return false, 0
+    }
+    if now.Before(ent.cooldownUntil) {
+        return true, ent.cooldownUntil.Sub(now)
+    }
+    // expired; clear cooldown or drop idle
+    cs.mu.Lock()
+    if ent2, ok2 := cs.entries[k]; ok2 && ent2 != nil && !now.Before(ent2.cooldownUntil) {
+        if now.Sub(ent2.windowStart) > cs.window {
+            delete(cs.entries, k)
+            cs.contractCounts[contract]--
+            if cs.contractCounts[contract] <= 0 {
+                delete(cs.contractCounts, contract)
+            }
+        } else {
+            ent2.cooldownUntil = time.Time{}
+        }
+    }
+    cs.mu.Unlock()
+    return false, 0
+}
+
+// indexRune returns index of r in s or -1.
+func indexRune(s string, r rune) int {
+    for i, ch := range s {
+        if ch == r { return i }
+    }
+    return -1
+}
+
+// ensureCapacity evicts idle entries when caps are exceeded (best-effort).
+func (cs *cooldownState) ensureCapacity(contract string, now time.Time) {
+    if cs.maxEntries <= 0 && cs.maxEntriesPerContract <= 0 {
+        return
+    }
+    evictIdle := func(limit int, specific string) int {
+        evicted := 0
+        for k, ent := range cs.entries {
+            if ent == nil { continue }
+            if specific != "" {
+                if idx := indexRune(k, '|'); idx > 0 {
+                    if k[:idx] != specific { continue }
+                } else { continue }
+            }
+            if ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window {
+                c := specific
+                if c == "" {
+                    if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
+                }
+                delete(cs.entries, k)
+                if c != "" {
+                    cs.contractCounts[c]--
+                    if cs.contractCounts[c] <= 0 { delete(cs.contractCounts, c) }
+                }
+                evicted++
+                if limit > 0 && evicted >= limit { break }
+            }
+        }
+        return evicted
+    }
+    // per-contract cap first
+    if cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract {
+        evictIdle(1, contract)
+    }
+    // global cap
+    if cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries {
+        for len(cs.entries) >= cs.maxEntries {
+            removed := evictIdle(10, "")
+            if removed == 0 {
+                // remove any non-cooldown entry
+                for k, ent := range cs.entries {
+                    if ent == nil { continue }
+                    if ent.cooldownUntil.IsZero() {
+                        c := ""
+                        if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
+                        delete(cs.entries, k)
+                        if c != "" {
+                            cs.contractCounts[c]--
+                            if cs.contractCounts[c] <= 0 { delete(cs.contractCounts, c) }
+                        }
+                        break
+                    }
+                }
+                break
+            }
+        }
+    }
+}
+
+// recordFailure increments counters and starts cooldown when threshold reached within window.
+func (cs *cooldownState) recordFailure(contract, user string, now time.Time) {
+    if cs == nil || !cs.enabled {
+        return
+    }
+    k := cs.key(contract, user)
+    cs.mu.Lock()
+    ent, ok := cs.entries[k]
+    if !ok || ent == nil {
+        cs.ensureCapacity(contract, now)
+        ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
+        // If threshold is 1, start cooldown immediately
+        if cs.threshold <= 1 {
+            dur := ent.cooldownDur
+            if dur <= 0 { dur = cs.baseTTL }
+            ent.cooldownUntil = now.Add(dur)
+            next := time.Duration(float64(dur) * cs.backoffFactor)
+            if next > cs.maxTTL { next = cs.maxTTL }
+            ent.cooldownDur = next
+            ent.fails = 0
+            ent.windowStart = now
+        }
+        cs.entries[k] = ent
+        cs.contractCounts[contract]++
+        cs.mu.Unlock()
+        return
+    }
+    // window check
+    if now.Sub(ent.windowStart) > cs.window {
+        ent.windowStart = now
+        ent.fails = 1
+        cs.mu.Unlock()
+        return
+    }
+    ent.fails++
+    if ent.fails >= cs.threshold {
+        // start cooldown with current duration and prepare next duration by backoff
+        dur := ent.cooldownDur
+        if dur <= 0 {
+            dur = cs.baseTTL
+        }
+        ent.cooldownUntil = now.Add(dur)
+        next := time.Duration(float64(dur) * cs.backoffFactor)
+        if next > cs.maxTTL {
+            next = cs.maxTTL
+        }
+        ent.cooldownDur = next
+        ent.fails = 0
+        ent.windowStart = now
+    }
+    cs.mu.Unlock()
+}
+
+// WithCooldownConfig applies node-local cooldown configuration.
+type CooldownConfig struct {
+    Enabled       *bool
+    BaseTTL       *time.Duration
+    MaxTTL        *time.Duration
+    BackoffFactor *float64
+    Threshold     *int
+    Window        *time.Duration
+    MaxEntries    *int
+    MaxEntriesPerContract *int
+}
+
+func (d SponsorContractTxAnteDecorator) WithCooldownConfig(cfg CooldownConfig) SponsorContractTxAnteDecorator {
+    if d.cstate == nil {
+        d.cstate = newCooldownState()
+    }
+    if cfg.Enabled != nil {
+        d.cstate.enabled = *cfg.Enabled
+    }
+    if cfg.BaseTTL != nil {
+        d.cstate.baseTTL = *cfg.BaseTTL
+    }
+    if cfg.MaxTTL != nil {
+        d.cstate.maxTTL = *cfg.MaxTTL
+    }
+    if cfg.BackoffFactor != nil {
+        d.cstate.backoffFactor = *cfg.BackoffFactor
+    }
+    if cfg.Threshold != nil {
+        d.cstate.threshold = *cfg.Threshold
+    }
+    if cfg.Window != nil {
+        d.cstate.window = *cfg.Window
+    }
+    if cfg.MaxEntries != nil {
+        d.cstate.maxEntries = *cfg.MaxEntries
+    }
+    if cfg.MaxEntriesPerContract != nil {
+        d.cstate.maxEntriesPerContract = *cfg.MaxEntriesPerContract
+    }
+    return d
 }
 
 // NewSponsorContractTxAnteDecorator creates a new ante decorator for sponsored contract transactions
@@ -44,6 +284,7 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 		accountKeeper: ak,
 		bankKeeper:    bk,
 		txFeeChecker:  txFeeChecker,
+		cstate:        newCooldownState(),
 	}
 }
 
@@ -267,6 +508,17 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
+		// Check local cooldown before running policy queries (CheckTx only)
+        if ctx.IsCheckTx() && !simulate && sctd.cstate != nil && sctd.cstate.enabled {
+            if blocked, remain := sctd.cstate.onCooldown(contractAddr, userAddr.String(), time.Now()); blocked {
+                // Format remaining seconds, rounding up to the nearest second
+                secs := int64(remain / time.Second)
+                if remain%time.Second != 0 { secs++ }
+                msg := fmt.Sprintf("sponsorship temporarily blocked for %ds due to recent failed attempts", secs)
+                return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, msg)
+            }
+        }
+
 		// Create a gas-limited context to prevent DoS attacks through contract queries.
 		// Gas used in the limited context is always charged back to the main context
 		// (both on success and failure) to ensure consistent cost accounting.
@@ -375,8 +627,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					),
 				)
 			}
-			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
-		}
+            // Handle fallback; if in CheckTx and fallback returns error, record local cooldown
+            newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
+            if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
+                sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
+            }
+            return newCtx, fbErr
+        }
 
 		// Policy check succeeded; consume gas on the main context for consistent estimation
 		consumeGasSafely(ctx, gasUsed, "contract policy check")
@@ -392,8 +649,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// check if the result is eligible
 		if !policyResult.Eligible {
 			// User is not eligible according to contract policy, use the specific reason from contract if provided and go back to standard fee processing
-			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
-		}
+            newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
+            if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
+                sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
+            }
+            return newCtx, fbErr
+        }
 
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"user is eligible for sponsored transaction according to contract policy",

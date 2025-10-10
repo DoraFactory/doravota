@@ -20,6 +20,7 @@ import (
     "github.com/stretchr/testify/suite"
     "strings"
     "testing"
+    "time"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -1133,6 +1134,431 @@ func (suite *AnteTestSuite) TestCheckTx_SponsorInsufficientFunds_BlocksPolicyAnd
     for _, ev := range events {
         suite.Require().NotEqual(types.EventTypeSponsorInsufficient, ev.Type, "no sponsor_insufficient_funds event in CheckTx")
     }
+}
+
+// Ensure local cooldown prevents repeated policy checks in CheckTx within TTL
+func (suite *AnteTestSuite) TestCheckTx_LocalCooldownPreventsRepeatedPolicy() {
+    // Arrange: contract with sponsorship; sponsor funded; user unfunded; policy returns ineligible
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "not allowed"}`))
+
+    // Shorten cooldown base TTL for test
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+        suite.anteDecorator.cstate.threshold = 1
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Use CheckTx context
+    checkCtx := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+
+    // First attempt: should run policy and fail via fallback (user cannot self-pay), and record cooldown
+    _, err := suite.anteDecorator.AnteHandle(checkCtx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount(), "first attempt must query policy")
+
+    // Second attempt (within TTL): should be blocked by cooldown, no policy query executed
+    checkCtx2 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    _, err2 := suite.anteDecorator.AnteHandle(checkCtx2, tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Contains(err2.Error(), "sponsorship temporarily blocked")
+    suite.Require().Contains(err2.Error(), "blocked for ")
+    suite.Require().Contains(err2.Error(), "due to recent failed attempts")
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount(), "second attempt must NOT query policy")
+
+    // Wait for TTL to expire and try again: policy should be executed again
+    time.Sleep(60 * time.Millisecond)
+    checkCtx3 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    _, err3 := suite.anteDecorator.AnteHandle(checkCtx3, tx, false, next)
+    suite.Require().Error(err3)
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount(), "after TTL, policy should run again")
+}
+
+// Ensure threshold=2 requires two failures within window to start cooldown
+func (suite *AnteTestSuite) TestCheckTx_LocalCooldownThresholdTwo() {
+    // Arrange: sponsorship enabled, sponsor funded, user unfunded; policy ineligible
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "not allowed"}`))
+
+    // Configure local cooldown: threshold=2, baseTTL=50ms, window=1s
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 2
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+        suite.anteDecorator.cstate.window = 1 * time.Second
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // Attempt 1: should run policy and fail
+    suite.wasmKeeper.ResetQueryCount()
+    check1 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    _, err := suite.anteDecorator.AnteHandle(check1, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+
+    // Attempt 2 (within window): should run policy again and then start cooldown
+    check2 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    _, err2 := suite.anteDecorator.AnteHandle(check2, tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
+
+    // Attempt 3 (still within window): should be blocked by cooldown, no new policy query
+    check3 := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    _, err3 := suite.anteDecorator.AnteHandle(check3, tx, false, next)
+    suite.Require().Error(err3)
+    suite.Require().Contains(err3.Error(), "sponsorship temporarily blocked")
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
+}
+
+// Ensure global maxEntries cap triggers idle eviction and prevents unbounded growth
+func (suite *AnteTestSuite) TestCheckTx_CooldownMaxEntriesEvictsIdle() {
+    // Arrange contract & sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    // Policy ineligible to trigger failure
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "not allowed"}`))
+
+    // Configure cooldown: threshold high (no cooldown), window=0 so entries are immediately idle, cap=2
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 100
+        suite.anteDecorator.cstate.window = 0
+        suite.anteDecorator.cstate.maxEntries = 2
+        suite.anteDecorator.cstate.maxEntriesPerContract = 0
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+
+    // Helper to run one failed attempt for a given user address
+    runFail := func(user sdk.AccAddress) {
+        // ensure account exists
+        acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, user)
+        suite.accountKeeper.SetAccount(suite.ctx, acc)
+        tx := suite.createContractExecuteTx(suite.contract, user, fee)
+        _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager()), tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    }
+
+    u1 := sdk.AccAddress("user1_______________")
+    u2 := sdk.AccAddress("user2_______________")
+    u3 := sdk.AccAddress("user3_______________")
+
+    runFail(u1)
+    runFail(u2)
+    // At this point, entries should be <= 2
+    suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 2)
+
+    // Third distinct entry should trigger idle eviction and keep size <= 2
+    runFail(u3)
+    suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 2, "maxEntries cap should be enforced via idle eviction")
+}
+
+// Ensure per-contract cap triggers idle eviction for that contract bucket
+func (suite *AnteTestSuite) TestCheckTx_CooldownMaxEntriesPerContractEvictsIdle() {
+    // Arrange contract & sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    // Policy ineligible
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Configure cooldown: threshold high (no cooldown), window=0 so idle, per-contract cap=1
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 100
+        suite.anteDecorator.cstate.window = 0
+        suite.anteDecorator.cstate.maxEntries = 0
+        suite.anteDecorator.cstate.maxEntriesPerContract = 1
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    runFail := func(user sdk.AccAddress) {
+        acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, user)
+        suite.accountKeeper.SetAccount(suite.ctx, acc)
+        tx := suite.createContractExecuteTx(suite.contract, user, fee)
+        _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager()), tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    }
+
+    u1 := sdk.AccAddress("userA_______________")
+    u2 := sdk.AccAddress("userB_______________")
+    runFail(u1)
+    runFail(u2)
+
+    cnt := suite.anteDecorator.cstate.contractCounts[suite.contract.String()]
+    suite.Require().LessOrEqual(cnt, 1, "per-contract entry count should respect cap via idle eviction")
+}
+
+// Cooldown disabled should never block and should always run policy
+func (suite *AnteTestSuite) TestCheckTx_CooldownDisabled_NoBlocking() {
+    // Arrange contract/sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Disable cooldown
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.enabled = false
+        suite.anteDecorator.cstate.threshold = 1
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Attempt 1
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err)
+    // Attempt 2 immediately should still run policy (not blocked)
+    _, err2 := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
+}
+
+// Validate backoff and max TTL capping across multiple failures
+func (suite *AnteTestSuite) TestCheckTx_CooldownBackoffAndMaxTTL() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Configure: threshold=1, base=10ms, backoff=2x, maxTTL=25ms
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 10 * time.Millisecond
+        suite.anteDecorator.cstate.backoffFactor = 2.0
+        suite.anteDecorator.cstate.maxTTL = 25 * time.Millisecond
+        suite.anteDecorator.cstate.window = 1 * time.Second
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // First failure: starts cooldown with 10ms
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    key := suite.contract.String() + "|" + suite.user.String()
+    ent := suite.anteDecorator.cstate.entries[key]
+    suite.Require().NotNil(ent)
+    // Allow TTL, then second attempt triggers next backoff (20ms)
+    time.Sleep(12 * time.Millisecond)
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    ent = suite.anteDecorator.cstate.entries[key]
+    suite.Require().NotNil(ent)
+    // Next cooldownDur should be 20ms (capped at max on next)
+    suite.Require().GreaterOrEqual(int(ent.cooldownDur/time.Millisecond), 20)
+
+    // Allow backoff TTL (>=20ms), third attempt triggers cap to 25ms
+    time.Sleep(22 * time.Millisecond)
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    ent = suite.anteDecorator.cstate.entries[key]
+    suite.Require().LessOrEqual(int(ent.cooldownDur/time.Millisecond), 25)
+}
+
+// Validate failure window resets counters: threshold=2, second failure after window should not trigger cooldown
+func (suite *AnteTestSuite) TestCheckTx_CooldownWindowResetsCounters() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 2
+        suite.anteDecorator.cstate.baseTTL = 20 * time.Millisecond
+        suite.anteDecorator.cstate.window = 30 * time.Millisecond
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // First failure (counter=1)
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    // Sleep past window
+    time.Sleep(35 * time.Millisecond)
+    // Second failure should not trigger cooldown due to window reset
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+
+    // Immediate third failure now within window (counter becomes 2) should trigger cooldown
+    // Run third attempt
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    // Immediate fourth attempt should be blocked
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "sponsorship temporarily blocked")
+    suite.Require().Contains(err.Error(), "blocked for ")
+    suite.Require().Contains(err.Error(), "due to recent failed attempts")
+}
+
+// Self-pay path should not record cooldown and should not block later sponsor attempts
+func (suite *AnteTestSuite) TestCheckTx_SelfPayDoesNotCooldown() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Fund user enough to self-pay so cooldown should not record
+    userFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+    _ = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userFund)
+    _ = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userFund)
+
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+    // First attempt: self-pay path, should skip policy and not record cooldown
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount())
+
+    // Drain user funds to force sponsor path
+    _ = suite.bankKeeper.SendCoinsFromAccountToModule(suite.ctx, suite.user, types.ModuleName, userFund)
+
+    // Attempt again: should not be blocked by cooldown and should run policy
+    suite.wasmKeeper.ResetQueryCount()
+    _, err2 := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+}
+
+// Sponsor insufficient funds should not record cooldown and should not block later attempts
+func (suite *AnteTestSuite) TestCheckTx_SponsorInsufficientDoesNotCooldown() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins()) // no sponsor funds
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // First attempt: sponsor insufficient -> early exit, no cooldown
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err)
+
+    // Verify entry not created
+    _, exists := suite.anteDecorator.cstate.entries[suite.contract.String()+"|"+suite.user.String()]
+    suite.Require().False(exists)
+
+    // Fund sponsor then attempt again: should not be blocked
+    sponsorTopUp := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+    _ = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sponsorTopUp)
+    // send to sponsor address
+    sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+    _ = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, sponsorTopUp)
+
+    suite.wasmKeeper.ResetQueryCount()
+    _, err2 := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+}
+
+// DeliverTx failures should not record local cooldown and should not affect later CheckTx
+func (suite *AnteTestSuite) TestDeliverTx_DoesNotRecordLocalCooldown() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // DeliverTx attempt: should not record local cooldown
+    _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(false), tx, false, next)
+    // Ensure no entry exists
+    _, exists := suite.anteDecorator.cstate.entries[suite.contract.String()+"|"+suite.user.String()]
+    suite.Require().False(exists)
+
+    // Now attempt in CheckTx: should run policy (not blocked)
+    suite.wasmKeeper.ResetQueryCount()
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+}
+
+// First fail (record cooldown) -> self-pay (allowed) -> remove funds -> still blocked within TTL
+func (suite *AnteTestSuite) TestCheckTx_CooldownPersistsAcrossSelfPay() {
+    // Arrange: contract/sponsor ready; policy ineligible to trigger failure on sponsor path
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "not allowed"}`))
+
+    // Configure local cooldown: threshold=1, baseTTL=50ms, window=1s
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+        suite.anteDecorator.cstate.window = 1 * time.Second
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // Ensure user has no funds first (force sponsor path)
+    // No-op: default user has no balance in tests
+
+    // Attempt 1: should fail on sponsor path and record cooldown
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err)
+
+    // Top up user to allow self-pay
+    userFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+    _ = suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, userFund)
+    _ = suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, userFund)
+
+    // Attempt 2: should self-pay and not be blocked by cooldown
+    _, err2 := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().NoError(err2)
+
+    // Remove user funds to force sponsor path again
+    _ = suite.bankKeeper.SendCoinsFromAccountToModule(suite.ctx, suite.user, types.ModuleName, userFund)
+
+    // Attempt 3 within TTL: should be blocked due to earlier cooldown record
+    _, err3 := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().Error(err3)
+    suite.Require().Contains(err3.Error(), "sponsorship temporarily blocked")
 }
 
 // New tests covering txFeeChecker pre-check integration in ante decorator
