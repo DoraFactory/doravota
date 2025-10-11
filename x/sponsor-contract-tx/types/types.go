@@ -404,9 +404,38 @@ func ValidateGenesis(data GenesisState) error {
 		seenUsage[key] = struct{}{}
 	}
 
-	// Validate parameters
+	// Validate parameters (do not early-return to allow validating other sections)
 	if data.Params != nil {
-		return data.Params.Validate()
+		if err := data.Params.Validate(); err != nil {
+			return err
+		}
+	}
+
+	// Validate failed attempts entries (global cooldown)
+	for _, fa := range data.FailedAttempts {
+		if fa == nil || fa.Record == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts entry cannot be nil")
+		}
+		if err := ValidateContractAddress(fa.ContractAddress); err != nil {
+			return err
+		}
+		if fa.UserAddress == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts user address cannot be empty")
+		}
+		if _, err := sdk.AccAddressFromBech32(fa.UserAddress); err != nil {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid failed attempts user address: %s", fa.UserAddress)
+		}
+		// Numeric field sanity checks (defensive): heights must be non-negative
+		if fa.Record.WindowStartHeight < 0 {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts window_start_height cannot be negative")
+		}
+		if fa.Record.UntilHeight < 0 {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts until_height cannot be negative")
+		}
+		// If params are provided, ensure last_cooldown_blocks does not exceed configured max
+		if data.Params != nil && fa.Record.LastCooldownBlocks > data.Params.GlobalMaxBlocks {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts last_cooldown_blocks exceeds GlobalMaxBlocks")
+		}
 	}
 
 	return nil
@@ -419,6 +448,14 @@ func DefaultParams() Params {
 	return Params{
 		SponsorshipEnabled:   true,
 		MaxGasPerSponsorship: 2500000, // 2.5M gas
+		AbuseTrackingEnabled: true,
+		// Block-based abuse tracking defaults(time can be converted to blocks based on avg block time):
+		GlobalThreshold:          4,
+		GlobalBaseBlocks:         17,
+		GlobalBackoffMilli:       3000,
+		GlobalMaxBlocks:          600,
+		GlobalWindowBlocks:       834,
+		GcFailedAttemptsPerBlock: 100,
 	}
 }
 
@@ -430,6 +467,38 @@ func (p Params) Validate() error {
 	if p.MaxGasPerSponsorship > 50000000 { // 50M gas upper limit
 		return errorsmod.Wrap(ErrInvalidParams, "max gas per sponsorship cannot exceed 50,000,000")
 	}
+
+	// Abuse tracking parameters (block-based)
+	if p.AbuseTrackingEnabled {
+		if p.GlobalThreshold == 0 {
+			return errorsmod.Wrap(ErrInvalidParams, "global threshold must be >= 1")
+		}
+		// Put a conservative upper bound to avoid unusable configurations
+		// Very large thresholds make cooldown unreachable and are not practical.
+		if p.GlobalThreshold > 100000 { // 1e5 failures within window is considered unreasonable
+			return errorsmod.Wrap(ErrInvalidParams, "global threshold must be <= 100000")
+		}
+		if p.GlobalBaseBlocks == 0 {
+			return errorsmod.Wrap(ErrInvalidParams, "global base blocks must be > 0")
+		}
+		if p.GlobalBackoffMilli < 1000 { // < 1.0x
+			return errorsmod.Wrap(ErrInvalidParams, "global backoff factor must be >= 1.0x (1000 milli)")
+		}
+		if p.GlobalBackoffMilli > 100000 { // > 100.0x is unreasonable and risks overflow in multiplications
+			return errorsmod.Wrap(ErrInvalidParams, "global backoff factor must be <= 100.0x (100000 milli)")
+		}
+		if p.GlobalMaxBlocks == 0 {
+			return errorsmod.Wrap(ErrInvalidParams, "global max blocks must be > 0")
+		}
+		if p.GlobalMaxBlocks < p.GlobalBaseBlocks {
+			return errorsmod.Wrap(ErrInvalidParams, "global max blocks must be >= base blocks")
+		}
+		if p.GlobalWindowBlocks == 0 {
+			return errorsmod.Wrap(ErrInvalidParams, "global window blocks must be > 0")
+		}
+	}
+
+	// GC per block may be zero to disable; no upper bound enforced here.
 
 	return nil
 }

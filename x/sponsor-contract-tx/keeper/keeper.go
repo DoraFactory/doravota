@@ -1,8 +1,10 @@
 package keeper
 
 import (
-	"encoding/json"
-	"fmt"
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "math"
 
 	errorsmod "cosmossdk.io/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -54,6 +56,9 @@ func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, wasmKeeper W
 func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", types.ModuleName))
 }
+
+// Cdc exposes the keeper codec for internal module usage (e.g., genesis export)
+func (k Keeper) Cdc() codec.BinaryCodec { return k.cdc }
 
 // GetAuthority returns the authority address for governance
 func (k Keeper) GetAuthority() string {
@@ -434,6 +439,200 @@ func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
 	}
 	store.Set(types.ParamsKey, bz)
 	return nil
+}
+
+// RunFailedAttemptsGC performs a deterministic GC pass over FailedAttempts records,
+// deleting up to 'limit' entries that are no longer blocked and whose sliding window
+// has expired at current block height.
+func (k Keeper) RunFailedAttemptsGC(ctx sdk.Context, limit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	curH := ctx.BlockHeight()
+	params := k.GetParams(ctx)
+
+	// Collect keys to delete first to avoid mutating during iteration
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.FailedAttemptsKeyPrefix)
+	it := store.Iterator(nil, nil)
+	defer it.Close()
+
+	toDelete := make([][]byte, 0, limit)
+	for it.Valid() && len(toDelete) < limit {
+		key := append([]byte{}, it.Key()...)
+		val := it.Value()
+		var rec types.FailedAttempts
+		if err := k.cdc.Unmarshal(val, &rec); err == nil {
+			if rec.UntilHeight < curH {
+				if rec.WindowStartHeight == 0 || (curH-rec.WindowStartHeight) > int64(params.GlobalWindowBlocks) {
+					toDelete = append(toDelete, key)
+				}
+			}
+		} else {
+			// Corrupted entries: safe to delete deterministically
+			toDelete = append(toDelete, key)
+		}
+		it.Next()
+	}
+
+	for _, key := range toDelete {
+		store.Delete(key)
+	}
+	return len(toDelete)
+}
+
+// GetAllFailedAttemptsEntries returns all failed-attempts entries as (contract,user,record) tuples
+func (k Keeper) GetAllFailedAttemptsEntries(ctx sdk.Context) []*types.FailedAttemptsEntry {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.FailedAttemptsKeyPrefix)
+	it := store.Iterator(nil, nil)
+	defer it.Close()
+	var res []*types.FailedAttemptsEntry
+	for ; it.Valid(); it.Next() {
+		key := it.Key()
+		// key format: contract + "/" + user
+		sep := bytes.IndexByte(key, '/')
+		if sep <= 0 || sep >= len(key)-1 {
+			continue
+		}
+		contract := string(key[:sep])
+		user := string(key[sep+1:])
+		var rec types.FailedAttempts
+		if err := k.cdc.Unmarshal(it.Value(), &rec); err != nil {
+			continue
+		}
+		entry := &types.FailedAttemptsEntry{
+			ContractAddress: contract,
+			UserAddress:     user,
+			Record:          &rec,
+		}
+		res = append(res, entry)
+	}
+	return res
+}
+
+// === Global Failed Attempts (Abuse Tracking) ===
+
+// GetFailedAttempts retrieves the global failed attempts record for a contract/user.
+// Pure read; never mutates state.
+func (k Keeper) GetFailedAttempts(ctx sdk.Context, contractAddr, userAddr string) (types.FailedAttempts, bool) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.FailedAttemptsKey(contractAddr, userAddr)
+	bz := store.Get(key)
+	if bz == nil {
+		return types.FailedAttempts{}, false
+	}
+
+	var rec types.FailedAttempts
+	if err := k.cdc.Unmarshal(bz, &rec); err != nil {
+		// Pure-read getter: do not mutate state here; just log and treat as not found
+		k.Logger(ctx).Error("failed to unmarshal failed attempts record", "contract", contractAddr, "user", userAddr, "err", err)
+		return types.FailedAttempts{}, false
+	}
+	return rec, true
+}
+
+// SetFailedAttempts sets the global failed attempts record for a contract/user.
+func (k Keeper) SetFailedAttempts(ctx sdk.Context, contractAddr, userAddr string, rec types.FailedAttempts) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.FailedAttemptsKey(contractAddr, userAddr)
+	bz := k.cdc.MustMarshal(&rec)
+	store.Set(key, bz)
+}
+
+// ClearFailedAttempts removes the record for a contract/user.
+func (k Keeper) ClearFailedAttempts(ctx sdk.Context, contractAddr, userAddr string) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.FailedAttemptsKey(contractAddr, userAddr)
+	store.Delete(key)
+}
+
+// IsGloballyBlocked returns whether the user is currently globally blocked for the contract
+// and the remaining blocks until unblocked. Determined solely by block height.
+func (k Keeper) IsGloballyBlocked(ctx sdk.Context, contractAddr, userAddr string) (bool, int64) {
+	params := k.GetParams(ctx)
+	if !params.AbuseTrackingEnabled {
+		return false, 0
+	}
+
+	rec, found := k.GetFailedAttempts(ctx, contractAddr, userAddr)
+	if !found {
+		return false, 0
+	}
+
+	curH := ctx.BlockHeight()
+	if rec.UntilHeight > curH {
+		remain := rec.UntilHeight - curH
+		return true, remain
+	}
+	return false, 0
+}
+
+// IncrementFailedAttempts applies sliding-window counting and exponential backoff cooldown.
+// Returns whether the user is now blocked and the until-height. Uses ctx.BlockHeight exclusively.
+func (k Keeper) IncrementFailedAttempts(ctx sdk.Context, contractAddr, userAddr string) (bool, int64, error) {
+	params := k.GetParams(ctx)
+	if !params.AbuseTrackingEnabled {
+		return false, 0, nil
+	}
+
+	curH := ctx.BlockHeight()
+
+	rec, found := k.GetFailedAttempts(ctx, contractAddr, userAddr)
+	if !found {
+		rec = types.FailedAttempts{ // initialize fresh window
+			Count:              0,
+			WindowStartHeight:  curH,
+			UntilHeight:        0,
+			LastCooldownBlocks: 0,
+		}
+	}
+
+	// Reset counting window if expired
+	if rec.WindowStartHeight == 0 || (curH-rec.WindowStartHeight) > int64(params.GlobalWindowBlocks) {
+		rec.Count = 0
+		rec.WindowStartHeight = curH
+	}
+
+	// Increment count for this failure within window
+	rec.Count++
+
+	// If threshold not reached, persist and return
+	if rec.Count < params.GlobalThreshold {
+		k.SetFailedAttempts(ctx, contractAddr, userAddr, rec)
+		return false, 0, nil
+	}
+
+	// Threshold reached: compute cooldown duration with multiplicative backoff
+    // Compute next cooldown blocks using fixed-point (milli) to avoid float nondeterminism
+    var ttlBlocks int64
+    if rec.LastCooldownBlocks == 0 {
+        ttlBlocks = int64(params.GlobalBaseBlocks)
+    } else {
+        // ceil(last * factor)
+        last := int64(rec.LastCooldownBlocks)
+        milli := int64(params.GlobalBackoffMilli)
+        ttlBlocks = (last*milli + 999) / 1000
+    }
+    if ttlBlocks < int64(params.GlobalBaseBlocks) {
+        ttlBlocks = int64(params.GlobalBaseBlocks)
+    }
+    if ttlBlocks > int64(params.GlobalMaxBlocks) {
+        ttlBlocks = int64(params.GlobalMaxBlocks)
+    }
+    // Defensive: saturating add to avoid theoretical overflow in extreme scenarios
+    if ttlBlocks > 0 && curH > math.MaxInt64-ttlBlocks {
+        rec.UntilHeight = math.MaxInt64
+    } else {
+        rec.UntilHeight = curH + ttlBlocks
+    }
+    rec.LastCooldownBlocks = uint32(ttlBlocks)
+
+	// Reset window/count after starting cooldown as per spec
+	rec.Count = 0
+	rec.WindowStartHeight = curH
+
+	k.SetFailedAttempts(ctx, contractAddr, userAddr, rec)
+
+	return true, rec.UntilHeight, nil
 }
 
 // === User Grant Usage Management ===

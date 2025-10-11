@@ -156,6 +156,17 @@ func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {}
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module
 func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate {
+	// Deterministic GC for failed attempts: delete a bounded number of expired entries each block
+	params := am.keeper.GetParams(ctx)
+	limit := int(params.GcFailedAttemptsPerBlock)
+	if limit > 0 {
+		if deleted := am.keeper.RunFailedAttemptsGC(ctx, limit); deleted > 0 {
+			ctx.Logger().With("module", "sponsor-contract-tx").Info(
+				"failed-attempts GC executed",
+				"deleted", deleted,
+			)
+		}
+	}
 	return []abci.ValidatorUpdate{}
 }
 

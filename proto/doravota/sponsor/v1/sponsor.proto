@@ -22,6 +22,8 @@ message GenesisState {
   repeated ContractSponsor sponsors = 1;
   Params params = 2;
   repeated UserGrantUsage user_grant_usages = 3;
+  // Persist global cooldown records to ensure continuity across upgrades/state-sync
+  repeated FailedAttemptsEntry failed_attempts = 4;
 }
 
 // UserGrantUsage tracks how much grant a user has used for a specific contract
@@ -32,6 +34,25 @@ message UserGrantUsage {
   int64 last_used_time = 4;
 }
 
+// FailedAttempts tracks global abuse signals for sponsorship attempts
+message FailedAttempts {
+  // number of failed attempts within the sliding window
+  uint32 count = 1;
+  // window_start_height is the block height when current counting window started
+  int64 window_start_height = 2;
+  // until_height is the block height until which the user is globally blocked
+  int64 until_height = 3;
+  // last_cooldown_blocks stores the last cooldown blocks applied to support multiplicative backoff
+  uint32 last_cooldown_blocks = 4;
+}
+
+// FailedAttemptsEntry binds a (contract,user) pair to its FailedAttempts data
+message FailedAttemptsEntry {
+  string contract_address = 1;
+  string user_address = 2;
+  FailedAttempts record = 3;
+}
+
 // Params defines the parameters for the sponsor module
 message Params {
   // Whether sponsorship is globally enabled
@@ -39,4 +60,21 @@ message Params {
 
   // Maximum gas limit per sponsored transaction
   uint64 max_gas_per_sponsorship = 2;
+
+  // Whether abuse tracking (global cooldown) is enabled
+  bool abuse_tracking_enabled = 3;
+  // Number of failures within window to trigger global cooldown
+  uint32 global_threshold = 4;
+  // Base cooldown blocks for first threshold hit
+  uint32 global_base_blocks = 5;
+  // Multiplicative backoff factor in milli (e.g., 3000 = 3.0x)
+  uint32 global_backoff_milli = 6;
+  // Max cooldown blocks cap
+  uint32 global_max_blocks = 7;
+  // Sliding window size for counting (blocks)
+  uint32 global_window_blocks = 8;
+
+  // Number of expired FailedAttempts entries to GC per block (deterministic EndBlock GC)
+  // 0 disables automatic GC
+  uint32 gc_failed_attempts_per_block = 9;
 }

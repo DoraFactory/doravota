@@ -96,11 +96,17 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 
 // TestValidateGenesis tests genesis state validation
 func (suite *GenesisTestSuite) TestValidateGenesis() {
-	testCases := []struct {
-		name      string
-		genesis   *types.GenesisState
-		expectErr bool
-	}{
+    // helper for valid bech32 acc address
+    mkAddr := func(seed byte) string {
+        b := make([]byte, 20)
+        for i := range b { b[i] = seed }
+        return sdk.AccAddress(b).String()
+    }
+    testCases := []struct {
+        name      string
+        genesis   *types.GenesisState
+        expectErr bool
+    }{
 		{
 			name:      "default genesis",
 			genesis:   types.DefaultGenesisState(),
@@ -199,24 +205,96 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
 			}(),
 			expectErr: false, // Note: ValidateGenesis doesn't validate bech32 format
 		},
-		{
-			name: "sponsor with empty creator address",
-			genesis: func() *types.GenesisState {
-				params := types.DefaultParams()
-				return &types.GenesisState{
-					Params: &params,
-					Sponsors: []*types.ContractSponsor{
-						{
-							ContractAddress: suite.contractAddr1,
-							CreatorAddress:  "", // Empty, but this is valid in genesis
-							IsSponsored:     true,
-							MaxGrantPerUser: []*sdk.Coin{},
-						},
-					},
-				}
-			}(),
-			expectErr: false, // Note: ValidateGenesis allows empty creator address
-		},
+        {
+            name: "sponsor with empty creator address",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: suite.contractAddr1,
+                            CreatorAddress:  "", // Empty, but this is valid in genesis
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{},
+                        },
+                    },
+                }
+            }(),
+            expectErr: false, // Note: ValidateGenesis allows empty creator address
+        },
+        // FailedAttempts validation cases
+        {
+            name: "failed attempts entry is nil",
+            genesis: func() *types.GenesisState {
+                p := types.DefaultParams()
+                return &types.GenesisState{
+                    Params:          &p,
+                    Sponsors:        []*types.ContractSponsor{},
+                    UserGrantUsages: []*types.UserGrantUsage{},
+                    FailedAttempts:  []*types.FailedAttemptsEntry{nil},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "failed attempts record is nil",
+            genesis: func() *types.GenesisState {
+                c := mkAddr(1); u := mkAddr(2)
+                p := types.DefaultParams()
+                return &types.GenesisState{
+                    Params:          &p,
+                    Sponsors:        []*types.ContractSponsor{},
+                    UserGrantUsages: []*types.UserGrantUsage{},
+                    FailedAttempts: []*types.FailedAttemptsEntry{
+                        {ContractAddress: c, UserAddress: u, Record: nil},
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "failed attempts invalid contract address",
+            genesis: func() *types.GenesisState {
+                u := mkAddr(2)
+                p := types.DefaultParams()
+                return &types.GenesisState{
+                    Params:          &p,
+                    FailedAttempts: []*types.FailedAttemptsEntry{
+                        {ContractAddress: "invalid", UserAddress: u, Record: &types.FailedAttempts{}},
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "failed attempts empty user address",
+            genesis: func() *types.GenesisState {
+                c := mkAddr(1)
+                p := types.DefaultParams()
+                return &types.GenesisState{
+                    Params:          &p,
+                    FailedAttempts: []*types.FailedAttemptsEntry{
+                        {ContractAddress: c, UserAddress: "", Record: &types.FailedAttempts{}},
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "failed attempts invalid user address",
+            genesis: func() *types.GenesisState {
+                c := mkAddr(1)
+                p := types.DefaultParams()
+                return &types.GenesisState{
+                    Params:          &p,
+                    FailedAttempts: []*types.FailedAttemptsEntry{
+                        {ContractAddress: c, UserAddress: "invalid-user", Record: &types.FailedAttempts{}},
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
 	}
 
 	for _, tc := range testCases {
@@ -402,6 +480,72 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 		suite.Require().Equal(firstExport.UserGrantUsages[0].ContractAddress, secondExport.UserGrantUsages[0].ContractAddress)
 		suite.Require().Equal(firstExport.UserGrantUsages[0].LastUsedTime, secondExport.UserGrantUsages[0].LastUsedTime)
 	}
+}
+
+// TestFailedAttemptsGenesisRoundTrip verifies failed-attempts (global cooldown) state survives Export -> Init
+func (suite *GenesisTestSuite) TestFailedAttemptsGenesisRoundTrip() {
+    // Helper to make valid bech32 addresses
+    mkAddr := func(seed byte) string {
+        b := make([]byte, 20)
+        for i := range b { b[i] = seed }
+        return sdk.AccAddress(b).String()
+    }
+
+    contract1 := mkAddr(1)
+    user1 := mkAddr(2)
+    contract2 := mkAddr(3)
+    user2 := mkAddr(4)
+
+    // Prepare original genesis with failed-attempts entries
+    params := types.DefaultParams()
+    original := &types.GenesisState{
+        Params: &params,
+        Sponsors: []*types.ContractSponsor{},
+        UserGrantUsages: []*types.UserGrantUsage{},
+        FailedAttempts: []*types.FailedAttemptsEntry{
+            {
+                ContractAddress: contract1,
+                UserAddress:     user1,
+                Record: &types.FailedAttempts{
+                    Count:             0,
+                    WindowStartHeight: 100,
+                    UntilHeight:       150,
+                },
+            },
+            {
+                ContractAddress: contract2,
+                UserAddress:     user2,
+                Record: &types.FailedAttempts{
+                    Count:             2,
+                    WindowStartHeight: 200,
+                    UntilHeight:       0,
+                },
+            },
+        },
+    }
+
+    // Init with original
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *original)
+
+    // Export current state
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    // Basic presence
+    suite.Require().Len(exported.FailedAttempts, 2)
+
+    // Create new keeper and context; import exported
+    k2, ctx2 := setupKeeper(suite.T())
+    sponsor.InitGenesis(ctx2, k2, *exported)
+
+    // Verify failed attempts restored
+    rec1, found1 := k2.GetFailedAttempts(ctx2, contract1, user1)
+    suite.Require().True(found1)
+    suite.Require().Equal(int64(150), rec1.UntilHeight)
+    suite.Require().Equal(int64(100), rec1.WindowStartHeight)
+
+    rec2, found2 := k2.GetFailedAttempts(ctx2, contract2, user2)
+    suite.Require().True(found2)
+    suite.Require().Equal(uint32(2), rec2.Count)
+    suite.Require().Equal(int64(0), rec2.UntilHeight)
 }
 
 // TestEmptyGenesis tests initialization with minimal genesis state

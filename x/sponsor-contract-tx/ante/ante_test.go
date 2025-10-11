@@ -780,6 +780,403 @@ func (suite *AnteTestSuite) createBankSendTx(from sdk.AccAddress, to sdk.AccAddr
 	return suite.createTx([]sdk.Msg{msg}, []sdk.AccAddress{from}, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))), nil)
 }
 
+// === Global cooldown (chain-wide) tests ===
+
+// CheckTx should block when global cooldown is active for (contract,user)
+func (suite *AnteTestSuite) TestGlobalCooldownBlocksInCheckTx() {
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // Ensure user cannot self-pay
+    // No user funds minted
+
+    // Set a global cooldown record: until_height > current
+    suite.ctx = suite.ctx.WithBlockHeight(100).WithIsCheckTx(true)
+    rec := types.FailedAttempts{Count: 0, WindowStartHeight: 90, UntilHeight: 105}
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), rec)
+
+    // Create a contract execute tx with non-zero fee
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+
+    // next should NOT be called when blocked
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+        nextCalled = true
+        return ctx, nil
+    }
+
+    // Execute ante handler in CheckTx path
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "globally blocked")
+    suite.Require().Contains(err.Error(), "blocks")
+    suite.Require().False(nextCalled)
+}
+
+// DeliverTx failures that prevent self-pay should increment global cooldown and after threshold block further attempts
+func (suite *AnteTestSuite) TestDeliverTxFailureIncrementsGlobalCooldown() {
+    // Configure small threshold/backoff
+    params := types.DefaultParams()
+    params.AbuseTrackingEnabled = true
+    params.GlobalThreshold = 2
+    params.GlobalBaseBlocks = 2
+    params.GlobalBackoffMilli = 2000
+    params.GlobalMaxBlocks = 10
+    params.GlobalWindowBlocks = 50
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // User has no funds → fallback path will return ErrInsufficientFunds
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Ensure DeliverTx (ctx.IsCheckTx=false already in SetupTest)
+    suite.ctx = suite.ctx.WithBlockHeight(200).WithIsCheckTx(false)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // First failure -> count=1, not blocked
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found := suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().Equal(uint32(1), rec.Count)
+    suite.Require().Equal(int64(0), rec.UntilHeight)
+
+    // Second failure -> crosses threshold, should block for base=2 blocks
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found = suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().True(rec.UntilHeight > 0)
+    suite.Require().Equal(int64(202), rec.UntilHeight) // 200 + base(2)
+    // Verify event emitted on DeliverTx
+    {
+        events := suite.ctx.EventManager().Events()
+        foundEv := false
+        for _, ev := range events {
+            if ev.Type == types.EventTypeGlobalCooldownStarted {
+                foundEv = true
+                break
+            }
+        }
+        suite.Require().True(foundEv, "Expected global_cooldown_started event")
+    }
+
+    // Subsequent CheckTx should be blocked by global cooldown
+    suite.ctx = suite.ctx.WithIsCheckTx(true)
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "globally blocked")
+}
+
+// User can self-pay: bypass both global and local cooldown
+func (suite *AnteTestSuite) TestSelfPayBypassesGlobalAndLocal() {
+    // Setup contract+sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins())
+
+    // Put a global block record
+    suite.ctx = suite.ctx.WithBlockHeight(300).WithIsCheckTx(true)
+    rec := types.FailedAttempts{Count: 0, WindowStartHeight: 200, UntilHeight: 400}
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), rec)
+
+    // Give user sufficient funds for fee
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee))
+
+    // Create tx; since user can self-pay, should skip sponsorship checks
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { nextCalled = true; return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+}
+
+// DeliverTx should also block on active global cooldown
+func (suite *AnteTestSuite) TestDeliverTxAlsoBlocksOnGlobal() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    suite.ctx = suite.ctx.WithBlockHeight(500).WithIsCheckTx(false)
+    rec := types.FailedAttempts{UntilHeight: 550, WindowStartHeight: 480}
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), rec)
+
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "globally blocked")
+}
+
+// Local cooldown blocks when no global cooldown is active
+func (suite *AnteTestSuite) TestLocalCooldownBlocksWhenNoGlobal() {
+    // Enable local cooldown defaults (threshold=1)
+    enabled := true
+    suite.anteDecorator = suite.anteDecorator.WithCooldownConfig(CooldownConfig{Enabled: &enabled})
+
+    // Setup contract + sponsor and ensure user cannot self-pay
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // First CheckTx: policy ineligible + user cannot self-pay -> fallback error -> record local failure -> next called
+    suite.ctx = suite.ctx.WithIsCheckTx(true)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+
+    // Second CheckTx immediately: should hit local cooldown (message uses seconds)
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "temporarily blocked")
+}
+
+// No increments for: sponsorship disabled, contract not found, sponsor insufficient funds
+func (suite *AnteTestSuite) TestNoIncrementOnDisabledOrNotFoundOrSponsorInsufficient() {
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+
+    // Case 1: sponsorship disabled
+    contractDisabled := sdk.AccAddress("contract_disabled____")
+    suite.wasmKeeper.SetContractInfo(contractDisabled, suite.admin.String())
+    suite.createAndFundSponsor(contractDisabled, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+    params := types.DefaultParams(); params.SponsorshipEnabled = false
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    tx := suite.createContractExecuteTx(contractDisabled, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().NoError(err)
+    _, found := suite.keeper.GetFailedAttempts(suite.ctx, contractDisabled.String(), suite.user.String())
+    suite.Require().False(found)
+
+    // Case 2: contract not found
+    params = types.DefaultParams(); params.SponsorshipEnabled = true
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+    // Use a different contract; don't set in wasmKeeper and don't set sponsor
+    contractNotFound := sdk.AccAddress("contract_not_found____")
+    tx = suite.createContractExecuteTx(contractNotFound, suite.user, fee)
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err) // user cannot self-pay error bubbled
+    _, found = suite.keeper.GetFailedAttempts(suite.ctx, contractNotFound.String(), suite.user.String())
+    suite.Require().False(found)
+
+    // Case 3: sponsor insufficient funds
+    contractInsufficient := sdk.AccAddress("contract_insufficient__")
+    suite.wasmKeeper.SetContractInfo(contractInsufficient, suite.admin.String())
+    // Set sponsor with zero funds
+    suite.createAndFundSponsor(contractInsufficient, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+    // No user funds, fee non-zero
+    tx = suite.createContractExecuteTx(contractInsufficient, suite.user, fee)
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "sponsor account")
+    _, found = suite.keeper.GetFailedAttempts(suite.ctx, contractInsufficient.String(), suite.user.String())
+    suite.Require().False(found)
+}
+
+// Global precedence over local: when both would block, global message should be returned
+func (suite *AnteTestSuite) TestGlobalPrecedenceOverLocal() {
+    // Enable local cooldown
+    enabled := true
+    suite.anteDecorator = suite.anteDecorator.WithCooldownConfig(CooldownConfig{Enabled: &enabled})
+
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+
+    // Set global block
+    suite.ctx = suite.ctx.WithIsCheckTx(true).WithBlockHeight(100)
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), types.FailedAttempts{UntilHeight: 200, WindowStartHeight: 90})
+
+    // Activate local cooldown by recording a local failure
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.recordFailure(suite.contract.String(), suite.user.String(), time.Now())
+    }
+
+    // Create tx
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "globally blocked")
+}
+
+// Policy error path should also increment global cooldown on DeliverTx when user cannot self-pay
+func (suite *AnteTestSuite) TestPolicyErrorIncrementsGlobal() {
+    params := types.DefaultParams()
+    params.AbuseTrackingEnabled = true
+    params.GlobalThreshold = 2
+    params.GlobalBaseBlocks = 2
+    params.GlobalBackoffMilli = 2000
+    params.GlobalMaxBlocks = 10
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    // Setup contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.wasmKeeper.SetQueryError(suite.contract, "contract policy check failed")
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    suite.ctx = suite.ctx.WithIsCheckTx(false).WithBlockHeight(1000)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // First failure
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found := suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().Equal(uint32(1), rec.Count)
+
+    // Second failure -> threshold reached, block for base blocks
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found = suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().Equal(int64(1002), rec.UntilHeight)
+    // Verify event emitted on DeliverTx
+    {
+        events := suite.ctx.EventManager().Events()
+        foundEv := false
+        for _, ev := range events {
+            if ev.Type == types.EventTypeGlobalCooldownStarted {
+                foundEv = true
+                break
+            }
+        }
+        suite.Require().True(foundEv, "Expected global_cooldown_started event")
+    }
+}
+
+// FeeGranter should bypass sponsor logic even if a global block exists
+func (suite *AnteTestSuite) TestFeeGranterBypassesGlobalEvenIfBlocked() {
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+
+    // Set global block
+    suite.ctx = suite.ctx.WithBlockHeight(1000).WithIsCheckTx(true)
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), types.FailedAttempts{UntilHeight: 1100, WindowStartHeight: 900})
+
+    // Build tx with fee granter -> should bypass sponsor logic
+    tx := suite.createContractExecuteTxWithFeeGranter(suite.contract, suite.user, suite.feeGranter, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { nextCalled = true; return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+}
+
+// Policy panic paths should be treated as failures and increment global cooldown on DeliverTx
+func (suite *AnteTestSuite) TestPolicyPanicIncrementsGlobal() {
+    params := types.DefaultParams()
+    params.AbuseTrackingEnabled = true
+    params.GlobalThreshold = 2
+    params.GlobalBaseBlocks = 2
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    // Panic in contract policy
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte("__PANIC_GENERAL__"))
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+
+    // User cannot self-pay
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    suite.ctx = suite.ctx.WithIsCheckTx(false).WithBlockHeight(3000)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // first failure
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found := suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().Equal(uint32(1), rec.Count)
+
+    // second failure -> threshold reached -> block
+    _, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    rec, found = suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().True(found)
+    suite.Require().True(rec.UntilHeight > 0)
+    // Verify event emitted on DeliverTx
+    {
+        events := suite.ctx.EventManager().Events()
+        foundEv := false
+        for _, ev := range events {
+            if ev.Type == types.EventTypeGlobalCooldownStarted {
+                foundEv = true
+                break
+            }
+        }
+        suite.Require().True(foundEv, "Expected global_cooldown_started event")
+    }
+}
+
+// CheckTx failure path should never write global cooldown state
+func (suite *AnteTestSuite) TestCheckTxDoesNotWriteGlobalOnFailure() {
+    // Setup contract + sponsor and policy ineligible
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+
+    // No user funds -> fallback error in CheckTx
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    suite.ctx = suite.ctx.WithIsCheckTx(true)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+
+    _, found := suite.keeper.GetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String())
+    suite.Require().False(found)
+}
+
+// Zero-fee tx in CheckTx should bypass sponsorship checks even if globally blocked
+func (suite *AnteTestSuite) TestZeroFeeBypassesGlobalInCheckTx() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+
+    suite.ctx = suite.ctx.WithIsCheckTx(true).WithBlockHeight(700)
+    suite.keeper.SetFailedAttempts(suite.ctx, suite.contract.String(), suite.user.String(), types.FailedAttempts{UntilHeight: 800, WindowStartHeight: 650})
+
+    // Create zero-fee tx
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins())
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { nextCalled = true; return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+}
+
+
+
 // MockTx implements sdk.Tx and sdk.FeeTx for testing
 type MockTx struct {
 	msgs       []sdk.Msg

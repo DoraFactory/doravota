@@ -7,10 +7,35 @@ import (
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	// Local keeper + types for direct gRPC server testing
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	dbm "github.com/cometbft/cometbft-db"
+	"github.com/cometbft/cometbft/libs/log"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/store"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkquery "github.com/cosmos/cosmos-sdk/types/query"
+
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
+	keeperpkg "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
+
+// dummyWasmKeeper is a minimal stub to satisfy keeper's WasmKeeperInterface in local QueryServer tests
+type dummyWasmKeeper struct{}
+
+func (d dummyWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+	return nil
+}
+func (d dummyWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+	return []byte("{}"), nil
+}
 
 // QueryTestSuite integrates with the cosmos-sdk test framework for CLI testing
 type QueryTestSuite struct {
@@ -208,6 +233,126 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 	}
 }
 
+// --- Local helpers for direct QueryServer tests (no full network needed) ---
+
+func newLocalKeeperAndCtx(t *testing.T) (keeperpkg.Keeper, sdk.Context) {
+	t.Helper()
+	// minimal in-memory app state for keeper
+	registry := codectypes.NewInterfaceRegistry()
+	cdc := codec.NewProtoCodec(registry)
+	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	db := dbm.NewMemDB()
+	ms := store.NewCommitMultiStore(db)
+	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
+	require.NoError(t, ms.LoadLatestVersion())
+	k := keeperpkg.NewKeeper(cdc, storeKey, dummyWasmKeeper{}, "cosmos1authority_____________________")
+	ctx := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
+	return *k, ctx
+}
+
+// The following tests exercise the gRPC QueryServer methods for global cooldown within this CLI test file,
+// as requested, without spinning up a full network.
+
+func TestBlockedStatus_BasicCLI(t *testing.T) {
+	k, ctx := newLocalKeeperAndCtx(t)
+	q := keeperpkg.NewQueryServer(k)
+	wctx := sdk.WrapSDKContext(ctx)
+
+	// nil request
+	_, err := q.BlockedStatus(wctx, nil)
+	require.Error(t, err)
+
+	// invalid addresses
+	_, err = q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: "", UserAddress: ""})
+	require.Error(t, err)
+	_, err = q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: "invalid", UserAddress: "invalid"})
+	require.Error(t, err)
+
+	// helper to build valid bech32 address strings
+	mkAddr := func(seed byte) string {
+		b := make([]byte, 20)
+		for i := range b {
+			b[i] = seed
+		}
+		return sdk.AccAddress(b).String()
+	}
+	contract := mkAddr(1)
+	user := mkAddr(2)
+
+	// not found
+	resp, err := q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: contract, UserAddress: user})
+	require.NoError(t, err)
+	require.False(t, resp.Blocked)
+
+	// blocked record
+	ctx = ctx.WithBlockHeight(100)
+	k.SetFailedAttempts(ctx, contract, user, types.FailedAttempts{UntilHeight: 110, WindowStartHeight: 90, Count: 2})
+	resp, err = q.BlockedStatus(sdk.WrapSDKContext(ctx), &types.QueryBlockedStatusRequest{ContractAddress: contract, UserAddress: user})
+	require.NoError(t, err)
+	require.True(t, resp.Blocked)
+	require.Equal(t, uint32(10), resp.RemainingBlocks)
+	require.Equal(t, uint32(2), resp.Count)
+}
+
+func TestAllBlockedStatuses_FiltersAndPaginationCLI(t *testing.T) {
+	k, ctx := newLocalKeeperAndCtx(t)
+	q := keeperpkg.NewQueryServer(k)
+	ctx = ctx.WithBlockHeight(500)
+	wctx := sdk.WrapSDKContext(ctx)
+
+	params := types.DefaultParams()
+	params.GlobalWindowBlocks = 50
+	require.NoError(t, k.SetParams(ctx, params))
+
+	mkAddr2 := func(seed byte) string {
+		b := make([]byte, 20)
+		for i := range b {
+			b[i] = seed
+		}
+		return sdk.AccAddress(b).String()
+	}
+	cA := mkAddr2(10)
+	uA1 := mkAddr2(11)
+	uA2 := mkAddr2(12)
+	cB := mkAddr2(20)
+	uB1 := mkAddr2(21)
+
+	k.SetFailedAttempts(ctx, cA, uA1, types.FailedAttempts{UntilHeight: 520, WindowStartHeight: 480})
+	k.SetFailedAttempts(ctx, cA, uA2, types.FailedAttempts{UntilHeight: 490, WindowStartHeight: 480, Count: 1})
+	k.SetFailedAttempts(ctx, cB, uB1, types.FailedAttempts{UntilHeight: 460, WindowStartHeight: 400})
+	// Note: cannot inject a corrupt record here since keeper's storeKey is unexported outside package
+
+	// nil request
+	_, err := q.AllBlockedStatuses(wctx, nil)
+	require.Error(t, err)
+
+	// invalid contract filter
+	_, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{ContractAddress: "invalid"})
+	require.Error(t, err)
+
+	// list all
+	resp, err := q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Statuses, 2)
+
+	// only blocked
+	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{OnlyBlocked: true})
+	require.NoError(t, err)
+	require.Len(t, resp.Statuses, 1)
+	require.True(t, resp.Statuses[0].Blocked)
+
+	// filter by contract
+	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{ContractAddress: cA})
+	require.NoError(t, err)
+	require.Len(t, resp.Statuses, 2)
+
+	// pagination: limit 1
+	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{Pagination: &sdkquery.PageRequest{Limit: 1}})
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(resp.Statuses), 1)
+	require.NotNil(t, resp.Pagination)
+}
+
 // TestQueryUserGrantUsage tests the user grant usage query command
 func (s *QueryTestSuite) TestQueryUserGrantUsage() {
 	val := s.network.Validators[0]
@@ -352,6 +497,16 @@ func (s *QueryTestSuite) TestQueryCmdHelp() {
 			"user grant usage help",
 			cli.GetCmdQueryUserGrantUsage,
 			"Query grant usage for a specific user and contract",
+		},
+		{
+			"blocked-status help",
+			cli.GetCmdQueryBlockedStatus,
+			"Query global cooldown status",
+		},
+		{
+			"all-blocked-statuses help",
+			cli.GetCmdQueryAllBlockedStatuses,
+			"global cooldown records",
 		},
 	}
 

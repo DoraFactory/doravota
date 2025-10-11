@@ -182,3 +182,78 @@ func TestGenesisValidation(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "user grant usage contract address cannot be empty")
 }
+
+func TestParamsBackoffMilliValidation(t *testing.T) {
+    p := DefaultParams()
+    p.AbuseTrackingEnabled = true
+
+    // valid lower bound
+    p.GlobalBackoffMilli = 1000
+    require.NoError(t, p.Validate())
+
+    // below lower bound
+    p.GlobalBackoffMilli = 999
+    require.Error(t, p.Validate())
+
+    // upper bound valid
+    p.GlobalBackoffMilli = 100000
+    require.NoError(t, p.Validate())
+
+    // above upper bound
+    p.GlobalBackoffMilli = 100001
+    require.Error(t, p.Validate())
+}
+
+func TestParamsThresholdUpperBound(t *testing.T) {
+    p := DefaultParams()
+    p.AbuseTrackingEnabled = true
+
+    // upper bound valid
+    p.GlobalThreshold = 100000
+    require.NoError(t, p.Validate())
+
+    // above upper bound invalid
+    p.GlobalThreshold = 100001
+    require.Error(t, p.Validate())
+}
+
+func TestValidateGenesis_FailedAttemptsNumericChecks(t *testing.T) {
+    // Build a minimal valid genesis
+    p := DefaultParams()
+    p.AbuseTrackingEnabled = true
+    gen := DefaultGenesisState()
+    gen.Params = &p
+
+    // construct valid bech32 addresses
+    mkAddr := func(seed byte) string {
+        b := make([]byte, 20)
+        for i := range b { b[i] = seed }
+        return sdk.AccAddress(b).String()
+    }
+    contract := mkAddr(1)
+    user := mkAddr(2)
+
+    // Case 1: negative heights should be rejected
+    gen.FailedAttempts = []*FailedAttemptsEntry{
+        {
+            ContractAddress: contract,
+            UserAddress:     user,
+            Record: &FailedAttempts{Count: 0, WindowStartHeight: -1, UntilHeight: 10},
+        },
+    }
+    err := ValidateGenesis(*gen)
+    require.Error(t, err)
+
+    // Case 2: last_cooldown_blocks cannot exceed GlobalMaxBlocks
+    gen = DefaultGenesisState()
+    gen.Params = &p
+    gen.FailedAttempts = []*FailedAttemptsEntry{
+        {
+            ContractAddress: contract,
+            UserAddress:     user,
+            Record: &FailedAttempts{Count: 0, WindowStartHeight: 0, UntilHeight: 0, LastCooldownBlocks: p.GlobalMaxBlocks + 1},
+        },
+    }
+    err = ValidateGenesis(*gen)
+    require.Error(t, err)
+}

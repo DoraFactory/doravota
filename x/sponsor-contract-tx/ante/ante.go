@@ -508,6 +508,14 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
+		// Check global cooldown (block-height based) before running policy queries
+        if !simulate {
+            if blocked, remain := sctd.keeper.IsGloballyBlocked(ctx, contractAddr, userAddr.String()); blocked {
+                msg := fmt.Sprintf("sponsorship globally blocked for %d blocks due to recent failed attempts", remain)
+                return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, msg)
+            }
+        }
+
 		// Check local cooldown before running policy queries (CheckTx only)
         if ctx.IsCheckTx() && !simulate && sctd.cstate != nil && sctd.cstate.enabled {
             if blocked, remain := sctd.cstate.onCooldown(contractAddr, userAddr.String(), time.Now()); blocked {
@@ -632,6 +640,26 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
                 sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
             }
+            // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
+            if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {
+                if blocked, untilH, _ := sctd.keeper.IncrementFailedAttempts(ctx, contractAddr, userAddr.String()); blocked {
+                    ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                        "global cooldown started due to repeated failures",
+                        "contract", contractAddr,
+                        "user", userAddr.String(),
+                        "until_height", untilH,
+                    )
+                    // Emit event for observability on DeliverTx path
+                    ctx.EventManager().EmitEvent(
+                        sdk.NewEvent(
+                            types.EventTypeGlobalCooldownStarted,
+                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+                            sdk.NewAttribute(types.AttributeKeyUntilHeight, fmt.Sprintf("%d", untilH)),
+                        ),
+                    )
+                }
+            }
             return newCtx, fbErr
         }
 
@@ -652,6 +680,26 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
             if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
                 sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
+            }
+            // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
+            if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {
+                if blocked, untilH, _ := sctd.keeper.IncrementFailedAttempts(ctx, contractAddr, userAddr.String()); blocked {
+                    ctx.Logger().With("module", "sponsor-contract-tx").Info(
+                        "global cooldown started due to multiple ineligible failures",
+                        "contract", contractAddr,
+                        "user", userAddr.String(),
+                        "until_height", untilH,
+                    )
+                    // Emit event for observability on DeliverTx path
+                    ctx.EventManager().EmitEvent(
+                        sdk.NewEvent(
+                            types.EventTypeGlobalCooldownStarted,
+                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+                            sdk.NewAttribute(types.AttributeKeyUntilHeight, fmt.Sprintf("%d", untilH)),
+                        ),
+                    )
+                }
             }
             return newCtx, fbErr
         }

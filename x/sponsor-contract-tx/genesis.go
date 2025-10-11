@@ -33,6 +33,24 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 			panic(fmt.Errorf("failed to set user grant usage during genesis initialization: %w", err))
 		}
 	}
+
+	// Set failed attempts (global cooldown) state
+	for _, fa := range genState.FailedAttempts {
+		if fa == nil || fa.Record == nil {
+			continue
+		}
+		// Validate addresses
+		if err := types.ValidateContractAddress(fa.ContractAddress); err != nil {
+			panic(fmt.Errorf("invalid failed-attempts contract address in genesis: %w", err))
+		}
+		if fa.UserAddress == "" {
+			panic(fmt.Errorf("invalid failed-attempts user address in genesis: empty"))
+		}
+		if _, err := sdk.AccAddressFromBech32(fa.UserAddress); err != nil {
+			panic(fmt.Errorf("invalid failed-attempts user address in genesis: %w", err))
+		}
+		k.SetFailedAttempts(ctx, fa.ContractAddress, fa.UserAddress, *fa.Record)
+	}
 }
 
 // ExportGenesis returns the capability module's exported genesis
@@ -58,6 +76,9 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 		usagePtrs[i] = &usages[i]
 	}
 	genesis.UserGrantUsages = usagePtrs
+
+	// Export failed attempts (global cooldown) records via keeper helper
+	genesis.FailedAttempts = k.GetAllFailedAttemptsEntries(ctx)
 
 	return genesis
 }

@@ -121,6 +121,8 @@ type GenesisState struct {
 	Sponsors        []*ContractSponsor `protobuf:"bytes,1,rep,name=sponsors,proto3" json:"sponsors,omitempty"`
 	Params          *Params            `protobuf:"bytes,2,opt,name=params,proto3" json:"params,omitempty"`
 	UserGrantUsages []*UserGrantUsage  `protobuf:"bytes,3,rep,name=user_grant_usages,json=userGrantUsages,proto3" json:"user_grant_usages,omitempty"`
+	// Persist global cooldown records to ensure continuity across upgrades/state-sync
+	FailedAttempts []*FailedAttemptsEntry `protobuf:"bytes,4,rep,name=failed_attempts,json=failedAttempts,proto3" json:"failed_attempts,omitempty"`
 }
 
 func (m *GenesisState) Reset()         { *m = GenesisState{} }
@@ -173,6 +175,13 @@ func (m *GenesisState) GetParams() *Params {
 func (m *GenesisState) GetUserGrantUsages() []*UserGrantUsage {
 	if m != nil {
 		return m.UserGrantUsages
+	}
+	return nil
+}
+
+func (m *GenesisState) GetFailedAttempts() []*FailedAttemptsEntry {
+	if m != nil {
+		return m.FailedAttempts
 	}
 	return nil
 }
@@ -246,19 +255,168 @@ func (m *UserGrantUsage) GetLastUsedTime() int64 {
 	return 0
 }
 
+// FailedAttempts tracks global abuse signals for sponsorship attempts
+type FailedAttempts struct {
+	// number of failed attempts within the sliding window
+	Count uint32 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+	// window_start_height is the block height when current counting window started
+	WindowStartHeight int64 `protobuf:"varint,2,opt,name=window_start_height,json=windowStartHeight,proto3" json:"window_start_height,omitempty"`
+	// until_height is the block height until which the user is globally blocked
+	UntilHeight int64 `protobuf:"varint,3,opt,name=until_height,json=untilHeight,proto3" json:"until_height,omitempty"`
+	// last_cooldown_blocks stores the last cooldown blocks applied to support multiplicative backoff
+	LastCooldownBlocks uint32 `protobuf:"varint,4,opt,name=last_cooldown_blocks,json=lastCooldownBlocks,proto3" json:"last_cooldown_blocks,omitempty"`
+}
+
+func (m *FailedAttempts) Reset()         { *m = FailedAttempts{} }
+func (m *FailedAttempts) String() string { return proto.CompactTextString(m) }
+func (*FailedAttempts) ProtoMessage()    {}
+func (*FailedAttempts) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eab4c65bac3c53c6, []int{3}
+}
+func (m *FailedAttempts) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *FailedAttempts) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_FailedAttempts.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *FailedAttempts) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_FailedAttempts.Merge(m, src)
+}
+func (m *FailedAttempts) XXX_Size() int {
+	return m.Size()
+}
+func (m *FailedAttempts) XXX_DiscardUnknown() {
+	xxx_messageInfo_FailedAttempts.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_FailedAttempts proto.InternalMessageInfo
+
+func (m *FailedAttempts) GetCount() uint32 {
+	if m != nil {
+		return m.Count
+	}
+	return 0
+}
+
+func (m *FailedAttempts) GetWindowStartHeight() int64 {
+	if m != nil {
+		return m.WindowStartHeight
+	}
+	return 0
+}
+
+func (m *FailedAttempts) GetUntilHeight() int64 {
+	if m != nil {
+		return m.UntilHeight
+	}
+	return 0
+}
+
+func (m *FailedAttempts) GetLastCooldownBlocks() uint32 {
+	if m != nil {
+		return m.LastCooldownBlocks
+	}
+	return 0
+}
+
+// FailedAttemptsEntry binds a (contract,user) pair to its FailedAttempts data
+type FailedAttemptsEntry struct {
+	ContractAddress string          `protobuf:"bytes,1,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	UserAddress     string          `protobuf:"bytes,2,opt,name=user_address,json=userAddress,proto3" json:"user_address,omitempty"`
+	Record          *FailedAttempts `protobuf:"bytes,3,opt,name=record,proto3" json:"record,omitempty"`
+}
+
+func (m *FailedAttemptsEntry) Reset()         { *m = FailedAttemptsEntry{} }
+func (m *FailedAttemptsEntry) String() string { return proto.CompactTextString(m) }
+func (*FailedAttemptsEntry) ProtoMessage()    {}
+func (*FailedAttemptsEntry) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eab4c65bac3c53c6, []int{4}
+}
+func (m *FailedAttemptsEntry) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *FailedAttemptsEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_FailedAttemptsEntry.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *FailedAttemptsEntry) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_FailedAttemptsEntry.Merge(m, src)
+}
+func (m *FailedAttemptsEntry) XXX_Size() int {
+	return m.Size()
+}
+func (m *FailedAttemptsEntry) XXX_DiscardUnknown() {
+	xxx_messageInfo_FailedAttemptsEntry.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_FailedAttemptsEntry proto.InternalMessageInfo
+
+func (m *FailedAttemptsEntry) GetContractAddress() string {
+	if m != nil {
+		return m.ContractAddress
+	}
+	return ""
+}
+
+func (m *FailedAttemptsEntry) GetUserAddress() string {
+	if m != nil {
+		return m.UserAddress
+	}
+	return ""
+}
+
+func (m *FailedAttemptsEntry) GetRecord() *FailedAttempts {
+	if m != nil {
+		return m.Record
+	}
+	return nil
+}
+
 // Params defines the parameters for the sponsor module
 type Params struct {
 	// Whether sponsorship is globally enabled
 	SponsorshipEnabled bool `protobuf:"varint,1,opt,name=sponsorship_enabled,json=sponsorshipEnabled,proto3" json:"sponsorship_enabled,omitempty"`
 	// Maximum gas limit per sponsored transaction
 	MaxGasPerSponsorship uint64 `protobuf:"varint,2,opt,name=max_gas_per_sponsorship,json=maxGasPerSponsorship,proto3" json:"max_gas_per_sponsorship,omitempty"`
+	// Whether abuse tracking (global cooldown) is enabled
+	AbuseTrackingEnabled bool `protobuf:"varint,3,opt,name=abuse_tracking_enabled,json=abuseTrackingEnabled,proto3" json:"abuse_tracking_enabled,omitempty"`
+	// Number of failures within window to trigger global cooldown
+	GlobalThreshold uint32 `protobuf:"varint,4,opt,name=global_threshold,json=globalThreshold,proto3" json:"global_threshold,omitempty"`
+	// Base cooldown blocks for first threshold hit
+	GlobalBaseBlocks uint32 `protobuf:"varint,5,opt,name=global_base_blocks,json=globalBaseBlocks,proto3" json:"global_base_blocks,omitempty"`
+	// Multiplicative backoff factor in milli (e.g., 3000 = 3.0x)
+	GlobalBackoffMilli uint32 `protobuf:"varint,6,opt,name=global_backoff_milli,json=globalBackoffMilli,proto3" json:"global_backoff_milli,omitempty"`
+	// Max cooldown blocks cap
+	GlobalMaxBlocks uint32 `protobuf:"varint,7,opt,name=global_max_blocks,json=globalMaxBlocks,proto3" json:"global_max_blocks,omitempty"`
+	// Sliding window size for counting (blocks)
+	GlobalWindowBlocks uint32 `protobuf:"varint,8,opt,name=global_window_blocks,json=globalWindowBlocks,proto3" json:"global_window_blocks,omitempty"`
+	// Number of expired FailedAttempts entries to GC per block (deterministic EndBlock GC)
+	// 0 disables automatic GC
+	GcFailedAttemptsPerBlock uint32 `protobuf:"varint,9,opt,name=gc_failed_attempts_per_block,json=gcFailedAttemptsPerBlock,proto3" json:"gc_failed_attempts_per_block,omitempty"`
 }
 
 func (m *Params) Reset()         { *m = Params{} }
 func (m *Params) String() string { return proto.CompactTextString(m) }
 func (*Params) ProtoMessage()    {}
 func (*Params) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eab4c65bac3c53c6, []int{3}
+	return fileDescriptor_eab4c65bac3c53c6, []int{5}
 }
 func (m *Params) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -301,52 +459,122 @@ func (m *Params) GetMaxGasPerSponsorship() uint64 {
 	return 0
 }
 
+func (m *Params) GetAbuseTrackingEnabled() bool {
+	if m != nil {
+		return m.AbuseTrackingEnabled
+	}
+	return false
+}
+
+func (m *Params) GetGlobalThreshold() uint32 {
+	if m != nil {
+		return m.GlobalThreshold
+	}
+	return 0
+}
+
+func (m *Params) GetGlobalBaseBlocks() uint32 {
+	if m != nil {
+		return m.GlobalBaseBlocks
+	}
+	return 0
+}
+
+func (m *Params) GetGlobalBackoffMilli() uint32 {
+	if m != nil {
+		return m.GlobalBackoffMilli
+	}
+	return 0
+}
+
+func (m *Params) GetGlobalMaxBlocks() uint32 {
+	if m != nil {
+		return m.GlobalMaxBlocks
+	}
+	return 0
+}
+
+func (m *Params) GetGlobalWindowBlocks() uint32 {
+	if m != nil {
+		return m.GlobalWindowBlocks
+	}
+	return 0
+}
+
+func (m *Params) GetGcFailedAttemptsPerBlock() uint32 {
+	if m != nil {
+		return m.GcFailedAttemptsPerBlock
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*ContractSponsor)(nil), "doravota.sponsor.v1.ContractSponsor")
 	proto.RegisterType((*GenesisState)(nil), "doravota.sponsor.v1.GenesisState")
 	proto.RegisterType((*UserGrantUsage)(nil), "doravota.sponsor.v1.UserGrantUsage")
+	proto.RegisterType((*FailedAttempts)(nil), "doravota.sponsor.v1.FailedAttempts")
+	proto.RegisterType((*FailedAttemptsEntry)(nil), "doravota.sponsor.v1.FailedAttemptsEntry")
 	proto.RegisterType((*Params)(nil), "doravota.sponsor.v1.Params")
 }
 
 func init() { proto.RegisterFile("doravota/sponsor/v1/sponsor.proto", fileDescriptor_eab4c65bac3c53c6) }
 
 var fileDescriptor_eab4c65bac3c53c6 = []byte{
-	// 553 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x7c, 0x53, 0x41, 0x6f, 0xd3, 0x4c,
-	0x10, 0xad, 0x93, 0x7e, 0xf9, 0xd2, 0x4d, 0x14, 0x97, 0x2d, 0x12, 0x01, 0x84, 0x95, 0x86, 0x4a,
-	0x0d, 0x87, 0xda, 0x4a, 0x2b, 0x4e, 0x5c, 0x08, 0x81, 0xf6, 0x48, 0xe4, 0x90, 0x0b, 0x17, 0x6b,
-	0x62, 0x8f, 0x52, 0x4b, 0xb1, 0xd7, 0xda, 0xdd, 0x44, 0xe9, 0xbf, 0xe0, 0xdf, 0xf0, 0x17, 0xe0,
-	0xd6, 0x13, 0xe2, 0x88, 0x92, 0x3f, 0x82, 0x76, 0xbd, 0x1b, 0x1a, 0x14, 0x71, 0xb3, 0xdf, 0xbc,
-	0x37, 0x3b, 0xf3, 0xf6, 0x2d, 0x39, 0x4d, 0x18, 0x87, 0x25, 0x93, 0x10, 0x88, 0x82, 0xe5, 0x82,
-	0xf1, 0x60, 0xd9, 0xb7, 0x9f, 0x7e, 0xc1, 0x99, 0x64, 0xf4, 0xc4, 0x52, 0x7c, 0x8b, 0x2f, 0xfb,
-	0xcf, 0xbc, 0x98, 0x89, 0x8c, 0x89, 0x60, 0x0a, 0x02, 0x83, 0x65, 0x7f, 0x8a, 0x12, 0xfa, 0x41,
-	0xcc, 0xd2, 0xbc, 0x14, 0x75, 0xbf, 0x56, 0x88, 0x3b, 0x64, 0xb9, 0xe4, 0x10, 0xcb, 0x71, 0x29,
-	0xa3, 0xaf, 0xc8, 0x71, 0x6c, 0xa0, 0x08, 0x92, 0x84, 0xa3, 0x10, 0x6d, 0xa7, 0xe3, 0xf4, 0x8e,
-	0x42, 0xd7, 0xe2, 0x83, 0x12, 0xa6, 0xa7, 0xa4, 0x99, 0x8a, 0xc8, 0x9c, 0x87, 0x49, 0xbb, 0xd2,
-	0x71, 0x7a, 0xf5, 0xb0, 0x91, 0x8a, 0xb1, 0x85, 0xe8, 0x39, 0x71, 0x63, 0x8e, 0x20, 0x19, 0xdf,
-	0x36, 0xab, 0xea, 0x66, 0x2d, 0x03, 0xdb, 0x5e, 0xe7, 0xc4, 0x35, 0x8d, 0xb6, 0xc4, 0xc3, 0x92,
-	0x68, 0x60, 0x4b, 0x7c, 0x41, 0x88, 0x96, 0x62, 0x12, 0x81, 0x6c, 0xff, 0xd7, 0x71, 0x7a, 0xd5,
-	0xf0, 0xc8, 0x20, 0x03, 0xa9, 0xca, 0x8b, 0x22, 0xb1, 0xe5, 0x5a, 0x59, 0x36, 0xc8, 0x40, 0xd2,
-	0x6b, 0x42, 0x33, 0x58, 0x45, 0x33, 0x0e, 0xb9, 0x8c, 0x0a, 0xe4, 0xd1, 0x42, 0x20, 0x6f, 0xff,
-	0xdf, 0xa9, 0xf6, 0x1a, 0x97, 0x4f, 0xfd, 0xd2, 0x2e, 0x5f, 0xd9, 0xe5, 0x1b, 0xbb, 0xfc, 0x21,
-	0x4b, 0xf3, 0xd0, 0xcd, 0x60, 0x75, 0xa3, 0x34, 0x23, 0xe4, 0x13, 0x81, 0xbc, 0xfb, 0xc3, 0x21,
-	0xcd, 0x1b, 0xcc, 0x51, 0xa4, 0x62, 0x2c, 0x41, 0x22, 0x7d, 0x4b, 0xea, 0x66, 0x50, 0x65, 0x97,
-	0x6a, 0x77, 0xe6, 0xef, 0xb9, 0x12, 0xff, 0x2f, 0xbb, 0xc3, 0xad, 0x8a, 0x5e, 0x91, 0x5a, 0x01,
-	0x1c, 0x32, 0xa1, 0x7d, 0x6c, 0x5c, 0x3e, 0xdf, 0xab, 0x1f, 0x69, 0x4a, 0x68, 0xa8, 0xf4, 0x23,
-	0x79, 0xa4, 0x36, 0x30, 0x0b, 0x2d, 0x04, 0xcc, 0x50, 0x39, 0xac, 0xce, 0x7f, 0xb9, 0x57, 0xaf,
-	0xa6, 0xd7, 0x9b, 0x4c, 0x14, 0x37, 0x74, 0x17, 0x3b, 0xff, 0xa2, 0xfb, 0xdd, 0x21, 0xad, 0x5d,
-	0x8e, 0xba, 0x66, 0x7d, 0xc6, 0x6e, 0x1a, 0x1a, 0x0a, 0xb3, 0x97, 0xb2, 0x2f, 0x34, 0x95, 0xfd,
-	0xa1, 0x19, 0x92, 0x63, 0xc9, 0x24, 0xcc, 0xb7, 0x23, 0x63, 0x62, 0x06, 0xfe, 0x87, 0xff, 0x2d,
-	0x2d, 0x31, 0x33, 0x61, 0x42, 0xcf, 0x48, 0x6b, 0x0e, 0xa2, 0x54, 0x47, 0x32, 0xcd, 0x50, 0x87,
-	0xa5, 0x1a, 0x36, 0x15, 0xaa, 0x18, 0x9f, 0xd2, 0x0c, 0xbb, 0x05, 0xa9, 0x95, 0x76, 0xd1, 0x80,
-	0x9c, 0x58, 0x9f, 0x6f, 0xd3, 0x22, 0xc2, 0x1c, 0xa6, 0x73, 0x4c, 0xf4, 0x26, 0xf5, 0x90, 0x3e,
-	0x28, 0x7d, 0x28, 0x2b, 0xf4, 0x35, 0x79, 0xa2, 0x73, 0x02, 0x42, 0xa7, 0xe4, 0x01, 0x43, 0xef,
-	0x75, 0x18, 0x3e, 0x56, 0x89, 0x00, 0x31, 0x42, 0x3e, 0xfe, 0x53, 0x7b, 0x37, 0xf9, 0xb6, 0xf6,
-	0x9c, 0xfb, 0xb5, 0xe7, 0xfc, 0x5a, 0x7b, 0xce, 0x97, 0x8d, 0x77, 0x70, 0xbf, 0xf1, 0x0e, 0x7e,
-	0x6e, 0xbc, 0x83, 0xcf, 0x6f, 0x66, 0xa9, 0xbc, 0x5d, 0x4c, 0xfd, 0x98, 0x65, 0xc1, 0x7b, 0xc6,
-	0xe1, 0x1a, 0x62, 0xc9, 0xf8, 0x5d, 0xb0, 0x7d, 0xd9, 0x2b, 0xfb, 0xa0, 0x2f, 0xac, 0x63, 0x17,
-	0x72, 0x15, 0xc8, 0xbb, 0x02, 0xc5, 0xb4, 0xa6, 0x9f, 0xeb, 0xd5, 0xef, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0xdd, 0x05, 0xcb, 0x16, 0x08, 0x04, 0x00, 0x00,
+	// 856 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x55, 0xcd, 0x6e, 0xdc, 0x44,
+	0x1c, 0x8f, 0xd7, 0xcd, 0x36, 0x99, 0x4d, 0xd6, 0xc9, 0x24, 0x82, 0xe5, 0x6b, 0x95, 0x2e, 0x95,
+	0xba, 0x45, 0xd4, 0x26, 0x2d, 0x9c, 0x2a, 0x21, 0x92, 0xd0, 0x94, 0x4b, 0x45, 0x98, 0x4d, 0x84,
+	0xc4, 0xc5, 0x1a, 0xdb, 0x13, 0xef, 0x28, 0xb6, 0xc7, 0x9a, 0x99, 0x4d, 0x36, 0x6f, 0xc1, 0x23,
+	0x70, 0x45, 0x3c, 0x00, 0xaf, 0x00, 0x27, 0x7a, 0xe4, 0x88, 0x92, 0x17, 0x41, 0xf3, 0xf7, 0xcc,
+	0x12, 0xb7, 0x0b, 0x12, 0xb7, 0xdd, 0xdf, 0xc7, 0x7f, 0xfe, 0x5f, 0xe3, 0x41, 0x0f, 0x32, 0x21,
+	0xe9, 0xa5, 0xd0, 0x34, 0x52, 0xb5, 0xa8, 0x94, 0x90, 0xd1, 0xe5, 0xbe, 0xfb, 0x19, 0xd6, 0x52,
+	0x68, 0x81, 0x77, 0x9c, 0x24, 0x74, 0xf8, 0xe5, 0xfe, 0xfb, 0xc3, 0x54, 0xa8, 0x52, 0xa8, 0x28,
+	0xa1, 0x8a, 0x45, 0x97, 0xfb, 0x09, 0xd3, 0x74, 0x3f, 0x4a, 0x05, 0xaf, 0x1a, 0xd3, 0xe8, 0xd7,
+	0x0e, 0x0a, 0x8e, 0x44, 0xa5, 0x25, 0x4d, 0xf5, 0xa4, 0xb1, 0xe1, 0xc7, 0x68, 0x2b, 0xb5, 0x50,
+	0x4c, 0xb3, 0x4c, 0x32, 0xa5, 0x06, 0xde, 0x9e, 0x37, 0x5e, 0x27, 0x81, 0xc3, 0x0f, 0x1a, 0x18,
+	0x3f, 0x40, 0x1b, 0x5c, 0xc5, 0xf6, 0x3c, 0x96, 0x0d, 0x3a, 0x7b, 0xde, 0x78, 0x8d, 0xf4, 0xb8,
+	0x9a, 0x38, 0x08, 0x3f, 0x42, 0x41, 0x2a, 0x19, 0xd5, 0x42, 0x2e, 0x82, 0xf9, 0x10, 0xac, 0x6f,
+	0x61, 0x17, 0xeb, 0x11, 0x0a, 0x6c, 0xa0, 0x85, 0xf0, 0x5e, 0x23, 0xb4, 0xb0, 0x13, 0x7e, 0x84,
+	0x10, 0x58, 0x59, 0x16, 0x53, 0x3d, 0x58, 0xdd, 0xf3, 0xc6, 0x3e, 0x59, 0xb7, 0xc8, 0x81, 0x36,
+	0xf4, 0xac, 0xce, 0x1c, 0xdd, 0x6d, 0x68, 0x8b, 0x1c, 0x68, 0x7c, 0x8c, 0x70, 0x49, 0xe7, 0x71,
+	0x2e, 0x69, 0xa5, 0xe3, 0x9a, 0xc9, 0x78, 0xa6, 0x98, 0x1c, 0xdc, 0xdf, 0xf3, 0xc7, 0xbd, 0xa7,
+	0xef, 0x85, 0x4d, 0xbb, 0x42, 0xd3, 0xae, 0xd0, 0xb6, 0x2b, 0x3c, 0x12, 0xbc, 0x22, 0x41, 0x49,
+	0xe7, 0x2f, 0x8d, 0xe7, 0x84, 0xc9, 0x33, 0xc5, 0xe4, 0xe8, 0xe7, 0x0e, 0xda, 0x78, 0xc9, 0x2a,
+	0xa6, 0xb8, 0x9a, 0x68, 0xaa, 0x19, 0xfe, 0x0a, 0xad, 0xd9, 0x44, 0x4d, 0xbb, 0x4c, 0xb8, 0x87,
+	0xe1, 0x92, 0x91, 0x84, 0x6f, 0xb4, 0x9b, 0x2c, 0x5c, 0xf8, 0x19, 0xea, 0xd6, 0x54, 0xd2, 0x52,
+	0x41, 0x1f, 0x7b, 0x4f, 0x3f, 0x58, 0xea, 0x3f, 0x01, 0x09, 0xb1, 0x52, 0xfc, 0x2d, 0xda, 0x36,
+	0x15, 0xd8, 0x82, 0x66, 0x8a, 0xe6, 0xcc, 0x74, 0xd8, 0x9c, 0xff, 0xf1, 0x52, 0xbf, 0xc9, 0x1e,
+	0x2a, 0x39, 0x33, 0x5a, 0x12, 0xcc, 0x5a, 0xff, 0x15, 0xfe, 0x0e, 0x05, 0xe7, 0x94, 0x17, 0xd0,
+	0x3e, 0xcd, 0xca, 0x5a, 0x9b, 0x39, 0x98, 0x70, 0xe3, 0xa5, 0xe1, 0x8e, 0x41, 0x7b, 0x60, 0xa5,
+	0x2f, 0x2a, 0x2d, 0xaf, 0x49, 0xff, 0xbc, 0x05, 0x8e, 0x7e, 0xf7, 0x50, 0xbf, 0x7d, 0xac, 0xd9,
+	0x1c, 0x48, 0xbb, 0xbd, 0x60, 0x3d, 0x83, 0xb9, 0x39, 0x2f, 0xdb, 0xc3, 0xce, 0xf2, 0x3d, 0x3c,
+	0x42, 0x5b, 0x5a, 0x68, 0x5a, 0x2c, 0xba, 0xc0, 0x32, 0xdb, 0x83, 0xff, 0x18, 0x69, 0x1f, 0x2c,
+	0x36, 0x27, 0x96, 0xe1, 0x87, 0xa8, 0x5f, 0x50, 0xd5, 0xb8, 0x63, 0xcd, 0x4b, 0x06, 0xfb, 0xe7,
+	0x93, 0x0d, 0x83, 0x1a, 0xc5, 0x29, 0x2f, 0xd9, 0xe8, 0x17, 0x0f, 0xf5, 0xdb, 0x35, 0xe3, 0x5d,
+	0xb4, 0x9a, 0x8a, 0x59, 0xa5, 0xa1, 0x88, 0x4d, 0xd2, 0xfc, 0xc1, 0x21, 0xda, 0xb9, 0xe2, 0x55,
+	0x26, 0xae, 0x62, 0xa5, 0xa9, 0xd4, 0xf1, 0x94, 0xf1, 0x7c, 0xaa, 0xa1, 0x02, 0x9f, 0x6c, 0x37,
+	0xd4, 0xc4, 0x30, 0xdf, 0x00, 0x01, 0x1d, 0xa9, 0x34, 0x2f, 0x9c, 0xd0, 0x07, 0x61, 0x0f, 0x30,
+	0x2b, 0xf9, 0x0c, 0xed, 0x42, 0x86, 0xa9, 0x10, 0x45, 0x26, 0xae, 0xaa, 0x38, 0x29, 0x44, 0x7a,
+	0xd1, 0xdc, 0x93, 0x4d, 0x82, 0x0d, 0x77, 0x64, 0xa9, 0x43, 0x60, 0x46, 0x3f, 0x79, 0x68, 0x67,
+	0xc9, 0x84, 0xfe, 0xe7, 0x1d, 0x6f, 0x4d, 0xaa, 0xf3, 0xf6, 0xa4, 0x9e, 0xa3, 0xae, 0x64, 0xa9,
+	0x90, 0x19, 0x24, 0xfd, 0x6f, 0x8b, 0xd7, 0xce, 0x83, 0x58, 0xcb, 0xe8, 0x0f, 0x1f, 0x75, 0x9b,
+	0x9d, 0xc6, 0x11, 0xda, 0x71, 0x97, 0x61, 0xca, 0xeb, 0x98, 0x55, 0x34, 0x29, 0x58, 0x06, 0x89,
+	0xad, 0x11, 0x7c, 0x87, 0x7a, 0xd1, 0x30, 0xf8, 0x0b, 0xf4, 0x2e, 0x5c, 0x66, 0xaa, 0xe0, 0x2a,
+	0xdf, 0x51, 0x40, 0x9a, 0xf7, 0xc8, 0xae, 0xb9, 0xb6, 0x54, 0x9d, 0x30, 0x39, 0xf9, 0x87, 0xc3,
+	0x9f, 0xa3, 0x77, 0x68, 0x32, 0x53, 0x2c, 0x36, 0x85, 0x5e, 0xf0, 0x2a, 0x5f, 0x1c, 0xe5, 0xc3,
+	0x51, 0xbb, 0xc0, 0x9e, 0x5a, 0xd2, 0x1d, 0xf6, 0x18, 0x6d, 0xe5, 0x85, 0x48, 0x68, 0x11, 0xeb,
+	0xa9, 0x64, 0x6a, 0x2a, 0x8a, 0xcc, 0x76, 0x3e, 0x68, 0xf0, 0x53, 0x07, 0xe3, 0x4f, 0x11, 0xb6,
+	0x52, 0xb3, 0x76, 0x6e, 0x4c, 0xab, 0x20, 0xb6, 0x41, 0x0e, 0xa9, 0x62, 0xcd, 0x90, 0xcc, 0x58,
+	0x17, 0xea, 0xf4, 0x42, 0x9c, 0x9f, 0xc7, 0x25, 0x2f, 0x0a, 0x0e, 0xdf, 0xae, 0x4d, 0x82, 0x9d,
+	0x1e, 0xa8, 0x57, 0x86, 0xc1, 0x9f, 0xa0, 0x6d, 0xeb, 0x30, 0xe5, 0xdb, 0xf0, 0xf7, 0xef, 0xe6,
+	0xf2, 0x8a, 0xce, 0xdf, 0x8a, 0x6e, 0xd7, 0xd1, 0xca, 0xd7, 0xee, 0x46, 0xff, 0x1e, 0x28, 0xeb,
+	0xf8, 0x12, 0x7d, 0x98, 0xa7, 0xf1, 0x1b, 0x1f, 0x01, 0x68, 0x30, 0x58, 0x07, 0xeb, 0xe0, 0x1c,
+	0xe4, 0x69, 0x7b, 0xa2, 0x27, 0x4c, 0x42, 0x80, 0xc3, 0xb3, 0xdf, 0x6e, 0x86, 0xde, 0xeb, 0x9b,
+	0xa1, 0xf7, 0xd7, 0xcd, 0xd0, 0xfb, 0xf1, 0x76, 0xb8, 0xf2, 0xfa, 0x76, 0xb8, 0xf2, 0xe7, 0xed,
+	0x70, 0xe5, 0x87, 0xe7, 0x39, 0xd7, 0xd3, 0x59, 0x12, 0xa6, 0xa2, 0x8c, 0xbe, 0x16, 0x92, 0x1e,
+	0xd3, 0x54, 0x0b, 0x79, 0x1d, 0x2d, 0x5e, 0xb7, 0xb9, 0x7b, 0xd4, 0x9e, 0xb8, 0x35, 0x7c, 0xa2,
+	0xe7, 0x91, 0xbe, 0xae, 0x99, 0x4a, 0xba, 0xf0, 0x64, 0x3d, 0xfb, 0x3b, 0x00, 0x00, 0xff, 0xff,
+	0x63, 0xec, 0x22, 0x84, 0x0c, 0x07, 0x00, 0x00,
 }
 
 func (m *ContractSponsor) Marshal() (dAtA []byte, err error) {
@@ -447,6 +675,20 @@ func (m *GenesisState) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.FailedAttempts) > 0 {
+		for iNdEx := len(m.FailedAttempts) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.FailedAttempts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintSponsor(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if len(m.UserGrantUsages) > 0 {
 		for iNdEx := len(m.UserGrantUsages) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -546,6 +788,98 @@ func (m *UserGrantUsage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *FailedAttempts) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *FailedAttempts) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *FailedAttempts) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.LastCooldownBlocks != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.LastCooldownBlocks))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.UntilHeight != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.UntilHeight))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.WindowStartHeight != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.WindowStartHeight))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Count != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.Count))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *FailedAttemptsEntry) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *FailedAttemptsEntry) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *FailedAttemptsEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Record != nil {
+		{
+			size, err := m.Record.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintSponsor(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.UserAddress) > 0 {
+		i -= len(m.UserAddress)
+		copy(dAtA[i:], m.UserAddress)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.UserAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ContractAddress) > 0 {
+		i -= len(m.ContractAddress)
+		copy(dAtA[i:], m.ContractAddress)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.ContractAddress)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Params) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -566,6 +900,46 @@ func (m *Params) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.GcFailedAttemptsPerBlock != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GcFailedAttemptsPerBlock))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.GlobalWindowBlocks != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalWindowBlocks))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.GlobalMaxBlocks != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalMaxBlocks))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.GlobalBackoffMilli != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalBackoffMilli))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.GlobalBaseBlocks != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalBaseBlocks))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.GlobalThreshold != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalThreshold))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.AbuseTrackingEnabled {
+		i--
+		if m.AbuseTrackingEnabled {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.MaxGasPerSponsorship != 0 {
 		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxGasPerSponsorship))
 		i--
@@ -653,6 +1027,12 @@ func (m *GenesisState) Size() (n int) {
 			n += 1 + l + sovSponsor(uint64(l))
 		}
 	}
+	if len(m.FailedAttempts) > 0 {
+		for _, e := range m.FailedAttempts {
+			l = e.Size()
+			n += 1 + l + sovSponsor(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -682,6 +1062,48 @@ func (m *UserGrantUsage) Size() (n int) {
 	return n
 }
 
+func (m *FailedAttempts) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Count != 0 {
+		n += 1 + sovSponsor(uint64(m.Count))
+	}
+	if m.WindowStartHeight != 0 {
+		n += 1 + sovSponsor(uint64(m.WindowStartHeight))
+	}
+	if m.UntilHeight != 0 {
+		n += 1 + sovSponsor(uint64(m.UntilHeight))
+	}
+	if m.LastCooldownBlocks != 0 {
+		n += 1 + sovSponsor(uint64(m.LastCooldownBlocks))
+	}
+	return n
+}
+
+func (m *FailedAttemptsEntry) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ContractAddress)
+	if l > 0 {
+		n += 1 + l + sovSponsor(uint64(l))
+	}
+	l = len(m.UserAddress)
+	if l > 0 {
+		n += 1 + l + sovSponsor(uint64(l))
+	}
+	if m.Record != nil {
+		l = m.Record.Size()
+		n += 1 + l + sovSponsor(uint64(l))
+	}
+	return n
+}
+
 func (m *Params) Size() (n int) {
 	if m == nil {
 		return 0
@@ -693,6 +1115,27 @@ func (m *Params) Size() (n int) {
 	}
 	if m.MaxGasPerSponsorship != 0 {
 		n += 1 + sovSponsor(uint64(m.MaxGasPerSponsorship))
+	}
+	if m.AbuseTrackingEnabled {
+		n += 2
+	}
+	if m.GlobalThreshold != 0 {
+		n += 1 + sovSponsor(uint64(m.GlobalThreshold))
+	}
+	if m.GlobalBaseBlocks != 0 {
+		n += 1 + sovSponsor(uint64(m.GlobalBaseBlocks))
+	}
+	if m.GlobalBackoffMilli != 0 {
+		n += 1 + sovSponsor(uint64(m.GlobalBackoffMilli))
+	}
+	if m.GlobalMaxBlocks != 0 {
+		n += 1 + sovSponsor(uint64(m.GlobalMaxBlocks))
+	}
+	if m.GlobalWindowBlocks != 0 {
+		n += 1 + sovSponsor(uint64(m.GlobalWindowBlocks))
+	}
+	if m.GcFailedAttemptsPerBlock != 0 {
+		n += 1 + sovSponsor(uint64(m.GcFailedAttemptsPerBlock))
 	}
 	return n
 }
@@ -1074,6 +1517,40 @@ func (m *GenesisState) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FailedAttempts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FailedAttempts = append(m.FailedAttempts, &FailedAttemptsEntry{})
+			if err := m.FailedAttempts[len(m.FailedAttempts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipSponsor(dAtA[iNdEx:])
@@ -1262,6 +1739,282 @@ func (m *UserGrantUsage) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSponsor
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: FailedAttempts: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: FailedAttempts: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
+			}
+			m.Count = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Count |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field WindowStartHeight", wireType)
+			}
+			m.WindowStartHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.WindowStartHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UntilHeight", wireType)
+			}
+			m.UntilHeight = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UntilHeight |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastCooldownBlocks", wireType)
+			}
+			m.LastCooldownBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LastCooldownBlocks |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSponsor(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *FailedAttemptsEntry) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSponsor
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: FailedAttemptsEntry: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: FailedAttemptsEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ContractAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ContractAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Record", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Record == nil {
+				m.Record = &FailedAttempts{}
+			}
+			if err := m.Record.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSponsor(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *Params) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1326,6 +2079,140 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.MaxGasPerSponsorship |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AbuseTrackingEnabled", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.AbuseTrackingEnabled = bool(v != 0)
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GlobalThreshold", wireType)
+			}
+			m.GlobalThreshold = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GlobalThreshold |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GlobalBaseBlocks", wireType)
+			}
+			m.GlobalBaseBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GlobalBaseBlocks |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GlobalBackoffMilli", wireType)
+			}
+			m.GlobalBackoffMilli = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GlobalBackoffMilli |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GlobalMaxBlocks", wireType)
+			}
+			m.GlobalMaxBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GlobalMaxBlocks |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GlobalWindowBlocks", wireType)
+			}
+			m.GlobalWindowBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GlobalWindowBlocks |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GcFailedAttemptsPerBlock", wireType)
+			}
+			m.GcFailedAttemptsPerBlock = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.GcFailedAttemptsPerBlock |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

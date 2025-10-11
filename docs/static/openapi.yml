@@ -27738,6 +27738,84 @@ paths:
         type: string
       tags:
       - doravota.sponsor.v1.Query
+  /doravota/sponsor/v1/blocked_status/{contractAddress}/{userAddress}:
+    get:
+      summary: BlockedStatus queries whether a user is globally blocked for a contract
+      operationId: Query_BlockedStatus
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryBlockedStatusResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contractAddress
+        in: path
+        required: true
+        type: string
+      - name: userAddress
+        in: path
+        required: true
+        type: string
+      tags:
+      - doravota.sponsor.v1.Query
+  /doravota/sponsor/v1/blocked_statuses:
+    get:
+      summary: AllBlockedStatuses lists global cooldown records with optional filters and pagination
+      operationId: Query_AllBlockedStatuses
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryAllBlockedStatusesResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contractAddress
+        in: query
+        required: false
+        type: string
+        description: optional contract filter; empty returns all contracts
+      - name: onlyBlocked
+        in: query
+        required: false
+        type: boolean
+        description: if true, return only currently blocked entries
+      - name: pagination.key
+        in: query
+        required: false
+        type: string
+        format: byte
+        description: key is PageResponse.next_key of previous page
+      - name: pagination.offset
+        in: query
+        required: false
+        type: string
+        format: uint64
+        description: numeric offset, use only when key is unavailable
+      - name: pagination.limit
+        in: query
+        required: false
+        type: string
+        format: uint64
+        description: maximum number of results to return
+      - name: pagination.countTotal
+        in: query
+        required: false
+        type: boolean
+        description: include total count; only effective with offset
+      - name: pagination.reverse
+        in: query
+        required: false
+        type: boolean
+        description: return results in descending order
+      tags:
+      - doravota.sponsor.v1.Query
 definitions:
   cosmos.auth.v1beta1.AddressBytesToStringResponse:
     type: object
@@ -49509,6 +49587,53 @@ definitions:
     title: 'QueryUserGrantUsageResponse is the response type for the Query/UserGrantUsage
 
       RPC method'
+  v1QueryBlockedStatusResponse:
+    type: object
+    properties:
+      blocked:
+        type: boolean
+      remainingBlocks:
+        type: string
+        format: uint32
+        description: remaining blocks until unblocked
+      count:
+        type: string
+        format: uint32
+        description: current failure count in the window
+      untilHeight:
+        type: string
+        format: int64
+        description: height at which block ends
+    title: QueryBlockedStatusResponse contains global cooldown status and metadata
+  v1BlockedStatusEntry:
+    type: object
+    properties:
+      contractAddress:
+        type: string
+      userAddress:
+        type: string
+      blocked:
+        type: boolean
+      remainingBlocks:
+        type: string
+        format: uint32
+      count:
+        type: string
+        format: uint32
+      untilHeight:
+        type: string
+        format: int64
+    title: BlockedStatusEntry represents one (contract,user) entry and its global cooldown status
+  v1QueryAllBlockedStatusesResponse:
+    type: object
+    properties:
+      statuses:
+        type: array
+        items:
+          $ref: '#/definitions/v1BlockedStatusEntry'
+      pagination:
+        $ref: '#/definitions/v1beta1PageResponse'
+    title: QueryAllBlockedStatusesResponse is the response for AllBlockedStatuses
   v1beta1Coin:
     type: object
     properties:
