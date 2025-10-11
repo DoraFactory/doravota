@@ -1,19 +1,19 @@
 package sponsor
 
 import (
-	"fmt"
+    "fmt"
 
-	errorsmod "cosmossdk.io/errors"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+    errorsmod "cosmossdk.io/errors"
+    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+    ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
+    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
-	"sync"
-	"time"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "sync"
+    "time"
 )
 
 // Context key for sponsor payment information
@@ -69,8 +69,9 @@ func newCooldownState() *cooldownState {
         backoffFactor: 2.0,
         threshold:     1,              // default keeps previous behavior; can be raised via config
         window:        60 * time.Second,
-        maxEntries:    0,
-        maxEntriesPerContract: 0,
+        // Enable conservative capacity limits to prevent local memory DoS
+        maxEntries:    10000,
+        maxEntriesPerContract: 1000,
         contractCounts: make(map[string]int),
     }
 }
@@ -85,9 +86,25 @@ func (cs *cooldownState) onCooldown(contract, user string, now time.Time) (bool,
         return false, 0
     }
     k := cs.key(contract, user)
+    // Fast path: read lock
     cs.mu.RLock()
     ent, ok := cs.entries[k]
+    if !ok || ent == nil {
+        cs.mu.RUnlock()
+        return false, 0
+    }
+    if now.Before(ent.cooldownUntil) {
+        remain := ent.cooldownUntil.Sub(now)
+        cs.mu.RUnlock()
+        return true, remain
+    }
     cs.mu.RUnlock()
+
+    // Slow path: write lock, re-check and clean if needed
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+
+    ent, ok = cs.entries[k]
     if !ok || ent == nil {
         return false, 0
     }
@@ -95,19 +112,15 @@ func (cs *cooldownState) onCooldown(contract, user string, now time.Time) (bool,
         return true, ent.cooldownUntil.Sub(now)
     }
     // expired; clear cooldown or drop idle
-    cs.mu.Lock()
-    if ent2, ok2 := cs.entries[k]; ok2 && ent2 != nil && !now.Before(ent2.cooldownUntil) {
-        if now.Sub(ent2.windowStart) > cs.window {
-            delete(cs.entries, k)
-            cs.contractCounts[contract]--
-            if cs.contractCounts[contract] <= 0 {
-                delete(cs.contractCounts, contract)
-            }
-        } else {
-            ent2.cooldownUntil = time.Time{}
+    if now.Sub(ent.windowStart) > cs.window {
+        delete(cs.entries, k)
+        if cnt := cs.contractCounts[contract]; cnt > 0 {
+            cnt--
+            if cnt <= 0 { delete(cs.contractCounts, contract) } else { cs.contractCounts[contract] = cnt }
         }
+    } else {
+        ent.cooldownUntil = time.Time{}
     }
-    cs.mu.Unlock()
     return false, 0
 }
 
@@ -124,55 +137,101 @@ func (cs *cooldownState) ensureCapacity(contract string, now time.Time) {
     if cs.maxEntries <= 0 && cs.maxEntriesPerContract <= 0 {
         return
     }
-    evictIdle := func(limit int, specific string) int {
-        evicted := 0
+    // Phase 1: snapshot minimal state under read lock
+    type snap struct{ key, contract string; win time.Time; idle bool }
+    var (
+        needPer, needGlobal bool
+        idleCandsAll []snap
+        idleCandsContract []snap
+        allCands  []snap
+        maxEntries = cs.maxEntries
+        maxPer    = cs.maxEntriesPerContract
+    )
+    cs.mu.RLock()
+    if maxPer > 0 && cs.contractCounts[contract] >= maxPer { needPer = true }
+    if maxEntries > 0 && len(cs.entries) >= maxEntries { needGlobal = true }
+    if needPer || needGlobal {
+        idleCandsAll = make([]snap, 0)
+        idleCandsContract = make([]snap, 0)
+        allCands = make([]snap, 0, len(cs.entries))
         for k, ent := range cs.entries {
             if ent == nil { continue }
-            if specific != "" {
-                if idx := indexRune(k, '|'); idx > 0 {
-                    if k[:idx] != specific { continue }
-                } else { continue }
-            }
-            if ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window {
-                c := specific
-                if c == "" {
-                    if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
-                }
-                delete(cs.entries, k)
-                if c != "" {
-                    cs.contractCounts[c]--
-                    if cs.contractCounts[c] <= 0 { delete(cs.contractCounts, c) }
-                }
-                evicted++
-                if limit > 0 && evicted >= limit { break }
-            }
+            c := ""
+            if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
+            s := snap{key: k, contract: c, win: ent.windowStart, idle: ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window}
+            allCands = append(allCands, s)
+            if s.idle { idleCandsAll = append(idleCandsAll, s) }
+            if s.idle && c == contract { idleCandsContract = append(idleCandsContract, s) }
         }
-        return evicted
     }
-    // per-contract cap first
-    if cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract {
-        evictIdle(1, contract)
+    cs.mu.RUnlock()
+    if !(needPer || needGlobal) { return }
+
+    // Phase 2: plan evictions outside of lock (linear min when deleting 1)
+    
+    plan := make([]snap, 0)
+    if needPer {
+        // remove one idle for this contract (oldest)
+        if len(idleCandsContract) > 0 {
+            oldest := idleCandsContract[0]
+            for _, s := range idleCandsContract {
+                if s.win.Before(oldest.win) { oldest = s }
+            }
+            plan = append(plan, oldest)
+        }
+        if len(plan) == 0 {
+            // fallback: remove oldest (any state) within this contract
+            has := false
+            var oldest snap
+            for _, s := range allCands {
+                if s.contract != contract { continue }
+                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
+            }
+            if has { plan = append(plan, oldest) }
+        }
     }
-    // global cap
-    if cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries {
-        for len(cs.entries) >= cs.maxEntries {
-            removed := evictIdle(10, "")
-            if removed == 0 {
-                // remove any non-cooldown entry
-                for k, ent := range cs.entries {
-                    if ent == nil { continue }
-                    if ent.cooldownUntil.IsZero() {
-                        c := ""
-                        if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
-                        delete(cs.entries, k)
-                        if c != "" {
-                            cs.contractCounts[c]--
-                            if cs.contractCounts[c] <= 0 { delete(cs.contractCounts, c) }
-                        }
-                        break
-                    }
-                }
-                break
+    if needGlobal {
+        // compute how many to remove to be strictly below cap after adding 1 potential new entry
+        // remove at least 1 if at cap
+        needed := 1
+        // prefer oldest idle across all; if none, oldest across all
+        if needed > 0 && len(idleCandsAll) > 0 {
+            // find oldest idle not already in plan
+            has := false
+            var oldest snap
+            for _, s := range idleCandsAll {
+                dup := false
+                for _, p := range plan { if p.key == s.key { dup = true; break } }
+                if dup { continue }
+                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
+            }
+            if has { plan = append(plan, oldest); needed-- }
+        }
+        if needed > 0 {
+            has := false
+            var oldest snap
+            for _, s := range allCands {
+                dup := false
+                for _, p := range plan { if p.key == s.key { dup = true; break } }
+                if dup { continue }
+                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
+            }
+            if has { plan = append(plan, oldest); needed-- }
+        }
+    }
+
+    if len(plan) == 0 { return }
+
+    // Phase 3: apply deletions under lock (re-validate existence)
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+    for _, s := range plan {
+        if _, ok := cs.entries[s.key]; !ok { continue }
+        delete(cs.entries, s.key)
+        if s.contract != "" {
+            if cnt := cs.contractCounts[s.contract]; cnt > 0 {
+                cnt--
+                if cnt <= 0 { delete(cs.contractCounts, s.contract) } else { cs.contractCounts[s.contract] = cnt }
             }
         }
     }
@@ -187,23 +246,28 @@ func (cs *cooldownState) recordFailure(contract, user string, now time.Time) {
     cs.mu.Lock()
     ent, ok := cs.entries[k]
     if !ok || ent == nil {
-        cs.ensureCapacity(contract, now)
-        ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
-        // If threshold is 1, start cooldown immediately
-        if cs.threshold <= 1 {
-            dur := ent.cooldownDur
-            if dur <= 0 { dur = cs.baseTTL }
-            ent.cooldownUntil = now.Add(dur)
-            next := time.Duration(float64(dur) * cs.backoffFactor)
-            if next > cs.maxTTL { next = cs.maxTTL }
-            ent.cooldownDur = next
-            ent.fails = 0
-            ent.windowStart = now
-        }
-        cs.entries[k] = ent
-        cs.contractCounts[contract]++
         cs.mu.Unlock()
-        return
+        cs.ensureCapacity(contract, now)
+        cs.mu.Lock()
+        ent, ok = cs.entries[k]
+        if !ok || ent == nil {
+            ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
+            // If threshold is 1, start cooldown immediately
+            if cs.threshold <= 1 {
+                dur := ent.cooldownDur
+                if dur <= 0 { dur = cs.baseTTL }
+                ent.cooldownUntil = now.Add(dur)
+                next := time.Duration(float64(dur) * cs.backoffFactor)
+                if next > cs.maxTTL { next = cs.maxTTL }
+                ent.cooldownDur = next
+                ent.fails = 0
+                ent.windowStart = now
+            }
+            cs.entries[k] = ent
+            cs.contractCounts[contract]++
+            cs.mu.Unlock()
+            return
+        }
     }
     // window check
     if now.Sub(ent.windowStart) > cs.window {
@@ -270,6 +334,31 @@ func (d SponsorContractTxAnteDecorator) WithCooldownConfig(cfg CooldownConfig) S
     }
     if cfg.MaxEntriesPerContract != nil {
         d.cstate.maxEntriesPerContract = *cfg.MaxEntriesPerContract
+    }
+    // Normalize invalid values to safe defaults to avoid local logic anomalies
+    if d.cstate.baseTTL < 0 {
+        d.cstate.baseTTL = 0
+    }
+    if d.cstate.maxTTL < 0 {
+        d.cstate.maxTTL = 0
+    }
+    if d.cstate.maxTTL < d.cstate.baseTTL {
+        d.cstate.maxTTL = d.cstate.baseTTL
+    }
+    if d.cstate.backoffFactor <= 0 {
+        d.cstate.backoffFactor = 1.0
+    }
+    if d.cstate.threshold < 1 {
+        d.cstate.threshold = 1
+    }
+    if d.cstate.window < 0 {
+        d.cstate.window = 0
+    }
+    if d.cstate.maxEntries < 0 {
+        d.cstate.maxEntries = 0
+    }
+    if d.cstate.maxEntriesPerContract < 0 {
+        d.cstate.maxEntriesPerContract = 0
     }
     return d
 }
@@ -516,9 +605,15 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             }
         }
 
-		// Check local cooldown before running policy queries (CheckTx only)
+        // Check local cooldown before running policy queries (CheckTx only):
+        // This protection is mempool-scoped and intentionally does not affect DeliverTx.
+        // It is a best-effort local shield against spam and does not defend against
+        // validators/privileged block construction.
         if ctx.IsCheckTx() && !simulate && sctd.cstate != nil && sctd.cstate.enabled {
-            if blocked, remain := sctd.cstate.onCooldown(contractAddr, userAddr.String(), time.Now()); blocked {
+            // Prefer block time for consistency across nodes; fallback to wall clock if unavailable
+            now := ctx.BlockTime()
+            if now.IsZero() { now = time.Now() }
+            if blocked, remain := sctd.cstate.onCooldown(contractAddr, userAddr.String(), now); blocked {
                 // Format remaining seconds, rounding up to the nearest second
                 secs := int64(remain / time.Second)
                 if remain%time.Second != 0 { secs++ }
@@ -638,7 +733,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             // Handle fallback; if in CheckTx and fallback returns error, record local cooldown
             newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
             if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
-                sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
+                now := ctx.BlockTime()
+                if now.IsZero() { now = time.Now() }
+                sctd.cstate.recordFailure(contractAddr, userAddr.String(), now)
             }
             // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
             if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {
@@ -679,7 +776,9 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			// User is not eligible according to contract policy, use the specific reason from contract if provided and go back to standard fee processing
             newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
             if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
-                sctd.cstate.recordFailure(contractAddr, userAddr.String(), time.Now())
+                now := ctx.BlockTime()
+                if now.IsZero() { now = time.Now() }
+                sctd.cstate.recordFailure(contractAddr, userAddr.String(), now)
             }
             // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
             if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {

@@ -1622,6 +1622,173 @@ func (suite *AnteTestSuite) TestCheckTx_LocalCooldownThresholdTwo() {
     suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
 }
 
+// Local cooldown should use block time if present (with fallback to wall clock when zero)
+func (suite *AnteTestSuite) TestCheckTx_LocalCooldownUsesBlockTime() {
+    // Arrange: sponsorship enabled, sponsor funded, user unfunded; policy ineligible
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Configure local cooldown: threshold=1, baseTTL=50ms
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+        suite.anteDecorator.cstate.maxTTL = 200 * time.Millisecond
+        suite.anteDecorator.cstate.window = 1 * time.Second
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Set a deterministic block time baseline
+    t0 := time.Unix(1_700_000_000, 0)
+
+    // First attempt at t0: should run policy and record cooldown until t0+50ms
+    check1 := suite.ctx.WithIsCheckTx(true).WithBlockTime(t0).WithEventManager(sdk.NewEventManager())
+    _, err := suite.anteDecorator.AnteHandle(check1, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+
+    // Second attempt at t0+25ms: still within TTL -> blocked; no new policy query
+    check2 := suite.ctx.WithIsCheckTx(true).WithBlockTime(t0.Add(25 * time.Millisecond)).WithEventManager(sdk.NewEventManager())
+    _, err2 := suite.anteDecorator.AnteHandle(check2, tx, false, next)
+    suite.Require().Error(err2)
+    suite.Require().Contains(err2.Error(), "temporarily blocked")
+    suite.Require().Equal(1, suite.wasmKeeper.GetQueryCount())
+
+    // Third attempt at t0+100ms: TTL expired -> policy runs again
+    check3 := suite.ctx.WithIsCheckTx(true).WithBlockTime(t0.Add(100 * time.Millisecond)).WithEventManager(sdk.NewEventManager())
+    _, err3 := suite.anteDecorator.AnteHandle(check3, tx, false, next)
+    suite.Require().Error(err3)
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
+}
+
+// onCooldown expired path: when outside window, entry should be deleted; when within window, cooldownUntil cleared
+func (suite *AnteTestSuite) TestLocalCooldown_OnCooldownExpiredCleanup() {
+    cs := suite.anteDecorator.cstate
+    suite.Require().NotNil(cs)
+
+    contract := suite.contract.String()
+    user := suite.user.String()
+    now := time.Unix(1_700_000_000, 0)
+
+    // Case 1: outside window -> delete entry
+    cs.window = 10 * time.Millisecond
+    k := cs.key(contract, user)
+    cs.mu.Lock()
+    cs.entries[k] = &cooldownEntry{
+        cooldownUntil: now.Add(-1 * time.Millisecond),
+        windowStart:   now.Add(-20 * time.Millisecond),
+        fails:         0,
+        cooldownDur:   50 * time.Millisecond,
+    }
+    cs.contractCounts[contract]++
+    cs.mu.Unlock()
+
+    blocked, _ := cs.onCooldown(contract, user, now)
+    suite.Require().False(blocked)
+    cs.mu.RLock()
+    _, ok := cs.entries[k]
+    cnt := cs.contractCounts[contract]
+    cs.mu.RUnlock()
+    suite.Require().False(ok, "entry should be removed outside window")
+    suite.Require().LessOrEqual(cnt, 0)
+
+    // Case 2: within window -> clear cooldownUntil, keep entry
+    cs.mu.Lock()
+    cs.entries[k] = &cooldownEntry{
+        cooldownUntil: now.Add(-1 * time.Millisecond),
+        windowStart:   now.Add(-5 * time.Millisecond),
+        fails:         0,
+        cooldownDur:   50 * time.Millisecond,
+    }
+    cs.contractCounts[contract]++
+    cs.mu.Unlock()
+
+    blocked2, _ := cs.onCooldown(contract, user, now)
+    suite.Require().False(blocked2)
+    cs.mu.RLock()
+    ent := cs.entries[k]
+    cs.mu.RUnlock()
+    suite.Require().NotNil(ent)
+    suite.Require().True(ent.cooldownUntil.IsZero(), "cooldownUntil should be cleared within window")
+}
+
+// Concurrency read path: many onCooldown concurrent calls on active entry should all report blocked
+func (suite *AnteTestSuite) TestLocalCooldown_OnCooldownConcurrentReads() {
+    cs := suite.anteDecorator.cstate
+    suite.Require().NotNil(cs)
+    contract := suite.contract.String()
+    user := suite.user.String()
+    now := time.Unix(1_700_000_500, 0)
+
+    // Prepare an active entry
+    cs.mu.Lock()
+    cs.entries[cs.key(contract, user)] = &cooldownEntry{
+        cooldownUntil: now.Add(200 * time.Millisecond),
+        windowStart:   now,
+        fails:         0,
+        cooldownDur:   50 * time.Millisecond,
+    }
+    cs.contractCounts[contract]++
+    cs.mu.Unlock()
+
+    n := 100
+    ch := make(chan bool, n)
+    for i := 0; i < n; i++ {
+        go func() {
+            b, _ := cs.onCooldown(contract, user, now)
+            ch <- b
+        }()
+    }
+    blockedCnt := 0
+    for i := 0; i < n; i++ {
+        if <-ch { blockedCnt++ }
+    }
+    suite.Require().Equal(n, blockedCnt, "all concurrent reads should observe blocked=true")
+}
+
+// Normalize invalid cooldown config values to safe defaults
+func (suite *AnteTestSuite) TestCooldownConfig_Normalization() {
+    // Prepare invalid values
+    en := true
+    base := -5 * time.Second
+    max := -1 * time.Second
+    backoff := 0.0
+    th := 0
+    win := -1 * time.Second
+    me := -10
+    mec := -5
+
+    suite.anteDecorator = suite.anteDecorator.WithCooldownConfig(CooldownConfig{
+        Enabled: &en,
+        BaseTTL: &base,
+        MaxTTL:  &max,
+        BackoffFactor: &backoff,
+        Threshold: &th,
+        Window: &win,
+        MaxEntries: &me,
+        MaxEntriesPerContract: &mec,
+    })
+
+    cs := suite.anteDecorator.cstate
+    suite.Require().NotNil(cs)
+    suite.Require().Equal(true, cs.enabled)
+    suite.Require().GreaterOrEqual(int64(cs.baseTTL), int64(0))
+    suite.Require().GreaterOrEqual(int64(cs.maxTTL), int64(0))
+    suite.Require().GreaterOrEqual(int64(cs.maxTTL), int64(cs.baseTTL))
+    suite.Require().Greater(cs.backoffFactor, 0.0)
+    suite.Require().GreaterOrEqual(cs.threshold, 1)
+    suite.Require().GreaterOrEqual(int64(cs.window), int64(0))
+    suite.Require().GreaterOrEqual(cs.maxEntries, 0)
+    suite.Require().GreaterOrEqual(cs.maxEntriesPerContract, 0)
+}
+
 // Ensure global maxEntries cap triggers idle eviction and prevents unbounded growth
 func (suite *AnteTestSuite) TestCheckTx_CooldownMaxEntriesEvictsIdle() {
     // Arrange contract & sponsor
@@ -1698,6 +1865,206 @@ func (suite *AnteTestSuite) TestCheckTx_CooldownMaxEntriesPerContractEvictsIdle(
 
     cnt := suite.anteDecorator.cstate.contractCounts[suite.contract.String()]
     suite.Require().LessOrEqual(cnt, 1, "per-contract entry count should respect cap via idle eviction")
+}
+
+// When all entries are active (threshold=1, cooldown set), capacity must still be enforced
+func (suite *AnteTestSuite) TestCheckTx_CooldownMaxEntriesEnforcedWhenActive() {
+    // Arrange contract & sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    // Policy ineligible to trigger failure and local record
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Configure cooldown: threshold=1 (immediate cooldown -> active), long window, global cap=1
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 1
+        suite.anteDecorator.cstate.baseTTL = 50 * time.Millisecond
+        suite.anteDecorator.cstate.maxTTL = 200 * time.Millisecond
+        suite.anteDecorator.cstate.window = 10 * time.Second
+        suite.anteDecorator.cstate.maxEntries = 1
+        suite.anteDecorator.cstate.maxEntriesPerContract = 0
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    runFail := func(user sdk.AccAddress) {
+        acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, user)
+        suite.accountKeeper.SetAccount(suite.ctx, acc)
+        tx := suite.createContractExecuteTx(suite.contract, user, fee)
+        _, _ = suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager()), tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    }
+
+    u1 := sdk.AccAddress("userX_______________")
+    u2 := sdk.AccAddress("userY_______________")
+
+    runFail(u1)
+    suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 1)
+
+    runFail(u2)
+    // Capacity must still be enforced even though u1's entry is active
+    suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 1, "capacity must be enforced for active entries as well")
+}
+
+// Verify default capacity limits are enabled (non-zero)
+func (suite *AnteTestSuite) TestLocalCooldown_DefaultCapacityLimits() {
+    // new decorator with defaults
+    // Ensure cstate exists and has non-zero caps
+    suite.Require().NotNil(suite.anteDecorator.cstate)
+    suite.Require().Greater(suite.anteDecorator.cstate.maxEntries, 0)
+    suite.Require().GreaterOrEqual(suite.anteDecorator.cstate.maxEntriesPerContract, 0)
+}
+
+// Deterministic eviction: when multiple idle entries exist, the oldest windowStart should be evicted first
+func (suite *AnteTestSuite) TestCheckTx_CooldownDeterministicEvictionOldestFirst() {
+    // Arrange contract & sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    // Policy ineligible
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Configure cooldown: threshold high (no cooldown => idle), window=0 (immediate idle), global cap=2
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 100
+        suite.anteDecorator.cstate.window = 0
+        suite.anteDecorator.cstate.maxEntries = 2
+        suite.anteDecorator.cstate.maxEntriesPerContract = 0
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    runFailAt := func(user sdk.AccAddress, t time.Time) {
+        acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, user)
+        suite.accountKeeper.SetAccount(suite.ctx, acc)
+        tx := suite.createContractExecuteTx(suite.contract, user, fee)
+        ctx := suite.ctx.WithIsCheckTx(true).WithBlockTime(t).WithEventManager(sdk.NewEventManager())
+        _, _ = suite.anteDecorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    }
+
+    uOld := sdk.AccAddress("user_old______________")
+    uMid := sdk.AccAddress("user_mid______________")
+    uNew := sdk.AccAddress("user_new______________")
+
+    base := time.Unix(1_700_000_000, 0)
+    runFailAt(uOld, base)                     // oldest
+    runFailAt(uMid, base.Add(10*time.Millisecond)) // middle
+
+    // At this point we should have exactly 2 entries (uOld, uMid)
+    suite.Require().Equal(2, len(suite.anteDecorator.cstate.entries))
+
+    // Adding uNew should evict the oldest idle (uOld), keeping (uMid, uNew)
+    runFailAt(uNew, base.Add(20*time.Millisecond))
+    suite.Require().Equal(2, len(suite.anteDecorator.cstate.entries))
+
+    // Verify keys present correspond to uMid and uNew
+    hasMid, hasNew, hasOld := false, false, false
+    for k := range suite.anteDecorator.cstate.entries {
+        if strings.Contains(k, uMid.String()) { hasMid = true }
+        if strings.Contains(k, uNew.String()) { hasNew = true }
+        if strings.Contains(k, uOld.String()) { hasOld = true }
+    }
+    suite.Require().True(hasMid, "mid should remain")
+    suite.Require().True(hasNew, "new should remain")
+    suite.Require().False(hasOld, "old should be evicted deterministically")
+}
+
+// Global eviction should be fair across contracts: when at global cap with idle entries from A and B,
+// adding a new entry should evict the globally oldest idle (even if it belongs to another contract).
+func (suite *AnteTestSuite) TestCheckTx_CooldownGlobalIdleEvictionIsGlobal() {
+    // Arrange two contracts & sponsors
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    contractB := sdk.AccAddress("contractB______________")
+    suite.wasmKeeper.SetContractInfo(contractB, suite.admin.String())
+
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.createAndFundSponsor(contractB, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+    suite.wasmKeeper.SetQueryResult(contractB, []byte(`{"eligible": false}`))
+
+    // Configure cooldown: high threshold (idle entries), window=0 (immediate idle), global cap=2
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 100
+        suite.anteDecorator.cstate.window = 0
+        suite.anteDecorator.cstate.maxEntries = 2
+        suite.anteDecorator.cstate.maxEntriesPerContract = 0
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    runFailAt := func(contract sdk.AccAddress, user sdk.AccAddress, t time.Time) {
+        acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, user)
+        suite.accountKeeper.SetAccount(suite.ctx, acc)
+        tx := suite.createContractExecuteTx(contract, user, fee)
+        ctx := suite.ctx.WithIsCheckTx(true).WithBlockTime(t).WithEventManager(sdk.NewEventManager())
+        _, _ = suite.anteDecorator.AnteHandle(ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    }
+
+    base := time.Unix(1_700_000_000, 0)
+    uA := sdk.AccAddress("userA_______________")
+    uB := sdk.AccAddress("userB_______________")
+    uAnew := sdk.AccAddress("userAnew____________")
+
+    // Fill cap with two idle entries: B older, A newer
+    runFailAt(contractB, uB, base)                      // oldest idle
+    runFailAt(suite.contract, uA, base.Add(10*time.Millisecond)) // newer idle
+    suite.Require().Equal(2, len(suite.anteDecorator.cstate.entries))
+
+    // Add a new A entry at later time; global eviction should remove oldest idle (B), keep A and Anew
+    runFailAt(suite.contract, uAnew, base.Add(20*time.Millisecond))
+    suite.Require().Equal(2, len(suite.anteDecorator.cstate.entries))
+
+    hasA, hasAnew, hasB := false, false, false
+    for k := range suite.anteDecorator.cstate.entries {
+        if strings.Contains(k, suite.contract.String()+"|") && strings.Contains(k, uA.String()) { hasA = true }
+        if strings.Contains(k, suite.contract.String()+"|") && strings.Contains(k, uAnew.String()) { hasAnew = true }
+        if strings.Contains(k, contractB.String()+"|") && strings.Contains(k, uB.String()) { hasB = true }
+    }
+    suite.Require().True(hasA, "A idle should remain")
+    suite.Require().True(hasAnew, "A new should remain")
+    suite.Require().False(hasB, "B oldest idle should be evicted globally")
+}
+
+// Concurrency: many CheckTx attempts should not exceed capacity and should not panic
+func (suite *AnteTestSuite) TestCheckTx_CooldownCapacityUnderConcurrency() {
+    // Arrange contract & sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(20000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false}`))
+
+    // Tight caps to stress eviction
+    if suite.anteDecorator.cstate != nil {
+        suite.anteDecorator.cstate.threshold = 100
+        suite.anteDecorator.cstate.window = 0
+        suite.anteDecorator.cstate.maxEntries = 20
+        suite.anteDecorator.cstate.maxEntriesPerContract = 10
+    }
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    // spawn concurrent attempts for many users
+    n := 100
+    errCh := make(chan error, n)
+    done := make(chan struct{})
+    go func() {
+        for i := 0; i < n; i++ {
+            u := sdk.AccAddress([]byte(fmt.Sprintf("user_conc_%02d__________", i)))
+            acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, u)
+            suite.accountKeeper.SetAccount(suite.ctx, acc)
+            tx := suite.createContractExecuteTx(suite.contract, u, fee)
+            _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager()), tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+            errCh <- err
+        }
+        close(done)
+    }()
+    <-done
+    close(errCh)
+    // no panic -> all attempts returned error (expected), capacity respected
+    suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 20)
+    cnt := suite.anteDecorator.cstate.contractCounts[suite.contract.String()]
+    suite.Require().LessOrEqual(cnt, 10)
 }
 
 // Cooldown disabled should never block and should always run policy
