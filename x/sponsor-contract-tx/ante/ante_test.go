@@ -1436,7 +1436,42 @@ func (suite *AnteTestSuite) TestPreventMessageHitchhiking() {
 	deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
 	_, err := suite.anteDecorator.AnteHandle(deliverCtx, mixedTx, false, next)
 	suite.Require().NoError(err)
-	suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", suite.contract.String(), sdk.MsgTypeURL(bankTx.GetMsgs()[0])))
+    suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", sdk.MsgTypeURL(bankTx.GetMsgs()[0])))
+}
+
+// Ensure policy error reason is sanitized in events and does not inject control characters
+func (suite *AnteTestSuite) TestPolicyErrorReasonSanitizedInEvent() {
+    // Set up contract info and a funded sponsor to reach policy query stage
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, fund)
+
+    // Make contract query return an error with control characters
+    suite.wasmKeeper.SetQueryError(suite.contract, "bad\nreason\tinjected")
+
+    // Build a deliver context to emit events
+    deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    _, err := suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+    suite.Require().Error(err) // fallback likely returns error depending on user balance
+
+    // Expect a sponsorship_skipped event with sanitized reason (control chars replaced by spaces)
+    // Use substring match because the system may wrap the underlying error context
+    found := false
+    for _, ev := range deliverCtx.EventManager().Events() {
+        if ev.Type != types.EventTypeSponsorshipSkipped { continue }
+        attrs := map[string]string{}
+        for _, a := range ev.Attributes { attrs[a.Key] = a.Value }
+        if reason, ok := attrs[types.AttributeKeyReason]; ok && strings.Contains(reason, "bad reason injected") {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found, "expected sponsorship_skipped event with reason containing sanitized snippet")
 }
 
 // TestPolicyBypassPrevention tests prevention of policy bypass attempts
@@ -4631,27 +4666,49 @@ func TestAnteTestSuite(t *testing.T) {
 // Additional individual test functions for edge cases
 
 func TestValidateSponsoredTransaction(t *testing.T) {
-	msgs := []sdk.Msg{
-		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract1"},
-		&banktypes.MsgSend{FromAddress: "sender", ToAddress: "receiver"},
-	}
+    // Build a valid bech32 contract address and a bank message to produce a mixed tx
+    c1 := sdk.AccAddress(make([]byte, 20)).String()
+    msgs := []sdk.Msg{
+        &wasmtypes.MsgExecuteContract{Sender: "sender", Contract: c1},
+        &banktypes.MsgSend{FromAddress: "sender", ToAddress: "receiver"},
+    }
 
-	tx := MockTx{msgs: msgs}
-	res := validateSponsoredTransaction(tx)
-	require.False(t, res.SuggestSponsor)
-	require.Contains(t, res.SkipReason, "mixed messages")
+    tx := MockTx{msgs: msgs}
+    res := validateSponsoredTransaction(tx)
+    require.False(t, res.SuggestSponsor)
+    require.Contains(t, res.SkipReason, "mixed messages")
 }
 
 func TestValidateSponsoredTransactionMultipleContracts(t *testing.T) {
-	msgs := []sdk.Msg{
-		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract1"},
-		&wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "contract2"},
-	}
+    // Build two different valid bech32 contract addresses
+    b1 := make([]byte, 20)
+    for i := range b1 { b1[i] = 1 }
+    c1 := sdk.AccAddress(b1).String()
+    b2 := make([]byte, 20)
+    for i := range b2 { b2[i] = 2 }
+    c2 := sdk.AccAddress(b2).String()
 
-	tx := MockTx{msgs: msgs}
-	res := validateSponsoredTransaction(tx)
-	require.False(t, res.SuggestSponsor)
-	require.Contains(t, res.SkipReason, "multiple contracts")
+    msgs := []sdk.Msg{
+        &wasmtypes.MsgExecuteContract{Sender: "sender", Contract: c1},
+        &wasmtypes.MsgExecuteContract{Sender: "sender", Contract: c2},
+    }
+
+    tx := MockTx{msgs: msgs}
+    res := validateSponsoredTransaction(tx)
+    require.False(t, res.SuggestSponsor)
+    require.Contains(t, res.SkipReason, "multiple contracts")
+}
+
+func TestValidateSponsoredTransactionInvalidAddress(t *testing.T) {
+    // invalid contract address should be detected early and not echo raw input
+    msgs := []sdk.Msg{
+        &wasmtypes.MsgExecuteContract{Sender: "sender", Contract: "invalid-address"},
+    }
+    tx := MockTx{msgs: msgs}
+    res := validateSponsoredTransaction(tx)
+    require.False(t, res.SuggestSponsor)
+    require.Equal(t, "", res.ContractAddress)
+    require.Equal(t, "invalid_contract_address", res.SkipReason)
 }
 
 // HighGasConsumingMockWasmKeeper simulates a malicious contract that consumes excessive gas

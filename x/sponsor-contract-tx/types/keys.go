@@ -65,7 +65,8 @@ func ValidateContractAddress(addr string) error {
 	// Validate bech32 format - this already ensures the address is valid
 	_, err := sdk.AccAddressFromBech32(addr)
 	if err != nil {
-		return ErrInvalidContractAddress.Wrapf("invalid bech32 address format: %s", addr)
+		// Do not echo raw input to avoid log/response amplification
+		return ErrInvalidContractAddress.Wrap("invalid bech32 address format")
 	}
 
 	return nil

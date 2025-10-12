@@ -45,7 +45,7 @@ func (q QueryServer) Sponsor(goCtx context.Context, req *types.QuerySponsorReque
 
 	_, err := sdk.AccAddressFromBech32(req.ContractAddress)
 	if err != nil {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 	}
 
 	// Get sponsor details
@@ -112,7 +112,7 @@ func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserG
 
 	_, err := sdk.AccAddressFromBech32(req.UserAddress)
 	if err != nil {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", req.UserAddress)
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 
 	// Validate contract address
@@ -122,7 +122,7 @@ func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserG
 
 	_, err = sdk.AccAddressFromBech32(req.ContractAddress)
 	if err != nil {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 	}
 
 	// Get user grant usage
@@ -148,10 +148,10 @@ func (q QueryServer) BlockedStatus(goCtx context.Context, req *types.QueryBlocke
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "user address cannot be empty")
 	}
 	if _, err := sdk.AccAddressFromBech32(req.ContractAddress); err != nil {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 	}
 	if _, err := sdk.AccAddressFromBech32(req.UserAddress); err != nil {
-		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", req.UserAddress)
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 
 	rec, found := q.Keeper.GetFailedAttempts(ctx, req.ContractAddress, req.UserAddress)
@@ -185,7 +185,7 @@ func (q QueryServer) AllBlockedStatuses(goCtx context.Context, req *types.QueryA
 	// Optional filter validation
 	if req.ContractAddress != "" {
 		if _, err := sdk.AccAddressFromBech32(req.ContractAddress); err != nil {
-			return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", req.ContractAddress)
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
 		}
 	}
 

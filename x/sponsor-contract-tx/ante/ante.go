@@ -60,6 +60,24 @@ type cooldownState struct {
     contractCounts         map[string]int  // contract -> active entry count
 }
 
+// sanitizeForLog trims and strips control characters to avoid log amplification/injection.
+// It is intended for log/event fields only and does not affect returned error strings.
+func sanitizeForLog(s string) string {
+    // Replace common control characters with spaces and cap length
+    const max = 256
+    out := make([]rune, 0, len(s))
+    for _, r := range s {
+        if r == '\n' || r == '\r' || r == '\t' || r < 32 {
+            r = ' '
+        }
+        out = append(out, r)
+        if len(out) >= max {
+            break
+        }
+    }
+    return string(out)
+}
+
 func newCooldownState() *cooldownState {
     return &cooldownState{
         entries:       make(map[string]*cooldownEntry),
@@ -428,7 +446,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"sponsorship skipped",
-				"reason", validation.SkipReason,
+				"reason", sanitizeForLog(validation.SkipReason),
 			)
 		}
 		return next(ctx, tx, simulate)
@@ -732,7 +750,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					"contract", contractAddr,
 					"user", userAddr.String(),
 					"gas_used", gasUsed,
-					"error", policyErr.Error(),
+					"error", sanitizeForLog(policyErr.Error()),
 				)
 				reasonFromError = policyErr.Error()
 			} else {
@@ -751,7 +769,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					sdk.NewEvent(
 						types.EventTypeSponsorshipSkipped,
 						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-						sdk.NewAttribute(types.AttributeKeyReason, reasonFromError),
+						sdk.NewAttribute(types.AttributeKeyReason, sanitizeForLog(reasonFromError)),
 					),
 				)
 			}
@@ -1009,7 +1027,9 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 		}
 	}
 
-	var sponsoredContract string
+    // We record a normalized(bech32) contract address only after successful validation.
+    // This avoids echoing raw, potentially malicious input into logs or reasons.
+    var sponsoredContract string
 
 	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
@@ -1017,21 +1037,31 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 
 		switch execMsg := msg.(type) {
 		// contract execution message
-		case *wasmtypes.MsgExecuteContract:
-			if sponsoredContract == "" {
-				// First contract message - record the contract address
-				sponsoredContract = execMsg.Contract
-			} else {
-				// Additional contract message - must be the same contract
-				if execMsg.Contract != sponsoredContract {
-					return &TransactionValidationResult{
-						ContractAddress: "",
-						SuggestSponsor:  false,
-						SkipReason:      fmt.Sprintf("transaction contains messages for multiple contracts: %s and other contract %s", sponsoredContract, execMsg.Contract),
-					}
-				}
-			}
-		default:
+        case *wasmtypes.MsgExecuteContract:
+            // Normalize incoming address first; if invalid, skip sponsorship without echoing raw input
+            if acc, err := sdk.AccAddressFromBech32(execMsg.Contract); err != nil {
+                return &TransactionValidationResult{
+                    ContractAddress: "",
+                    SuggestSponsor:  false,
+                    SkipReason:      "invalid_contract_address",
+                }
+            } else {
+                normalized := acc.String()
+                if sponsoredContract == "" {
+                    // First valid contract message - record normalized address
+                    sponsoredContract = normalized
+                } else {
+                    // Additional contract message - must match first (normalized) address
+                    if normalized != sponsoredContract {
+                        return &TransactionValidationResult{
+                            ContractAddress: "",
+                            SuggestSponsor:  false,
+                            SkipReason:      "multiple contracts in tx",
+                        }
+                    }
+                }
+            }
+        default:
 			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
 			// If the first transaction is a non-contract transaction, it indicates a normal regular transaction.
 			// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
@@ -1046,7 +1076,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 				return &TransactionValidationResult{
 					ContractAddress: "",
 					SuggestSponsor:  false,
-					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract(%s) + non-contract (%s)", sponsoredContract, msgType),
+					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
 				}
 			}
 		}
@@ -1054,7 +1084,7 @@ func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
 
 	// If we get here, all messages are contract messages for the same contract
 	return &TransactionValidationResult{
-		ContractAddress: sponsoredContract,
+		ContractAddress: sponsoredContract, // normalized bech32 string
 		SuggestSponsor:  true,
 		SkipReason:      "",
 	}
@@ -1105,7 +1135,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 		"sponsorship denied but user has sufficient balance, falling back to standard fee processing",
 		"contract", contractAddr,
 		"user", userAddr.String(),
-		"reason", reason,
+        "reason", sanitizeForLog(reason),
 		"user_balance", userBalance.String(),
 		"required_fee", fee.String(),
 	)
@@ -1117,7 +1147,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 				types.EventTypeUserSelfPay,
 				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-				sdk.NewAttribute(types.AttributeKeyReason, reason),
+				sdk.NewAttribute(types.AttributeKeyReason, sanitizeForLog(reason)),
 				sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
 			),
 		)
