@@ -1801,6 +1801,8 @@ func TestMsgServer_AdminCleared_CreatorFallback(t *testing.T) {
     require.NoError(t, err)
 
     // Recreate sponsor and fund sponsor address to test Withdraw fallback
+    // Restore admin first so SetSponsor passes admin validation
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
     _, _ = msgServer.SetSponsor(ctx, setMsg)
     // fund sponsor address
     sp, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
@@ -1831,7 +1833,8 @@ func TestMsgServer_AdminCleared_CreatorMismatch_Unauthorized(t *testing.T) {
     other := sdk.AccAddress("other_______________")
 
     wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, sdk.NewCoins()))
+    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant))
     require.NoError(t, err)
     // Clear admin
     wasmKeeper.SetContractInfo(contractAddr, "")
@@ -1860,7 +1863,8 @@ func TestMsgServer_AdminPresent_CreatorNotAdmin_Unauthorized(t *testing.T) {
     newAdmin := sdk.AccAddress("adminB______________")
 
     wasmKeeper.SetContractInfo(contractAddr, initialAdmin.String())
-    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, sdk.NewCoins()))
+    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, initGrant))
     require.NoError(t, err)
 
     // Change admin to newAdmin
