@@ -456,6 +456,7 @@ func DefaultParams() Params {
 		GlobalMaxBlocks:          600,
 		GlobalWindowBlocks:       834,
 		GcFailedAttemptsPerBlock: 100,
+		MaxExecMsgsPerTxForSponsor: 25,
 	}
 }
 
@@ -497,6 +498,9 @@ func (p Params) Validate() error {
 			return errorsmod.Wrap(ErrInvalidParams, "global window blocks must be > 0")
 		}
 	}
+
+	// Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
+	// Keep validation lenient to let governance choose appropriate values.
 
 	// GC per block may be zero to disable; no upper bound enforced here.
 

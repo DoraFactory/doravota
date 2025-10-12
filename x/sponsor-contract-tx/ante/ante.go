@@ -517,6 +517,31 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+        // Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
+        if params.MaxExecMsgsPerTxForSponsor > 0 {
+            execCount := 0
+            for _, m := range tx.GetMsgs() {
+                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
+                    execCount++
+                }
+            }
+            if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
+                reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
+                // Emit skip event only in DeliverTx
+                if !ctx.IsCheckTx() {
+                    ctx.EventManager().EmitEvent(
+                        sdk.NewEvent(
+                            types.EventTypeSponsorshipSkipped,
+                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                            sdk.NewAttribute(types.AttributeKeyReason, reason),
+                        ),
+                    )
+                }
+                // Fallback to standard processing with explicit reason
+                return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
+            }
+        }
+
 		// Before any potentially expensive work in CheckTx, enforce validator min gas price
 		// using the configured txFeeChecker. This rejects low-fee spam early.
 		if ctx.IsCheckTx() && !simulate {

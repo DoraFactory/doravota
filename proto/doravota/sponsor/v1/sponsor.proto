@@ -77,4 +77,10 @@ message Params {
   // Number of expired FailedAttempts entries to GC per block (deterministic EndBlock GC)
   // 0 disables automatic GC
   uint32 gc_failed_attempts_per_block = 9;
+
+  // Max number of CosmWasm MsgExecuteContract messages allowed in a single
+  // sponsored transaction (must all target the same contract).
+  // This caps the per-tx policy-check workload to reduce DoS risk.
+  // A value of 0 means "no explicit cap" (not recommended in production).
+  uint32 max_exec_msgs_per_tx_for_sponsor = 10;
 }

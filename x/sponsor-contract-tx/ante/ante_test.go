@@ -744,6 +744,21 @@ func (suite *AnteTestSuite) createContractExecuteTx(contract sdk.AccAddress, sig
 	return suite.createTx([]sdk.Msg{msg}, []sdk.AccAddress{signer}, fee, nil)
 }
 
+// Build a tx with multiple MsgExecuteContract to the same contract and signer
+func (suite *AnteTestSuite) createMultiExecContractTx(contract sdk.AccAddress, signer sdk.AccAddress, count int, fee sdk.Coins) sdk.Tx {
+    msgs := make([]sdk.Msg, 0, count)
+    for i := 0; i < count; i++ {
+        msg := &wasmtypes.MsgExecuteContract{
+            Sender:   signer.String(),
+            Contract: contract.String(),
+            Msg:      []byte(`{"increment":{}}`),
+            Funds:    nil,
+        }
+        msgs = append(msgs, msg)
+    }
+    return suite.createTx(msgs, []sdk.AccAddress{signer}, fee, nil)
+}
+
 func (suite *AnteTestSuite) createContractExecuteTxWithFeeGranter(contract sdk.AccAddress, signer sdk.AccAddress, feeGranter sdk.AccAddress, fee sdk.Coins) sdk.Tx {
 	msg := &wasmtypes.MsgExecuteContract{
 		Sender:   signer.String(),
@@ -1666,6 +1681,89 @@ func (suite *AnteTestSuite) TestCheckTx_LocalCooldownUsesBlockTime() {
     _, err3 := suite.anteDecorator.AnteHandle(check3, tx, false, next)
     suite.Require().Error(err3)
     suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount())
+}
+
+// Enforce cap on number of MsgExecuteContract for sponsored tx: exceed cap -> skip sponsorship
+func (suite *AnteTestSuite) TestSponsor_CapExecMsgs_SkipWhenExceeded() {
+    // Setup contract and sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+
+    // Set params with cap=1
+    p := types.DefaultParams()
+    p.SponsorshipEnabled = true
+    p.MaxExecMsgsPerTxForSponsor = 1
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, p))
+
+    // Give user enough balance to self-pay so fallback path succeeds and next is called
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee))
+
+    // Build tx with 2 exec messages -> exceeds cap
+    tx := suite.createMultiExecContractTx(suite.contract, suite.user, 2, fee)
+
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { nextCalled = true; return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(true), tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled, "should fall back to standard processing")
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount(), "no policy query should run when cap exceeded")
+}
+
+// At/under cap -> sponsorship path continues, policy queries run for each message
+func (suite *AnteTestSuite) TestSponsor_CapExecMsgs_WithinLimit() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50_000))))
+    // Make policy eligible
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": true}`))
+
+    // cap=2, build tx with 2 exec messages
+    p := types.DefaultParams()
+    p.SponsorshipEnabled = true
+    p.MaxExecMsgsPerTxForSponsor = 2
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, p))
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    tx := suite.createMultiExecContractTx(suite.contract, suite.user, 2, fee)
+
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    suite.wasmKeeper.ResetQueryCount()
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx.WithIsCheckTx(false), tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().Equal(2, suite.wasmKeeper.GetQueryCount(), "should run policy for each exec message within cap")
+}
+
+// DeliverTx: exceeding cap should emit SponsorshipSkipped with explicit reason
+func (suite *AnteTestSuite) TestSponsor_CapExecMsgs_EmitSkipEvent_DeliverTx() {
+    // Setup contract and sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+
+    // Set params: cap=1
+    p := types.DefaultParams()
+    p.SponsorshipEnabled = true
+    p.MaxExecMsgsPerTxForSponsor = 1
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, p))
+
+    // Fund user to self-pay so fallback succeeds and events are captured cleanly
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee))
+
+    // Build tx with 2 exec messages -> exceeds cap
+    tx := suite.createMultiExecContractTx(suite.contract, suite.user, 2, fee)
+
+    // DeliverTx context with fresh event manager
+    deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+    suite.Require().NoError(err)
+
+    // Expect sponsorship_skipped with reason too_many_exec_messages:2>1
+    suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, "too_many_exec_messages:2>1")
 }
 
 // onCooldown expired path: when outside window, entry should be deleted; when within window, cooldownUntil cleared
