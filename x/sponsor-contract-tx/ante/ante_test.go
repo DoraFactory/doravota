@@ -744,6 +744,17 @@ func (suite *AnteTestSuite) createContractExecuteTx(contract sdk.AccAddress, sig
 	return suite.createTx([]sdk.Msg{msg}, []sdk.AccAddress{signer}, fee, nil)
 }
 
+// Helper to create a contract execute tx with a custom raw JSON message payload
+func (suite *AnteTestSuite) createContractExecuteTxWithMsg(contract sdk.AccAddress, signer sdk.AccAddress, fee sdk.Coins, rawMsg string) sdk.Tx {
+    msg := &wasmtypes.MsgExecuteContract{
+        Sender:   signer.String(),
+        Contract: contract.String(),
+        Msg:      []byte(rawMsg),
+        Funds:    nil,
+    }
+    return suite.createTx([]sdk.Msg{msg}, []sdk.AccAddress{signer}, fee, nil)
+}
+
 // Build a tx with multiple MsgExecuteContract to the same contract and signer
 func (suite *AnteTestSuite) createMultiExecContractTx(contract sdk.AccAddress, signer sdk.AccAddress, count int, fee sdk.Coins) sdk.Tx {
     msgs := make([]sdk.Msg, 0, count)
@@ -2636,6 +2647,42 @@ func (suite *AnteTestSuite) TestEarlyGrantBelowTxFeeSkipsPolicy() {
         types.EventTypeSponsorshipSkipped,
         "grant_below_tx_fee",
     )
+}
+
+// TestPolicyPayloadTooLargeSkipsPolicy verifies that when a single execute message payload
+// exceeds MaxPolicyExecMsgBytes, the ante skips sponsorship before any JSON parsing/query.
+func (suite *AnteTestSuite) TestPolicyPayloadTooLargeSkipsPolicy() {
+    // Configure a small per-message payload cap
+    params := types.DefaultParams()
+    params.MaxPolicyExecMsgBytes = 32
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    // Set up contract and a sponsor (funds not strictly needed as we will short-circuit earlier)
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins())
+
+    // Fund user so fallback can self-pay and not error out
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee))
+
+    // Build an oversized JSON payload (> 32 bytes)
+    large := "{\"data\":\"" + strings.Repeat("A", 64) + "\"}"
+    tx := suite.createContractExecuteTxWithMsg(suite.contract, suite.user, fee, large)
+
+    // DeliverTx to capture events
+    deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    suite.wasmKeeper.ResetQueryCount()
+    _, err := suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+    // user can self-pay, so no error expected
+    suite.Require().NoError(err)
+    // Ensure policy query was not executed
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount())
+    // Expect sponsorship_skipped with reason policy_payload_too_large
+    suite.assertEventWithReason(deliverCtx.EventManager().Events(), types.EventTypeSponsorshipSkipped, "policy_payload_too_large")
 }
 
 // TestUserBalanceSelfPayPath tests that users with sufficient balance pay their own fees

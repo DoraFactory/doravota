@@ -542,19 +542,21 @@ func ValidateGenesis(data GenesisState) error {
 
 // DefaultParams returns default parameters
 func DefaultParams() Params {
-	return Params{
-		SponsorshipEnabled:   true,
-		MaxGasPerSponsorship: 2500000, // 2.5M gas
-		AbuseTrackingEnabled: true,
+    return Params{
+        SponsorshipEnabled:   true,
+        MaxGasPerSponsorship: 2500000, // 2.5M gas
+        AbuseTrackingEnabled: true,
 		// Block-based abuse tracking defaults(time can be converted to blocks based on avg block time):
 		GlobalThreshold:          4,
 		GlobalBaseBlocks:         17,
 		GlobalBackoffMilli:       3000,
 		GlobalMaxBlocks:          600,
 		GlobalWindowBlocks:       834,
-		GcFailedAttemptsPerBlock: 100,
-		MaxExecMsgsPerTxForSponsor: 25,
-	}
+        GcFailedAttemptsPerBlock:   100,
+        MaxExecMsgsPerTxForSponsor: 25,
+        // Default per-message JSON payload cap for policy checks: 16 KiB
+        MaxPolicyExecMsgBytes:      16 * 1024,
+    }
 }
 
 // Validate validates the parameters
@@ -567,10 +569,18 @@ func (p Params) Validate() error {
 	}
 
 	// Abuse tracking parameters (block-based)
-	if p.AbuseTrackingEnabled {
+    if p.AbuseTrackingEnabled {
 		if p.GlobalThreshold == 0 {
 			return errorsmod.Wrap(ErrInvalidParams, "global threshold must be >= 1")
-		}
+    }
+
+    // Optional guardrail for per-message JSON payload size (bytes).
+    // 0 disables the guard. Cap at a conservative upper bound to avoid misconfiguration.
+    if p.MaxPolicyExecMsgBytes > 0 {
+        if p.MaxPolicyExecMsgBytes > 1_048_576 { // 1 MiB hard cap
+            return errorsmod.Wrap(ErrInvalidParams, "max policy exec msg bytes must be <= 1MiB")
+        }
+    }
 		// Put a conservative upper bound to avoid unusable configurations
 		// Very large thresholds make cooldown unreachable and are not practical.
 		if p.GlobalThreshold > 100000 { // 1e5 failures within window is considered unreasonable

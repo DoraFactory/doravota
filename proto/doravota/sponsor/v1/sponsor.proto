@@ -83,4 +83,10 @@ message Params {
   // This caps the per-tx policy-check workload to reduce DoS risk.
   // A value of 0 means "no explicit cap" (not recommended in production).
   uint32 max_exec_msgs_per_tx_for_sponsor = 10;
+
+  // Max raw JSON bytes allowed per MsgExecuteContract payload to be considered
+  // for sponsorship policy checks. This is a pre-parse size guard executed
+  // before any JSON (un)marshalling to prevent CPU/memory amplification.
+  // 0 disables this guard.
+  uint32 max_policy_exec_msg_bytes = 11;
 }

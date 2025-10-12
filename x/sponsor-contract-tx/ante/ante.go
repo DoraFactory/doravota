@@ -560,6 +560,34 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             }
         }
 
+        // Enforce per-message raw JSON payload size (bytes) before any JSON parsing to prevent CPU amplification.
+        // 0 disables this guard.
+        if params.MaxPolicyExecMsgBytes > 0 {
+            var tooLarge bool
+            for _, m := range tx.GetMsgs() {
+                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
+                    if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
+                        tooLarge = true
+                        break
+                    }
+                }
+            }
+            if tooLarge {
+                // Emit skip event only in DeliverTx
+                if !ctx.IsCheckTx() {
+                    ctx.EventManager().EmitEvent(
+                        sdk.NewEvent(
+                            types.EventTypeSponsorshipSkipped,
+                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+                            sdk.NewAttribute(types.AttributeKeyReason, "policy_payload_too_large"),
+                        ),
+                    )
+                }
+                // Fallback to standard processing; provide reason for observability
+                return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy_payload_too_large")
+            }
+        }
+
 		// Before any potentially expensive work in CheckTx, enforce validator min gas price
 		// using the configured txFeeChecker. This rejects low-fee spam early.
 		if ctx.IsCheckTx() && !simulate {
