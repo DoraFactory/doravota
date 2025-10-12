@@ -615,6 +615,27 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					return next(ctx, tx, simulate)
 				}
 
+				// Early user grant-vs-fee short-circuit BEFORE running policy queries to avoid unnecessary contract work
+				// If the transaction fee exceeds the user's remaining sponsored grant, skip sponsorship immediately.
+				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
+					// Emit skip event only in DeliverTx mode
+					if !ctx.IsCheckTx() {
+						ctx.EventManager().EmitEvent(
+							sdk.NewEvent(
+								types.EventTypeSponsorshipSkipped,
+								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+								sdk.NewAttribute(types.AttributeKeyReason, "grant_below_tx_fee"),
+							),
+						)
+					}
+					// If user can self-pay, gracefully fallback; otherwise propagate the grant-limit error
+					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+					if userBalance.IsAllGTE(fee) {
+						return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "grant_below_tx_fee")
+					}
+					return ctx, err
+				}
+
 				// Early sponsor balance quick-check BEFORE running policy queries to avoid heavy work
 				// Validate sponsor address and ensure sponsor has enough spendable balance for this fee
 				sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)

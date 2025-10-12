@@ -2602,6 +2602,42 @@ func (suite *AnteTestSuite) TestPolicyQueryGasLimit() {
 	suite.Require().NoError(err) // Mock doesn't actually consume gas
 }
 
+// TestEarlyGrantBelowTxFeeSkipsPolicy ensures that when the tx fee exceeds the user's remaining
+// sponsored grant, we skip contract policy queries early and emit a clear reason.
+func (suite *AnteTestSuite) TestEarlyGrantBelowTxFeeSkipsPolicy() {
+    // Ensure wasm query counter starts at 0
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Set up contract info and a sponsor with low grant limit
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))) // low per-user limit
+    // Create sponsor; no need to fund sponsor because we will fail on grant limit first
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins())
+
+    // Build a tx whose fee exceeds the remaining grant (user has 0 usage initially)
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // Use DeliverTx context to capture events
+    deliverCtx := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager())
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+
+    // Execute ante; user has no balance so fallback will not self-pay and we expect an error
+    _, err := suite.anteDecorator.AnteHandle(deliverCtx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "grant limit exceeded")
+
+    // Ensure no contract policy query was executed
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount())
+
+    // Verify we emitted a sponsorship_skipped event with reason grant_below_tx_fee
+    suite.assertEventWithReason(
+        deliverCtx.EventManager().Events(),
+        types.EventTypeSponsorshipSkipped,
+        "grant_below_tx_fee",
+    )
+}
+
 // TestUserBalanceSelfPayPath tests that users with sufficient balance pay their own fees
 // This ensures the fee priority: feegrant > sponsor > standard is respected
 func (suite *AnteTestSuite) TestUserBalanceSelfPayPath() {
