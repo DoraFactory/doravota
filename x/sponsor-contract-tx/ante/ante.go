@@ -428,6 +428,32 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 	}
 
+    // Global toggle: if sponsorship is disabled, skip immediately before any contract-specific work
+    params := sctd.keeper.GetParams(ctx)
+    if !params.SponsorshipEnabled {
+        if !ctx.IsCheckTx() {
+            // Best-effort: if there is a contract execute message, attach its address for observability
+            contractForEvent := ""
+            for _, m := range tx.GetMsgs() {
+                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok {
+                    contractForEvent = msg.Contract
+                    break
+                }
+            }
+            ev := sdk.NewEvent(types.EventTypeSponsorshipDisabled,
+                sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
+            )
+            if contractForEvent != "" {
+                ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyContractAddress, contractForEvent))
+            }
+            ctx.EventManager().EmitEvent(ev)
+        }
+        ctx.Logger().With("module", "sponsor-contract-tx").Info(
+            "sponsorship globally disabled, using standard fee processing",
+        )
+        return next(ctx, tx, simulate)
+    }
+
 	// Find and validate contract execution messages
 	validation := validateSponsoredTransaction(tx)
 
@@ -500,25 +526,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// If found and sponsored, proceed with sponsorship logic
 	if found && sponsor.IsSponsored {
-		// Check if sponsorship is globally enabled first
-		params := sctd.keeper.GetParams(ctx)
-		if !params.SponsorshipEnabled {
-			// If sponsorship is globally disabled, skip all sponsor logic
-			if !ctx.IsCheckTx() {
-				ctx.EventManager().EmitEvent(
-					sdk.NewEvent(
-						types.EventTypeSponsorshipDisabled,
-						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-						sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
-					),
-				)
-			}
-			ctx.Logger().With("module", "sponsor-contract-tx").Info(
-				"sponsorship globally disabled, using standard fee processing",
-			)
-
-			return next(ctx, tx, simulate)
-		}
 		// Get the appropriate user address from the tx for policy check and fee payment
 		userAddr, err := sctd.getUserAddressForSponsorship(tx)
 		if err != nil {

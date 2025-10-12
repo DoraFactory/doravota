@@ -410,6 +410,38 @@ func (suite *AnteTestSuite) TestNonContractTransactionPassThrough() {
 	suite.Require().True(nextCalled)
 }
 
+// Ensure when SponsorshipEnabled is false, CheckTx short-circuits immediately,
+// does not emit events, and does not perform any policy queries.
+func (suite *AnteTestSuite) TestSponsorshipDisabledCheckTxSkipsEarly() {
+    // Disable sponsorship globally
+    params := types.DefaultParams()
+    params.SponsorshipEnabled = false
+    suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
+
+    // Prepare a contract exec tx
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    // CheckTx context with fresh event manager
+    checkCtx := suite.ctx.WithIsCheckTx(true).WithEventManager(sdk.NewEventManager())
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+        nextCalled = true
+        return ctx, nil
+    }
+
+    suite.wasmKeeper.ResetQueryCount()
+    _, err := suite.anteDecorator.AnteHandle(checkCtx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+    // No policy queries should run
+    suite.Require().Equal(0, suite.wasmKeeper.GetQueryCount())
+    // No events should be emitted in CheckTx for global disable
+    for _, ev := range checkCtx.EventManager().Events() {
+        suite.Require().NotEqual(types.EventTypeSponsorshipDisabled, ev.Type)
+    }
+}
+
 // Test case: Contract not sponsored should pass through
 func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	// Set up contract info but don't register for sponsorship
