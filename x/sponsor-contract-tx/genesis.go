@@ -6,6 +6,7 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
 )
 
 // InitGenesis initializes the capability module's state from a provided genesis state
@@ -18,6 +19,24 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	// Set all sponsors
 	for _, sponsor := range genState.Sponsors {
 		// Convert pointer to value type
+		// Defensive validations that require keepers/state
+		// 1) Ensure the contract exists in wasm keeper
+		if err := k.ValidateContractExists(ctx, sponsor.ContractAddress); err != nil {
+			panic(fmt.Errorf("invalid sponsor contract in genesis: %w", err))
+		}
+		// 2) Ensure sponsor address is the expected derived address
+		contractAccAddr, err := sdk.AccAddressFromBech32(sponsor.ContractAddress)
+		if err != nil {
+			panic(fmt.Errorf("invalid sponsor contract address in genesis: %w", err))
+		}
+		expectedSponsor := sdk.AccAddress(address.Derive(contractAccAddr, []byte("sponsor")))
+		sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+		if err != nil {
+			panic(fmt.Errorf("invalid sponsor address in genesis: %w", err))
+		}
+		if !expectedSponsor.Equals(sponsorAccAddr) {
+			panic(fmt.Errorf("sponsor address mismatch in genesis: expected %s, got %s for contract %s", expectedSponsor.String(), sponsor.SponsorAddress, sponsor.ContractAddress))
+		}
 		if err := k.SetSponsor(ctx, *sponsor); err != nil {
 			panic(fmt.Errorf("failed to set sponsor during genesis initialization: %w", err))
 		}

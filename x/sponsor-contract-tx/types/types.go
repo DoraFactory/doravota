@@ -1,11 +1,12 @@
 package types
 
 import (
-	"fmt"
+    "fmt"
 
-	errorsmod "cosmossdk.io/errors"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+    errorsmod "cosmossdk.io/errors"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/cosmos/cosmos-sdk/types/address"
+    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
 const (
@@ -365,80 +366,176 @@ func DefaultGenesisState() *GenesisState {
 
 // ValidateGenesis validates the genesis state
 func ValidateGenesis(data GenesisState) error {
-	// Check for duplicate sponsors
-	seenSponsors := make(map[string]bool)
-	for _, sponsor := range data.Sponsors {
-		if sponsor == nil {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor cannot be nil")
-		}
+    // Validate sponsors: duplicates + deep validation
+    sponsorsByContract := make(map[string]*ContractSponsor)
+    for _, sponsor := range data.Sponsors {
+        if sponsor == nil {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor cannot be nil")
+        }
 
-		if seenSponsors[sponsor.ContractAddress] {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate sponsor contract address: %s", sponsor.ContractAddress)
-		}
-		seenSponsors[sponsor.ContractAddress] = true
+        // Contract address validation (non-empty + bech32)
+        if err := ValidateContractAddress(sponsor.ContractAddress); err != nil {
+            return err
+        }
+        if _, exists := sponsorsByContract[sponsor.ContractAddress]; exists {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate sponsor contract address: %s", sponsor.ContractAddress)
+        }
+        sponsorsByContract[sponsor.ContractAddress] = sponsor
 
-		if sponsor.ContractAddress == "" {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor contract address cannot be empty")
-		}
-	}
+        // Creator address validation
+        if sponsor.CreatorAddress == "" {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor creator address cannot be empty")
+        }
+        if _, err := sdk.AccAddressFromBech32(sponsor.CreatorAddress); err != nil {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor creator address: %s", sponsor.CreatorAddress)
+        }
 
-	// Validate user grant usages
-	seenUsage := make(map[string]struct{})
-	for _, usage := range data.UserGrantUsages {
-		if usage == nil {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
-		}
+        // Sponsor address validation (must be valid bech32 and derived from contract address)
+        if sponsor.SponsorAddress == "" {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor address cannot be empty")
+        }
+        sponsorAcc, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+        if err != nil {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor address: %s", sponsor.SponsorAddress)
+        }
+        contractAcc, err := sdk.AccAddressFromBech32(sponsor.ContractAddress)
+        if err != nil {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", sponsor.ContractAddress)
+        }
+        expectedSponsor := sdk.AccAddress(address.Derive(contractAcc, []byte("sponsor")))
+        if !expectedSponsor.Equals(sponsorAcc) {
+            return errorsmod.Wrapf(
+                sdkerrors.ErrInvalidAddress,
+                "sponsor address must be derived from contract address; expected %s, got %s",
+                expectedSponsor.String(), sponsor.SponsorAddress,
+            )
+        }
 
-		if usage.UserAddress == "" {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
-		}
+        // Temporal consistency
+        if sponsor.CreatedAt < 0 {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "created_at cannot be negative")
+        }
+        if sponsor.UpdatedAt < 0 {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "updated_at cannot be negative")
+        }
+        if sponsor.CreatedAt > sponsor.UpdatedAt {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "created_at must be <= updated_at")
+        }
 
-		if usage.ContractAddress == "" {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage contract address cannot be empty")
-		}
+        // MaxGrantPerUser validation
+        if err := ValidateMaxGrantPerUserConditional(sponsor.MaxGrantPerUser, sponsor.IsSponsored); err != nil {
+            return err
+        }
+    }
 
-		key := usage.UserAddress + "/" + usage.ContractAddress
-		if _, found := seenUsage[key]; found {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate user grant usage for user %s and contract %s", usage.UserAddress, usage.ContractAddress)
-		}
-		seenUsage[key] = struct{}{}
-	}
+    // Validate user grant usages
+    // First pass: light validation + duplicate detection prioritized
+    seenUsage := make(map[string]struct{})
+    for _, usage := range data.UserGrantUsages {
+        if usage == nil {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
+        }
+        if usage.UserAddress == "" {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
+        }
+        if _, err := sdk.AccAddressFromBech32(usage.UserAddress); err != nil {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user grant usage user address: %s", usage.UserAddress)
+        }
+        if err := ValidateContractAddress(usage.ContractAddress); err != nil {
+            return err
+        }
+        key := usage.UserAddress + "/" + usage.ContractAddress
+        if _, found := seenUsage[key]; found {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate user grant usage for user %s and contract %s", usage.UserAddress, usage.ContractAddress)
+        }
+        seenUsage[key] = struct{}{}
+    }
 
-	// Validate parameters (do not early-return to allow validating other sections)
-	if data.Params != nil {
-		if err := data.Params.Validate(); err != nil {
-			return err
-		}
-	}
+    // Second pass: deep validation and semantic checks
+    for _, usage := range data.UserGrantUsages {
+        // Time sanity
+        if usage.LastUsedTime < 0 {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "last_used_time cannot be negative")
+        }
 
-	// Validate failed attempts entries (global cooldown)
-	for _, fa := range data.FailedAttempts {
-		if fa == nil || fa.Record == nil {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts entry cannot be nil")
-		}
-		if err := ValidateContractAddress(fa.ContractAddress); err != nil {
-			return err
-		}
-		if fa.UserAddress == "" {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts user address cannot be empty")
-		}
-		if _, err := sdk.AccAddressFromBech32(fa.UserAddress); err != nil {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid failed attempts user address: %s", fa.UserAddress)
-		}
-		// Numeric field sanity checks (defensive): heights must be non-negative
-		if fa.Record.WindowStartHeight < 0 {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts window_start_height cannot be negative")
-		}
-		if fa.Record.UntilHeight < 0 {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts until_height cannot be negative")
-		}
-		// If params are provided, ensure last_cooldown_blocks does not exceed configured max
-		if data.Params != nil && fa.Record.LastCooldownBlocks > data.Params.GlobalMaxBlocks {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts last_cooldown_blocks exceeds GlobalMaxBlocks")
-		}
-	}
+        // Validate TotalGrantUsed
+        used := sdk.Coins{}
+        for _, c := range usage.TotalGrantUsed {
+            if c == nil {
+                return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
+            }
+            if c.Denom != "peaka" {
+                return errorsmod.Wrapf(sdkerrors.ErrInvalidCoins, "invalid denomination '%s': only 'peaka' is supported", c.Denom)
+            }
+            if c.Amount.IsNegative() {
+                return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
+            }
+            used = used.Add(*c)
+        }
+        if !used.IsValid() {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid user grant usage coins")
+        }
 
-	return nil
+        // Ensure referenced sponsor exists and usage does not exceed its max grant if configured
+        sponsor, ok := sponsorsByContract[usage.ContractAddress]
+        if !ok {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
+        }
+        limit := sdk.Coins{}
+        for _, c := range sponsor.MaxGrantPerUser {
+            if c != nil {
+                limit = limit.Add(*c)
+            }
+        }
+        if !limit.IsZero() {
+            if !limit.IsValid() {
+                return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid sponsor max_grant_per_user coins")
+            }
+            if !limit.IsAllGTE(used) {
+                return errorsmod.Wrapf(
+                    ErrUserGrantLimitExceeded,
+                    "user %s usage %s exceeds max_grant_per_user %s for contract %s",
+                    usage.UserAddress, used.String(), limit.String(), usage.ContractAddress,
+                )
+            }
+        }
+    }
+
+    // Validate parameters
+    if data.Params != nil {
+        if err := data.Params.Validate(); err != nil {
+            return err
+        }
+    }
+
+    // Validate failed attempts entries (global cooldown)
+    for _, fa := range data.FailedAttempts {
+        if fa == nil || fa.Record == nil {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts entry cannot be nil")
+        }
+        if err := ValidateContractAddress(fa.ContractAddress); err != nil {
+            return err
+        }
+        if fa.UserAddress == "" {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts user address cannot be empty")
+        }
+        if _, err := sdk.AccAddressFromBech32(fa.UserAddress); err != nil {
+            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid failed attempts user address: %s", fa.UserAddress)
+        }
+        // Numeric field sanity checks (defensive): heights must be non-negative
+        if fa.Record.WindowStartHeight < 0 {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts window_start_height cannot be negative")
+        }
+        if fa.Record.UntilHeight < 0 {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts until_height cannot be negative")
+        }
+        // If params are provided, ensure last_cooldown_blocks does not exceed configured max
+        if data.Params != nil && fa.Record.LastCooldownBlocks > data.Params.GlobalMaxBlocks {
+            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "failed attempts last_cooldown_blocks exceeds GlobalMaxBlocks")
+        }
+    }
+
+    return nil
 }
 
 // === Parameters ===

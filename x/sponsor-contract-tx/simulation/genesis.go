@@ -1,15 +1,16 @@
 package simulation
 
 import (
-	"encoding/json"
-	"fmt"
-	"math/rand"
+    "encoding/json"
+    "fmt"
+    "math/rand"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/module"
-	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/cosmos/cosmos-sdk/types/address"
+    "github.com/cosmos/cosmos-sdk/types/module"
+    simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 const (
@@ -95,11 +96,11 @@ func generateRandomSponsors(r *rand.Rand, accounts []simtypes.Account, numSponso
 			}
 		}
 
-		// Select random creator (admin)
-		creator := accounts[r.Intn(len(accounts))]
+        // Select random creator (admin)
+        creator := accounts[r.Intn(len(accounts))]
 
-		// Random sponsorship settings
-		isSponsored := r.Intn(2) == 1
+        // Random sponsorship settings
+        isSponsored := r.Intn(2) == 1
 
 		var maxGrantPerUser []*sdk.Coin
 		if isSponsored || r.Intn(3) == 0 { // 1/3 chance for non-sponsored to have max grant
@@ -109,12 +110,21 @@ func generateRandomSponsors(r *rand.Rand, accounts []simtypes.Account, numSponso
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
-		sponsor := &types.ContractSponsor{
-			ContractAddress: contractAddr,
-			CreatorAddress:  creator.Address.String(),
-			IsSponsored:     isSponsored,
-			MaxGrantPerUser: maxGrantPerUser,
-		}
+        // Derive sponsor address from contract address for validity
+        ca, err := sdk.AccAddressFromBech32(contractAddr)
+        if err != nil {
+            // Should not happen as accounts are valid; skip entry if it does
+            continue
+        }
+        derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+
+        sponsor := &types.ContractSponsor{
+            ContractAddress: contractAddr,
+            CreatorAddress:  creator.Address.String(),
+            SponsorAddress:  derivedSponsor,
+            IsSponsored:     isSponsored,
+            MaxGrantPerUser: maxGrantPerUser,
+        }
 
 		sponsors = append(sponsors, sponsor)
 	}
@@ -148,11 +158,11 @@ func RandomGenesisSponsors(r *rand.Rand, accounts []simtypes.Account, numSponsor
 			contractIdx = (contractIdx + 1) % len(accounts)
 		}
 
-		creator := accounts[creatorIdx]
-		contractAddr := accounts[contractIdx].Address.String()
+        creator := accounts[creatorIdx]
+        contractAddr := accounts[contractIdx].Address.String()
 
-		isSponsored := r.Intn(2) == 1
-		var maxGrantPerUser []*sdk.Coin
+        isSponsored := r.Intn(2) == 1
+        var maxGrantPerUser []*sdk.Coin
 
 		if isSponsored {
 			amount := sdk.NewInt(int64(r.Intn(5000000) + 1000))
@@ -164,13 +174,22 @@ func RandomGenesisSponsors(r *rand.Rand, accounts []simtypes.Account, numSponsor
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
-		sponsors[i] = types.ContractSponsor{
-			ContractAddress: contractAddr,
-			CreatorAddress:  creator.Address.String(),
-			IsSponsored:     isSponsored,
-			MaxGrantPerUser: maxGrantPerUser,
-		}
-	}
+        // Derive sponsor address from contract address for validity
+        ca, err := sdk.AccAddressFromBech32(contractAddr)
+        if err != nil {
+            // Should not happen; fallback to empty sponsor (will be filtered by validation later)
+            continue
+        }
+        derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+
+        sponsors[i] = types.ContractSponsor{
+            ContractAddress: contractAddr,
+            CreatorAddress:  creator.Address.String(),
+            SponsorAddress:  derivedSponsor,
+            IsSponsored:     isSponsored,
+            MaxGrantPerUser: maxGrantPerUser,
+        }
+    }
 
 	return sponsors
 }
