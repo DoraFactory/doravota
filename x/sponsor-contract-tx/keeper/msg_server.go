@@ -123,19 +123,18 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify that the creator is the admin of the contract
+	// Verify authorization: current admin OR (admin cleared AND creator matches original sponsor creator)
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
 
-	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	ok, err := k.Keeper.IsSponsorManager(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, err
 	}
-
-	if !isAdmin {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can update sponsor")
+	if !ok {
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not contract admin: only contract admin (or original creator when admin is cleared) can update sponsor")
 	}
 
 	// Get existing sponsor to preserve CreatedAt timestamp
@@ -212,19 +211,17 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify that the creator is the admin of the contract
+	// Verify that the caller is authorized: current admin OR (admin cleared AND creator is original)
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
-
-	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	ok, err := k.Keeper.IsSponsorManager(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, err
 	}
-
-	if !isAdmin {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can delete sponsor")
+	if !ok {
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin (or original creator when admin is cleared) can delete sponsor")
 	}
 
 	// Get sponsor info before deletion for event
@@ -276,73 +273,72 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify that the creator is the admin of the contract
+	// Verify authorization: current admin OR (admin cleared AND creator equals sponsor creator)
 	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
-
-	isAdmin, err := k.Keeper.IsContractAdmin(ctx, msg.ContractAddress, creatorAddr)
+	ok, err := k.Keeper.IsSponsorManager(ctx, msg.ContractAddress, creatorAddr)
 	if err != nil {
-		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("failed to verify contract admin: %s", err.Error()))
+		return nil, err
 	}
-	if !isAdmin {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin can withdraw sponsor funds")
+	if !ok {
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not contract admin: only contract admin (or original creator when admin is cleared) can withdraw sponsor funds")
 	}
 
-    // Parse sponsor address first (required to check balances)
-    sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-    if err != nil {
-        return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
-    }
+	// Parse sponsor address first (required to check balances)
+	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+	if err != nil {
+		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
+	}
 
-    amt := msg.NormalizedAmount()
+	amt := msg.NormalizedAmount()
 
-    // Ensure bank keeper is available
-    if k.bankKeeper == nil {
-        return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
-    }
+	// Ensure bank keeper is available
+	if k.bankKeeper == nil {
+		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is not configured for sponsor withdraw")
+	}
 
-    // Check sponsor balance (used in both branches)
-    spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
+	// Check sponsor balance (used in both branches)
+	spendable := k.bankKeeper.SpendableCoins(ctx, sponsorAddr)
 
-    if len(msg.Amount) == 0 {
-        // Withdraw entire balance path: decide based on sponsor's spendable balance first
-        amt = spendable
-        if amt.Empty() {
-            return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
-        }
-        // Validate recipient now that we know there are funds
-        recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
-        if err != nil {
-            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
-        }
-        // Transfer funds
-        if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
-            return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
-        }
-    } else {
-        // Explicit amount path: validate amount semantics first
-        if amt.Empty() {
-            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
-        }
-        if !amt.IsValid() {
-            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
-        }
-        // Validate recipient before checking balances (tests expect address validation first)
-        recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
-        if err != nil {
-            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
-        }
-        // Then check balances
-        if !spendable.IsAllGTE(amt) {
-            return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
-        }
-        // Transfer funds
-        if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
-            return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
-        }
-    }
+	if len(msg.Amount) == 0 {
+		// Withdraw entire balance path: decide based on sponsor's spendable balance first
+		amt = spendable
+		if amt.Empty() {
+			return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
+		}
+		// Validate recipient now that we know there are funds
+		recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+		if err != nil {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+		}
+		// Transfer funds
+		if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
+			return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
+		}
+	} else {
+		// Explicit amount path: validate amount semantics first
+		if amt.Empty() {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
+		}
+		if !amt.IsValid() {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
+		}
+		// Validate recipient before checking balances (tests expect address validation first)
+		recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+		if err != nil {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
+		}
+		// Then check balances
+		if !spendable.IsAllGTE(amt) {
+			return nil, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "insufficient sponsor funds: required %s, available %s", amt.String(), spendable.String())
+		}
+		// Transfer funds
+		if err := k.bankKeeper.SendCoins(ctx, sponsorAddr, recipientAddr, amt); err != nil {
+			return nil, errorsmod.Wrap(err, "failed to transfer sponsor funds")
+		}
+	}
 
 	// Emit event
 	ctx.EventManager().EmitEvent(

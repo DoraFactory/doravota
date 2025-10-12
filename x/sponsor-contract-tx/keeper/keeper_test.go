@@ -1767,6 +1767,119 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 	require.False(t, found)
 }
 
+// Admin cleared: original creator should be able to manage sponsor (update/delete/withdraw)
+func TestMsgServer_AdminCleared_CreatorFallback(t *testing.T) {
+    keeper, ctx, msgServer, wasmKeeper, bankKeeper := setupMsgServerEnv(t)
+
+    contractAddr := sdk.AccAddress([]byte("contractadminclear____")).String()
+    adminAddr := sdk.AccAddress("admin_______________")
+    creator := adminAddr // creator equals initial admin at set time
+
+    // Set up contract and initial sponsor via SetSponsor
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+    setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    _, err := msgServer.SetSponsor(ctx, setMsg)
+    require.NoError(t, err)
+
+    // Clear admin on wasm contract
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // 1) UpdateSponsor should be allowed by original creator when admin is cleared
+    upd := &types.MsgUpdateSponsor{
+        Creator:         creator.String(),
+        ContractAddress: contractAddr,
+        IsSponsored:     false,
+        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(2000)}},
+    }
+    _, err = msgServer.UpdateSponsor(ctx, upd)
+    require.NoError(t, err)
+
+    // 2) DeleteSponsor should be allowed by original creator when balance is zero
+    // First ensure zero balance (should be zero by default)
+    del := &types.MsgDeleteSponsor{Creator: creator.String(), ContractAddress: contractAddr}
+    _, err = msgServer.DeleteSponsor(ctx, del)
+    require.NoError(t, err)
+
+    // Recreate sponsor and fund sponsor address to test Withdraw fallback
+    _, _ = msgServer.SetSponsor(ctx, setMsg)
+    // fund sponsor address
+    sp, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
+    require.True(t, found)
+    sponsorAddr, e := sdk.AccAddressFromBech32(sp.SponsorAddress)
+    require.NoError(t, e)
+    // mint and send funds to sponsor address
+    amt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+    // use bankKeeper from env to mint via module then send
+    // Note: setupMsgServerEnv created bankKeeper with module account; mint to module then send
+    require.NoError(t, bankKeeper.MintCoins(sdk.UnwrapSDKContext(ctx), types.ModuleName, amt))
+    require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(sdk.UnwrapSDKContext(ctx), types.ModuleName, sponsorAddr, amt))
+
+    // Clear admin again
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // 3) Withdraw by creator when admin cleared
+    w := &types.MsgWithdrawSponsorFunds{Creator: creator.String(), ContractAddress: contractAddr, Recipient: creator.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}}
+    _, err = msgServer.WithdrawSponsorFunds(ctx, w)
+    require.NoError(t, err)
+}
+
+// Admin cleared but caller is not original creator -> unauthorized
+func TestMsgServer_AdminCleared_CreatorMismatch_Unauthorized(t *testing.T) {
+    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+    contractAddr := sdk.AccAddress([]byte("contractadminclear_mis__")).String()
+    adminAddr := sdk.AccAddress("admin_______________")
+    other := sdk.AccAddress("other_______________")
+
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, sdk.NewCoins()))
+    require.NoError(t, err)
+    // Clear admin
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // Update by non-creator should be rejected
+    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: other.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    // Delete by non-creator should be rejected
+    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: other.String(), ContractAddress: contractAddr})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    // Withdraw by non-creator should be rejected
+    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: other.String(), ContractAddress: contractAddr, Recipient: other.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+}
+
+// Admin present but creator is not current admin -> creator should not be able to manage
+func TestMsgServer_AdminPresent_CreatorNotAdmin_Unauthorized(t *testing.T) {
+    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+    contractAddr := sdk.AccAddress([]byte("contractadminpresent___")).String()
+    initialAdmin := sdk.AccAddress("adminA______________")
+    newAdmin := sdk.AccAddress("adminB______________")
+
+    wasmKeeper.SetContractInfo(contractAddr, initialAdmin.String())
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, sdk.NewCoins()))
+    require.NoError(t, err)
+
+    // Change admin to newAdmin
+    wasmKeeper.SetContractInfo(contractAddr, newAdmin.String())
+
+    // Original creator (initial admin) should not be authorized now
+    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: initialAdmin.String(), ContractAddress: contractAddr, Recipient: initialAdmin.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+}
+
 // TestMsgServerComprehensiveWithdrawFunds tests WithdrawSponsorFunds with full coverage
 func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
 	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
