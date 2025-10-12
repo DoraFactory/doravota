@@ -47,7 +47,13 @@ func GetCmdQueryAllSponsors() *cobra.Command {
 
 			queryClient := types.NewQueryClient(clientCtx)
 
-			req := &types.QueryAllSponsorsRequest{}
+			// Read standard pagination flags
+			pageReq, err := readPageRequest(cmd)
+			if err != nil {
+				return err
+			}
+
+			req := &types.QueryAllSponsorsRequest{Pagination: pageReq}
 			res, err := queryClient.AllSponsors(context.Background(), req)
 			if err != nil {
 				return err
@@ -58,6 +64,8 @@ func GetCmdQueryAllSponsors() *cobra.Command {
 	}
 
 	flags.AddQueryFlagsToCmd(cmd)
+	// Add pagination flags: page, limit, page-key etc.
+	flags.AddPaginationFlagsToCmd(cmd, "all-sponsors")
 	return cmd
 }
 

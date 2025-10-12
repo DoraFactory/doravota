@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/spf13/cobra"
@@ -592,4 +593,22 @@ func (s *QueryTestSuite) TestQueryCmdFlags() {
 
 func TestQueryTestSuite(t *testing.T) {
 	suite.Run(t, new(QueryTestSuite))
+}
+
+// TestAllSponsorsCLIHasPaginationFlags ensures the all-sponsors command exposes pagination flags.
+func TestAllSponsorsCLIHasPaginationFlags(t *testing.T) {
+	cmd := cli.GetCmdQueryAllSponsors()
+	// Standard pagination flags provided by Cosmos SDK
+	for _, f := range []string{
+		flags.FlagPage,
+		flags.FlagLimit,
+		flags.FlagPageKey,
+		flags.FlagOffset,
+		flags.FlagCountTotal,
+		flags.FlagReverse,
+	} {
+		if cmd.Flags().Lookup(f) == nil {
+			t.Fatalf("expected pagination flag %s to be present on all-sponsors command", f)
+		}
+	}
 }
