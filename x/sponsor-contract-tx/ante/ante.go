@@ -478,7 +478,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		return next(ctx, tx, simulate)
 	}
 
-	contractAddr := validation.ContractAddress
+    contractAddr := validation.ContractAddress
+
+    // Determine the user address (validated signer / feepayer) once and reuse.
+    // If we cannot determine it, most sponsor paths will fall back to standard processing.
+    userAddr, userAddrErr := sctd.getUserAddressForSponsorship(tx)
 
 	// Validate contract exists before proceeding (early exit):
 	// - In CheckTx: return an error to avoid entering mempool with a non-existent contract.
@@ -495,8 +499,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// In DeliverTx, fall back to user payment immediately to avoid extra queries
 		if feeTx, ok := tx.(sdk.FeeTx); ok {
-			userAddr, userErr := sctd.getUserAddressForSponsorship(tx)
-			if userErr == nil {
+			if userAddrErr == nil {
 				if !ctx.IsCheckTx() {
 					ctx.EventManager().EmitEvent(
 						sdk.NewEvent(
@@ -511,7 +514,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"unable to determine user address during contract-not-found fallback",
 				"contract", contractAddr,
-				"error", userErr,
+				"error", userAddrErr,
 			)
 			if fee := feeTx.GetFee(); fee.IsZero() {
 				return next(ctx, tx, simulate)
@@ -526,14 +529,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// If found and sponsored, proceed with sponsorship logic
 	if found && sponsor.IsSponsored {
-		// Get the appropriate user address from the tx for policy check and fee payment
-		userAddr, err := sctd.getUserAddressForSponsorship(tx)
-		if err != nil {
+        // Reuse the determined user address; if unavailable, fall back
+        if userAddrErr != nil {
 			// If we can't determine a consistent user address, fall back to standard processing
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"falling back to standard fee processing due to signer inconsistency",
 				"contract", contractAddr,
-				"error", err.Error(),
+				"error", userAddrErr.Error(),
 			)
 			return next(ctx, tx, simulate)
 		}
@@ -989,9 +991,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		if feeTx, ok := tx.(sdk.FeeTx); ok {
 			fee := feeTx.GetFee()
 			if !fee.IsZero() {
-				// Determine the effective user address (validated signer / feepayer)
-				userAddr, err := sctd.getUserAddressForSponsorship(tx)
-				if err == nil && !userAddr.Empty() {
+				if userAddrErr == nil && !userAddr.Empty() {
 					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
 					if !userBalance.IsAllGTE(fee) {
 						// Provide a user-facing reason to explain lack of sponsorship
