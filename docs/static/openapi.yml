@@ -49498,7 +49498,42 @@ definitions:
       maxGasPerSponsorship:
         type: string
         format: uint64
-        title: Maximum gas limit per sponsored transaction
+        title: Maximum gas limit for contract policy checks
+      abuseTrackingEnabled:
+        type: boolean
+        title: Whether global abuse tracking (cooldown) is enabled
+      globalThreshold:
+        type: string
+        format: uint32
+        title: Number of failures within window to trigger global cooldown
+      globalBaseBlocks:
+        type: string
+        format: uint32
+        title: Base cooldown blocks at first threshold hit
+      globalBackoffMilli:
+        type: string
+        format: uint32
+        title: Multiplicative backoff factor in milli (e.g., 3000 = 3.0x)
+      globalMaxBlocks:
+        type: string
+        format: uint32
+        title: Maximum cooldown cap in blocks
+      globalWindowBlocks:
+        type: string
+        format: uint32
+        title: Sliding window size for counting failures (blocks)
+      gcFailedAttemptsPerBlock:
+        type: string
+        format: uint32
+        title: Number of expired cooldown records to GC per block (0 disables)
+      maxExecMsgsPerTxForSponsor:
+        type: string
+        format: uint32
+        title: Maximum number of MsgExecuteContract to the sponsored contract per transaction (0 disables cap)
+      maxPolicyExecMsgBytes:
+        type: string
+        format: uint32
+        title: Per-message raw JSON payload cap for policy checks (bytes; 0 disables; hard cap 1,048,576)
     title: Params defines the parameters for the sponsor module
   sponsorv1UserGrantUsage:
     type: object
@@ -49573,6 +49608,19 @@ definitions:
         $ref: '#/definitions/sponsorv1Params'
         description: params holds all the parameters of this module.
     title: QueryParamsResponse is the response type for the Query/Params RPC method
+    example:
+      params:
+        sponsorshipEnabled: true
+        maxGasPerSponsorship: "2500000"
+        abuseTrackingEnabled: true
+        globalThreshold: "4"
+        globalBaseBlocks: "17"
+        globalBackoffMilli: "3000"
+        globalMaxBlocks: "600"
+        globalWindowBlocks: "834"
+        gcFailedAttemptsPerBlock: "100"
+        maxExecMsgsPerTxForSponsor: "25"
+        maxPolicyExecMsgBytes: "16384"
   v1QuerySponsorResponse:
     type: object
     properties:
