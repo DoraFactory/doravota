@@ -146,9 +146,9 @@ func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAd
 			Eligible bool    `json:"eligible"`
 			Reason   *string `json:"reason"`
 		}
-		if err := json.Unmarshal(result, &response); err != nil {
-			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
-		}
+        if err := json.Unmarshal(result, &response); err != nil {
+            return nil, errorsmod.Wrapf(types.ErrInvalidPolicyResponse, "failed to unmarshal query response for message %d: %v", i, err)
+        }
 
 		// If ANY message is not eligible, return with detailed reason
 		if !response.Eligible {

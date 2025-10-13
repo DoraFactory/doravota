@@ -549,6 +549,32 @@ func TestGetAllSponsors(t *testing.T) {
 	assert.True(t, contractAddrs["dora1contract789"])
 }
 
+// TestCheckContractPolicy_InvalidJSONResponse ensures invalid JSON from contract query returns ErrInvalidPolicyResponse.
+func TestCheckContractPolicy_InvalidJSONResponse(t *testing.T) {
+    k, ctx, mw := setupKeeper(t)
+    // Prepare a valid contract and mock info
+    // Build bech32 address deterministically
+    mkAddr := func(b byte) string {
+        bz := make([]byte, 20)
+        for i := range bz { bz[i] = b }
+        return sdk.AccAddress(bz).String()
+    }
+    contract := mkAddr(1)
+    user := sdk.AccAddress(make([]byte, 20))
+    mw.SetContractInfo(contract, "admin")
+
+    // Transaction with a single execute message to this contract
+    tx := miniTx{msgs: []sdk.Msg{&wasmtypes.MsgExecuteContract{Sender: user.String(), Contract: contract, Msg: []byte(`{"ping":{}}`)}}}
+
+    // Return invalid JSON from contract query
+    mw.SetQueryResponse("{invalid-json}")
+
+    res, err := k.CheckContractPolicy(ctx, contract, user, tx)
+    require.Error(t, err)
+    require.Nil(t, res)
+    require.True(t, types.ErrInvalidPolicyResponse.Is(err), "expected ErrInvalidPolicyResponse, got: %v", err)
+}
+
 func TestUpdateSponsor(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
