@@ -58,7 +58,7 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 	denominationTotals := make(map[string]sdk.Int)
 
 	for _, coin := range coins {
-		if coin.Denom != "peaka" {
+        if coin.Denom != SponsorshipDenom {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
 		}
 		if !coin.Amount.IsPositive() {
@@ -134,7 +134,7 @@ func validateMaxGrantPerUserFormat(maxGrantPerUser []*sdk.Coin) error {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
 		}
 
-		if coin.Denom != "peaka" {
+        if coin.Denom != SponsorshipDenom {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, fmt.Sprintf("invalid denomination '%s': only 'peaka' is supported", coin.Denom))
 		}
 
@@ -464,7 +464,7 @@ func ValidateGenesis(data GenesisState) error {
             if c == nil {
                 return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
             }
-            if c.Denom != "peaka" {
+            if c.Denom != SponsorshipDenom {
                 return errorsmod.Wrapf(sdkerrors.ErrInvalidCoins, "invalid denomination '%s': only 'peaka' is supported", c.Denom)
             }
             if c.Amount.IsNegative() {
@@ -715,7 +715,7 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 			if c == nil {
 				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
 			}
-			if c.Denom != "peaka" {
+            if c.Denom != SponsorshipDenom {
 				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
 			}
 			if !c.Amount.IsPositive() {

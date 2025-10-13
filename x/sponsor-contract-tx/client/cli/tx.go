@@ -156,12 +156,12 @@ func convertDORAToPeaka(doraAmountStr string) (math.Int, error) {
 	return totalPeaka, nil
 }
 
-// parseCoinsWithDORASupport parses coins string with support for DORA to peaka conversion
-// 1 DORA = 10^18 peaka
-// Only supports uppercase "DORA" and "peaka" denominations
+// parseCoinsWithDORASupport parses coins string with support for DORA to base denom conversion
+// 1 DORA = 10^18 base units
+// Only supports uppercase "DORA" and base denom denominations
 // Uses exact decimal math to avoid precision loss
 func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
-	// Convert DORA to peaka if present (case sensitive, only uppercase)
+    // Convert DORA to base denom if present (case sensitive, only uppercase)
 	doraPattern := regexp.MustCompile(`(\d+(?:\.\d+)?)(DORA)`)
 	convertedStr := doraPattern.ReplaceAllStringFunc(coinsStr, func(match string) string {
 		// Extract the amount and unit
@@ -171,13 +171,13 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		}
 		amountStr := submatches[1]
 
-		// Convert DORA to peaka using exact decimal math
+        // Convert DORA to base denom using exact decimal math
 		peakaAmount, err := convertDORAToPeaka(amountStr)
 		if err != nil {
 			return match // Fallback to original on error - will be caught by validation later
 		}
 
-		return peakaAmount.String() + "peaka"
+        return peakaAmount.String() + types.SponsorshipDenom
 	})
 
 	// Parse the converted string
@@ -186,9 +186,9 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		return nil, err
 	}
 
-	// Validate that only peaka denom is present
+    // Validate that only base denom is present
 	for _, coin := range coins {
-		if coin.Denom != "peaka" {
+        if coin.Denom != types.SponsorshipDenom {
 			return nil, fmt.Errorf("invalid denomination '%s': only 'peaka' and 'DORA' are supported", coin.Denom)
 		}
 		// Friendly validation: disallow zero amounts early at CLI
@@ -198,7 +198,7 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 	}
 
 	// Also reject if total parsed amount equals zero (e.g. input normalizes to empty or zero)
-	if coins.AmountOf("peaka").IsZero() {
+	if coins.AmountOf(types.SponsorshipDenom).IsZero() {
 		return nil, fmt.Errorf("amount must be greater than 0")
 	}
 

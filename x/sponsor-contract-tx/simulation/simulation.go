@@ -216,7 +216,7 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 				ContractAddress: sponsor.ContractAddress,
 				TotalGrantUsed: []*sdk.Coin{
 					{
-						Denom:  "peaka",
+                    Denom:  types.SponsorshipDenom,
 						Amount: sdk.NewInt(int64(r.Intn(100000) + 1000)),
 					},
 				},

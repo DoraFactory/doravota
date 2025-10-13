@@ -83,7 +83,7 @@ func SponsorConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 							msg += fmt.Sprintf("sponsored contract %s has nil coin in MaxGrantPerUser\n", sponsor.ContractAddress)
 							continue
 						}
-						if coin.Denom != "peaka" {
+						if coin.Denom != types.SponsorshipDenom {
 							broken = true
 							msg += fmt.Sprintf("sponsored contract %s has invalid denom %s in MaxGrantPerUser\n", sponsor.ContractAddress, coin.Denom)
 						}

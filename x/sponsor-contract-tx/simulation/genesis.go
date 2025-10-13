@@ -106,7 +106,7 @@ func generateRandomSponsors(r *rand.Rand, accounts []simtypes.Account, numSponso
 		if isSponsored || r.Intn(3) == 0 { // 1/3 chance for non-sponsored to have max grant
 			// Generate random grant amount in peaka
 			amount := sdk.NewInt(int64(r.Intn(10000000) + 1000)) // 1000 to 10,001,000
-			coin := sdk.NewCoin("peaka", amount)
+            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
@@ -166,11 +166,11 @@ func RandomGenesisSponsors(r *rand.Rand, accounts []simtypes.Account, numSponsor
 
 		if isSponsored {
 			amount := sdk.NewInt(int64(r.Intn(5000000) + 1000))
-			coin := sdk.NewCoin("peaka", amount)
+            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		} else if r.Intn(4) == 0 { // 25% chance for non-sponsored to have max grant
 			amount := sdk.NewInt(int64(r.Intn(1000000) + 500))
-			coin := sdk.NewCoin("peaka", amount)
+            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
@@ -265,7 +265,7 @@ func ValidateGenesisState(genesisState *types.GenesisState) error {
 				if coin == nil {
 					return fmt.Errorf("coin in MaxGrantPerUser cannot be nil for contract %s", sponsor.ContractAddress)
 				}
-				if coin.Denom != "peaka" {
+                if coin.Denom != types.SponsorshipDenom {
 					return fmt.Errorf("invalid denom in MaxGrantPerUser for contract %s: %s", sponsor.ContractAddress, coin.Denom)
 				}
 				if !coin.Amount.IsPositive() {

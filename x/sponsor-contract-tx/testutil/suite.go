@@ -127,7 +127,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 		ContractAddress: suite.Contract.String(),
 		CreatorAddress:  suite.Admin.String(),
 		IsSponsored:     true,
-		MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
+        MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)))),
 	}
 
 	err := suite.Keeper.SetSponsor(suite.Ctx, sponsor)

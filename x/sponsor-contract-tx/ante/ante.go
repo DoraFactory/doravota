@@ -625,7 +625,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			if !fee.IsZero() {
 				feeCheck := feeTx.GetFee()
 				for _, c := range feeCheck {
-					if c.Denom != "peaka" {
+					if c.Denom != types.SponsorshipDenom {
 						return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
 					}
 				}
