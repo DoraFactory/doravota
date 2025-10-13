@@ -572,15 +572,7 @@ func (p Params) Validate() error {
     if p.AbuseTrackingEnabled {
 		if p.GlobalThreshold == 0 {
 			return errorsmod.Wrap(ErrInvalidParams, "global threshold must be >= 1")
-    }
-
-    // Optional guardrail for per-message JSON payload size (bytes).
-    // 0 disables the guard. Cap at a conservative upper bound to avoid misconfiguration.
-    if p.MaxPolicyExecMsgBytes > 0 {
-        if p.MaxPolicyExecMsgBytes > 1_048_576 { // 1 MiB hard cap
-            return errorsmod.Wrap(ErrInvalidParams, "max policy exec msg bytes must be <= 1MiB")
-        }
-    }
+		}
 		// Put a conservative upper bound to avoid unusable configurations
 		// Very large thresholds make cooldown unreachable and are not practical.
 		if p.GlobalThreshold > 100000 { // 1e5 failures within window is considered unreasonable
