@@ -10,10 +10,13 @@ The **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) enables Co
 - [Solution Architecture](#solution-architecture)
 - [Core Components](#core-components)
 - [Transaction Flow](#transaction-flow)
+- [Latest Design Updates](#latest-design-updates)
+- [Spam Prevention](#spam-prevention)
 - [Security Model](#security-model)
 - [Event System](#event-system)
 - [CLI Usage Guide](#cli-usage-guide)
 - [Query Commands](#query-commands)
+- [Module Parameters](#module-parameters)
 - [Integration Guide](#integration-guide)
 - [Security Considerations](#security-considerations)
 - [Implementation Status](#implementation-status)
@@ -55,6 +58,69 @@ message ContractSponsor {
 }
 ```
 
+## Latest Design Updates
+
+The current design includes the following hardenings and behavior refinements:
+
+- Deterministic execute-message parsing
+  - Enforce exactly one top-level JSON field in each `MsgExecuteContract` targeted for policy checks
+  - Use the raw JSON bytes from the transaction (no lossy conversions)
+- Policy checks with strict gas accounting
+  - Execute contract `check_policy` in a gas-limited context (`max_gas_per_sponsorship`)
+  - Always charge gas used back to the main context on both success and failure
+- Early and conservative gating in CheckTx
+  - Enforce validator min gas prices before any policy/JSON work
+  - Zero-fee transactions bypass sponsorship checks in CheckTx (mempool optimization)
+- Resource caps and preflight checks
+  - Per-transaction cap on the number of `MsgExecuteContract` to the sponsored contract
+  - Per-message raw JSON payload size cap before any parsing or contract work
+  - Early short-circuits: user grant-vs-fee, early sponsor balance
+- Single-signer invariant and feegrant precedence
+  - Sponsored path requires exactly one consistent signer across messages
+  - If FeeGranter is set, feegrant takes precedence and sponsorship is skipped
+- Abuse tracking and cooldowns
+  - Local (CheckTx) cooldown: TTL/backoff/capacity-limited, node-local protection
+  - Global (DeliverTx) cooldown: block-height based sliding window with multiplicative backoff
+- Events and observability
+  - New events: `sponsorship_skipped` (with sanitized reason), `global_cooldown_started`
+- Error and privacy hardening
+  - Sanitize strings in events/logs; avoid leaking sponsor balances in user-visible errors
+- Admin fallback on ClearAdmin
+  - When contract admin is cleared, original sponsor `creator_address` retains sponsor management rights
+
+## Spam Prevention
+
+The module uses layered defenses to reduce spam and resource exhaustion while keeping sponsored UX smooth.
+
+- Economic costs
+  - Enforce validator min gas prices in CheckTx before any contract/policy work.
+  - Zero‑fee transactions bypass sponsorship checks in CheckTx (mempool optimization).
+  - Gas consumed by policy checks is always charged to the main context on both success and failure.
+
+- Resource caps and deterministic processing
+  - Cap the number of `MsgExecuteContract` to the sponsored contract per tx (`max_exec_msgs_per_tx_for_sponsor`).
+  - Cap the raw JSON payload size per message before any parsing (`max_policy_exec_msg_bytes`).
+  - Enforce a single top‑level JSON key and use raw tx JSON to avoid non‑deterministic map iteration.
+
+- Early preflight short‑circuits
+  - Self‑pay preference: users with sufficient balance pay their own fees (sponsorship skipped).
+  - Early grant vs fee check: skip sponsorship if the fee exceeds the user’s remaining sponsored grant.
+  - Early sponsor balance check: skip costly policy queries when sponsor cannot afford the fee.
+
+- Cooldowns (abuse tracking)
+  - Local (CheckTx) cooldown: node‑local TTL/backoff with capacity caps to protect mempools from repeated failures.
+  - Global (DeliverTx) cooldown: sliding window + multiplicative backoff by block height; persisted and queryable.
+  - Deterministic GC removes expired cooldown entries each block up to a configurable limit.
+
+- Observability and controls
+  - Events: `sponsorship_skipped` (sanitized reason), `global_cooldown_started`.
+  - Queries: `blocked-status` and `all-blocked-statuses` to inspect cooldowns.
+  - Governance parameters to tune caps, gas limits, and cooldown behavior; global toggle to disable sponsorship.
+
+- Notes and limitations
+  - Local cooldown is node‑local and complements (not replaces) validator min‑gas policies.
+  - Excessively heavy contract policies may still hit gas caps; keep on‑chain policy logic lean.
+
 **Important: Funding Mechanism**
 - `creator_address`: Address of the creator who sets contract sponsorship status (used only for permission verification)
 - `sponsor_address`: The derived address that actually pays for sponsorship fees (deterministically derived from contract address using "sponsor" suffix)
@@ -62,7 +128,7 @@ message ContractSponsor {
 - **Address derivation**: `sponsor_address = sdk.AccAddress(address.Derive(contract_address, []byte("sponsor")))`
 - **Workflow**: 
   1. Admin sets up sponsorship using `set-sponsor` command
-  2. Query the generated `sponsor_address` using `query sponsor status [contract-address]`
+  2. Query the generated `sponsor_address` using `query sponsor sponsor-info [contract-address]`
   3. Transfer funds to the `sponsor_address` (not the contract address!)
   4. Sponsor address automatically pays eligible user fees
 
@@ -183,6 +249,7 @@ All sponsored transactions must pass structural checks **before** the contract p
 6. **Transaction Structure Validation**: Only single-contract, multiple-message transactions allowed
 7. **Feegrant Priority**: Feegrant takes precedence over sponsorship to prevent conflicts
 8. **Global Toggle**: Sponsorship can be globally disabled via governance parameters
+9. **Deterministic Policy Input**: Enforce a single top-level JSON field and pass the exact raw JSON to `check_policy`
 
 ## Event System
 
@@ -201,6 +268,10 @@ The module emits comprehensive events for monitoring and auditing:
 - `sponsor_usage_updated`: User grant usage updated (internal tracking)
 - `sponsorship_disabled`: Sponsorship globally disabled
   - Attributes: `reason`
+- `sponsorship_skipped`: Sponsorship path skipped (structure/caps/policy)
+  - Attributes: `contract_address` (if available), `reason`
+- `global_cooldown_started`: Global cooldown triggered for a (contract,user)
+  - Attributes: `contract_address`, `user`, `until_height`
 
 ### Management Events
 
@@ -365,12 +436,14 @@ dorad query sponsor sponsor-info [contract-address] \
 
 ```bash
 dorad query sponsor all-sponsors \
+  --page 1 --limit 50 \
+  --page-key <base64> \
   --chain-id [chain-id] \
   --gas auto \
   --gas-adjustment 1.5 \
   --gas-prices 100000000000peaka
 
-# This query also support pagination
+# This query supports standard pagination flags
 ```
 
 
@@ -393,6 +466,31 @@ dorad query sponsor grant-usage [user-address] [contract-address]
 
 ### Module Parameters
 
+### Cooldown (Abuse Tracking) Queries
+
+#### 1. Check a user's global cooldown status
+
+```bash
+dorad query sponsor blocked-status [contract-address] [user-address] \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
+```
+
+#### 2. List all global cooldown records (with filters and pagination)
+
+```bash
+dorad query sponsor all-blocked-statuses \
+  --contract [optional-contract-address] \
+  --only-blocked \
+  --page 1 --limit 50 \
+  --chain-id [chain-id] \
+  --gas auto \
+  --gas-adjustment 1.5 \
+  --gas-prices 100000000000peaka
+```
+
 ```bash
 dorad query sponsor params
 
@@ -402,10 +500,23 @@ dorad query sponsor params
 #   max_gas_per_sponsorship: "2500000"
 ```
 
-**Parameter Details:**
+**Parameter Details (governance-controlled):**
 
-- `sponsorship_enabled`: Global toggle for sponsorship functionality (default: `true`)
-- `max_gas_per_sponsorship`: Maximum gas limit for contract policy queries (default: `2_500_000`, max: `50_000_000`)
+- `sponsorship_enabled` (bool): Global toggle for sponsorship (default: `true`).
+- `max_gas_per_sponsorship` (uint64): Max gas for contract policy checks (default: `2_500_000`, hard cap `50_000_000`).
+- `abuse_tracking_enabled` (bool): Enable global cooldown tracking (default: `true`).
+- `global_threshold` (uint32): Failures within window to trigger cooldown (default: `4`).
+- `global_base_blocks` (uint32): Base cooldown in blocks (default: `17`).
+- `global_backoff_milli` (uint32): Multiplicative backoff factor in milli (default: `3000` → 3.0x). Bounds: [1000, 100000].
+- `global_max_blocks` (uint32): Max cooldown cap in blocks (default: `600`).
+- `global_window_blocks` (uint32): Sliding window length in blocks for counting (default: `834`).
+- `gc_failed_attempts_per_block` (uint32): Deterministic GC limit per block for expired cooldown entries (default: `100`).
+- `max_exec_msgs_per_tx_for_sponsor` (uint32): Max number of `MsgExecuteContract` to the sponsored contract per tx (default: `25`; `0` disables cap).
+- `max_policy_exec_msg_bytes` (uint32): Per-message raw JSON payload cap for policy checks in bytes (default: `16384`; `0` disables; hard cap `1,048,576`).
+
+**Denomination**
+
+- `SponsorshipDenom` is `peaka` and is used for all grants and fee accounting within this module.
 
 **Governance Control:**
 
@@ -428,7 +539,6 @@ pub enum QueryMsg {
     #[returns(CheckPolicyResponse)]
     CheckPolicy { 
         sender: String,
-        msg_type: String,
         msg_data: String, // Complete ExecuteMsg JSON
     },
 }
@@ -560,9 +670,10 @@ The sponsor module integrates into the Cosmos SDK AnteHandler chain:
 
 ### Gas Management
 
-- Policy queries are gas-limited by `max_gas_per_sponsorship` parameter
-- Gas consumption from policy queries is charged to the main transaction
-- Failed policy queries (due to gas limits) result in fallback to standard fee processing
+- Policy queries are gas-limited by `max_gas_per_sponsorship`
+- Gas consumed by policy checks is charged to the main transaction context (success and failure)
+- CheckTx enforces validator min-gas before any policy/JSON work; zero-fee txs bypass sponsorship checks in CheckTx
+- Oversized payloads or too many exec messages cause an early sponsorship skip and fallback
 
 ## Security Considerations
 
@@ -590,7 +701,9 @@ The sponsor module integrates into the Cosmos SDK AnteHandler chain:
 - Strict transaction structure validation prevents fee leeching
 - Users with sufficient balance always self-pay, even if policy returns eligible (anti-abuse priority)
 - Per-user grant limits prevent excessive consumption; additional throttling (time windows, frequency caps) should live in `check_policy`
-- Event monitoring enables abuse detection (`sponsorship_skipped`, `user_self_pay`, `sponsor_insufficient_funds`)
+- Local (CheckTx) cooldown protects mempools from repeated failures; Global (DeliverTx) cooldown blocks abusive senders by height
+- Event monitoring enables abuse detection (`sponsorship_skipped`, `user_self_pay`, `sponsor_insufficient_funds`, `global_cooldown_started`)
+- Operators can query cooldowns via `blocked-status` and `all-blocked-statuses`
 
 ### 5. Gas Considerations
 
@@ -673,7 +786,7 @@ dorad tx sponsor set-sponsor [contract-address] true 1000000000000000000peaka \
   --gas-prices 100000000000peaka
 
 # Get sponsor address first
-SPONSOR_ADDR=$(dorad query sponsor status [contract-address] --output json | jq -r '.sponsor.sponsor_address')
+SPONSOR_ADDR=$(dorad query sponsor sponsor-info [contract-address] --output json | jq -r '.sponsor.sponsor_address')
 
 # Fund sponsor address for sponsorship
 dorad tx bank send $(dorad keys show admin -a) $SPONSOR_ADDR 10000000000000000000peaka \
