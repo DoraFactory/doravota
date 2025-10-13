@@ -255,6 +255,96 @@ func (cs *cooldownState) ensureCapacity(contract string, now time.Time) {
     }
 }
 
+// ensureCapacityLocked evicts entries while holding the write lock to honor caps.
+// It removes at most one per-contract idle/oldest and at most one global idle/oldest
+// to make room for a potential new entry. Caller must hold cs.mu.Lock.
+func (cs *cooldownState) ensureCapacityLocked(contract string, now time.Time) {
+    if cs.maxEntries <= 0 && cs.maxEntriesPerContract <= 0 {
+        return
+    }
+
+    needPer := cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract
+    needGlobal := cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries
+    if !needPer && !needGlobal {
+        return
+    }
+
+    type snap struct{ key, contract string; win time.Time; idle bool }
+    var (
+        idleCandsAll      []snap
+        idleCandsContract []snap
+        allCands          []snap
+    )
+
+    allCands = make([]snap, 0, len(cs.entries))
+    for k, ent := range cs.entries {
+        if ent == nil { continue }
+        c := ""
+        if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
+        s := snap{key: k, contract: c, win: ent.windowStart, idle: ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window}
+        allCands = append(allCands, s)
+        if s.idle { idleCandsAll = append(idleCandsAll, s) }
+        if s.idle && c == contract { idleCandsContract = append(idleCandsContract, s) }
+    }
+
+    // Plan keys to delete
+    planKeys := make(map[string]struct{})
+
+    if needPer {
+        // Oldest idle within this contract
+        var oldest *snap
+        for i := range idleCandsContract {
+            if oldest == nil || idleCandsContract[i].win.Before(oldest.win) {
+                oldest = &idleCandsContract[i]
+            }
+        }
+        if oldest == nil {
+            // Fallback: oldest (any state) within this contract
+            var anyOldest *snap
+            for i := range allCands {
+                s := &allCands[i]
+                if s.contract != contract { continue }
+                if anyOldest == nil || s.win.Before(anyOldest.win) { anyOldest = s }
+            }
+            if anyOldest != nil { planKeys[anyOldest.key] = struct{}{} }
+        } else {
+            planKeys[oldest.key] = struct{}{}
+        }
+    }
+
+    if needGlobal {
+        // Prefer oldest idle globally (not already planned), else oldest globally
+        var chosen *snap
+        for i := range idleCandsAll {
+            s := &idleCandsAll[i]
+            if _, dup := planKeys[s.key]; dup { continue }
+            if chosen == nil || s.win.Before(chosen.win) { chosen = s }
+        }
+        if chosen == nil {
+            for i := range allCands {
+                s := &allCands[i]
+                if _, dup := planKeys[s.key]; dup { continue }
+                if chosen == nil || s.win.Before(chosen.win) { chosen = s }
+            }
+        }
+        if chosen != nil { planKeys[chosen.key] = struct{}{} }
+    }
+
+    // Apply deletions
+    for key := range planKeys {
+        if _, ok := cs.entries[key]; !ok { continue }
+        delete(cs.entries, key)
+        c := ""
+        if idx := indexRune(key, '|'); idx > 0 { c = key[:idx] }
+        if c != "" {
+            if cnt := cs.contractCounts[c]; cnt > 0 {
+                cnt--
+                if cnt <= 0 { delete(cs.contractCounts, c) } else { cs.contractCounts[c] = cnt }
+            }
+        }
+    }
+}
+
 // recordFailure increments counters and starts cooldown when threshold reached within window.
 func (cs *cooldownState) recordFailure(contract, user string, now time.Time) {
     if cs == nil || !cs.enabled {
@@ -264,28 +354,30 @@ func (cs *cooldownState) recordFailure(contract, user string, now time.Time) {
     cs.mu.Lock()
     ent, ok := cs.entries[k]
     if !ok || ent == nil {
-        cs.mu.Unlock()
-        cs.ensureCapacity(contract, now)
-        cs.mu.Lock()
-        ent, ok = cs.entries[k]
-        if !ok || ent == nil {
-            ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
-            // If threshold is 1, start cooldown immediately
-            if cs.threshold <= 1 {
-                dur := ent.cooldownDur
-                if dur <= 0 { dur = cs.baseTTL }
-                ent.cooldownUntil = now.Add(dur)
-                next := time.Duration(float64(dur) * cs.backoffFactor)
-                if next > cs.maxTTL { next = cs.maxTTL }
-                ent.cooldownDur = next
-                ent.fails = 0
-                ent.windowStart = now
-            }
-            cs.entries[k] = ent
-            cs.contractCounts[contract]++
+        // Ensure capacity while holding the write lock
+        cs.ensureCapacityLocked(contract, now)
+        // If still at capacity, drop creation to avoid overshoot under concurrency
+        if (cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries) ||
+           (cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract) {
             cs.mu.Unlock()
             return
         }
+		ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
+		// If threshold is 1, start cooldown immediately
+		if cs.threshold <= 1 {
+            dur := ent.cooldownDur
+            if dur <= 0 { dur = cs.baseTTL }
+            ent.cooldownUntil = now.Add(dur)
+            next := time.Duration(float64(dur) * cs.backoffFactor)
+            if next > cs.maxTTL { next = cs.maxTTL }
+            ent.cooldownDur = next
+            ent.fails = 0
+            ent.windowStart = now
+        }
+        cs.entries[k] = ent
+        cs.contractCounts[contract]++
+        cs.mu.Unlock()
+        return
     }
     // window check
     if now.Sub(ent.windowStart) > cs.window {

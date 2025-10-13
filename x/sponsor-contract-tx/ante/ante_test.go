@@ -21,6 +21,7 @@ import (
     "strings"
     "testing"
     "time"
+    "sync"
 
 	dbm "github.com/cometbft/cometbft-db"
 
@@ -2241,6 +2242,88 @@ func (suite *AnteTestSuite) TestCheckTx_CooldownCapacityUnderConcurrency() {
     suite.Require().LessOrEqual(len(suite.anteDecorator.cstate.entries), 20)
     cnt := suite.anteDecorator.cstate.contractCounts[suite.contract.String()]
     suite.Require().LessOrEqual(cnt, 10)
+}
+
+// Strict caps under heavy concurrency must never be exceeded even when entries are active.
+// This specifically stresses the lock-guarded capacity check added in recordFailure.
+func (suite *AnteTestSuite) TestLocalCooldown_NoOvershootUnderConcurrency_StrictCap() {
+    cs := suite.anteDecorator.cstate
+    suite.Require().NotNil(cs)
+
+    // Configure strict caps and immediate cooldown (active entries)
+    cs.mu.Lock()
+    cs.threshold = 1
+    cs.baseTTL = 50 * time.Millisecond
+    cs.maxTTL = 200 * time.Millisecond
+    cs.window = 10 * time.Second
+    cs.maxEntries = 1
+    cs.maxEntriesPerContract = 1
+    // Clear any existing state
+    cs.entries = make(map[string]*cooldownEntry)
+    cs.contractCounts = make(map[string]int)
+    cs.mu.Unlock()
+
+    contract := suite.contract.String()
+    now := time.Unix(1_800_000_000, 0)
+
+    // Spawn many goroutines trying to create different users for the same contract concurrently
+    n := 128
+    var wg sync.WaitGroup
+    wg.Add(n)
+    for i := 0; i < n; i++ {
+        u := fmt.Sprintf("user_strict_%03d____________", i)
+        go func(user string) {
+            defer wg.Done()
+            cs.recordFailure(contract, user, now)
+        }(u)
+    }
+    wg.Wait()
+
+    // Capacity must not overshoot
+    cs.mu.RLock()
+    defer cs.mu.RUnlock()
+    suite.Require().LessOrEqual(len(cs.entries), 1, "global entries should not exceed strict cap")
+    suite.Require().LessOrEqual(cs.contractCounts[contract], 1, "per-contract count should not exceed strict cap")
+}
+
+// When global cap is very small, concurrent attempts across multiple contracts should still
+// honor the cap and not panic.
+func (suite *AnteTestSuite) TestLocalCooldown_GlobalCapUnderConcurrency_MultiContract() {
+    cs := suite.anteDecorator.cstate
+    suite.Require().NotNil(cs)
+
+    cs.mu.Lock()
+    cs.threshold = 100 // idle entries
+    cs.window = 0
+    cs.maxEntries = 2
+    cs.maxEntriesPerContract = 0
+    cs.entries = make(map[string]*cooldownEntry)
+    cs.contractCounts = make(map[string]int)
+    cs.mu.Unlock()
+
+    contractA := suite.contract.String()
+    contractB := sdk.AccAddress("contractB______________").String()
+    now := time.Unix(1_800_000_100, 0)
+
+    // Launch many attempts across both contracts
+    n := 200
+    var wg sync.WaitGroup
+    wg.Add(n)
+    for i := 0; i < n; i++ {
+        go func(i int) {
+            defer wg.Done()
+            if i%2 == 0 {
+                cs.recordFailure(contractA, fmt.Sprintf("ua_%03d__________________", i), now)
+            } else {
+                cs.recordFailure(contractB, fmt.Sprintf("ub_%03d__________________", i), now)
+            }
+        }(i)
+    }
+    wg.Wait()
+
+    cs.mu.RLock()
+    defer cs.mu.RUnlock()
+    suite.Require().LessOrEqual(len(cs.entries), 2, "global entries should not exceed global cap under concurrency")
 }
 
 // Cooldown disabled should never block and should always run policy
