@@ -701,11 +701,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-		// Check the tx-declared fee (does not recompute required fees via TxFeeChecker here).
+        // Check the tx fee. Use txFeeChecker to compute effective/required fees
+        // so self-pay and subsequent checks align with minimum gas price policy.
 		if feeTx, ok := tx.(sdk.FeeTx); ok {
-			fee := feeTx.GetFee()
+            declaredFee := feeTx.GetFee()
 			// 1. Zero fee early exit: Only effective in mempool (CheckTx), does not affect simulate/DeliverTx.
-			if fee.IsZero() && ctx.IsCheckTx() && !simulate {
+			if declaredFee.IsZero() && ctx.IsCheckTx() && !simulate {
 				ctx.Logger().With("module", "sponsor-contract-tx").Info(
 					"zero-fee tx; skipping sponsorship checks",
 					"contract", contractAddr,
@@ -714,21 +715,24 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				return next(ctx, tx, simulate)
 			}
 			// 2. Non-zero fee and early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
-			if !fee.IsZero() {
-				feeCheck := feeTx.GetFee()
+			if !declaredFee.IsZero() {
+				feeCheck := declaredFee
 				for _, c := range feeCheck {
 					if c.Denom != types.SponsorshipDenom {
 						return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
 					}
 				}
+                // Compute effective/required fee using txFeeChecker for consistency with mempool policy
+                effectiveFee := sctd.getEffectiveFee(ctx, tx)
+
 				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-				if userBalance.IsAllGTE(fee) {
+				if userBalance.IsAllGTE(effectiveFee) {
 					ctx.Logger().With("module", "sponsor-contract-tx").Info(
 						"user can self-pay; skipping sponsorship checks",
 						"contract", contractAddr,
 						"user", userAddr.String(),
 						"user_balance", userBalance.String(),
-						"required_fee", fee.String(),
+						"required_fee", effectiveFee.String(),
 					)
 					if !ctx.IsCheckTx() {
 						ctx.EventManager().EmitEvent(
@@ -737,7 +741,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
 							),
 						)
 					}
@@ -746,7 +750,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 				// Early user grant-vs-fee short-circuit BEFORE running policy queries to avoid unnecessary contract work
 				// If the transaction fee exceeds the user's remaining sponsored grant, skip sponsorship immediately.
-				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
+                if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, effectiveFee); err != nil {
 					// Emit skip event only in DeliverTx mode
 					if !ctx.IsCheckTx() {
 						ctx.EventManager().EmitEvent(
@@ -759,7 +763,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 					}
 					// If user can self-pay, gracefully fallback; otherwise propagate the grant-limit error
 					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-					if userBalance.IsAllGTE(fee) {
+					if userBalance.IsAllGTE(effectiveFee) {
 						return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "grant_below_tx_fee")
 					}
 					return ctx, err
@@ -771,8 +775,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 				if err != nil {
 					return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
 				}
-				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
-				if !sponsorBalance.IsAllGTE(fee) {
+                sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
+                if !sponsorBalance.IsAllGTE(effectiveFee) {
 					// Emit sponsor insufficient funds event only in DeliverTx mode
 					if !ctx.IsCheckTx() {
 						ctx.EventManager().EmitEvent(
@@ -781,11 +785,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 								sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAccAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
 							),
 						)
 					}
-					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
+					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, effectiveFee, sponsorBalance)
 				}
 			}
 		}
@@ -1079,20 +1083,22 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			)
 		}
 
-		// If the user cannot afford the fee themselves, return a clearer error
-		if feeTx, ok := tx.(sdk.FeeTx); ok {
-			fee := feeTx.GetFee()
-			if !fee.IsZero() {
+			// If the user cannot afford the fee themselves, return a clearer error
+			if feeTx, ok := tx.(sdk.FeeTx); ok {
+			declaredFee := feeTx.GetFee()
+			if !declaredFee.IsZero() {
+                // Align with fee policy using txFeeChecker
+                effectiveFee := sctd.getEffectiveFee(ctx, tx)
 				if userAddrErr == nil && !userAddr.Empty() {
 					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-					if !userBalance.IsAllGTE(fee) {
+					if !userBalance.IsAllGTE(effectiveFee) {
 						// Provide a user-facing reason to explain lack of sponsorship
 						return ctx, errorsmod.Wrapf(
 							sdkerrors.ErrInsufficientFunds,
 							"sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
 							contractAddr,
 							userAddr.String(),
-							fee.String(),
+							effectiveFee.String(),
 							userBalance.String(),
 						)
 					}
@@ -1104,7 +1110,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
 							),
 						)
 					}
@@ -1221,15 +1227,17 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 		return next(ctx, tx, simulate)
 	}
 
-	fee := feeTx.GetFee()
-	if fee.IsZero() {
-		// Zero fee transaction, just proceed
-		return next(ctx, tx, simulate)
-	}
+    // Compute effective/required fee using txFeeChecker for consistent behavior
+    declaredFee := feeTx.GetFee()
+    if declaredFee.IsZero() {
+        // Zero fee transaction, just proceed
+        return next(ctx, tx, simulate)
+    }
+    effectiveFee := sctd.getEffectiveFee(ctx, tx)
 
 	// Check if user has sufficient balance to pay the fee themselves
 	userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-	if !userBalance.IsAllGTE(fee) {
+	if !userBalance.IsAllGTE(effectiveFee) {
 		// User cannot afford the fee and sponsorship was denied
 		// Return a clear error message explaining the situation
 		return ctx, errorsmod.Wrapf(
@@ -1238,7 +1246,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 			contractAddr,
 			reason,
 			userAddr.String(),
-			fee.String(),
+			effectiveFee.String(),
 			userBalance.String(),
 		)
 	}
@@ -1248,9 +1256,9 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 		"sponsorship denied but user has sufficient balance, falling back to standard fee processing",
 		"contract", contractAddr,
 		"user", userAddr.String(),
-        "reason", sanitizeForLog(reason),
+		"reason", sanitizeForLog(reason),
 		"user_balance", userBalance.String(),
-		"required_fee", fee.String(),
+		"required_fee", effectiveFee.String(),
 	)
 
 	// Emit event to notify that sponsorship was attempted but user will pay themselves
@@ -1261,7 +1269,7 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 				sdk.NewAttribute(types.AttributeKeyReason, sanitizeForLog(reason)),
-				sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
+				sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
 			),
 		)
 	}
@@ -1351,4 +1359,21 @@ func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
 	}()
 	// consume gas on the main context for consistency with CheckTx validation
 	ctx.GasMeter().ConsumeGas(gasUsed, desc)
+}
+
+// getEffectiveFee computes the effective/required fee for a tx using the configured
+// txFeeChecker when available; falls back to the declared fee. This keeps self-pay
+// checks, grant-limit checks, and sponsor balance checks consistent with fee policy.
+func (sctd SponsorContractTxAnteDecorator) getEffectiveFee(ctx sdk.Context, tx sdk.Tx) sdk.Coins {
+    feeTx, ok := tx.(sdk.FeeTx)
+    if !ok {
+        return sdk.Coins{}
+    }
+    declaredFee := feeTx.GetFee()
+    if sctd.txFeeChecker != nil {
+        if eff, _, err := sctd.txFeeChecker(ctx, tx); err == nil {
+            return eff
+        }
+    }
+    return declaredFee
 }

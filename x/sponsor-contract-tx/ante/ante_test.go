@@ -607,6 +607,93 @@ func (suite *AnteTestSuite) TestContractWithoutCheckPolicyButUserCanAfford() {
 	suite.T().Logf("Contract without check_policy but user can afford - transaction succeeded")
 }
 
+// --- Effective fee alignment tests ---
+
+// txFeeChecker stub that returns a higher required fee than declared
+func effectiveFeePlus(delta int64) ante.TxFeeChecker {
+    return func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
+        feeTx, ok := tx.(sdk.FeeTx)
+        if !ok {
+            return nil, 0, fmt.Errorf("not a fee tx")
+        }
+        declared := feeTx.GetFee()
+        // add delta to each coin amount
+        eff := sdk.Coins{}
+        for _, c := range declared {
+            eff = eff.Add(sdk.NewCoin(c.Denom, c.Amount.AddRaw(delta)))
+        }
+        return eff, 0, nil
+    }
+}
+
+// When declared fee < effective fee, user with balance == declared should NOT self-pay skip;
+// policy should run and sponsorship path should proceed (sponsorPayment present in context).
+func (suite *AnteTestSuite) TestSelfPayUsesEffectiveFee_NoSkip() {
+    // Prepare contract + sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // User balance equals declared fee only
+    declared := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, declared))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, declared))
+
+    // Build tx and custom decorator with higher effective fee (+1000)
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, declared)
+    checker := effectiveFeePlus(1000) // effective fee = 2000peaka
+    customAnte := NewSponsorContractTxAnteDecorator(suite.keeper, suite.accountKeeper, suite.bankKeeper, checker)
+
+    // Reset policy query counter (should run because no self-pay skip)
+    suite.wasmKeeper.ResetQueryCount()
+
+    // Capture next context to inspect sponsor payment info
+    var contextReceived sdk.Context
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+        nextCalled = true
+        contextReceived = ctx
+        return ctx, nil
+    }
+
+    _, err := customAnte.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+    // Policy should have been queried (no early self-pay skip)
+    suite.Require().Greater(suite.wasmKeeper.GetQueryCount(), 0)
+    // Sponsor path should be engaged (payment info present)
+    sponsorPayment, ok := contextReceived.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
+    suite.Require().True(ok)
+    suite.Require().Equal(suite.contract, sponsorPayment.ContractAddr)
+    suite.Require().Equal(suite.user, sponsorPayment.UserAddr)
+}
+
+// Fallback error should use effective fee in Required field when user cannot afford it.
+func (suite *AnteTestSuite) TestFallbackUsesEffectiveFeeInError() {
+    // Prepare contract + sponsor; force policy ineligible
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.wasmKeeper.SetQueryResult(suite.contract, []byte(`{"eligible": false, "reason": "nope"}`))
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000_000)))
+    sponsorFund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFund)
+
+    // User balance equals declared fee only (insufficient for effective fee)
+    declared := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, declared))
+    suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, declared))
+
+    // Tx + custom checker: effective fee = 2000peaka
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, declared)
+    checker := effectiveFeePlus(1000)
+    customAnte := NewSponsorContractTxAnteDecorator(suite.keeper, suite.accountKeeper, suite.bankKeeper, checker)
+
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    _, err := customAnte.AnteHandle(suite.ctx, tx, false, next)
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "Required: 2000peaka")
+}
+
 // Test case: User has sufficient balance, should pay own fees
 func (suite *AnteTestSuite) TestUserHasSufficientBalance() {
 	// Set up contract and sponsorship
