@@ -32,15 +32,6 @@ service Query {
     option (google.api.http).get = "/doravota/sponsor/v1/params";
   }
 
-  // BlockedStatus queries whether a user is globally blocked for a contract
-  rpc BlockedStatus(QueryBlockedStatusRequest) returns (QueryBlockedStatusResponse) {
-    option (google.api.http).get = "/doravota/sponsor/v1/blocked_status/{contract_address}/{user_address}";
-  }
-
-  // AllBlockedStatuses lists failed-attempt records with optional filtering and pagination
-  rpc AllBlockedStatuses(QueryAllBlockedStatusesRequest) returns (QueryAllBlockedStatusesResponse) {
-    option (google.api.http).get = "/doravota/sponsor/v1/blocked_statuses";
-  }
 }
 
 // QuerySponsorRequest is the request type for the Query/Sponsor RPC method
@@ -82,41 +73,4 @@ message QueryParamsRequest {}
 message QueryParamsResponse {
   // params holds all the parameters of this module.
   Params params = 1 [ (gogoproto.nullable) = false ];
-}
-
-// QueryBlockedStatusRequest is the request type for global blocked status
-message QueryBlockedStatusRequest {
-  string contract_address = 1;
-  string user_address = 2;
-}
-
-// QueryBlockedStatusResponse contains global cooldown status and metadata
-message QueryBlockedStatusResponse {
-  bool blocked = 1;
-  uint32 remaining_blocks = 2; // remaining blocks until unblocked
-  uint32 count = 3;            // current failure count in the window
-  int64 until_height = 4;      // height at which block ends
-}
-
-// BlockedStatusEntry represents one (contract,user) entry and its global cooldown status
-message BlockedStatusEntry {
-  string contract_address = 1;
-  string user_address = 2;
-  bool blocked = 3;
-  uint32 remaining_blocks = 4;
-  uint32 count = 5;
-  int64 until_height = 6;
-}
-
-// QueryAllBlockedStatusesRequest lists all failed attempts with optional filters
-message QueryAllBlockedStatusesRequest {
-  string contract_address = 1; // optional: filter by contract; empty = all contracts
-  bool only_blocked = 2;       // optional: return only currently blocked entries
-  cosmos.base.query.v1beta1.PageRequest pagination = 3;
-}
-
-// QueryAllBlockedStatusesResponse is the response for AllBlockedStatuses
-message QueryAllBlockedStatusesResponse {
-  repeated BlockedStatusEntry statuses = 1;
-  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }

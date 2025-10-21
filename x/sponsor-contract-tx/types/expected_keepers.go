@@ -49,11 +49,4 @@ type SponsorKeeperInterface interface {
 	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
 	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
 	Logger(ctx sdk.Context) log.Logger
-
-	// Global cooldown API (block-height based)
-	// IsGloballyBlocked returns whether blocked and remaining blocks until unblocked
-	IsGloballyBlocked(ctx sdk.Context, contract, user string) (bool, int64)
-	// IncrementFailedAttempts increments and may start a cooldown, returning whether now blocked and the until-height
-	IncrementFailedAttempts(ctx sdk.Context, contract, user string) (bool, int64, error)
-	ClearFailedAttempts(ctx sdk.Context, contract, user string)
 }

@@ -12,8 +12,7 @@ const (
 	EventTypeSponsorshipSkipped    = "sponsorship_skipped"        // New: sponsorship skipped due to transaction structure
 	EventTypeSponsorshipDisabled   = "sponsorship_disabled"       // New: sponsorship globally disabled
 	EventTypeUpdateParams          = "update_params"              // New: governance parameter updates
-	EventTypeSponsorWithdrawal     = "sponsor_withdraw_funds"     // New: sponsor funds withdrawal
-	EventTypeGlobalCooldownStarted = "global_cooldown_started"    // New: global cooldown triggered for (contract,user)
+    EventTypeSponsorWithdrawal     = "sponsor_withdraw_funds"     // New: sponsor funds withdrawal
 
 )
 

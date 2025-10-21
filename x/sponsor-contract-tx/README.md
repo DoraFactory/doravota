@@ -78,11 +78,8 @@ The current design includes the following hardenings and behavior refinements:
 - Single-signer invariant and feegrant precedence
   - Sponsored path requires exactly one consistent signer across messages
   - If FeeGranter is set, feegrant takes precedence and sponsorship is skipped
-- Abuse tracking and cooldowns
-  - Local (CheckTx) cooldown: TTL/backoff/capacity-limited, node-local protection
-  - Global (DeliverTx) cooldown: block-height based sliding window with multiplicative backoff
 - Events and observability
-  - New events: `sponsorship_skipped` (with sanitized reason), `global_cooldown_started`
+  - New events: `sponsorship_skipped` (with sanitized reason)
 - Error and privacy hardening
   - Sanitize strings in events/logs; avoid leaking sponsor balances in user-visible errors
 - Admin fallback on ClearAdmin
@@ -107,18 +104,11 @@ The module uses layered defenses to reduce spam and resource exhaustion while ke
   - Early grant vs fee check: skip sponsorship if the fee exceeds the user’s remaining sponsored grant.
   - Early sponsor balance check: skip costly policy queries when sponsor cannot afford the fee.
 
-- Cooldowns (abuse tracking)
-  - Local (CheckTx) cooldown: node‑local TTL/backoff with capacity caps to protect mempools from repeated failures.
-  - Global (DeliverTx) cooldown: sliding window + multiplicative backoff by block height; persisted and queryable.
-  - Deterministic GC removes expired cooldown entries each block up to a configurable limit.
-
 - Observability and controls
-  - Events: `sponsorship_skipped` (sanitized reason), `global_cooldown_started`.
-  - Queries: `blocked-status` and `all-blocked-statuses` to inspect cooldowns.
-  - Governance parameters to tune caps, gas limits, and cooldown behavior; global toggle to disable sponsorship.
+  - Events: `sponsorship_skipped` (sanitized reason).
+  - Governance parameters to tune caps and gas limits; global toggle to disable sponsorship.
 
 - Notes and limitations
-  - Local cooldown is node‑local and complements (not replaces) validator min‑gas policies.
   - Excessively heavy contract policies may still hit gas caps; keep on‑chain policy logic lean.
 
 **Important: Funding Mechanism**
@@ -270,8 +260,7 @@ The module emits comprehensive events for monitoring and auditing:
   - Attributes: `reason`
 - `sponsorship_skipped`: Sponsorship path skipped (structure/caps/policy)
   - Attributes: `contract_address` (if available), `reason`
-- `global_cooldown_started`: Global cooldown triggered for a (contract,user)
-  - Attributes: `contract_address`, `user`, `until_height`
+
 
 ### Management Events
 
@@ -466,31 +455,6 @@ dorad query sponsor grant-usage [user-address] [contract-address]
 
 ### Module Parameters
 
-### Cooldown (Abuse Tracking) Queries
-
-#### 1. Check a user's global cooldown status
-
-```bash
-dorad query sponsor blocked-status [contract-address] [user-address] \
-  --chain-id [chain-id] \
-  --gas auto \
-  --gas-adjustment 1.5 \
-  --gas-prices 100000000000peaka
-```
-
-#### 2. List all global cooldown records (with filters and pagination)
-
-```bash
-dorad query sponsor all-blocked-statuses \
-  --contract [optional-contract-address] \
-  --only-blocked \
-  --page 1 --limit 50 \
-  --chain-id [chain-id] \
-  --gas auto \
-  --gas-adjustment 1.5 \
-  --gas-prices 100000000000peaka
-```
-
 ```bash
 dorad query sponsor params
 
@@ -504,13 +468,6 @@ dorad query sponsor params
 
 - `sponsorship_enabled` (bool): Global toggle for sponsorship (default: `true`).
 - `max_gas_per_sponsorship` (uint64): Max gas for contract policy checks (default: `2_500_000`, hard cap `50_000_000`).
-- `abuse_tracking_enabled` (bool): Enable global cooldown tracking (default: `true`).
-- `global_threshold` (uint32): Failures within window to trigger cooldown (default: `4`).
-- `global_base_blocks` (uint32): Base cooldown in blocks (default: `17`).
-- `global_backoff_milli` (uint32): Multiplicative backoff factor in milli (default: `3000` → 3.0x). Bounds: [1000, 100000].
-- `global_max_blocks` (uint32): Max cooldown cap in blocks (default: `600`).
-- `global_window_blocks` (uint32): Sliding window length in blocks for counting (default: `834`).
-- `gc_failed_attempts_per_block` (uint32): Deterministic GC limit per block for expired cooldown entries (default: `100`).
 - `max_exec_msgs_per_tx_for_sponsor` (uint32): Max number of `MsgExecuteContract` to the sponsored contract per tx (default: `25`; `0` disables cap).
 - `max_policy_exec_msg_bytes` (uint32): Per-message raw JSON payload cap for policy checks in bytes (default: `16384`; `0` disables; hard cap `1,048,576`).
 
@@ -701,9 +658,7 @@ The sponsor module integrates into the Cosmos SDK AnteHandler chain:
 - Strict transaction structure validation prevents fee leeching
 - Users with sufficient balance always self-pay, even if policy returns eligible (anti-abuse priority)
 - Per-user grant limits prevent excessive consumption; additional throttling (time windows, frequency caps) should live in `check_policy`
-- Local (CheckTx) cooldown protects mempools from repeated failures; Global (DeliverTx) cooldown blocks abusive senders by height
-- Event monitoring enables abuse detection (`sponsorship_skipped`, `user_self_pay`, `sponsor_insufficient_funds`, `global_cooldown_started`)
-- Operators can query cooldowns via `blocked-status` and `all-blocked-statuses`
+- Event monitoring enables abuse detection (`sponsorship_skipped`, `user_self_pay`, `sponsor_insufficient_funds`)
 
 ### 5. Gas Considerations
 

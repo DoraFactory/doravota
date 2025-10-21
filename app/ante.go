@@ -52,36 +52,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	}
 
 
-	// Build sponsor decorator with optional local cooldown config from app options
-	sponsorDec := sponsorante.NewSponsorContractTxAnteDecorator(options.SponsorKeeper, options.AccountKeeper.(authkeeper.AccountKeeper), options.BankKeeper.(bankkeeper.Keeper), options.TxFeeChecker)
-	if options.AppOptions != nil {
-		cfg := sponsorante.CooldownConfig{}
-		if v, ok := getBoolOpt(options.AppOptions, "sponsor.cooldown_enabled"); ok {
-			cfg.Enabled = &v
-		}
-		if dur, ok := getDurationSecondsOpt(options.AppOptions, "sponsor.cooldown_ttl_seconds"); ok {
-			cfg.BaseTTL = &dur
-		}
-		if dur, ok := getDurationSecondsOpt(options.AppOptions, "sponsor.cooldown_max_ttl_seconds"); ok {
-			cfg.MaxTTL = &dur
-		}
-		if f, ok := getFloatOpt(options.AppOptions, "sponsor.cooldown_backoff_factor"); ok {
-			cfg.BackoffFactor = &f
-		}
-		if n, ok := getIntOpt(options.AppOptions, "sponsor.cooldown_threshold"); ok {
-			cfg.Threshold = &n
-		}
-		if dur, ok := getDurationSecondsOpt(options.AppOptions, "sponsor.cooldown_window_seconds"); ok {
-			cfg.Window = &dur
-		}
-		if n, ok := getIntOpt(options.AppOptions, "sponsor.cooldown_max_entries"); ok {
-			cfg.MaxEntries = &n
-		}
-		if n, ok := getIntOpt(options.AppOptions, "sponsor.cooldown_max_entries_per_contract"); ok {
-			cfg.MaxEntriesPerContract = &n
-		}
-		sponsorDec = sponsorDec.WithCooldownConfig(cfg)
-	}
 
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(), // outermost AnteDecorator. SetUpContext must be called first
@@ -92,7 +62,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewTxTimeoutHeightDecorator(),
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
-		sponsorDec,
+		sponsorante.NewSponsorContractTxAnteDecorator(options.SponsorKeeper, options.AccountKeeper.(authkeeper.AccountKeeper), options.BankKeeper.(bankkeeper.Keeper), options.TxFeeChecker),
 		// Use sponsor-aware fee decorator that handles both normal fees and sponsor fees
 		sponsorante.NewSponsorAwareDeductFeeDecorator(
 			options.AccountKeeper.(authkeeper.AccountKeeper), 

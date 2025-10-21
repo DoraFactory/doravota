@@ -27738,46 +27738,7 @@ paths:
         type: string
       tags:
       - doravota.sponsor.v1.Query
-  /doravota/sponsor/v1/blocked_status/{contractAddress}/{userAddress}:
-    get:
-      summary: BlockedStatus queries whether a user is globally blocked for a contract
-      operationId: Query_BlockedStatus
-      responses:
-        '200':
-          description: A successful response.
-          schema:
-            $ref: '#/definitions/v1QueryBlockedStatusResponse'
-        default:
-          description: An unexpected error response.
-          schema:
-            $ref: '#/definitions/rpcStatus'
-      parameters:
-      - name: contractAddress
-        in: path
-        required: true
-        type: string
-      - name: userAddress
-        in: path
-        required: true
-        type: string
-      tags:
-      - doravota.sponsor.v1.Query
-  /doravota/sponsor/v1/blocked_statuses:
-    get:
-      summary: AllBlockedStatuses lists global cooldown records with optional filters and pagination
-      operationId: Query_AllBlockedStatuses
-      responses:
-        '200':
-          description: A successful response.
-          schema:
-            $ref: '#/definitions/v1QueryAllBlockedStatusesResponse'
-        default:
-          description: An unexpected error response.
-          schema:
-            $ref: '#/definitions/rpcStatus'
-      parameters:
-      - name: contractAddress
-        in: query
+  /doravota/sponsor/v1/blocked_statuses: {}
         required: false
         type: string
         description: optional contract filter; empty returns all contracts
@@ -49499,33 +49460,6 @@ definitions:
         type: string
         format: uint64
         title: Maximum gas limit for contract policy checks
-      abuseTrackingEnabled:
-        type: boolean
-        title: Whether global abuse tracking (cooldown) is enabled
-      globalThreshold:
-        type: string
-        format: uint32
-        title: Number of failures within window to trigger global cooldown
-      globalBaseBlocks:
-        type: string
-        format: uint32
-        title: Base cooldown blocks at first threshold hit
-      globalBackoffMilli:
-        type: string
-        format: uint32
-        title: Multiplicative backoff factor in milli (e.g., 3000 = 3.0x)
-      globalMaxBlocks:
-        type: string
-        format: uint32
-        title: Maximum cooldown cap in blocks
-      globalWindowBlocks:
-        type: string
-        format: uint32
-        title: Sliding window size for counting failures (blocks)
-      gcFailedAttemptsPerBlock:
-        type: string
-        format: uint32
-        title: Number of expired cooldown records to GC per block (0 disables)
       maxExecMsgsPerTxForSponsor:
         type: string
         format: uint32
@@ -49612,13 +49546,6 @@ definitions:
       params:
         sponsorshipEnabled: true
         maxGasPerSponsorship: "2500000"
-        abuseTrackingEnabled: true
-        globalThreshold: "4"
-        globalBaseBlocks: "17"
-        globalBackoffMilli: "3000"
-        globalMaxBlocks: "600"
-        globalWindowBlocks: "834"
-        gcFailedAttemptsPerBlock: "100"
         maxExecMsgsPerTxForSponsor: "25"
         maxPolicyExecMsgBytes: "16384"
   v1QuerySponsorResponse:
@@ -49635,53 +49562,7 @@ definitions:
     title: 'QueryUserGrantUsageResponse is the response type for the Query/UserGrantUsage
 
       RPC method'
-  v1QueryBlockedStatusResponse:
-    type: object
-    properties:
-      blocked:
-        type: boolean
-      remainingBlocks:
-        type: string
-        format: uint32
-        description: remaining blocks until unblocked
-      count:
-        type: string
-        format: uint32
-        description: current failure count in the window
-      untilHeight:
-        type: string
-        format: int64
-        description: height at which block ends
-    title: QueryBlockedStatusResponse contains global cooldown status and metadata
-  v1BlockedStatusEntry:
-    type: object
-    properties:
-      contractAddress:
-        type: string
-      userAddress:
-        type: string
-      blocked:
-        type: boolean
-      remainingBlocks:
-        type: string
-        format: uint32
-      count:
-        type: string
-        format: uint32
-      untilHeight:
-        type: string
-        format: int64
-    title: BlockedStatusEntry represents one (contract,user) entry and its global cooldown status
-  v1QueryAllBlockedStatusesResponse:
-    type: object
-    properties:
-      statuses:
-        type: array
-        items:
-          $ref: '#/definitions/v1BlockedStatusEntry'
-      pagination:
-        $ref: '#/definitions/v1beta1PageResponse'
-    title: QueryAllBlockedStatusesResponse is the response for AllBlockedStatuses
+  # Related schemas removed in new design
   v1beta1Coin:
     type: object
     properties:

@@ -26,8 +26,6 @@ func GetQueryCmd() *cobra.Command {
 		GetCmdQuerySponsorInfo(),
 		GetCmdQueryUserGrantUsage(),
 		GetCmdQueryParams(),
-		GetCmdQueryBlockedStatus(),
-		GetCmdQueryAllBlockedStatuses(),
 	)
 
 	return cmd
@@ -157,81 +155,6 @@ This shows how much of the sponsor's grant the user has already consumed.`,
 	}
 
 	flags.AddQueryFlagsToCmd(cmd)
-	return cmd
-}
-
-// GetCmdQueryBlockedStatus implements the query blocked-status command
-func GetCmdQueryBlockedStatus() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "blocked-status [contract-address] [user-address]",
-		Short: "Query global cooldown status for a user on a contract",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-			req := &types.QueryBlockedStatusRequest{
-				ContractAddress: args[0],
-				UserAddress:     args[1],
-			}
-			res, err := queryClient.BlockedStatus(context.Background(), req)
-			if err != nil {
-				return err
-			}
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
-	return cmd
-}
-
-// GetCmdQueryAllBlockedStatuses implements the query all-blocked-statuses command with pagination
-func GetCmdQueryAllBlockedStatuses() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "all-blocked-statuses",
-		Short: "Query all global cooldown records with optional filters and pagination",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-
-			contract, _ := cmd.Flags().GetString("contract")
-			onlyBlocked, _ := cmd.Flags().GetBool("only-blocked")
-
-			// Read standard pagination flags
-			pageReq, err := readPageRequest(cmd)
-			if err != nil {
-				return err
-			}
-
-			req := &types.QueryAllBlockedStatusesRequest{
-				ContractAddress: contract,
-				OnlyBlocked:     onlyBlocked,
-				Pagination:      pageReq,
-			}
-			res, err := queryClient.AllBlockedStatuses(context.Background(), req)
-			if err != nil {
-				return err
-			}
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
-	// Add filtering flags
-	cmd.Flags().String("contract", "", "Filter by contract address")
-	cmd.Flags().Bool("only-blocked", false, "Only include currently blocked entries")
-	// Add pagination flags: page, limit, page-key etc.
-	flags.AddPaginationFlagsToCmd(cmd, "all-blocked-statuses")
-
 	return cmd
 }
 
