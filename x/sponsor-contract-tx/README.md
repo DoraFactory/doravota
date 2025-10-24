@@ -36,8 +36,8 @@ The **Sponsor Contract Transaction Module** (`x/sponsor-contract-tx`) enables Co
 A dedicated sponsorship module that provides:
 
 - **Contract-specific sponsorship**: Each contract manages its own fee sponsorship independently
-- **Policy-based eligibility**: Contracts implement custom logic to determine user eligibility
-- **Secure fund management**: Built-in usage limits and abuse prevention mechanisms
+- **Ticket-based eligibility**: Admin or delegated issuer pre‑issues method‑bound tickets to eligible users; execute requires a valid ticket
+- **Secure fund management**: Built‑in usage limits, per‑user caps, and sponsor balance checks
 - **Event-driven monitoring**: Comprehensive event emission for all operations
 
 ## Solution Architecture
@@ -49,12 +49,14 @@ A dedicated sponsorship module that provides:
 ```protobuf
 message ContractSponsor {
   string contract_address = 1;
-  string creator_address = 2;    // Address of the sponsor registration creator (admin)
-  string sponsor_address = 3;    // The derived address that actually pays for sponsorship fees
-  bool is_sponsored = 4;
-  int64 created_at = 5;
-  int64 updated_at = 6;
-  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 7;
+  // Optional delegated issuer that can issue/revoke policy tickets besides admin
+  string ticket_issuer_address = 2;
+  string creator_address = 3;    // Address that created/manages this sponsor configuration
+  string sponsor_address = 4;    // Derived address that actually pays for sponsorship fees
+  bool is_sponsored = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 8;
 }
 ```
 
@@ -136,40 +138,44 @@ message UserGrantUsage {
 ```mermaid
 graph TD
     A[User submits tx] --> B[SponsorContractTxAnteDecorator]
-    B --> C{Sponsorship globally enabled?}
-    C -->|No| D[Standard fee processing - emit event]
+    B --> C{Global sponsorship enabled?}
+    C -->|No| D[Standard fee path (emit event)]
     C -->|Yes| E{Has feegrant?}
     E -->|Yes| D
-    E -->|No| F[Validate transaction structure]
+    E -->|No| F[Validate tx shape: only MsgExecuteContract to one contract]
     F --> G{Is contract sponsored?}
     G -->|No| D
-    G -->|Yes| H[Check user eligibility via contract policy]
-    H -->|Policy check failed| I{User has sufficient balance?}
-    H -->|Rejected by policy| I
-    H -->|Approved| J{User has sufficient balance?}
-    I -->|No| K[Return error with detailed message]
-    I -->|Yes| L[User pays own fees - emit UserSelfPay event]
-    J -->|Yes| L
-    J -->|No| M[Check user grant limit]
-    M -->|Exceeded| N[Return grant limit exceeded error]
-    M -->|OK| O{Sponsor has sufficient funds?}
-    O -->|No| P[Return insufficient sponsor funds error]
-    O -->|Yes| Q[Store sponsor payment info in context]
-    Q --> R[SponsorAwareDeductFeeDecorator]
-    R --> S[Validate fee requirements]
-    S --> T[Deduct fee from sponsor account]
-    T --> U[Update user grant usage]
-    U --> V[Emit SponsoredTx event]
-    V --> W[Transaction execution continues]
-    L --> W
-    D --> W
+    G -->|Yes| H[Extract top-level method keys (1 per msg)]
+    H --> I[Compute method digests and required counts]
+    I --> J{User holds valid method tickets covering counts?}
+    J -->|No| K{User can self-pay declared fee?}
+    K -->|Yes| D
+    K -->|No| L[Return insufficient funds]
+    J -->|Yes| M{User can self-pay declared fee?}
+    M -->|Yes| D
+    M -->|No| N[Check grant limit + sponsor spendable >= declared fee]
+    N -->|No| O[Return clear error (limit/funds)]
+    N -->|Yes| P[CheckTx marks ticket gate; DeliverTx injects SponsorPaymentInfo]
+    P --> Q[SponsorAwareDeductFeeDecorator]
+    Q --> R[Deduct fee from sponsor -> fee collector]
+    R --> S[Update user grant usage]
+    S --> T[Consume ticket(s) in DeliverTx]
+    T --> U[Emit SponsoredTx event]
+    D --> V[Execute tx normally]
+    U --> V
 ```
+
+Notes
+- Two‑phase gating via method tickets only; no runtime contract policy/query on execute.
+- CheckTx enforces validator min‑gas‑price before expensive work; zero‑fee tx are bypassed in CheckTx.
+- Self‑pay preference: if the user can afford the declared fee, sponsorship is skipped.
+- Feegrant precedence: when FeeGranter is set, standard fee handling applies and sponsorship is skipped.
 
 ## Security Model
 
 ### Transaction Validation Rules
 
-All sponsored transactions must pass structural checks **before** the contract policy is evaluated:
+All sponsored transactions must pass structural checks **before** ticket/eligibility checks are performed:
 
 **✅ ALLOWED: Single contract, multiple messages**
 
