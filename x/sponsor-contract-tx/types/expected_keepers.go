@@ -11,9 +11,13 @@ import (
 type AccountKeeper interface {
 	GetAccount(ctx sdk.Context, addr sdk.AccAddress) authtypes.AccountI
 	SetAccount(ctx sdk.Context, acc authtypes.AccountI)
+	NewAccountWithAddress(ctx sdk.Context, addr sdk.AccAddress) authtypes.AccountI
 	GetModuleAddress(moduleName string) sdk.AccAddress
 	GetModuleAccount(ctx sdk.Context, moduleName string) authtypes.ModuleAccountI
 }
+
+// AuthKeeper is an alias for AccountKeeper to maintain compatibility
+type AuthKeeper = AccountKeeper
 
 // BankKeeper defines the expected interface for the Bank module keeper
 type BankKeeper interface {
@@ -25,6 +29,7 @@ type BankKeeper interface {
 	BurnCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error
 	GetAllBalances(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins
 	GetBalance(ctx sdk.Context, addr sdk.AccAddress, denom string) sdk.Coin
+	BlockedAddr(addr sdk.AccAddress) bool
 }
 
 // WasmKeeperInterface defines the expected interface for the Wasm module keeper

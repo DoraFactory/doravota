@@ -17,11 +17,12 @@ type msgServer struct {
 	types.UnimplementedMsgServer
 	Keeper
 	bankKeeper types.BankKeeper
+	authKeeper types.AuthKeeper
 }
 
 // NewMsgServerImplWithDeps returns a MsgServer with explicit dependencies
-func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper) types.MsgServer {
-	return &msgServer{Keeper: keeper, bankKeeper: bk}
+func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper, ak types.AuthKeeper) types.MsgServer {
+	return &msgServer{Keeper: keeper, bankKeeper: bk, authKeeper: ak}
 }
 
 var _ types.MsgServer = msgServer{}
@@ -461,8 +462,20 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	if msg.UserAddress == "" {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "user address required")
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	userAddr, err := sdk.AccAddressFromBech32(msg.UserAddress)
+	if err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
+	}
+
+	// Create the account if it does not exist in account state
+	userAcc := k.authKeeper.GetAccount(ctx, userAddr)
+	if userAcc == nil {
+		if k.bankKeeper.BlockedAddr(userAddr) {
+			return nil, errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "%s is blocked and not allowed to receive tickets", userAddr)
+		}
+
+		userAcc = k.authKeeper.NewAccountWithAddress(ctx, userAddr)
+		k.authKeeper.SetAccount(ctx, userAcc)
 	}
     // Validate method name and compute digest (single-method tickets only)
     if msg.Method == "" {

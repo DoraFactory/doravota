@@ -1078,8 +1078,8 @@ func TestNewKeeperAndBasicFunctions(t *testing.T) {
 
 // TestUpdateParams tests the UpdateParams message server function
 func TestUpdateParams(t *testing.T) {
-	keeper, ctx, _, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, _, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	// Test with valid authority
 	authority := keeper.GetAuthority()
@@ -1355,8 +1355,8 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 // TestMsgServerComprehensiveDeleteSponsor tests DeleteSponsor with full coverage
 func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
-	keeper, ctx, wasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, wasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")

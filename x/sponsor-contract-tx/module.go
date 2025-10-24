@@ -94,6 +94,7 @@ type AppModule struct {
 
 	keeper     keeper.Keeper
 	bankKeeper types.BankKeeper
+	authKeeper types.AuthKeeper
 }
 
 // NewAppModule creates a new AppModule object
@@ -101,11 +102,13 @@ func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
 	bankKeeper types.BankKeeper,
+	authKeeper types.AuthKeeper,
 ) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
 		bankKeeper:     bankKeeper,
+		authKeeper:     authKeeper,
 	}
 }
 
@@ -117,7 +120,7 @@ func (am AppModule) Name() string {
 // RegisterServices registers the sponsor module's services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	// Register message server with dependencies
-	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper, am.authKeeper))
 
 	// Register query server
 	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))

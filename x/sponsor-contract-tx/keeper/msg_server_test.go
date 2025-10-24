@@ -85,8 +85,8 @@ func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, au
 }
 
 func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *MockWasmKeeper, bankkeeper.Keeper) {
-    keeper, ctx, mockWasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
-    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+    keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
     return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
 }
 
@@ -1422,8 +1422,8 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 
 // TestMsgServerSponsorAddressConsistency tests sponsor address derivation consistency
 func TestMsgServerSponsorAddressConsistency(t *testing.T) {
-	keeper, ctx, mockWasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	// Set up multiple contracts with the same admin
 	adminAddr := sdk.AccAddress([]byte("test_admin_address_12")).String()
@@ -1520,7 +1520,7 @@ func TestMsgServerSponsorAddressConsistency(t *testing.T) {
 // ===== Withdraw sponsor funds tests (moved from withdraw_test.go) =====
 
 func TestWithdrawSponsorFunds_Success(t *testing.T) {
-	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	keeper, ctx, wasmMock, authKeeper, bankKeeper := setupKeeperWithDeps(t)
 
 	// Prepare admin, contract, recipient
 	admin := sdk.AccAddress("admin________________")
@@ -1531,7 +1531,7 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 	wasmMock.SetContractInfo(contract.String(), admin.String())
 
 	// Create msg server with deps
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	// Create sponsor via msg to generate sponsor address
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
@@ -1597,8 +1597,8 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 }
 
 func TestDeleteSponsorFailsWhenBalanceExists(t *testing.T) {
-	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, wasmMock, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	admin := sdk.AccAddress("admin________________")
 	contract := sdk.AccAddress("contract____________")
@@ -1634,13 +1634,13 @@ func TestDeleteSponsorFailsWhenBalanceExists(t *testing.T) {
 }
 
 func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
-	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	keeper, ctx, wasmMock, authKeeper, bankKeeper := setupKeeperWithDeps(t)
 	admin := sdk.AccAddress("admin________________")
 	nonAdmin := sdk.AccAddress("user_________________")
 	contract := sdk.AccAddress("contract____________")
 
 	wasmMock.SetContractInfo(contract.String(), admin.String())
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
@@ -1654,13 +1654,13 @@ func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
 }
 
 func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
-	keeper, ctx, wasmMock, _, bankKeeper := setupKeeperWithDeps(t)
+	keeper, ctx, wasmMock, authKeeper, bankKeeper := setupKeeperWithDeps(t)
 	admin := sdk.AccAddress("admin________________")
 	contract := sdk.AccAddress("contract____________")
 	recipient := sdk.AccAddress("recipient___________")
 
 	wasmMock.SetContractInfo(contract.String(), admin.String())
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)

@@ -14,6 +14,7 @@ import (
     storetypes "github.com/cosmos/cosmos-sdk/store/types"
     sdk "github.com/cosmos/cosmos-sdk/types"
     "github.com/stretchr/testify/require"
+    authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
     sponsor "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
     "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -32,6 +33,15 @@ func (minimalBankKeeper) MintCoins(ctx sdk.Context, moduleName string, amt sdk.C
 func (minimalBankKeeper) BurnCoins(ctx sdk.Context, moduleName string, amt sdk.Coins) error { return nil }
 func (minimalBankKeeper) GetAllBalances(ctx sdk.Context, addr sdk.AccAddress) sdk.Coins { return nil }
 func (minimalBankKeeper) GetBalance(ctx sdk.Context, addr sdk.AccAddress, denom string) sdk.Coin { return sdk.Coin{} }
+func (minimalBankKeeper) BlockedAddr(addr sdk.AccAddress) bool { return false }
+
+// minimalAuthKeeper satisfies the AuthKeeper interface
+type minimalAuthKeeper struct{}
+func (minimalAuthKeeper) GetAccount(ctx sdk.Context, addr sdk.AccAddress) authtypes.AccountI { return nil }
+func (minimalAuthKeeper) SetAccount(ctx sdk.Context, acc authtypes.AccountI) {}
+func (minimalAuthKeeper) NewAccountWithAddress(ctx sdk.Context, addr sdk.AccAddress) authtypes.AccountI { return nil }
+func (minimalAuthKeeper) GetModuleAddress(moduleName string) sdk.AccAddress { return nil }
+func (minimalAuthKeeper) GetModuleAccount(ctx sdk.Context, moduleName string) authtypes.ModuleAccountI { return nil }
 
 // minimalWasmKeeper always reports contract exists (for this module-level GC test)
 type minimalWasmKeeper struct{}
@@ -63,7 +73,7 @@ func TestAppModuleBeginBlock_GarbageCollect(t *testing.T) {
     if _, ok := k.GetPolicyTicket(ctx, "c", "u", "d"); !ok { t.Fatalf("ticket not inserted") }
 
     // Build app module and call BeginBlock
-    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{})
+    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{}, minimalAuthKeeper{})
     am.BeginBlock(ctx, abci.RequestBeginBlock{})
 
     // Ticket should be GC'd
@@ -83,7 +93,7 @@ func TestAppModule_GenesisRawJSONRoundTrip(t *testing.T) {
     require.NoError(t, ms.LoadLatestVersion())
     mw := &minimalWasmKeeper{}
     k := keeper.NewKeeper(cdc, storeKey, mw, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
-    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{})
+    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{}, minimalAuthKeeper{})
     ctx := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
 
     // Build a genesis state (params + sponsors + user usages)
@@ -153,7 +163,7 @@ func TestAppModuleBeginBlock_GCRespectsCap(t *testing.T) {
     require.NoError(t, ms.LoadLatestVersion())
     mw := &minimalWasmKeeper{}
     k := keeper.NewKeeper(cdc, storeKey, mw, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
-    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{})
+    am := sponsor.NewAppModule(cdc, *k, minimalBankKeeper{}, minimalAuthKeeper{})
     ctx := sdk.NewContext(ms, tmproto.Header{Height: 100}, false, log.NewNopLogger())
 
     // Set GC cap to 1 per block
