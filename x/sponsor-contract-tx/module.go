@@ -122,8 +122,8 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 	// Register message server with dependencies
 	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper, am.authKeeper))
 
-	// Register query server
-	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))
+	// Register query server with bank keeper to enable balance queries
+	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServerWithDeps(am.keeper, am.bankKeeper))
 }
 
 // RegisterInvariants registers the sponsor module's invariants
