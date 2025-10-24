@@ -22,12 +22,12 @@ var (
 	// ParamsKey defines the key for module parameters
 	ParamsKey = []byte{0x02}
 
-	// UserGrantUsageKeyPrefix defines the prefix for user grant usage records
-	UserGrantUsageKeyPrefix = []byte{0x03}
+    // UserGrantUsageKeyPrefix defines the prefix for user grant usage records
+    UserGrantUsageKeyPrefix = []byte{0x03}
 
-	// Parameter store keys
-	KeySponsorshipEnabled   = []byte("SponsorshipEnabled")
-	KeyMaxGasPerSponsorship = []byte("MaxGasPerSponsorship")
+    // PolicyTicketKeyPrefix defines the prefix for stored policy tickets
+    PolicyTicketKeyPrefix = []byte{0x10}
+
 )
 
 // GetSponsorKey returns the store key for a sponsor record
@@ -44,6 +44,16 @@ func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
 	return key
 }
 
+// GetPolicyTicketKey returns the store key for a policy ticket
+// Format: PolicyTicketKeyPrefix + contractAddr + "/" + userAddr + "/" + digest
+func GetPolicyTicketKey(contractAddr, userAddr, digest string) []byte {
+    key := append(PolicyTicketKeyPrefix, []byte(contractAddr)...)
+    key = append(key, []byte("/")...)
+    key = append(key, []byte(userAddr)...)
+    key = append(key, []byte("/")...)
+    key = append(key, []byte(digest)...)
+    return key
+}
 
 // ValidateContractAddress validates a contract address
 func ValidateContractAddress(addr string) error {

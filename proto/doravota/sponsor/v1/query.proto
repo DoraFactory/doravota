@@ -4,6 +4,7 @@ package doravota.sponsor.v1;
 
 import "doravota/sponsor/v1/sponsor.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
+import "cosmos/base/v1beta1/coin.proto";
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 
@@ -32,13 +33,44 @@ service Query {
     option (google.api.http).get = "/doravota/sponsor/v1/params";
   }
 
+  // PolicyTicket queries a one-time policy ticket for (contract,user,digest)
+  rpc PolicyTicket(QueryPolicyTicketRequest) returns (QueryPolicyTicketResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/ticket/{contract_address}/{user_address}/{digest}";
+  }
+
+  // PolicyTicketByMethod queries a policy ticket for (contract,user,method) where
+  // the server computes the digest from the method name.
+  rpc PolicyTicketByMethod(QueryPolicyTicketByMethodRequest) returns (QueryPolicyTicketResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/ticket_by_method/{contract_address}/{user_address}/{method}";
+  }
+
+  // SponsorBalance returns the derived sponsor address and its spendable peaka balance
+  rpc SponsorBalance(QuerySponsorBalanceRequest) returns (QuerySponsorBalanceResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/sponsor_balance/{contract_address}";
+  }
+
+  // PolicyTickets queries policy tickets with pagination. Requires contract_address,
+  // and optionally filters by user_address.
+  rpc PolicyTickets(QueryPolicyTicketsRequest) returns (QueryPolicyTicketsResponse) {
+    option (google.api.http).get = "/doravota/sponsor/v1/tickets/{contract_address}/{user_address}";
+    option (google.api.http).additional_bindings = {
+      get: "/doravota/sponsor/v1/tickets/{contract_address}"
+    };
+  }
+  
+
 }
 
 // QuerySponsorRequest is the request type for the Query/Sponsor RPC method
 message QuerySponsorRequest { string contract_address = 1; }
 
 // QuerySponsorResponse is the response type for the Query/Sponsor RPC method
-message QuerySponsorResponse { ContractSponsor sponsor = 1; }
+message QuerySponsorResponse {
+  ContractSponsor sponsor = 1;
+  // Effective TTL (in blocks) for policy tickets for this contract,
+  // based on the current module default (no per-contract override).
+  uint32 effective_ticket_ttl_blocks = 2;
+}
 
 // QueryAllSponsorsRequest is the request type for the Query/AllSponsors RPC
 // method
@@ -74,3 +106,48 @@ message QueryParamsResponse {
   // params holds all the parameters of this module.
   Params params = 1 [ (gogoproto.nullable) = false ];
 }
+
+// === Policy ticket query ===
+
+message QueryPolicyTicketRequest {
+  string contract_address = 1;
+  string user_address = 2;
+  string digest = 3;
+}
+
+message QueryPolicyTicketResponse {
+  PolicyTicket ticket = 1;
+  // Remaining blocks until expiry (computed at query time; 0 if expired).
+  uint64 ttl_left = 2;
+}
+
+message QueryPolicyTicketByMethodRequest {
+  string contract_address = 1;
+  string user_address = 2;
+  string method = 3;
+}
+
+message QuerySponsorBalanceRequest {
+  string contract_address = 1;
+}
+
+message QuerySponsorBalanceResponse {
+  string sponsor_address = 1;
+  cosmos.base.v1beta1.Coin spendable = 2;
+}
+
+// === Policy tickets list query ===
+
+message QueryPolicyTicketsRequest {
+  string contract_address = 1;
+  // Optional user filter; when empty, lists all tickets under the contract
+  string user_address = 2;
+  cosmos.base.query.v1beta1.PageRequest pagination = 3;
+}
+
+message QueryPolicyTicketsResponse {
+  repeated PolicyTicket tickets = 1;
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+ 

@@ -27631,7 +27631,7 @@ paths:
             $ref: '#/definitions/rpcStatus'
       tags:
       - doravota.sponsor.v1.Query
-  /doravota/sponsor/v1/sponsor/{contractAddress}:
+  /doravota/sponsor/v1/sponsor/{contract_address}:
     get:
       summary: Sponsor queries the sponsor information for a contract
       operationId: Query_Sponsor
@@ -27645,7 +27645,7 @@ paths:
           schema:
             $ref: '#/definitions/rpcStatus'
       parameters:
-      - name: contractAddress
+      - name: contract_address
         in: path
         required: true
         type: string
@@ -27714,7 +27714,7 @@ paths:
         type: boolean
       tags:
       - doravota.sponsor.v1.Query
-  /doravota/sponsor/v1/usage/{userAddress}/{contractAddress}:
+  /doravota/sponsor/v1/usage/{user_address}/{contract_address}:
     get:
       summary: UserGrantUsage queries the grant usage for a specific user and contract
       operationId: Query_UserGrantUsage
@@ -27728,53 +27728,189 @@ paths:
           schema:
             $ref: '#/definitions/rpcStatus'
       parameters:
-      - name: userAddress
+      - name: user_address
         in: path
         required: true
         type: string
-      - name: contractAddress
+      - name: contract_address
         in: path
         required: true
         type: string
       tags:
       - doravota.sponsor.v1.Query
-  /doravota/sponsor/v1/blocked_statuses: {}
-        required: false
+  
+  /doravota/sponsor/v1/ticket/{contract_address}/{user_address}/{digest}:
+    get:
+      summary: Policy ticket by digest
+      operationId: Query_PolicyTicket
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryPolicyTicketResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contract_address
+        in: path
+        required: true
         type: string
-        description: optional contract filter; empty returns all contracts
-      - name: onlyBlocked
+      - name: user_address
+        in: path
+        required: true
+        type: string
+      - name: digest
+        in: path
+        required: true
+        type: string
+      tags:
+      - doravota.sponsor.v1.Query
+
+  /doravota/sponsor/v1/ticket_by_method/{contract_address}/{user_address}/{method}:
+    get:
+      summary: Policy ticket by method (server computes digest)
+      operationId: Query_PolicyTicketByMethod
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryPolicyTicketResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contract_address
+        in: path
+        required: true
+        type: string
+      - name: user_address
+        in: path
+        required: true
+        type: string
+      - name: method
+        in: path
+        required: true
+        type: string
+      tags:
+      - doravota.sponsor.v1.Query
+
+  /doravota/sponsor/v1/tickets/{contract_address}:
+    get:
+      summary: List policy tickets by contract (paginated)
+      operationId: Query_PolicyTicketsByContract
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryPolicyTicketsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contract_address
+        in: path
+        required: true
+        type: string
+      - name: user_address
         in: query
         required: false
-        type: boolean
-        description: if true, return only currently blocked entries
+        type: string
       - name: pagination.key
         in: query
         required: false
         type: string
         format: byte
-        description: key is PageResponse.next_key of previous page
       - name: pagination.offset
         in: query
         required: false
         type: string
         format: uint64
-        description: numeric offset, use only when key is unavailable
       - name: pagination.limit
         in: query
         required: false
         type: string
         format: uint64
-        description: maximum number of results to return
       - name: pagination.countTotal
         in: query
         required: false
         type: boolean
-        description: include total count; only effective with offset
       - name: pagination.reverse
         in: query
         required: false
         type: boolean
-        description: return results in descending order
+      tags:
+      - doravota.sponsor.v1.Query
+
+  /doravota/sponsor/v1/tickets/{contract_address}/{user_address}:
+    get:
+      summary: List policy tickets for a user under a contract (paginated)
+      operationId: Query_PolicyTicketsByContractUser
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QueryPolicyTicketsResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contract_address
+        in: path
+        required: true
+        type: string
+      - name: user_address
+        in: path
+        required: true
+        type: string
+      - name: pagination.key
+        in: query
+        required: false
+        type: string
+        format: byte
+      - name: pagination.offset
+        in: query
+        required: false
+        type: string
+        format: uint64
+      - name: pagination.limit
+        in: query
+        required: false
+        type: string
+        format: uint64
+      - name: pagination.countTotal
+        in: query
+        required: false
+        type: boolean
+      - name: pagination.reverse
+        in: query
+        required: false
+        type: boolean
+      tags:
+      - doravota.sponsor.v1.Query
+
+  /doravota/sponsor/v1/sponsor_balance/{contract_address}:
+    get:
+      summary: Sponsor derived address and spendable balance
+      operationId: Query_SponsorBalance
+      responses:
+        '200':
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/v1QuerySponsorBalanceResponse'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+      - name: contract_address
+        in: path
+        required: true
+        type: string
       tags:
       - doravota.sponsor.v1.Query
 definitions:
@@ -49456,10 +49592,10 @@ definitions:
       sponsorshipEnabled:
         type: boolean
         title: Whether sponsorship is globally enabled
-      maxGasPerSponsorship:
+      policyTicketTtlBlocks:
         type: string
-        format: uint64
-        title: Maximum gas limit for contract policy checks
+        format: uint32
+        title: Default TTL (in blocks) for policy tickets
       maxExecMsgsPerTxForSponsor:
         type: string
         format: uint32
@@ -49468,6 +49604,22 @@ definitions:
         type: string
         format: uint32
         title: Per-message raw JSON payload cap for policy checks (bytes; 0 disables; hard cap 1,048,576)
+      maxMethodTicketUsesPerIssue:
+        type: string
+        format: uint32
+        title: Maximum uses per issued method ticket
+      ticketGcPerBlock:
+        type: string
+        format: uint32
+        title: Maximum number of expired tickets to GC per block
+      maxMethodNameBytes:
+        type: string
+        format: uint32
+        title: Maximum allowed size (bytes) for top-level method name
+      maxMethodJsonDepth:
+        type: string
+        format: uint32
+        title: Maximum JSON nesting depth when scanning execute payloads
     title: Params defines the parameters for the sponsor module
   sponsorv1UserGrantUsage:
     type: object
@@ -49545,9 +49697,67 @@ definitions:
     example:
       params:
         sponsorshipEnabled: true
-        maxGasPerSponsorship: "2500000"
+        policyTicketTtlBlocks: "30"
         maxExecMsgsPerTxForSponsor: "25"
-        maxPolicyExecMsgBytes: "16384"
+        maxPolicyExecMsgBytes: "65536"
+        maxMethodTicketUsesPerIssue: "50"
+        ticketGcPerBlock: "200"
+        maxMethodNameBytes: "64"
+        maxMethodJsonDepth: "20"
+
+  v1PolicyTicket:
+    type: object
+    properties:
+      contractAddress:
+        type: string
+      userAddress:
+        type: string
+      digest:
+        type: string
+      expiryHeight:
+        type: string
+        format: uint64
+      usesRemaining:
+        type: string
+        format: uint32
+      consumed:
+        type: boolean
+      issuedHeight:
+        type: string
+        format: uint64
+      method:
+        type: string
+    title: PolicyTicket represents an authorization ticket issued by the contract admin
+
+  v1QueryPolicyTicketResponse:
+    type: object
+    properties:
+      ticket:
+        $ref: '#/definitions/v1PolicyTicket'
+      ttlLeft:
+        type: string
+        format: uint64
+    title: QueryPolicyTicketResponse
+
+  v1QueryPolicyTicketsResponse:
+    type: object
+    properties:
+      tickets:
+        type: array
+        items:
+          $ref: '#/definitions/v1PolicyTicket'
+      pagination:
+        $ref: '#/definitions/v1beta1PageResponse'
+    title: QueryPolicyTicketsResponse
+
+  v1QuerySponsorBalanceResponse:
+    type: object
+    properties:
+      sponsorAddress:
+        type: string
+      spendable:
+        $ref: '#/definitions/v1beta1Coin'
+    title: QuerySponsorBalanceResponse
   v1QuerySponsorResponse:
     type: object
     properties:

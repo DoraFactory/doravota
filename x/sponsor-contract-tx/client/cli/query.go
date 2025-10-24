@@ -26,10 +26,41 @@ func GetQueryCmd() *cobra.Command {
 		GetCmdQuerySponsorInfo(),
 		GetCmdQueryUserGrantUsage(),
 		GetCmdQueryParams(),
-	)
+        GetCmdQueryPolicyTicket(),
+        GetCmdQueryPolicyTicketByMethod(),
+        GetCmdQueryPolicyTickets(),
+        GetCmdQuerySponsorBalance(),
+    )
 
 	return cmd
 }
+
+// GetCmdQueryPolicyTicket queries a policy ticket
+func GetCmdQueryPolicyTicket() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ticket [contract-address] [user-address] [digest]",
+		Short: "Query a policy ticket for (contract,user,digest)",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			qc := types.NewQueryClient(clientCtx)
+			res, err := qc.PolicyTicket(context.Background(), &types.QueryPolicyTicketRequest{
+				ContractAddress: args[0], UserAddress: args[1], Digest: args[2],
+			})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// Additional query subcommands can be added as needed.
 
 // GetCmdQueryAllSponsors implements the query all-sponsors command
 func GetCmdQueryAllSponsors() *cobra.Command {
@@ -190,4 +221,74 @@ func readPageRequest(cmd *cobra.Command) (*sdkquery.PageRequest, error) {
 	pageReq.CountTotal = countTotal
 	pageReq.Reverse = reverse
 	return pageReq, nil
+}
+
+// ReadPageRequestForTests exposes readPageRequest for unit tests in external package.
+// It is a thin wrapper used only by tests.
+func ReadPageRequestForTests(cmd *cobra.Command) (*sdkquery.PageRequest, error) {
+    return readPageRequest(cmd)
+}
+
+// GetCmdQueryPolicyTickets queries policy tickets with pagination
+func GetCmdQueryPolicyTickets() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "tickets [contract-address] [user-address]",
+        Short: "List policy tickets under a contract (optionally for a user)",
+        Args:  cobra.RangeArgs(1, 2),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            pageReq, err := readPageRequest(cmd)
+            if err != nil { return err }
+            req := &types.QueryPolicyTicketsRequest{ContractAddress: args[0], Pagination: pageReq}
+            if len(args) == 2 { req.UserAddress = args[1] }
+            res, err := qc.PolicyTickets(context.Background(), req)
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    flags.AddPaginationFlagsToCmd(cmd, "tickets")
+    return cmd
+}
+
+// GetCmdQueryPolicyTicketByMethod queries a policy ticket by method name
+func GetCmdQueryPolicyTicketByMethod() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "ticket-by-method [contract-address] [user-address] [method]",
+        Short: "Query a policy ticket for (contract,user,method)",
+        Args:  cobra.ExactArgs(3),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            res, err := qc.PolicyTicketByMethod(context.Background(), &types.QueryPolicyTicketByMethodRequest{
+                ContractAddress: args[0], UserAddress: args[1], Method: args[2],
+            })
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    return cmd
+}
+
+// GetCmdQuerySponsorBalance queries sponsor balance (spendable peaka) for a contract's derived sponsor address
+func GetCmdQuerySponsorBalance() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "sponsor-balance [contract-address]",
+        Short: "Query sponsor derived address and its spendable peaka balance",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            res, err := qc.SponsorBalance(context.Background(), &types.QuerySponsorBalanceRequest{ContractAddress: args[0]})
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    return cmd
 }

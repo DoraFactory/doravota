@@ -397,3 +397,80 @@ func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
     require.Contains(t, err.Error(), "exceeds max_grant_per_user")
 }
 
+func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {
+    // default should be 50
+    p := DefaultParams()
+    require.Equal(t, uint32(50), p.MaxMethodTicketUsesPerIssue)
+    require.NoError(t, p.Validate())
+
+    // 0 -> invalid
+    p0 := p
+    p0.MaxMethodTicketUsesPerIssue = 0
+    require.Error(t, p0.Validate())
+
+    // 1 -> ok
+    p1 := p
+    p1.MaxMethodTicketUsesPerIssue = 1
+    require.NoError(t, p1.Validate())
+
+    // 100 -> ok
+    p100 := p
+    p100.MaxMethodTicketUsesPerIssue = 100
+    require.NoError(t, p100.Validate())
+
+    // 101 -> invalid
+    p101 := p
+    p101.MaxMethodTicketUsesPerIssue = 101
+    require.Error(t, p101.Validate())
+}
+
+func TestParams_MaxPolicyExecMsgBytes_UpperBound(t *testing.T) {
+    p := DefaultParams()
+    // at bound ok
+    p.MaxPolicyExecMsgBytes = 1024 * 1024
+    require.NoError(t, p.Validate())
+    // above bound invalid
+    p.MaxPolicyExecMsgBytes = 1024*1024 + 1
+    require.Error(t, p.Validate())
+}
+
+func TestMsgIssuePolicyTicket_ValidateBasic_MethodOnly(t *testing.T) {
+    validCreator := mkAddr(31)
+    validContract := mkAddr(32)
+    validUser := mkAddr(33)
+
+    // valid baseline
+    msg := MsgIssuePolicyTicket{
+        Creator:         validCreator,
+        ContractAddress: validContract,
+        UserAddress:     validUser,
+        Method:          "ping",
+        Uses:            0,
+    }
+    require.NoError(t, msg.ValidateBasic())
+
+    // empty methods -> error
+    msgEmpty := msg
+    msgEmpty.Method = ""
+    err := msgEmpty.ValidateBasic()
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "method is required")
+
+    // invalid creator address
+    msgBadCreator := msg
+    msgBadCreator.Creator = "invalid"
+    err = msgBadCreator.ValidateBasic()
+    require.Error(t, err)
+
+    // invalid contract address
+    msgBadContract := msg
+    msgBadContract.ContractAddress = "invalid"
+    err = msgBadContract.ValidateBasic()
+    require.Error(t, err)
+
+    // invalid user address
+    msgBadUser := msg
+    msgBadUser.UserAddress = "invalid"
+    err = msgBadUser.ValidateBasic()
+    require.Error(t, err)
+}

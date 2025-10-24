@@ -2,29 +2,20 @@ package cli_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	// Local keeper + types for direct gRPC server testing
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
-	keeperpkg "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // dummyWasmKeeper is a minimal stub to satisfy keeper's WasmKeeperInterface in local QueryServer tests
@@ -232,25 +223,6 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 		})
 	}
 }
-
-// --- Local helpers for direct QueryServer tests (no full network needed) ---
-
-func newLocalKeeperAndCtx(t *testing.T) (keeperpkg.Keeper, sdk.Context) {
-	t.Helper()
-	// minimal in-memory app state for keeper
-	registry := codectypes.NewInterfaceRegistry()
-	cdc := codec.NewProtoCodec(registry)
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
-	db := dbm.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
-	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
-	require.NoError(t, ms.LoadLatestVersion())
-	k := keeperpkg.NewKeeper(cdc, storeKey, dummyWasmKeeper{}, "cosmos1authority_____________________")
-	ctx := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
-	return *k, ctx
-}
-
-
 // TestQueryUserGrantUsage tests the user grant usage query command
 func (s *QueryTestSuite) TestQueryUserGrantUsage() {
 	val := s.network.Validators[0]
@@ -499,3 +471,40 @@ func TestAllSponsorsCLIHasPaginationFlags(t *testing.T) {
 		}
 	}
 }
+
+// --- Unit tests for command wiring (no network) ---
+
+func TestQueryPolicyTicketCmd_Usage(t *testing.T) {
+    cmd := cli.GetCmdQueryPolicyTicket()
+    if cmd == nil { t.Fatalf("nil command") }
+    if got, want := cmd.Use, "ticket"; !strings.Contains(cmd.Use, want) { t.Fatalf("expected Use to contain %q, got %q", want, got) }
+    // Args validation
+    if err := cmd.Args(cmd, []string{"c","u"}); err == nil { t.Fatalf("expected error for too-few args") }
+    if err := cmd.Args(cmd, []string{"c","u","d"}); err != nil { t.Fatalf("unexpected error for exact args: %v", err) }
+}
+
+// Removed probe window, negative probe, and compute-digest query command tests
+
+func TestReadPageRequest_FromFlags(t *testing.T) {
+    // Use the all-sponsors cmd which has pagination flags attached
+    cmd := cli.GetCmdQueryAllSponsors()
+    // Set flags to simulate pagination input
+    fs := cmd.Flags()
+    // page=2, limit=10 => offset=(2-1)*10=10
+    _ = fs.Set(flags.FlagPage, "2")
+    _ = fs.Set(flags.FlagLimit, "10")
+    // page-key overrides key-based pagination
+    _ = fs.Set(flags.FlagPageKey, "aGVsbG8=") // "hello"
+    _ = fs.Set(flags.FlagOffset, "3")         // offset provided too
+    _ = fs.Set(flags.FlagCountTotal, "true")
+    _ = fs.Set(flags.FlagReverse, "true")
+
+    pr, err := cli.ReadPageRequestForTests(cmd)
+    if err != nil { t.Fatalf("readPageRequest error: %v", err) }
+    if pr.Offset == 0 { t.Fatalf("expected non-zero Offset from flags") }
+    if pr.Limit != 10 { t.Fatalf("expected Limit=10, got %d", pr.Limit) }
+    if !pr.CountTotal { t.Fatalf("expected CountTotal=true") }
+    if !pr.Reverse { t.Fatalf("expected Reverse=true") }
+}
+
+// no extra helpers needed

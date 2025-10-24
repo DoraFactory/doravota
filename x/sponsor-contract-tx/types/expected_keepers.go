@@ -41,12 +41,23 @@ type CheckContractPolicyResult struct {
 
 // SponsorKeeperInterface defines the expected interface for the SponsorKeeper
 type SponsorKeeperInterface interface {
-	GetParams(ctx sdk.Context) Params
-	IsSponsored(ctx sdk.Context, contractAddr string) bool
-	GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
-	ValidateContractExists(ctx sdk.Context, contractAddr string) error
-	CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*CheckContractPolicyResult, error)
-	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
-	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
-	Logger(ctx sdk.Context) log.Logger
+    GetParams(ctx sdk.Context) Params
+    IsSponsored(ctx sdk.Context, contractAddr string) bool
+    GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
+    ValidateContractExists(ctx sdk.Context, contractAddr string) error
+    CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
+    UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
+    Logger(ctx sdk.Context) log.Logger
+    // Two-phase ticket helpers
+    GetPolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) (PolicyTicket, bool)
+    ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error
+    // Consume multiple method digests with counts atomically
+    ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr string, counts map[string]uint32) error
+    RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error
+    // Helpers for CheckTx gating
+    EffectiveTicketTTLForContract(ctx sdk.Context, contractAddr string) uint32
+    // Digest helpers (for ante gating)
+    ComputeMethodDigest(contractAddr string, methodNames []string) string
+    // Fast existence check for any live (unconsumed, unexpired) method ticket for (contract,user)
+    HasAnyLiveMethodTicket(ctx sdk.Context, contractAddr, userAddr string) bool
 }

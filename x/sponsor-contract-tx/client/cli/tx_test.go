@@ -344,6 +344,17 @@ func (s *TxTestSuite) TestCommandHelp() {
 	}
 }
 
+// New tests for issue-method-ticket CLI: ensure --uses flag exists
+func (s *TxTestSuite) TestIssueTicketCmd_UsesFlag() {
+    cmd := GetCmdIssuePolicyTicket()
+    s.Require().NotNil(cmd)
+    // Verify flag exists
+    f := cmd.Flags().Lookup("uses")
+    s.Require().NotNilf(f, "--uses flag should be present")
+    // Verify command use line mentions issue-ticket
+    s.Require().Contains(cmd.Use, "issue-ticket")
+}
+
 // TestWithdrawSponsorFundsCmd tests the withdraw-sponsor-funds command
 func (s *TxTestSuite) TestWithdrawSponsorFundsCmd() {
 	testCases := []struct {

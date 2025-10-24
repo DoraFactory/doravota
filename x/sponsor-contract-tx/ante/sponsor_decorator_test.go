@@ -641,6 +641,165 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 	}
 }
 
+// CheckTx: When ExecTicketGate info is present (set by ante), the decorator should skip
+// standard fee checks and proceed to next. This allows sponsored txs into mempool.
+func (suite *SponsorDecoratorTestSuite) TestCheckTx_ExecGate_SkipsSponsorDecorator() {
+    // Build a tx with fee below mock min to ensure skipping actually matters
+    lowFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, lowFee)
+
+    // Inject gate info (simulating ante marking auth via ticket)
+    digest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    gate := ExecTicketGateInfo{Digest: digest, ContractAddr: suite.contract.String(), UserAddr: suite.user.String()}
+    ctx := suite.ctx.WithIsCheckTx(true).WithValue(execTicketGateKey{}, gate)
+
+    nextCalled := false
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+        nextCalled = true
+        return ctx, nil
+    }
+
+    // Should bypass fee checking and proceed
+    _, err := suite.sponsorDecorator.AnteHandle(ctx, tx, false, next)
+    suite.Require().NoError(err)
+    suite.Require().True(nextCalled)
+}
+
+// DeliverTx: When digest is present, SponsoredTx event should include digest_type=method
+// and reflect uses_remaining and expiry from the ticket state before consumption.
+func (suite *SponsorDecoratorTestSuite) TestDeliver_EventIncludesDigestAndMeta() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+
+    // Create sponsor and fund sufficiently
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+    sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    suite.Require().True(found)
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+
+    // Insert a method ticket with known uses and expiry
+    digest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    t := types.PolicyTicket{
+        ContractAddress: suite.contract.String(),
+        UserAddress:     suite.user.String(),
+        Digest:          digest,
+        UsesRemaining:   2,
+        ExpiryHeight:    uint64(suite.ctx.BlockHeight()) + 50,
+        Method:          "increment",
+    }
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, t))
+
+    sp := SponsorPaymentInfo{
+        ContractAddr: suite.contract,
+        SponsorAddr:  sponsorAddr,
+        UserAddr:     suite.user,
+        Fee:          fee,
+        IsSponsored:  true,
+        Digest:       digest,
+    }
+    deliver := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager()).WithValue(sponsorPaymentKey{}, sp)
+
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    _, err := suite.sponsorDecorator.AnteHandle(deliver, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    suite.Require().NoError(err)
+
+    // Event assertions
+    foundEvt := false
+    hasDigestType := false
+    hasUses := false
+    hasExpiry := false
+    for _, ev := range deliver.EventManager().Events() {
+        if ev.Type != types.EventTypeSponsoredTx { continue }
+        foundEvt = true
+        for _, a := range ev.Attributes {
+            if string(a.Key) == "digest_type" && string(a.Value) == "method" { hasDigestType = true }
+            if string(a.Key) == "uses_remaining" && string(a.Value) == "2" { hasUses = true }
+            if string(a.Key) == types.AttributeKeyExpiryHeight && string(a.Value) == fmt.Sprintf("%d", t.ExpiryHeight) { hasExpiry = true }
+        }
+    }
+    suite.Require().True(foundEvt, "SponsoredTx event expected")
+    suite.Require().True(hasDigestType, "digest_type=method missing")
+    suite.Require().True(hasUses, "uses_remaining missing or incorrect")
+    suite.Require().True(hasExpiry, "expiry attribute missing or incorrect")
+
+    // Ticket should be decremented by 1 use after consumption
+    after, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), digest)
+    suite.Require().True(ok)
+    suite.Require().Equal(uint32(1), after.UsesRemaining)
+    suite.Require().False(after.Consumed)
+}
+
+// DeliverTx: When DigestCounts specifies multiple uses for the same digest, bulk consumption
+// should decrement uses accordingly and mark consumed when reaching 0.
+func (suite *SponsorDecoratorTestSuite) TestBulkConsumption_ExactExhaustion() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+
+    // Create sponsor and fund sufficiently
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+    sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    suite.Require().True(found)
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+
+    // Ticket with 3 uses
+    digest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    t := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: digest, UsesRemaining: 3, ExpiryHeight: uint64(suite.ctx.BlockHeight()) + 50, Method: "increment"}
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, t))
+
+    sp := SponsorPaymentInfo{
+        ContractAddr: suite.contract,
+        SponsorAddr:  sponsorAddr,
+        UserAddr:     suite.user,
+        Fee:          fee,
+        IsSponsored:  true,
+        Digest:       digest,
+        DigestCounts: map[string]uint32{digest: 3},
+    }
+    deliver := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager()).WithValue(sponsorPaymentKey{}, sp)
+
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    _, err := suite.sponsorDecorator.AnteHandle(deliver, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    suite.Require().NoError(err)
+
+    // Ticket should be consumed
+    after, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), digest)
+    suite.Require().True(ok)
+    suite.Require().Equal(uint32(0), after.UsesRemaining)
+    suite.Require().True(after.Consumed)
+}
+
+// DeliverTx: If sponsor account does not exist, decorator should return unknown address error.
+func (suite *SponsorDecoratorTestSuite) TestUnknownSponsorAccount_Error() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+
+    // Create sponsor entry without funding (and without creating the account)
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
+    sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    suite.Require().True(found)
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+
+    // Ensure account does NOT exist
+    suite.Require().Nil(suite.accountKeeper.GetAccount(suite.ctx, sponsorAddr))
+
+    sp := SponsorPaymentInfo{
+        ContractAddr: suite.contract,
+        SponsorAddr:  sponsorAddr,
+        UserAddr:     suite.user,
+        Fee:          fee,
+        IsSponsored:  true,
+    }
+    deliver := suite.ctx.WithIsCheckTx(false).WithValue(sponsorPaymentKey{}, sp)
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+
+    _, err := suite.sponsorDecorator.AnteHandle(deliver, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    suite.Require().Error(err)
+    suite.Require().Contains(err.Error(), "does not exist")
+}
+
 // Helper functions
 
 // Use coinsToProtoCoins from ante_test.go to avoid redeclaration

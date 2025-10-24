@@ -1,10 +1,10 @@
 package sponsor
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math/rand"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math/rand"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -152,7 +152,15 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // BeginBlock executes all ABCI BeginBlock logic respective to the sponsor module
-func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {}
+func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
+    // Opportunistic GC: delete a bounded number of expired tickets per block based on params
+    params := am.keeper.GetParams(ctx)
+    n := int(params.TicketGcPerBlock)
+    if n <= 0 {
+        return
+    }
+    am.keeper.GarbageCollect(ctx, n)
+}
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module
 func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate { return []abci.ValidatorUpdate{} }

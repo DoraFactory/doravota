@@ -3,6 +3,7 @@ package sponsor
 import (
 	errorsmod "cosmossdk.io/errors"
 	sdkmath "cosmossdk.io/math"
+	"fmt"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
@@ -50,21 +51,30 @@ func NewSponsorAwareDeductFeeDecorator(
 
 // AnteHandle implements the ante handler interface.
 // Behavior:
-// - If SponsorPaymentInfo is present in context and IsSponsored=true, attempt
-//   to deduct fees from the sponsor (unless FeeGranter is set on the tx).
-// - Otherwise, fall back to the standard DeductFeeDecorator.
+//   - If SponsorPaymentInfo is present in context and IsSponsored=true, attempt
+//     to deduct fees from the sponsor (unless FeeGranter is set on the tx).
+//   - Otherwise, fall back to the standard DeductFeeDecorator.
 func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
+	// In CheckTx, if ExecuteTicketGate marked this tx as authorized via a valid ticket,
+	// skip standard fee checks and proceed. This enables sponsored txs to enter the mempool
+	// without requiring the user to prepay fees.
+	if ctx.IsCheckTx() {
+		if _, ok := ctx.Value(execTicketGateKey{}).(ExecTicketGateInfo); ok {
+			// Basic checks already done in SponsorContractTxAnteDecorator; proceed
+			return next(ctx, tx, simulate)
+		}
+	}
 	// Check if this transaction has sponsor payment information in context using type-safe key
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
-		if sponsorPayment.IsSponsored && !sponsorPayment.Fee.IsZero() {
-			// Handle sponsor fee payment directly
+		if sponsorPayment.IsSponsored {
+			// Handle sponsor fee payment directly (two-phase aware: may include reimbursement and digest)
 			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
-				sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
+				sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee, sponsorPayment.Digest)
 		}
 	}
 
@@ -91,6 +101,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	sponsorAddr sdk.AccAddress,
 	userAddr sdk.AccAddress,
 	fee sdk.Coins,
+	digest string,
 ) (newCtx sdk.Context, err error) {
 	// Check for feegrant first - if present, delegate to standard decorator
 	feeTx, ok := tx.(sdk.FeeTx)
@@ -122,6 +133,8 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
+	// Pre-checks moved to antecedent decorator; proceed to deduction
+
 	// Step 1: Deduct fee from sponsor account (applies to both CheckTx and DeliverTx).
 	// Defensive checks: ensure fee collector module account, sponsor account exist, and fee is valid.
 	if addr := safd.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName); addr == nil {
@@ -144,13 +157,39 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrapf(err, "failed to deduct sponsor fee from %s", sponsorAddr)
 	}
 
-	// Step 2: Update user grant usage atomically.
+	// Step 3: Update user grant usage atomically.
 	if err := safd.sponsorKeeper.UpdateUserGrantUsage(ctx, userAddr.String(), contractAddr.String(), effectiveFee); err != nil {
 		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
 	}
 
-	// Step 3: Emit success event only in DeliverTx (avoid events in CheckTx).
+	// Best-effort: fetch uses_remaining and expiry before consuming (for event)
+	usesRem := ""
+	expiry := ""
+	if !ctx.IsCheckTx() && digest != "" {
+		if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), digest); ok {
+			usesRem = fmt.Sprintf("%d", t.UsesRemaining)
+			expiry = fmt.Sprintf("%d", t.ExpiryHeight)
+		}
+	}
+
+	// Step 4: Consume ticket(s) in DeliverTx upon success. When multiple
+	// method digests are required in this tx, consume each digest as many
+	// times as needed. Fall back to single digest when no counts provided.
 	if !ctx.IsCheckTx() {
+		if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+			if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
+				return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
+			}
+		} else if digest != "" {
+			if err := safd.sponsorKeeper.ConsumePolicyTicket(ctx, contractAddr.String(), userAddr.String(), digest); err != nil {
+				return ctx, errorsmod.Wrapf(err, "failed to consume policy ticket")
+			}
+		}
+	}
+
+	// Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
+	if !ctx.IsCheckTx() {
+		dType := "method" // only method tickets are supported
 		ctx.EventManager().EmitEvent(
 			sdk.NewEvent(
 				types.EventTypeSponsoredTx,
@@ -159,6 +198,10 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 				sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
 				sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
+				// Optional attributes when available
+				sdk.NewAttribute("uses_remaining", usesRem),
+				sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry),
+				sdk.NewAttribute("digest_type", dType),
 			),
 		)
 	}
