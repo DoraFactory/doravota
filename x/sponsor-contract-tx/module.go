@@ -162,7 +162,7 @@ func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
     if n <= 0 {
         return
     }
-    am.keeper.GarbageCollect(ctx, n)
+    am.keeper.GarbageCollectByExpiry(ctx, n)
 }
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module

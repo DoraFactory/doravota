@@ -530,6 +530,15 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
     }
 
     // No capacity limits enforced (whitelist controls issuance)
+    // Enforce method name length bound from params to avoid storing oversized strings
+    // and emitting large event attributes. 0 means use default behavior, but
+    // DefaultParams() already sets a sane default (64).
+    if lim := k.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 {
+        if uint32(len(msg.Method)) > lim {
+            return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
+        }
+    }
+
     // Create new ticket
     ttl := msg.TtlBlocks
     if ttl == 0 {

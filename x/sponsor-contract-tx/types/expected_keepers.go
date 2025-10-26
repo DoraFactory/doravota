@@ -63,6 +63,4 @@ type SponsorKeeperInterface interface {
     EffectiveTicketTTLForContract(ctx sdk.Context, contractAddr string) uint32
     // Digest helpers (for ante gating)
     ComputeMethodDigest(contractAddr string, methodNames []string) string
-    // Fast existence check for any live (unconsumed, unexpired) method ticket for (contract,user)
-    HasAnyLiveMethodTicket(ctx sdk.Context, contractAddr, userAddr string) bool
 }

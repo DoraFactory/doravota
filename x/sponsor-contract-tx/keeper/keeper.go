@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 
@@ -13,9 +14,9 @@ import (
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-    "github.com/cosmos/cosmos-sdk/types/query"
+	"github.com/cosmos/cosmos-sdk/types/query"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // (legacy ContractMessage and policy probe helpers removed)
@@ -108,6 +109,9 @@ func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 		return err
 	}
 	store.Set(key, bz)
+	// maintain expiry index for fast GC by expiry height
+	idx := types.GetExpiryIndexKey(t.ExpiryHeight, t.ContractAddress, t.UserAddress, t.Digest)
+	store.Set(idx, []byte{})
 	return nil
 }
 
@@ -132,70 +136,44 @@ func (k Keeper) IteratePolicyTickets(ctx sdk.Context, cb func(key []byte, t type
 // GetPolicyTicketsPaginated returns policy tickets filtered by contract and optional user with pagination.
 // contractAddr must be non-empty and a valid bech32 address; userAddr may be empty (to list all users).
 func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAddr string, pageReq *query.PageRequest) ([]*types.PolicyTicket, *query.PageResponse, error) {
-    if err := types.ValidateContractAddress(contractAddr); err != nil {
-        return nil, nil, err
-    }
-    if userAddr != "" {
-        if _, err := sdk.AccAddressFromBech32(userAddr); err != nil {
-            return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
-        }
-    }
-    pstore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-    // Build prefix: contract + "/" [+ user + "/" when provided]
-    p := append([]byte{}, []byte(contractAddr)...)
-    p = append(p, '/')
-    if userAddr != "" {
-        p = append(p, []byte(userAddr)...)
-        p = append(p, '/')
-    }
-    sub := prefix.NewStore(pstore, p)
-    var out []*types.PolicyTicket
-    pageRes, err := query.Paginate(sub, pageReq, func(key, value []byte) error {
-        var t types.PolicyTicket
-        if err := k.cdc.Unmarshal(value, &t); err != nil {
-            return err
-        }
-        tt := t
-        out = append(out, &tt)
-        return nil
-    })
-    if err != nil {
-        return nil, nil, err
-    }
-    return out, pageRes, nil
+	if err := types.ValidateContractAddress(contractAddr); err != nil {
+		return nil, nil, err
+	}
+	if userAddr != "" {
+		if _, err := sdk.AccAddressFromBech32(userAddr); err != nil {
+			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
+		}
+	}
+	pstore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
+	// Build prefix: contract + "/" [+ user + "/" when provided]
+	p := append([]byte{}, []byte(contractAddr)...)
+	p = append(p, '/')
+	if userAddr != "" {
+		p = append(p, []byte(userAddr)...)
+		p = append(p, '/')
+	}
+	sub := prefix.NewStore(pstore, p)
+	var out []*types.PolicyTicket
+	pageRes, err := query.Paginate(sub, pageReq, func(key, value []byte) error {
+		var t types.PolicyTicket
+		if err := k.cdc.Unmarshal(value, &t); err != nil {
+			return err
+		}
+		tt := t
+		out = append(out, &tt)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, pageRes, nil
 }
 
 // CountLiveTicketsForUserContract returns the number of unconsumed, unexpired tickets for (contract,user).
 // Capacity limits removed: whitelist-based issuance provides sufficient control.
 // HasAnyLiveMethodTicket returns true if there exists at least one unconsumed, unexpired
 // method-bound ticket for (contract,user). This is a fast-path existence check for CheckTx.
-func (k Keeper) HasAnyLiveMethodTicket(ctx sdk.Context, contractAddr, userAddr string) bool {
-	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-	// Prefix: contract + "/" + user + "/"
-	p := append([]byte{}, []byte(contractAddr)...)
-	p = append(p, '/')
-	p = append(p, []byte(userAddr)...)
-	p = append(p, '/')
-	it := sdk.KVStorePrefixIterator(store, p)
-	defer it.Close()
-	now := uint64(ctx.BlockHeight())
-	for ; it.Valid(); it.Next() {
-		var t types.PolicyTicket
-		if err := k.cdc.Unmarshal(it.Value(), &t); err != nil {
-			continue
-		}
-		if t.Consumed {
-			continue
-		}
-		if now > t.ExpiryHeight {
-			continue
-		}
-		if len(t.Digest) >= 2 && t.Digest[0] == 'm' && t.Digest[1] == ':' {
-			return true
-		}
-	}
-	return false
-}
+// HasAnyLiveMethodTicket removed; ante now checks exact digests derived from tx methods.
 
 // ConsumePolicyTicket marks a policy ticket as consumed if present and valid
 func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
@@ -217,6 +195,7 @@ func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dig
 			t.Consumed = true
 		}
 	} else {
+		// last use -> mark consumed and keep record until expiry (GC will remove)
 		t.UsesRemaining = 0
 		t.Consumed = true
 	}
@@ -264,6 +243,11 @@ func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr
 // DeletePolicyTicket removes a policy ticket by composite key
 func (k Keeper) DeletePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) {
 	store := ctx.KVStore(k.storeKey)
+	// try delete expiry index if ticket present
+	if t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest); ok {
+		idx := types.GetExpiryIndexKey(t.ExpiryHeight, contractAddr, userAddr, digest)
+		store.Delete(idx)
+	}
 	key := types.GetPolicyTicketKey(contractAddr, userAddr, digest)
 	store.Delete(key)
 }
@@ -282,33 +266,71 @@ func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dige
 	return nil
 }
 
-// GarbageCollect removes up to maxTickets expired tickets per call to avoid state bloat.
-func (k Keeper) GarbageCollect(ctx sdk.Context, maxTickets int) {
+// GC cursor helpers (height + in-bucket last key) – simple binary encoding
+func (k Keeper) getGcCursor(ctx sdk.Context) (uint64, []byte, bool) {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.GcCursorKey)
+	if bz == nil {
+		return 0, nil, false
+	}
+	if len(bz) < 8 {
+		return 0, nil, false
+	}
+	h := binary.BigEndian.Uint64(bz[:8])
+	tail := make([]byte, len(bz)-8)
+	copy(tail, bz[8:])
+	return h, tail, true
+}
+
+func (k Keeper) setGcCursor(ctx sdk.Context, height uint64, tail []byte) {
+	store := ctx.KVStore(k.storeKey)
+	out := append(types.EncodeUint64BigEndian(height), tail...)
+	store.Set(types.GcCursorKey, out)
+}
+
+// GarbageCollectByExpiry removes up to maxTickets expired tickets using the expiry index and a persistent cursor
+func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxTickets int) {
+	if maxTickets <= 0 {
+		return
+	}
 	now := uint64(ctx.BlockHeight())
-	// Tickets
+	height, tail, ok := k.getGcCursor(ctx)
+	if !ok {
+		height = 0
+		tail = nil
+	}
 	removed := 0
-    if maxTickets > 0 {
-        pstore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-        it := sdk.KVStorePrefixIterator(pstore, []byte{})
-        defer it.Close()
-        for ; it.Valid(); it.Next() {
-            var t types.PolicyTicket
-            if err := k.cdc.Unmarshal(it.Value(), &t); err != nil {
-                k.Logger(ctx).Error("failed to unmarshal policy ticket during GC", "err", err)
-                continue
-            }
-            // Remove tickets strictly past their expiry height. No special-case for 0;
-            // if a ticket somehow has expiry 0, it is considered expired as soon as
-            // block height advances beyond 0. Issued tickets always have TTL > 0.
-            if now > t.ExpiryHeight {
-                pstore.Delete(it.Key())
-                removed++
-                if removed >= maxTickets {
-                    break
-                }
-            }
-        }
-    }
+	for removed < maxTickets && height < now {
+		// build per-height prefix store: ExpiryIndexPrefix + BE8(height) + '/'
+		base := prefix.NewStore(ctx.KVStore(k.storeKey), types.ExpiryIndexKeyPrefix)
+		hStore := prefix.NewStore(base, append(types.EncodeUint64BigEndian(height), '/'))
+		var it storetypes.Iterator
+		if len(tail) > 0 {
+			start := append(append([]byte{}, tail...), 0x00)
+			it = hStore.Iterator(start, nil)
+		} else {
+			it = hStore.Iterator(nil, nil)
+		}
+		tStore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
+		for ; it.Valid() && removed < maxTickets; it.Next() {
+			suffix := it.Key() // contract/user/digest
+			tStore.Delete(suffix)
+			hStore.Delete(suffix)
+			removed++
+			tail = make([]byte, len(suffix))
+			copy(tail, suffix)
+		}
+		it.Close()
+		if removed >= maxTickets {
+			k.setGcCursor(ctx, height, tail)
+			return
+		}
+		// done with this height
+		height++
+		tail = nil
+	}
+	// finished for this block
+	k.setGcCursor(ctx, height, nil)
 }
 
 // SetSponsor sets a sponsor in the store
@@ -562,7 +584,6 @@ func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
 	store.Set(types.ParamsKey, bz)
 	return nil
 }
-
 
 // === User Grant Usage Management ===
 

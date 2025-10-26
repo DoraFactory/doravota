@@ -663,7 +663,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
     suite.Require().True(ok)
     // Advance height and run GC
     suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
-    suite.keeper.GarbageCollect(suite.ctx, 10)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
     // Should be removed
     _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
     suite.Require().False(ok)
@@ -760,7 +760,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRe
     suite.Require().True(ok)
     // Advance height and GC
     suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
-    suite.keeper.GarbageCollect(suite.ctx, 10)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
     // Should be removed
     _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
     suite.Require().False(ok)
@@ -786,7 +786,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Pr
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
     // Advance height and run GC (should keep, not expired)
     suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
-    suite.keeper.GarbageCollect(suite.ctx, 10)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
     // Still present
     t, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
     suite.Require().True(ok)

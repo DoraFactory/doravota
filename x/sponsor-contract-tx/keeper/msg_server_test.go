@@ -199,7 +199,7 @@ func TestKeeper_GarbageCollect_ExpiredOnly(t *testing.T) {
     require.NoError(t, keeper.SetPolicyTicket(ctx, t2))
 
     // run GC deleting all expired items
-    keeper.GarbageCollect(ctx, 10)
+    keeper.GarbageCollectByExpiry(ctx, 10)
     // expired items removed/invalidated, alive remain
     _, ok := keeper.GetPolicyTicket(ctx, "c1", "u1", "d1"); require.False(t, ok)
     _, ok = keeper.GetPolicyTicket(ctx, "c2", "u2", "d2"); require.True(t, ok)
@@ -1972,7 +1972,7 @@ func TestGarbageCollect_ExpiredTicketReissue(t *testing.T) {
 
     // Advance beyond TTL and GC
     ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 2)
-    keeper.GarbageCollect(ctx, 10)
+    keeper.GarbageCollectByExpiry(ctx, 10)
     _, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
     require.False(t, found)
 

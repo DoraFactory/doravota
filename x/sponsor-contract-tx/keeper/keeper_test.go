@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/store"
+	"github.com/cosmos/cosmos-sdk/store/prefix"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -299,6 +300,142 @@ func TestGetAllSponsors(t *testing.T) {
 	assert.False(t, contractAddrs["dora1contract456"])
 	assert.True(t, contractAddrs["dora1contract789"])
 }
+
+// helper: count keys under a prefix store
+func countKeys(ps storetypes.KVStore) int {
+    it := ps.Iterator(nil, nil)
+    defer it.Close()
+    n := 0
+    for ; it.Valid(); it.Next() { n++ }
+    return n
+}
+
+func TestExpiryIndex_WriteAndGC(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    // set block height to 100
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+
+    // create tickets with various expiry heights
+    // expired: 90,95,99; not expired: 100 (equal), 120 (future)
+    tks := []types.PolicyTicket{
+        {ContractAddress: "c", UserAddress: "u", Digest: "d90", ExpiryHeight: 90, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d95", ExpiryHeight: 95, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d99", ExpiryHeight: 99, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d100", ExpiryHeight: 100, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d120", ExpiryHeight: 120, UsesRemaining: 1},
+    }
+    for _, tk := range tks {
+        require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+    }
+
+    // verify index keys exist
+    idxStore := prefix.NewStore(ctx.KVStore(kpr.storeKey), types.ExpiryIndexKeyPrefix)
+    require.GreaterOrEqual(t, countKeys(idxStore), 5)
+
+    // run GC with small budget: 2
+    kpr.GarbageCollectByExpiry(ctx, 2)
+
+    // d90, d95 should be gone; others remain
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d90")
+    require.False(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d95")
+    require.False(t, ok)
+    // not-yet-deleted expired d99 remains until next GC tick
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+    require.True(t, ok)
+    // non-expired remain
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+    require.True(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+    require.True(t, ok)
+
+    // run GC again with larger budget: should delete remaining expired (d99), but not d100/d120
+    kpr.GarbageCollectByExpiry(ctx, 10)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+    require.False(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+    require.True(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+    require.True(t, ok)
+}
+
+func TestConsumePolicyTicket_MarksConsumedKeepsRecord(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 50})
+    // single-use ticket
+    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 60, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+
+    // consume -> should mark consumed and keep record
+    require.NoError(t, kpr.ConsumePolicyTicket(ctx, "c", "u", "d"))
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.True(t, ok)
+    require.True(t, got.Consumed)
+
+    // index should remain until expiry; GC will remove later
+    idxKey := types.GetExpiryIndexKey(60, "c", "u", "d")
+    idxStore := ctx.KVStore(kpr.storeKey)
+    require.True(t, idxStore.Has(idxKey))
+}
+
+func TestDeleteAndRevoke_RemoveIndex(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 10, UsesRemaining: 3}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+
+    // delete
+    kpr.DeletePolicyTicket(ctx, "c", "u", "d")
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.False(t, ok)
+    idxKey := types.GetExpiryIndexKey(10, "c", "u", "d")
+    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+
+    // set again and revoke
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+    require.NoError(t, kpr.RevokePolicyTicket(ctx, "c", "u", "d"))
+    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+}
+
+func TestBulkConsume_MarksConsumedOnZeroUse(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 1})
+    // two tickets
+    t1 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d1", ExpiryHeight: 5, UsesRemaining: 2}
+    t2 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d2", ExpiryHeight: 5, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, t1))
+    require.NoError(t, kpr.SetPolicyTicket(ctx, t2))
+
+    // consume d1 by 1 (remain 1), d2 by 1 (becomes 0 -> mark consumed)
+    err := kpr.ConsumePolicyTicketsBulk(ctx, "c", "u", map[string]uint32{"d1": 1, "d2": 1})
+    require.NoError(t, err)
+
+    // d1 remains
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d1")
+    require.True(t, ok)
+    // d2 remains but consumed
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d2")
+    require.True(t, ok)
+    require.True(t, got.Consumed)
+}
+
+func TestGetPolicyTicket_DoesNotDeleteExpired(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    // set height high and create expired ticket
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 90, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tkt))
+    // call Get -> should not delete even if expired
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.True(t, ok)
+    require.Equal(t, uint64(90), got.ExpiryHeight)
+    // verify keys remain
+    idx := types.GetExpiryIndexKey(90, "c", "u", "d")
+    store := ctx.KVStore(kpr.storeKey)
+    require.True(t, store.Has(idx))
+    require.True(t, store.Has(types.GetPolicyTicketKey("c", "u", "d")))
+}
+
+// removed: HasAnyLiveMethodTicket tests; ante now uses exact digest lookups
 
 // TestCheckContractPolicy_InvalidJSONResponse deprecated: policy probe removed
 func TestCheckContractPolicy_InvalidJSONResponse(t *testing.T) { t.Skip("policy probe removed") }
@@ -652,29 +789,13 @@ func TestGarbageCollect_ZeroExpiry_RemovedAfterHeightAdvance(t *testing.T) {
     if _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero"); !ok { t.Fatalf("ticket not inserted") }
     // Advance height beyond 0 and collect
     ctx = ctx.WithBlockHeight(1)
-    keeper.GarbageCollect(ctx, 10)
+    keeper.GarbageCollectByExpiry(ctx, 10)
     _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero")
     require.False(t, ok)
 }
 
 // HasAnyLiveMethodTicket only returns true for unconsumed, unexpired method tickets (prefix "m:").
-func TestHasAnyLiveMethodTicket_OnlyCountsUnexpiredUnconsumed(t *testing.T) {
-    keeper, ctx := setupKeeperSimple(t)
-    // Set block height
-    ctx = ctx.WithBlockHeight(100)
-    // Expired method ticket
-    require.NoError(t, keeper.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:expired", ExpiryHeight: 50}))
-    // Consumed method ticket
-    require.NoError(t, keeper.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:consumed", ExpiryHeight: 150, Consumed: true}))
-    // Non-method digest ticket (ignored)
-    require.NoError(t, keeper.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "raw:any", ExpiryHeight: 150}))
-    // Valid method ticket
-    require.NoError(t, keeper.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:live", ExpiryHeight: 150}))
-    require.True(t, keeper.HasAnyLiveMethodTicket(ctx, "c", "u"))
-    // Remove the live one and re-check
-    keeper.DeletePolicyTicket(ctx, "c", "u", "m:live")
-    require.False(t, keeper.HasAnyLiveMethodTicket(ctx, "c", "u"))
-}
+// removed: HasAnyLiveMethodTicket tests; ante now uses exact digest lookups
 
 // ComputeMethodDigest must be stable and include a separator to avoid collisions.
 func TestComputeMethodDigest_StableSeparator(t *testing.T) {

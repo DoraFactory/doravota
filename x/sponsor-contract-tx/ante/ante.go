@@ -330,6 +330,17 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+        // CheckTx: enforce min gas price as early as possible before any method parsing/digest lookups
+        if ctx.IsCheckTx() && !simulate {
+            checker := sctd.txFeeChecker
+            if checker == nil {
+                checker = SponsorTxFeeCheckerWithValidatorMinGasPrices
+            }
+            if _, _, feeErr := checker(ctx, tx); feeErr != nil {
+                return ctx, feeErr
+            }
+        }
+
         // Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
         if params.MaxExecMsgsPerTxForSponsor > 0 {
             execCount := 0
@@ -383,34 +394,32 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
             }
         }
 
-        // Compute digest coverage before deciding self-pay early exit (DeliverTx prefers sponsor when a valid ticket exists)
+        // Compute digest coverage before deciding self-pay early exit
         haveValidTicket := false
         selectedDigest := ""
         var requiredCounts map[string]uint32
-        if !(ctx.IsCheckTx() && !sctd.keeper.HasAnyLiveMethodTicket(ctx, contractAddr, userAddr.String())) {
-            if keys, ok := sctd.extractMethodKeysTx(ctx, contractAddr, tx); ok {
-                // Count required uses per digest (same method may appear multiple times)
-                required := make(map[string]uint32)
-                var firstDigest string
-                for i, k := range keys {
-                    md := sctd.keeper.ComputeMethodDigest(contractAddr, []string{k})
-                    required[md]++
-                    if i == 0 { firstDigest = md }
+		if keys, ok := sctd.extractMethodKeysTx(ctx, contractAddr, tx); ok {
+            // Count required uses per digest (same method may appear multiple times)
+            required := make(map[string]uint32)
+            var firstDigest string
+            for i, k := range keys {
+                md := sctd.keeper.ComputeMethodDigest(contractAddr, []string{k})
+                required[md]++
+                if i == 0 { firstDigest = md }
+            }
+            // Validate tickets cover required multiplicity via exact digest lookups
+            now := uint64(ctx.BlockHeight())
+            allCovered := true
+            for md, cnt := range required {
+                t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr.String(), md)
+                if !ok || t.Consumed || now > t.ExpiryHeight || t.UsesRemaining < cnt {
+                    allCovered = false
+                    break
                 }
-                // Validate tickets cover required multiplicity
-                now := uint64(ctx.BlockHeight())
-                allCovered := true
-                for md, cnt := range required {
-                    t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr.String(), md)
-                    if !ok || t.Consumed || now > t.ExpiryHeight || t.UsesRemaining < cnt {
-                        allCovered = false
-                        break
-                    }
-                }
-                if allCovered {
-                    haveValidTicket, selectedDigest = true, firstDigest
-                    requiredCounts = required
-                }
+            }
+            if allCovered {
+                haveValidTicket, selectedDigest = true, firstDigest
+                requiredCounts = required
             }
         }
 
