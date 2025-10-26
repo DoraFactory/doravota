@@ -450,8 +450,12 @@ func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	var err error
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	// Create contract execution transaction
-	tx := suite.createContractExecuteTx(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    // Fund user to allow self-pay so ante can pass-through
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+    suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+    // Create contract execution transaction
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
 	// Mock next handler
 	nextCalled := false
@@ -463,8 +467,8 @@ func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	// Execute ante handler
 	_, err = suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
 
-	// Verify
-	suite.Require().NoError(err)
+    // Verify
+    suite.Require().NoError(err)
 	suite.Require().True(nextCalled)
 }
 
@@ -1083,8 +1087,9 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_ExceedLimit_NoGate() {
     raw := fmt.Sprintf("{\"%s\":%s}", method, buildNestedObject(5)) // exceed limit
     tx := suite.createContractExecuteTxWithMsg(suite.contract, suite.user, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))), raw)
     check := suite.ctx.WithIsCheckTx(true)
-    ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
-    suite.Require().NoError(err)
+    ctxAfter, _ := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    // With grant pre-check in CheckTx, exceeding JSON depth is not reached if grant already fails; allow error here
+    // and ensure no gate is set
     _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
     suite.Require().False(ok)
 }
@@ -1491,11 +1496,8 @@ func (suite *AnteTestSuite) TestTwoPhase_UserGrantLimitExceeded() {
     fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
     tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
     // Inject via ante (requires ticket created above)
-    ctxAfter, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
-    suite.Require().NoError(err)
-    // Deduct -> should fail due to grant limit
-    sponsorDeduct := NewSponsorAwareDeductFeeDecorator(suite.accountKeeper, suite.bankKeeper, nil, suite.keeper, func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) { return fee, 1, nil })
-    _, err = sponsorDeduct.AnteHandle(ctxAfter, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    // With grant pre-check moved earlier, ante itself should error
     suite.Require().Error(err)
     // Ticket not consumed
     t2, _ := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), digest)
@@ -3502,6 +3504,89 @@ func (suite *AnteTestSuite) TestTwoPhase_MethodTicket_MultiMessageInsufficientUs
     suite.Require().NoError(err)
     _, ok := receivedCtx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().False(ok, "sponsorship should not be injected when uses are insufficient for multi-message tx")
+}
+
+// Streaming validation: when the first message's digest is invalid (no ticket),
+// even if a later message has a valid ticket, sponsorship must not be injected.
+// The valid ticket must remain unconsumed.
+func (suite *AnteTestSuite) TestStreaming_EarlyFail_FirstDigestInvalid_SecondValid() {
+    // Setup contract and sponsor with sufficient funds and grant
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+    sponsorRec, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsorRec.SponsorAddress)
+    suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))))
+    suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))))
+
+    // Create a valid ticket only for method "decrement"
+    decDigest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"decrement"})
+    tDec := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: decDigest, ExpiryHeight: uint64(suite.ctx.BlockHeight()+50), UsesRemaining: 1}
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, tDec))
+
+    // Build a tx: first message uses missing ticket ("increment"), second uses valid ("decrement")
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+    msg1 := &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"increment":{}}`)}
+    msg2 := &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"decrement":{}}`)}
+    tx := suite.createTx([]sdk.Msg{msg1, msg2}, []sdk.AccAddress{suite.user}, fee, nil)
+
+    // Fund user so fallback path (no sponsorship) does not error
+    suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+    suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+
+    // Run ante; streaming validator should short-circuit on the first invalid digest and not inject sponsorship
+    var ctxOut sdk.Context
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { ctxOut = ctx; return ctx, nil })
+    suite.Require().NoError(err)
+    _, injected := ctxOut.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
+    suite.Require().False(injected, "sponsorship must not be injected when the first digest is invalid")
+
+    // The valid ticket for "decrement" must remain unconsumed
+    t2, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), decDigest)
+    suite.Require().True(ok)
+    suite.Require().False(t2.Consumed)
+    suite.Require().Equal(uint32(1), t2.UsesRemaining)
+}
+
+// Streaming validation: if the first message's digest is expired and a later message has a valid ticket,
+// sponsorship must not be injected, and the later valid ticket must remain untouched.
+func (suite *AnteTestSuite) TestStreaming_EarlyFail_FirstExpired_SecondValid() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins())
+    sponsorRec, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsorRec.SponsorAddress)
+    suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))))
+    suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, sponsorAddr, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))))
+
+    // Expired ticket for "increment"
+    incDigest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    expired := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: incDigest, ExpiryHeight: uint64(suite.ctx.BlockHeight()-1), UsesRemaining: 1}
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, expired))
+
+    // Valid ticket for "decrement"
+    decDigest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"decrement"})
+    valid := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: decDigest, ExpiryHeight: uint64(suite.ctx.BlockHeight()+50), UsesRemaining: 1}
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, valid))
+
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+    msg1 := &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"increment":{}}`)}
+    msg2 := &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"decrement":{}}`)}
+    tx := suite.createTx([]sdk.Msg{msg1, msg2}, []sdk.AccAddress{suite.user}, fee, nil)
+
+    // Fund user to allow fallback
+    suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
+    suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee)
+
+    var ctxOut sdk.Context
+    _, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { ctxOut = ctx; return ctx, nil })
+    suite.Require().NoError(err)
+    _, injected := ctxOut.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
+    suite.Require().False(injected)
+
+    // The later valid ticket must remain unconsumed
+    t2, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), decDigest)
+    suite.Require().True(ok)
+    suite.Require().False(t2.Consumed)
+    suite.Require().Equal(uint32(1), t2.UsesRemaining)
 }
 
 // Two-phase: method-level ticket should not match when method name differs
