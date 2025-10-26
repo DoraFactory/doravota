@@ -238,8 +238,8 @@ func (msg MsgRevokePolicyTicket) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", msg.UserAddress)
 	}
-	if msg.Digest == "" {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "digest cannot be empty")
+	if msg.Method == "" {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method is required")
 	}
 	return nil
 }
@@ -458,13 +458,13 @@ func NewGenesisState(sponsors []*ContractSponsor, userGrantUsages []*UserGrantUs
 
 // DefaultGenesisState returns a default genesis state
 func DefaultGenesisState() *GenesisState {
-    params := DefaultParams()
-    return &GenesisState{
-        Sponsors:        []*ContractSponsor{},
-        Params:          &params,
-        UserGrantUsages: []*UserGrantUsage{},
-        PolicyTickets:   []*PolicyTicket{},
-    }
+	params := DefaultParams()
+	return &GenesisState{
+		Sponsors:        []*ContractSponsor{},
+		Params:          &params,
+		UserGrantUsages: []*UserGrantUsage{},
+		PolicyTickets:   []*PolicyTicket{},
+	}
 }
 
 // ValidateGenesis validates the genesis state
@@ -538,16 +538,16 @@ func ValidateGenesis(data GenesisState) error {
 		}
 	}
 
-    // Validate user grant usages
-    // First pass: light validation + duplicate detection prioritized
-    seenUsage := make(map[string]struct{})
-    for _, usage := range data.UserGrantUsages {
-        if usage == nil {
-            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
-        }
-        if usage.UserAddress == "" {
-            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
-        }
+	// Validate user grant usages
+	// First pass: light validation + duplicate detection prioritized
+	seenUsage := make(map[string]struct{})
+	for _, usage := range data.UserGrantUsages {
+		if usage == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
+		}
+		if usage.UserAddress == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
+		}
 		if _, err := sdk.AccAddressFromBech32(usage.UserAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user grant usage user address: %s", usage.UserAddress)
 		}
@@ -611,38 +611,38 @@ func ValidateGenesis(data GenesisState) error {
 		}
 	}
 
-    // Validate policy tickets: basic fields + duplicate detection on (contract,user,digest)
-    // Determine method length limit (use params if provided, else defaults)
-    methodLimit := DefaultParams().MaxMethodNameBytes
-    if data.Params != nil && data.Params.MaxMethodNameBytes != 0 {
-        methodLimit = data.Params.MaxMethodNameBytes
-    }
-    seenTickets := make(map[string]struct{})
-    for _, t := range data.PolicyTickets {
-        if t == nil {
-            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket cannot be nil")
-        }
-        // Basic field checks (keep in sync with InitGenesis defensive checks)
-        if err := ValidateContractAddress(t.ContractAddress); err != nil {
-            return err
-        }
-        if _, err := sdk.AccAddressFromBech32(t.UserAddress); err != nil {
-            return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid policy ticket user address: %s", t.UserAddress)
-        }
-        if t.Digest == "" {
-            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket digest cannot be empty")
-        }
-        // Optional method display length check
-        if t.Method != "" && uint32(len(t.Method)) > methodLimit {
-            return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket method too long")
-        }
-        // Duplicate detection
-        key := t.ContractAddress + "/" + t.UserAddress + "/" + t.Digest
-        if _, exists := seenTickets[key]; exists {
-            return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate policy ticket for contract %s user %s digest %s", t.ContractAddress, t.UserAddress, t.Digest)
-        }
-        seenTickets[key] = struct{}{}
-    }
+	// Validate policy tickets: basic fields + duplicate detection on (contract,user,digest)
+	// Determine method length limit (use params if provided, else defaults)
+	methodLimit := DefaultParams().MaxMethodNameBytes
+	if data.Params != nil && data.Params.MaxMethodNameBytes != 0 {
+		methodLimit = data.Params.MaxMethodNameBytes
+	}
+	seenTickets := make(map[string]struct{})
+	for _, t := range data.PolicyTickets {
+		if t == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket cannot be nil")
+		}
+		// Basic field checks (keep in sync with InitGenesis defensive checks)
+		if err := ValidateContractAddress(t.ContractAddress); err != nil {
+			return err
+		}
+		if _, err := sdk.AccAddressFromBech32(t.UserAddress); err != nil {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid policy ticket user address: %s", t.UserAddress)
+		}
+		if t.Digest == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket digest cannot be empty")
+		}
+		// Optional method display length check
+		if t.Method != "" && uint32(len(t.Method)) > methodLimit {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket method too long")
+		}
+		// Duplicate detection
+		key := t.ContractAddress + "/" + t.UserAddress + "/" + t.Digest
+		if _, exists := seenTickets[key]; exists {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate policy ticket for contract %s user %s digest %s", t.ContractAddress, t.UserAddress, t.Digest)
+		}
+		seenTickets[key] = struct{}{}
+	}
 
 	// Validate parameters
 	if data.Params != nil {
@@ -658,16 +658,16 @@ func ValidateGenesis(data GenesisState) error {
 
 // DefaultParams returns default parameters
 func DefaultParams() Params {
-    return Params{
-        SponsorshipEnabled:          true,
-        PolicyTicketTtlBlocks:       30,
-        MaxExecMsgsPerTxForSponsor:  25,
-        MaxPolicyExecMsgBytes:       64 * 1024,
-        MaxMethodTicketUsesPerIssue: 50,
-        TicketGcPerBlock:            200,
-        MaxMethodNameBytes:          64,
-        MaxMethodJsonDepth:          20,
-    }
+	return Params{
+		SponsorshipEnabled:          true,
+		PolicyTicketTtlBlocks:       30,
+		MaxExecMsgsPerTxForSponsor:  25,
+		MaxPolicyExecMsgBytes:       64 * 1024,
+		MaxMethodTicketUsesPerIssue: 50,
+		TicketGcPerBlock:            200,
+		MaxMethodNameBytes:          64,
+		MaxMethodJsonDepth:          20,
+	}
 }
 
 // Validate validates the parameters
@@ -682,27 +682,27 @@ func (p Params) Validate() error {
 	if p.MaxPolicyExecMsgBytes > 1024*1024 {
 		return errorsmod.Wrap(ErrInvalidParams, "max_policy_exec_msg_bytes exceeds maximum (1048576)")
 	}
-    // Method ticket uses per issue must be within [1, 100]
-    if p.MaxMethodTicketUsesPerIssue < 1 || p.MaxMethodTicketUsesPerIssue > 100 {
-        return errorsmod.Wrap(ErrInvalidParams, "max_method_ticket_uses_per_issue must be within [1, 100]")
-    }
+	// Method ticket uses per issue must be within [1, 100]
+	if p.MaxMethodTicketUsesPerIssue < 1 || p.MaxMethodTicketUsesPerIssue > 100 {
+		return errorsmod.Wrap(ErrInvalidParams, "max_method_ticket_uses_per_issue must be within [1, 100]")
+	}
 
-    // Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
-    // Keep validation lenient to let governance choose appropriate values.
+	// Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
+	// Keep validation lenient to let governance choose appropriate values.
 
-    // GC per block may be zero to disable; no upper bound enforced here.
+	// GC per block may be zero to disable; no upper bound enforced here.
 
-    // Max method name bytes bounds: 0 means no explicit cap; otherwise must be <= 256
-    if p.MaxMethodNameBytes > 256 {
-        return errorsmod.Wrap(ErrInvalidParams, "max_method_name_bytes must be within [1, 256]")
-    }
+	// Max method name bytes bounds: 0 means no explicit cap; otherwise must be <= 256
+	if p.MaxMethodNameBytes > 256 {
+		return errorsmod.Wrap(ErrInvalidParams, "max_method_name_bytes must be within [1, 256]")
+	}
 
-    // MaxMethodJsonDepth: 0 means use default; otherwise must be within [1, 64]
-    if p.MaxMethodJsonDepth > 64 {
-        return errorsmod.Wrap(ErrInvalidParams, "max_method_json_depth must be within [1, 64]")
-    }
+	// MaxMethodJsonDepth: 0 means use default; otherwise must be within [1, 64]
+	if p.MaxMethodJsonDepth > 64 {
+		return errorsmod.Wrap(ErrInvalidParams, "max_method_json_depth must be within [1, 64]")
+	}
 
-    return nil
+	return nil
 }
 
 // === Message implementations for MsgUpdateParams ===

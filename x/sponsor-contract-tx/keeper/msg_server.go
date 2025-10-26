@@ -1,8 +1,9 @@
 package keeper
 
 import (
-	"context"
-	"fmt"
+    "context"
+    "fmt"
+    "strings"
 
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -610,6 +611,10 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
     if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
         return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
     }
+    // Validate method
+    if strings.TrimSpace(msg.Method) == "" {
+        return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method is required")
+    }
     // Require sponsor exists for this contract
     if _, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress); !found {
         return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
@@ -632,12 +637,11 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
             return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not authorized to revoke tickets")
         }
     }
-    // Revoke ticket (must exist and be unconsumed). Fetch method for event display first.
-    method := ""
-    if tPrev, ok := k.Keeper.GetPolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, msg.Digest); ok {
-        method = tPrev.Method
-    }
-    if err := k.Keeper.RevokePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, msg.Digest); err != nil {
+    // Compute digest from method and revoke ticket (must exist and be unconsumed).
+    digest := k.Keeper.ComputeMethodDigestSingle(msg.ContractAddress, msg.Method)
+    // For event observability, prefer the provided method
+    method := msg.Method
+    if err := k.Keeper.RevokePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); err != nil {
         return nil, err
     }
     // Emit event
@@ -646,7 +650,7 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
             types.EventTypePolicyTicketRevoked,
             sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
             sdk.NewAttribute(types.AttributeKeyUser, msg.UserAddress),
-            sdk.NewAttribute(types.AttributeKeyDigest, msg.Digest),
+            sdk.NewAttribute(types.AttributeKeyDigest, digest),
             sdk.NewAttribute(types.AttributeKeyMethod, method),
         ),
     )

@@ -221,8 +221,9 @@ func TestMsgServer_RevokePolicyTicket(t *testing.T) {
 
     // Create a ticket to revoke
     user := sdk.AccAddress([]byte("user_addr_revoke___________")).String()
-    digest := "abcd"
-    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10), Method: "ping"}
+    method := "ping"
+    digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
+    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10), Method: method}
     require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
 
     // Revoke by admin
@@ -231,7 +232,7 @@ func TestMsgServer_RevokePolicyTicket(t *testing.T) {
         Creator:         admin.String(),
         ContractAddress: contract.String(),
         UserAddress:     user,
-        Digest:          digest,
+        Method:          method,
     })
     require.NoError(t, err)
     // Ticket gone
@@ -255,18 +256,20 @@ func TestMsgServer_RevokePolicyTicket(t *testing.T) {
         Creator:         admin.String(),
         ContractAddress: contract.String(),
         UserAddress:     user,
-        Digest:          digest,
+        Method:          method,
     })
     require.Error(t, err)
 
     // Create consumed ticket -> error
-    tkt2 := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: "efgh", ExpiryHeight: uint64(ctx.BlockHeight()+10), Consumed: true}
+    method2 := "pong"
+    digest2 := keeper.ComputeMethodDigestSingle(contract.String(), method2)
+    tkt2 := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest2, ExpiryHeight: uint64(ctx.BlockHeight()+10), Consumed: true, Method: method2}
     require.NoError(t, keeper.SetPolicyTicket(ctx, tkt2))
     _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
         Creator:         admin.String(),
         ContractAddress: contract.String(),
         UserAddress:     user,
-        Digest:          "efgh",
+        Method:          method2,
     })
     require.Error(t, err)
 
@@ -277,7 +280,7 @@ func TestMsgServer_RevokePolicyTicket(t *testing.T) {
         Creator:         notAdmin.String(),
         ContractAddress: contract.String(),
         UserAddress:     user,
-        Digest:          "nope",
+        Method:          "nope",
     })
     require.Error(t, err)
 }
@@ -297,8 +300,9 @@ func TestRevokePolicyTicket_IssuerAuthorized(t *testing.T) {
     require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true, TicketIssuerAddress: issuer}))
 
     // Create a live ticket to revoke
-    digest := "abcd"
-    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10)}
+    method := "alpha"
+    digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
+    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10), Method: method}
     require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
 
     // Revoke by issuer (not admin)
@@ -306,7 +310,7 @@ func TestRevokePolicyTicket_IssuerAuthorized(t *testing.T) {
         Creator:         issuer,
         ContractAddress: contract.String(),
         UserAddress:     user.String(),
-        Digest:          digest,
+        Method:          method,
     })
     require.NoError(t, err)
 
@@ -2016,7 +2020,7 @@ func TestRevokePolicyTicket_ReissueCreatesNew(t *testing.T) {
         Creator:         admin,
         ContractAddress: contract,
         UserAddress:     user,
-        Digest:          digest,
+        Method:          "go",
     })
     require.NoError(t, err)
     _, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
@@ -2070,7 +2074,7 @@ func TestRevokePolicyTicket_PartiallyUsedMultiUse(t *testing.T) {
         Creator:         admin,
         ContractAddress: contract,
         UserAddress:     user,
-        Digest:          digest,
+        Method:          "run",
     })
     require.NoError(t, err)
 

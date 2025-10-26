@@ -76,29 +76,38 @@ func GetCmdIssuePolicyTicket() *cobra.Command {
 
 // GetCmdRevokePolicyTicket submits a MsgRevokePolicyTicket (admin or ticket issuer)
 func GetCmdRevokePolicyTicket() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "revoke-ticket [contract-address] [user-address] [digest]",
-		Short: "Admin or ticket issuer revokes a policy ticket",
-		Args:  cobra.ExactArgs(3),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientTxContext(cmd)
-			if err != nil {
-				return err
-			}
-			m := &types.MsgRevokePolicyTicket{
-				Creator:         clientCtx.GetFromAddress().String(),
-				ContractAddress: args[0],
-				UserAddress:     args[1],
-				Digest:          args[2],
-			}
-			if err := m.ValidateBasic(); err != nil {
-				return err
-			}
-			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), m)
-		},
-	}
-	flags.AddTxFlagsToCmd(cmd)
-	return cmd
+    cmd := &cobra.Command{
+        Use:   "revoke-ticket [contract-address] [user-address] [method]",
+        Short: "Admin or ticket issuer revokes a policy ticket by method",
+        Long: `Revoke a policy ticket by method for a given contract and user.
+
+Only the contract admin or the configured ticket_issuer_address can revoke tickets.
+Provide the top-level CosmWasm execute method name; the chain computes the
+corresponding method digest internally and revokes the unconsumed ticket if it exists.
+
+Example:
+  dorad tx sponsor revoke-ticket <contract> <user> increment \
+    --from <admin> --gas auto --gas-prices 100000000000peaka`,
+        Args:  cobra.ExactArgs(3),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientTxContext(cmd)
+            if err != nil {
+                return err
+            }
+            m := &types.MsgRevokePolicyTicket{
+                Creator:         clientCtx.GetFromAddress().String(),
+                ContractAddress: args[0],
+                UserAddress:     args[1],
+                Method:          args[2],
+            }
+            if err := m.ValidateBasic(); err != nil {
+                return err
+            }
+            return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), m)
+        },
+    }
+    flags.AddTxFlagsToCmd(cmd)
+    return cmd
 }
 
 // GetCmdWithdrawSponsorFunds implements the withdraw sponsor funds command
