@@ -557,28 +557,22 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// (sponsor-specific pre-checks executed earlier inside fee block when haveValidTicket)
 		// Two-phase flow: inject sponsor info only in DeliverTx; in CheckTx, mark authorization when a valid ticket exists.
-		if ctx.IsCheckTx() {
-			if haveValidTicket {
-				ctx = ctx.WithValue(execTicketGateKey{}, ExecTicketGateInfo{ContractAddr: contractAddr, UserAddr: userAddr.String()})
+		if haveValidTicket {
+			contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
+			sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+			fee := sdk.NewCoins()
+			if feeTx, ok := tx.(sdk.FeeTx); ok {
+				fee = feeTx.GetFee()
 			}
-		} else {
-			if haveValidTicket {
-				contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
-				sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-				fee := sdk.NewCoins()
-				if feeTx, ok := tx.(sdk.FeeTx); ok {
-					fee = feeTx.GetFee()
-				}
-				sInfo := SponsorPaymentInfo{
-					ContractAddr: contractAccAddr,
-					SponsorAddr:  sponsorAccAddr,
-					UserAddr:     userAddr,
-					Fee:          fee,
-					IsSponsored:  true,
-					DigestCounts: requiredCounts,
-				}
-				ctx = ctx.WithValue(sponsorPaymentKey{}, sInfo)
+			sInfo := SponsorPaymentInfo{
+				ContractAddr: contractAccAddr,
+				SponsorAddr:  sponsorAccAddr,
+				UserAddr:     userAddr,
+				Fee:          fee,
+				IsSponsored:  true,
+				DigestCounts: requiredCounts,
 			}
+			ctx = ctx.WithValue(sponsorPaymentKey{}, sInfo)
 		}
 
 		// Two‑phase requires ticket: after (optional) sponsor injection via ticket,
@@ -630,8 +624,6 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		)
 		return next(ctx, tx, simulate)
 	}
-
-	return next(ctx, tx, simulate)
 }
 
 // TransactionValidationResult holds the result of transaction validation

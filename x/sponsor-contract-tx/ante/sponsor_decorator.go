@@ -63,12 +63,6 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	// In CheckTx, if ExecuteTicketGate marked this tx as authorized via a valid ticket,
 	// skip standard fee checks and proceed. This enables sponsored txs to enter the mempool
 	// without requiring the user to prepay fees.
-	if ctx.IsCheckTx() {
-		if _, ok := ctx.Value(execTicketGateKey{}).(ExecTicketGateInfo); ok {
-			// Basic checks already done in SponsorContractTxAnteDecorator; proceed
-			return next(ctx, tx, simulate)
-		}
-	}
 	// Check if this transaction has sponsor payment information in context using type-safe key
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
 		if sponsorPayment.IsSponsored {

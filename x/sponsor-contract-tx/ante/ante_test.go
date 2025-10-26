@@ -1025,8 +1025,8 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_WithinLimit_SetsGate() {
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     suite.Require().NoError(err)
-    // Gate should be set
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    // In unified CheckTx path, sponsor payment info should be injected
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok)
 }
 
@@ -1058,7 +1058,7 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_AtLimit_SetsGate() {
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     suite.Require().NoError(err)
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok)
 }
 
@@ -1085,8 +1085,8 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_ExceedLimit_NoGate() {
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, _ := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     // With grant pre-check in CheckTx, exceeding JSON depth is not reached if grant already fails; allow error here
-    // and ensure no gate is set
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    // and ensure sponsor info is not injected
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().False(ok)
 }
 
@@ -3824,7 +3824,7 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_AtLimit_SetsGate() {
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     suite.Require().NoError(err)
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok)
 }
 
@@ -3856,9 +3856,9 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_ExceedLimit_NoGate() {
 
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
-    // Fallback path in CheckTx: user cannot self-pay -> expect error; and should not set gate
+    // Fallback path in CheckTx: user cannot self-pay -> expect error; and sponsor payment should not be injected
     suite.Require().Error(err)
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().False(ok)
 }
 
@@ -3895,7 +3895,7 @@ func (suite *AnteTestSuite) TestCheckTx_NameAndDepth_AtLimits_SetsGate() {
     check := suite.ctx.WithIsCheckTx(true)
     ctxAfter, err := anteDec.AnteHandle(check, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     suite.Require().NoError(err)
-    _, ok := ctxAfter.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok := ctxAfter.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok)
 }
 
@@ -4165,12 +4165,12 @@ func (suite *AnteTestSuite) TestCheckTx_TTLBoundary_MethodTicketValidThenExpired
     fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1)))
     tx := suite.createContractExecuteTxWithMsg(suite.contract, suite.user, fee, `{"inc":{}}`)
 
-    // At height == expiry: haveValidTicket should be true; gate should be set
+    // At height == expiry: haveValidTicket should be true; sponsor info should be injected in CheckTx
     checkCtx := suite.ctx.WithIsCheckTx(true).WithBlockHeight(int64(expiry))
     var ctxOut sdk.Context
     _, err := anteDec.AnteHandle(checkCtx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { ctxOut = ctx; return ctx, nil })
     suite.Require().NoError(err)
-    _, ok := ctxOut.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok := ctxOut.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok, "ticket should authorize at expiry height")
 
     // At height == expiry+1: gate should not be present (expired). Fund user for fallback self-pay.
@@ -4180,7 +4180,7 @@ func (suite *AnteTestSuite) TestCheckTx_TTLBoundary_MethodTicketValidThenExpired
     var ctxOut2 sdk.Context
     _, err = anteDec.AnteHandle(checkCtx2, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { ctxOut2 = ctx; return ctx, nil })
     suite.Require().NoError(err)
-    _, ok = ctxOut2.Value(execTicketGateKey{}).(ExecTicketGateInfo)
+    _, ok = ctxOut2.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().False(ok, "ticket should be expired after expiry height")
 }
 

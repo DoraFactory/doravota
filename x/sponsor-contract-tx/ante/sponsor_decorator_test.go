@@ -658,10 +658,10 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTx_ExecGate_SkipsSponsorDecorat
         return ctx, nil
     }
 
-    // Should bypass fee checking and proceed
+    // In unified path without gate short-circuit, decorator should enforce fee checker in CheckTx
     _, err := suite.sponsorDecorator.AnteHandle(ctx, tx, false, next)
-    suite.Require().NoError(err)
-    suite.Require().True(nextCalled)
+    suite.Require().Error(err)
+    suite.Require().False(nextCalled)
 }
 
 // DeliverTx: When digest is present, SponsoredTx event should include digest_type=method
