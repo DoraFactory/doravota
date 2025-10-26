@@ -851,6 +851,88 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigestCounts_ConsumesAl
     suite.Require().Equal(uint32(0), t2.UsesRemaining)
 }
 
+// When multiple digests are present, SponsoredTx event should include
+// uses_remaining and expiry_height reflecting the most constrained ticket
+// (minimum uses_remaining and minimum expiry_height) prior to consumption.
+func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigest_EmitsMinUsesAndExpiry() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(250)))
+
+    // Create sponsor and fund sufficiently
+    suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+    sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+
+    // Two tickets with different remaining uses and expiry
+    inc := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    dec := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"decrement"})
+    // inc: uses 3, expiry +60; dec: uses 1, expiry +30  => min uses=1, min expiry=+30
+    expInc := uint64(suite.ctx.BlockHeight()) + 60
+    expDec := uint64(suite.ctx.BlockHeight()) + 30
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: inc, UsesRemaining: 3, ExpiryHeight: expInc, Method: "increment"}))
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: dec, UsesRemaining: 1, ExpiryHeight: expDec, Method: "decrement"}))
+
+    sp := SponsorPaymentInfo{ContractAddr: suite.contract, SponsorAddr: sponsorAddr, UserAddr: suite.user, Fee: fee, IsSponsored: true, DigestCounts: map[string]uint32{inc: 2, dec: 1}}
+    deliver := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager()).WithValue(sponsorPaymentKey{}, sp)
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    _, err := suite.sponsorDecorator.AnteHandle(deliver, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
+    suite.Require().NoError(err)
+
+    // Event assertions
+    foundEvt := false
+    hasUses := false
+    hasExpiry := false
+    for _, ev := range deliver.EventManager().Events() {
+        if ev.Type != types.EventTypeSponsoredTx { continue }
+        foundEvt = true
+        for _, a := range ev.Attributes {
+            if string(a.Key) == "uses_remaining" && string(a.Value) == "1" { hasUses = true }
+            if string(a.Key) == types.AttributeKeyExpiryHeight && string(a.Value) == fmt.Sprintf("%d", expDec) { hasExpiry = true }
+        }
+    }
+    suite.Require().True(foundEvt, "SponsoredTx event expected")
+    suite.Require().True(hasUses, "uses_remaining should reflect minimum across tickets")
+    suite.Require().True(hasExpiry, "expiry should reflect minimum across tickets")
+
+    // Also expect per-digest ticket events with pre/post and consumed counts
+    incSeen := false
+    decSeen := false
+    for _, ev := range deliver.EventManager().Events() {
+        if ev.Type != types.EventTypeSponsoredTxTicket { continue }
+        var dg, usesC, usesPre, usesPost, m string
+        for _, a := range ev.Attributes {
+            switch string(a.Key) {
+            case types.AttributeKeyDigest:
+                dg = string(a.Value)
+            case types.AttributeKeyUsesConsumed:
+                usesC = string(a.Value)
+            case types.AttributeKeyUsesRemainingPre:
+                usesPre = string(a.Value)
+            case types.AttributeKeyUsesRemainingPost:
+                usesPost = string(a.Value)
+            case types.AttributeKeyMethod:
+                m = string(a.Value)
+            }
+        }
+        if dg == inc {
+            suite.Require().Equal("2", usesC)
+            suite.Require().Equal("3", usesPre)
+            suite.Require().Equal("1", usesPost) // After consuming 2 of 3
+            suite.Require().Equal("increment", m)
+            incSeen = true
+        }
+        if dg == dec {
+            suite.Require().Equal("1", usesC)
+            suite.Require().Equal("1", usesPre)
+            suite.Require().Equal("0", usesPost)
+            suite.Require().Equal("decrement", m)
+            decSeen = true
+        }
+    }
+    suite.Require().True(incSeen)
+    suite.Require().True(decSeen)
+}
+
 // When DigestCounts is absent, fee is deducted but no ticket is consumed.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_NoConsumption() {
     suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())

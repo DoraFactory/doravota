@@ -163,15 +163,42 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
 	}
 
-    // Best-effort: fetch uses_remaining and expiry before consuming (for event)
+    // Best-effort: fetch uses_remaining and expiry before consuming (for summary event)
     usesRem := ""
     expiry := ""
+    // For per-digest ticket events, take a pre-consumption snapshot for all digests
+    type ticketSnap struct { uses uint32; expiry uint64; method string }
+    pre := make(map[string]ticketSnap)
     if !ctx.IsCheckTx() {
-        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) == 1 {
-            for dg := range sp.DigestCounts {
-                if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
-                    usesRem = fmt.Sprintf("%d", t.UsesRemaining)
-                    expiry = fmt.Sprintf("%d", t.ExpiryHeight)
+        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+            if len(sp.DigestCounts) == 1 {
+                for dg := range sp.DigestCounts {
+                    if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+                        pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
+                        usesRem = fmt.Sprintf("%d", t.UsesRemaining)
+                        expiry = fmt.Sprintf("%d", t.ExpiryHeight)
+                    }
+                }
+            } else {
+                // Multi-digest: show the most constrained ticket state (min uses_remaining and min expiry)
+                minRemaining := uint32(math.MaxUint32)
+                minExpiry := uint64(math.MaxUint64)
+                for dg := range sp.DigestCounts {
+                    if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+                        pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
+                        if t.UsesRemaining < minRemaining {
+                            minRemaining = t.UsesRemaining
+                        }
+                        if t.ExpiryHeight < minExpiry {
+                            minExpiry = t.ExpiryHeight
+                        }
+                    }
+                }
+                if minRemaining != math.MaxUint32 {
+                    usesRem = fmt.Sprintf("%d", minRemaining)
+                }
+                if minExpiry != math.MaxUint64 {
+                    expiry = fmt.Sprintf("%d", minExpiry)
                 }
             }
         }
@@ -188,26 +215,59 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
         }
     }
 
-	// Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
-	if !ctx.IsCheckTx() {
-		dType := "method" // only method tickets are supported
-		ev := sdk.NewEvent(
-			types.EventTypeSponsoredTx,
-			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
-			sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-			sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
-			sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
-		)
-		if usesRem != "" {
-			ev = ev.AppendAttributes(sdk.NewAttribute("uses_remaining", usesRem))
-		}
-		if expiry != "" {
-			ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry))
-		}
-		ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
-		ctx.EventManager().EmitEvent(ev)
-	}
+    // Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
+    if !ctx.IsCheckTx() {
+        dType := "method" // only method tickets are supported
+        ev := sdk.NewEvent(
+            types.EventTypeSponsoredTx,
+            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+            sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+            sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
+            sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
+        )
+        if usesRem != "" {
+            ev = ev.AppendAttributes(sdk.NewAttribute("uses_remaining", usesRem))
+        }
+        if expiry != "" {
+            ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry))
+        }
+        ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
+        ctx.EventManager().EmitEvent(ev)
+
+        // Emit per-digest ticket detail events (one per digest)
+        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+            for dg, consumed := range sp.DigestCounts {
+                // Fetch post state
+                postUses := uint32(0)
+                method := ""
+                exp := uint64(0)
+                if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+                    postUses = t.UsesRemaining
+                    method = t.Method
+                    exp = t.ExpiryHeight
+                }
+                // Fall back to pre snapshot for method/expiry if post not found
+                if snap, ok := pre[dg]; ok {
+                    if method == "" { method = snap.method }
+                    if exp == 0 { exp = snap.expiry }
+                }
+                ctx.EventManager().EmitEvent(
+                    sdk.NewEvent(
+                        types.EventTypeSponsoredTxTicket,
+                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+                        sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+                        sdk.NewAttribute(types.AttributeKeyDigest, dg),
+                        sdk.NewAttribute(types.AttributeKeyMethod, method),
+                        sdk.NewAttribute(types.AttributeKeyUsesConsumed, fmt.Sprintf("%d", consumed)),
+                        sdk.NewAttribute(types.AttributeKeyUsesRemainingPre, fmt.Sprintf("%d", pre[dg].uses)),
+                        sdk.NewAttribute(types.AttributeKeyUsesRemainingPost, fmt.Sprintf("%d", postUses)),
+                        sdk.NewAttribute(types.AttributeKeyExpiryHeight, fmt.Sprintf("%d", exp)),
+                    ),
+                )
+            }
+        }
+    }
 
 	ctx.Logger().With("module", "sponsor-contract-tx").Info(
 		"sponsor fee deducted and user quota updated",

@@ -6,6 +6,7 @@ const (
     EventTypeUpdateSponsor         = "update_sponsor"
     EventTypeDeleteSponsor         = "delete_sponsor"
     EventTypeSponsoredTx           = "sponsored_transaction"
+    EventTypeSponsoredTxTicket     = "sponsored_tx_ticket" // New: per-digest ticket detail for a sponsored tx
     EventTypePolicyTicketRevoked    = "policy_ticket_revoked"
     EventTypePolicyTicketIssued     = "policy_ticket_issued"
     EventTypeTicketUsesClamped      = "ticket_uses_clamped"
@@ -40,6 +41,9 @@ const (
     AttributeKeyExpiryHeight         = "expiry_height"
     AttributeKeyTtlLeft              = "ttl_left"
     AttributeKeyMethod               = "method"
+    AttributeKeyUsesConsumed         = "uses_consumed"           // New: consumed uses for this digest in the tx
+    AttributeKeyUsesRemainingPre     = "uses_remaining_pre"      // New: pre-consumption remaining uses
+    AttributeKeyUsesRemainingPost    = "uses_remaining_post"     // New: post-consumption remaining uses
     AttributeKeyRequestedUses        = "requested_uses"
     AttributeKeyClampedTo            = "clamped_to"
     // Param update attribute keys
