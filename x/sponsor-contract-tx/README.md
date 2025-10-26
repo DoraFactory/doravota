@@ -84,6 +84,7 @@ Two‑phase, method‑ticket based sponsorship:
 
 - Events and housekeeping
   - `policy_ticket_issued`, `policy_ticket_revoked` (revoked includes `method`), `ticket_uses_clamped`, `policy_ticket_issue_conflict`.
+  - `sponsored_transaction` summary event; and one `sponsored_tx_ticket` event per digest with pre/post uses and consumed counts (DeliverTx only).
   - Per‑block GC removes expired tickets (`ticket_gc_per_block`). Genesis import/export supports tickets with duplicate detection.
 
 ## Spam Prevention
@@ -136,40 +137,44 @@ message UserGrantUsage {
 ## Transaction Flow
 
 ```mermaid
-graph TD
-    A[User submits tx] --> B[SponsorContractTxAnteDecorator]
-    B --> C{Global sponsorship enabled?}
-    C -->|No| D[Standard fee path (emit event)]
-    C -->|Yes| E{Has feegrant?}
-    E -->|Yes| D
-    E -->|No| F[Validate tx shape: only MsgExecuteContract to one contract]
-    F --> G{Is contract sponsored?}
-    G -->|No| D
-    G -->|Yes| H[Extract top-level method keys (1 per msg)]
-    H --> I[Compute method digests and required counts]
-    I --> J{User holds valid method tickets covering counts?}
-    J -->|No| K{User can self-pay declared fee?}
-    K -->|Yes| D
-    K -->|No| L[Return insufficient funds]
-    J -->|Yes| M{User can self-pay declared fee?}
-    M -->|Yes| D
-    M -->|No| N[Check grant limit + sponsor spendable >= declared fee]
-    N -->|No| O[Return clear error (limit/funds)]
-    N -->|Yes| P[CheckTx marks ticket gate; DeliverTx injects SponsorPaymentInfo]
-    P --> Q[SponsorAwareDeductFeeDecorator]
-    Q --> R[Deduct fee from sponsor -> fee collector]
-    R --> S[Update user grant usage]
-    S --> T[Consume ticket(s) in DeliverTx]
-    T --> U[Emit SponsoredTx event]
-    D --> V[Execute tx normally]
-    U --> V
+flowchart TD
+    A[User Tx] --> B[SponsorContractTxAnteDecorator]
+    B --> C{Feegrant set?}
+    C -- Yes --> Z[Standard fee path] --> V[Execute]
+    C -- No --> D{Global sponsorship enabled?}
+    D -- No --> Z
+    D -- Yes --> E[Validate shape: only MsgExecuteContract to one contract]
+    E --> F{Contract exists?}
+    F -- No --> Z
+    F -- Yes --> G{Sponsored for this contract?}
+    G -- No --> Z
+    G -- Yes --> H[CheckTx: enforce min gas price]
+    H --> I[Caps: max exec msgs per tx; max JSON bytes]
+    I --> J{Declared fee and user self-pay?}
+    J -- User can self-pay --> Z
+    J -- No --> K[Precheck: user grant limit]
+    K -- Exceeded --> O[Error: grant limit]
+    K -- OK --> L[Parse top-level method; build digest counts]
+    L --> M{Tickets valid and cover counts?}
+    M -- No --> P[Fallback: user pays or insufficient funds error]
+    M -- Yes --> N[Precheck: sponsor account exists and balance >= fee]
+    N -- No --> Q[Error: sponsor insufficient]
+    N -- Yes --> R{CheckTx or DeliverTx?}
+    R -- CheckTx --> S[Mark ticket gate; pass to next]
+    R -- DeliverTx --> T[Inject SponsorPaymentInfo; pass to next]
+    T --> U[SponsorAwareDeductFeeDecorator]
+    U --> W[Deduct sponsor fee; update usage; consume tickets; emit events]
+    Z --> V
+    S --> V
+    W --> V
 ```
 
 Notes
 - Two‑phase gating via method tickets only; no runtime contract policy/query on execute.
-- CheckTx enforces validator min‑gas‑price before expensive work; zero‑fee tx are bypassed in CheckTx.
-- Self‑pay preference: if the user can afford the declared fee, sponsorship is skipped.
-- Feegrant precedence: when FeeGranter is set, standard fee handling applies and sponsorship is skipped.
+- CheckTx enforces validator min‑gas‑price before parsing and KV reads; zero‑fee tx bypass sponsorship checks in CheckTx。
+- Self‑pay优先：用户能自付则直接走标准扣费路径（在方法解析之前判定）。
+- Feegrant优先：设置 FeeGranter 时直接走标准扣费逻辑，跳过 sponsorship。
+- 在进入方法解析前，还会执行结构与资源上限校验（同合约消息条数/每条原始 JSON 字节上限）。
 
 ## Security Model
 
@@ -239,6 +244,11 @@ All sponsored transactions must pass structural checks **before** ticket/eligibi
 7. **Feegrant Priority**: Feegrant takes precedence over sponsorship to prevent conflicts
 8. **Global Toggle**: Sponsorship can be globally disabled via governance parameters
 9. **Deterministic Method Extraction**: Enforce a single top‑level JSON field and extract method deterministically from raw tx JSON
+10. **Whitelist by Design (Recommended)**: The method‑ticket model is a whitelist. Only users who receive tickets from the contract admin or a delegated issuer can receive sponsorship. Admin/issuer can:
+   - Maintain an off‑chain/on‑chain whitelist and issue tickets to listed users only
+   - Limit each ticket via `uses` and `ttl` (expiry blocks)
+   - Revoke a user's ticket at any time by method
+   - Delegate issuing/revoking to `ticket_issuer_address` for scalable operations
 
 ## Event System
 
@@ -247,7 +257,11 @@ The module emits comprehensive events for monitoring and auditing:
 ### Transaction Events
 
 - `sponsored_transaction`: Successful sponsored transaction
-  - Attributes: `contract_address`, `sponsor_address`, `user`, `sponsor_amount`, `is_sponsored`
+  - Attributes: `contract_address`, `sponsor_address`, `user`, `sponsor_amount`, `is_sponsored`, `digest_type=method`
+  - When a single digest is used, includes: `uses_remaining` (pre‑consumption), `expiry_height`.
+  - When multiple digests are used, includes the minimum across tickets: `uses_remaining` (min), `expiry_height` (min) for quick health insight.
+- `sponsored_tx_ticket`: Per‑digest ticket details (one per digest when sponsored)
+  - Attributes: `contract_address`, `user`, `digest`, `method`, `uses_consumed`, `uses_remaining_pre`, `uses_remaining_post`, `expiry_height`
 - `sponsor_insufficient_funds`: Sponsor cannot pay fees
   - Attributes: `contract_address`, `sponsor_address`, `user`, `fee_amount`
 - `user_self_pay`: User paid own fees (eligible but has sufficient balance)
@@ -512,8 +526,8 @@ Denomination: `peaka` for all grants and fee accounting. Update via governance `
 # Issue a method ticket (admin or ticket issuer)
 dorad tx sponsor issue-ticket [contract-address] [user-address]   --method increment --uses 3   --from admin --gas auto --gas-prices 100000000000peaka
 
-# Revoke a ticket by digest (unconsumed only)
-dorad tx sponsor revoke-ticket [contract-address] [user-address] [digest]   --from admin --gas auto --gas-prices 100000000000peaka
+# Revoke a ticket by method (unconsumed only). The chain computes the digest.
+dorad tx sponsor revoke-ticket [contract-address] [user-address] [method]   --from admin --gas auto --gas-prices 100000000000peaka
 ```
 ## Security Considerations
 
