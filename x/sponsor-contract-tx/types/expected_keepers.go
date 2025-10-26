@@ -63,4 +63,5 @@ type SponsorKeeperInterface interface {
     EffectiveTicketTTLForContract(ctx sdk.Context, contractAddr string) uint32
     // Digest helpers (for ante gating)
     ComputeMethodDigest(contractAddr string, methodNames []string) string
+    ComputeMethodDigestSingle(contractAddr, methodName string) string
 }

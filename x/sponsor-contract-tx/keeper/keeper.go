@@ -75,6 +75,16 @@ func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) s
 	return "m:" + hex.EncodeToString(h.Sum(nil))
 }
 
+// ComputeMethodDigestSingle computes sha256(contract_address || "method:" || method_name) for a single method.
+// This avoids temporary slice allocation when only one method name is involved.
+func (k Keeper) ComputeMethodDigestSingle(contractAddr, methodName string) string {
+	h := sha256.New()
+	h.Write([]byte(contractAddr))
+	h.Write([]byte("method:"))
+	h.Write([]byte(methodName))
+	return "m:" + hex.EncodeToString(h.Sum(nil))
+}
+
 // EffectiveTicketTTLForContract computes the effective TTL in blocks for a contract, honoring per-sponsor override and global cap
 func (k Keeper) EffectiveTicketTTLForContract(ctx sdk.Context, contractAddr string) uint32 {
 	eff := k.GetParams(ctx).PolicyTicketTtlBlocks

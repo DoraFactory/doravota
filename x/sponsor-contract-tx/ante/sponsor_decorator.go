@@ -72,9 +72,9 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	// Check if this transaction has sponsor payment information in context using type-safe key
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
 		if sponsorPayment.IsSponsored {
-			// Handle sponsor fee payment directly (two-phase aware: may include reimbursement and digest)
-			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
-				sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee, sponsorPayment.Digest)
+			// Handle sponsor fee payment directly (two-phase aware; digestion is driven by DigestCounts on context)
+            return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
+                    sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
 		}
 	}
 
@@ -84,24 +84,25 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 
 // handleSponsorFeePayment processes sponsor fee payment.
 // Security/consistency highlights:
-// - Respects feegrant precedence: if tx sets FeeGranter, delegate to the
-//   standard DeductFeeDecorator so the native feegrant logic applies.
-// - Computes effective fee using txFeeChecker in non-simulation paths, which
-//   enforces min gas price and sets tx priority.
-// - Deducts fees into the fee collector module account and updates per-user
-//   grant usage; emits events only in DeliverTx.
-// - Returns a context with priority set so downstream mempool prioritization is
-//   consistent with fee calculation.
+//   - Respects feegrant precedence: if tx sets FeeGranter, delegate to the
+//     standard DeductFeeDecorator so the native feegrant logic applies.
+//   - Computes effective fee using txFeeChecker in non-simulation paths, which
+//     enforces min gas price and sets tx priority.
+//   - Deducts fees into the fee collector module account and updates per-user
+//     grant usage; emits events only in DeliverTx.
+//   - Returns a context with priority set so downstream mempool prioritization is
+//     consistent with fee calculation.
+// handleSponsorFeePayment processes sponsor fee payment using two-phase context.
+// It relies on DigestCounts carried in SponsorPaymentInfo for ticket consumption in DeliverTx.
 func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
-	ctx sdk.Context,
-	tx sdk.Tx,
-	simulate bool,
-	next sdk.AnteHandler,
-	contractAddr sdk.AccAddress,
-	sponsorAddr sdk.AccAddress,
-	userAddr sdk.AccAddress,
-	fee sdk.Coins,
-	digest string,
+    ctx sdk.Context,
+    tx sdk.Tx,
+    simulate bool,
+    next sdk.AnteHandler,
+    contractAddr sdk.AccAddress,
+    sponsorAddr sdk.AccAddress,
+    userAddr sdk.AccAddress,
+    fee sdk.Coins,
 ) (newCtx sdk.Context, err error) {
 	// Check for feegrant first - if present, delegate to standard decorator
 	feeTx, ok := tx.(sdk.FeeTx)
@@ -162,48 +163,50 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
 	}
 
-	// Best-effort: fetch uses_remaining and expiry before consuming (for event)
-	usesRem := ""
-	expiry := ""
-	if !ctx.IsCheckTx() && digest != "" {
-		if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), digest); ok {
-			usesRem = fmt.Sprintf("%d", t.UsesRemaining)
-			expiry = fmt.Sprintf("%d", t.ExpiryHeight)
-		}
-	}
+    // Best-effort: fetch uses_remaining and expiry before consuming (for event)
+    usesRem := ""
+    expiry := ""
+    if !ctx.IsCheckTx() {
+        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) == 1 {
+            for dg := range sp.DigestCounts {
+                if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+                    usesRem = fmt.Sprintf("%d", t.UsesRemaining)
+                    expiry = fmt.Sprintf("%d", t.ExpiryHeight)
+                }
+            }
+        }
+    }
 
 	// Step 4: Consume ticket(s) in DeliverTx upon success. When multiple
 	// method digests are required in this tx, consume each digest as many
 	// times as needed. Fall back to single digest when no counts provided.
-	if !ctx.IsCheckTx() {
-		if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-			if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
-				return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
-			}
-		} else if digest != "" {
-			if err := safd.sponsorKeeper.ConsumePolicyTicket(ctx, contractAddr.String(), userAddr.String(), digest); err != nil {
-				return ctx, errorsmod.Wrapf(err, "failed to consume policy ticket")
-			}
-		}
-	}
+    if !ctx.IsCheckTx() {
+        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+            if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
+                return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
+            }
+        }
+    }
 
 	// Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
 	if !ctx.IsCheckTx() {
 		dType := "method" // only method tickets are supported
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeSponsoredTx,
-				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-				sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
-				sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-				sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
-				sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
-				// Optional attributes when available
-				sdk.NewAttribute("uses_remaining", usesRem),
-				sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry),
-				sdk.NewAttribute("digest_type", dType),
-			),
+		ev := sdk.NewEvent(
+			types.EventTypeSponsoredTx,
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+			sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
+			sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
 		)
+		if usesRem != "" {
+			ev = ev.AppendAttributes(sdk.NewAttribute("uses_remaining", usesRem))
+		}
+		if expiry != "" {
+			ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry))
+		}
+		ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
+		ctx.EventManager().EmitEvent(ev)
 	}
 
 	ctx.Logger().With("module", "sponsor-contract-tx").Info(

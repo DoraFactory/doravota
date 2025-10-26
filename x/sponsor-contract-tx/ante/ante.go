@@ -27,8 +27,6 @@ type SponsorPaymentInfo struct {
 	Fee          sdk.Coins
 	IsSponsored  bool
 	// Two-phase add-ons
-	// Digest identifies the ticket to consume on success
-	Digest string
 	// DigestCounts holds required method digests and the number of times to consume
 	DigestCounts map[string]uint32
 }
@@ -38,7 +36,6 @@ type SponsorPaymentInfo struct {
 type execTicketGateKey struct{}
 
 type ExecTicketGateInfo struct {
-	Digest       string
 	ContractAddr string
 	UserAddr     string
 }
@@ -165,54 +162,78 @@ func skipPairDepth(dec *json.Decoder, depth int, limit uint32) error {
 
 // validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
 // It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
-// Returns (haveValidTicket, firstDigest, requiredCounts).
-func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, string, map[string]uint32) {
-    params := sctd.keeper.GetParams(ctx)
-    nameLimit := params.MaxMethodNameBytes
-    depthLimit := params.MaxMethodJsonDepth
-    now := uint64(ctx.BlockHeight())
+// Returns (haveValidTicket, requiredCounts, reason).
+// validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
+// It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
+// Returns (haveValidTicket, requiredCounts, reason).
+// When haveValidTicket=false, reason provides a user-friendly failure code that can be surfaced to fallback.
+func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, map[string]uint32, string) {
+	params := sctd.keeper.GetParams(ctx)
+	nameLimit := params.MaxMethodNameBytes
+	depthLimit := params.MaxMethodJsonDepth
+	now := uint64(ctx.BlockHeight())
 
-    required := make(map[string]uint32)
-    available := make(map[string]uint32)
-    firstDigest := ""
-    saw := false
+	// Caches to avoid repeated digest computation and KV lookups for the same method
+	methodDigestCache := make(map[string]string) // method -> digest
+	availableByMethod := make(map[string]uint32) // method -> usesRemaining
+	requiredByMethod := make(map[string]uint32)  // method -> required count in this tx
 
-    for _, m := range tx.GetMsgs() {
-        msg, ok := m.(*wasmtypes.MsgExecuteContract)
-        if !ok || msg.Contract != contractAddr {
-            continue
-        }
-        saw = true
+	// Final outputs by digest (accumulated from method-level counts)
+	requiredByDigest := make(map[string]uint32)
 
-        key, ok := firstTopLevelKey([]byte(msg.Msg), depthLimit)
-        if !ok {
-            return false, "", nil
-        }
-        if nameLimit != 0 && uint32(len(key)) > nameLimit {
-            return false, "", nil
-        }
+	saw := false
 
-        md := sctd.keeper.ComputeMethodDigest(contractAddr, []string{key})
-        if firstDigest == "" {
-            firstDigest = md
-        }
-        if _, seen := available[md]; !seen {
-            t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr, md)
-            if !ok || t.Consumed || now > t.ExpiryHeight || t.UsesRemaining == 0 {
-                return false, "", nil
-            }
-            available[md] = t.UsesRemaining
-        }
-        required[md]++
-        if required[md] > available[md] {
-            return false, "", nil
-        }
-    }
+	for _, m := range tx.GetMsgs() {
+		msg, ok := m.(*wasmtypes.MsgExecuteContract)
+		if !ok || msg.Contract != contractAddr {
+			continue
+		}
+		saw = true
 
-    if !saw {
-        return false, "", nil
-    }
-    return true, firstDigest, required
+		key, ok := firstTopLevelKey([]byte(msg.Msg), depthLimit)
+		if !ok {
+			return false, nil, "invalid_json"
+		}
+		if nameLimit != 0 && uint32(len(key)) > nameLimit {
+			return false, nil, "method_name_too_long"
+		}
+
+		// Resolve digest for this method (compute once per method)
+		md, have := methodDigestCache[key]
+		if !have {
+			md = sctd.keeper.ComputeMethodDigestSingle(contractAddr, key)
+			methodDigestCache[key] = md
+			// On first time seeing this method, load available uses for its digest
+			t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+			if !ok {
+				return false, nil, "ticket_not_found"
+			}
+			if t.Consumed {
+				return false, nil, "ticket_consumed"
+			}
+			if now > t.ExpiryHeight {
+				return false, nil, "ticket_expired"
+			}
+			if t.UsesRemaining == 0 {
+				return false, nil, "insufficient_ticket_uses"
+			}
+			availableByMethod[key] = t.UsesRemaining
+		}
+
+		// Increment required count for this method and check against available uses
+		requiredByMethod[key]++
+		if requiredByMethod[key] > availableByMethod[key] {
+			return false, nil, "insufficient_ticket_uses"
+		}
+
+		// Keep digest-based required counts for downstream bulk consumption
+		requiredByDigest[md]++
+	}
+
+	if !saw {
+		return false, nil, "no_target_messages"
+	}
+	return true, requiredByDigest, ""
 }
 
 // SponsorContractTxAnteDecorator handles sponsoring contract transactions
@@ -504,16 +525,18 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-        // Compute digest coverage after cheap checks using streaming validation.
-        // This avoids building the entire key list and short-circuits on the first failure.
-        haveValidTicket := false
-        selectedDigest := ""
-        var requiredCounts map[string]uint32
-        if ok, dg, counts := sctd.validateMethodTicketsStreaming(ctx, contractAddr, userAddr.String(), tx); ok {
-            haveValidTicket = true
-            selectedDigest = dg
-            requiredCounts = counts
-        }
+		// Compute digest coverage after cheap checks using streaming validation.
+		// This avoids building the entire key list and short-circuits on the first failure.
+		haveValidTicket := false
+		var requiredCounts map[string]uint32
+		if ok, counts, reason := sctd.validateMethodTicketsStreaming(ctx, contractAddr, userAddr.String(), tx); ok {
+			haveValidTicket = true
+			requiredCounts = counts
+		} else {
+			// No valid ticket: go through fallback path (both CheckTx and DeliverTx).
+			// In CheckTx: this may return error when user cannot self-pay; in DeliverTx: error includes a clear reason.
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
+		}
 
 		// Sponsor balance pre-check (only when we already have a valid ticket)
 		if haveValidTicket {
@@ -535,32 +558,26 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// (sponsor-specific pre-checks executed earlier inside fee block when haveValidTicket)
 		// Two-phase flow: inject sponsor info only in DeliverTx; in CheckTx, mark authorization when a valid ticket exists.
 		if ctx.IsCheckTx() {
-			if haveValidTicket && selectedDigest != "" {
-				ctx = ctx.WithValue(execTicketGateKey{}, ExecTicketGateInfo{Digest: selectedDigest, ContractAddr: contractAddr, UserAddr: userAddr.String()})
+			if haveValidTicket {
+				ctx = ctx.WithValue(execTicketGateKey{}, ExecTicketGateInfo{ContractAddr: contractAddr, UserAddr: userAddr.String()})
 			}
 		} else {
-			// Only inject using the pre-selected method digest
-			if haveValidTicket && selectedDigest != "" {
-				dg := selectedDigest
-				tkt, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr.String(), dg)
-				if ok && !tkt.Consumed && tkt.UsesRemaining >= 1 && uint64(ctx.BlockHeight()) <= tkt.ExpiryHeight {
-					contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
-					sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-					fee := sdk.NewCoins()
-					if feeTx, ok := tx.(sdk.FeeTx); ok {
-						fee = feeTx.GetFee()
-					}
-					sInfo := SponsorPaymentInfo{
-						ContractAddr: contractAccAddr,
-						SponsorAddr:  sponsorAccAddr,
-						UserAddr:     userAddr,
-						Fee:          fee,
-						IsSponsored:  true,
-						Digest:       dg,
-						DigestCounts: requiredCounts,
-					}
-					ctx = ctx.WithValue(sponsorPaymentKey{}, sInfo)
+			if haveValidTicket {
+				contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
+				sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+				fee := sdk.NewCoins()
+				if feeTx, ok := tx.(sdk.FeeTx); ok {
+					fee = feeTx.GetFee()
 				}
+				sInfo := SponsorPaymentInfo{
+					ContractAddr: contractAccAddr,
+					SponsorAddr:  sponsorAccAddr,
+					UserAddr:     userAddr,
+					Fee:          fee,
+					IsSponsored:  true,
+					DigestCounts: requiredCounts,
+				}
+				ctx = ctx.WithValue(sponsorPaymentKey{}, sInfo)
 			}
 		}
 
@@ -710,6 +727,10 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 	userAddr sdk.AccAddress,
 	reason string,
 ) (newCtx sdk.Context, err error) {
+	// In simulation, do not reject due to fallback; just proceed
+	if simulate {
+		return next(ctx, tx, simulate)
+	}
 	// Get transaction fee to check if user can afford it
 	feeTx, ok := tx.(sdk.FeeTx)
 	if !ok {
