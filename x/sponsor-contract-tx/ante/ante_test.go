@@ -3667,6 +3667,40 @@ func (suite *AnteTestSuite) TestValidateMethodTicketsStreaming_MixedMethodsCache
     suite.Require().Len(counts, 2)
 }
 
+// Ensure the preselected streaming variant produces identical results to the tx-scanning variant.
+func (suite *AnteTestSuite) TestValidateMethodTicketsStreaming_Preselected_Equivalence() {
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+    incDigest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+    decDigest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"decrement"})
+    tInc := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: incDigest, ExpiryHeight: uint64(suite.ctx.BlockHeight()+100), UsesRemaining: 7}
+    tDec := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: decDigest, ExpiryHeight: uint64(suite.ctx.BlockHeight()+100), UsesRemaining: 3}
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, tInc))
+    suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, tDec))
+
+    // Build sequence: inc×5, dec×3, inc×2
+    msgs := make([]sdk.Msg, 0, 10)
+    for i := 0; i < 5; i++ { msgs = append(msgs, &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"increment":{}}`)}) }
+    for i := 0; i < 3; i++ { msgs = append(msgs, &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"decrement":{}}`)}) }
+    for i := 0; i < 2; i++ { msgs = append(msgs, &wasmtypes.MsgExecuteContract{Sender: suite.user.String(), Contract: suite.contract.String(), Msg: []byte(`{"increment":{}}`)}) }
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1)))
+    tx := suite.createTx(msgs, []sdk.AccAddress{suite.user}, fee, nil)
+
+    ok1, counts1, reason1 := suite.anteDecorator.validateMethodTicketsStreaming(suite.ctx, suite.contract.String(), suite.user.String(), tx)
+
+    // Extract preselected exec messages
+    var execMsgs []*wasmtypes.MsgExecuteContract
+    for _, m := range tx.GetMsgs() {
+        if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == suite.contract.String() {
+            execMsgs = append(execMsgs, msg)
+        }
+    }
+    ok2, counts2, reason2 := suite.anteDecorator.validateMethodTicketsStreamingPreselected(suite.ctx, suite.contract.String(), suite.user.String(), execMsgs)
+
+    suite.Require().Equal(ok1, ok2)
+    suite.Require().Equal(reason1, reason2)
+    suite.Require().Equal(counts1, counts2)
+}
+
 // validateMethodTicketsStreaming: cache hit then short-circuit on boundary.
 // Scenario: inc uses=2 but inc×3 messages -> should fail and not consume ticket.
 func (suite *AnteTestSuite) TestValidateMethodTicketsStreaming_CacheHitThenShortCircuit() {

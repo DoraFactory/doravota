@@ -168,6 +168,24 @@ func skipPairDepth(dec *json.Decoder, depth int, limit uint32) error {
 // Returns (haveValidTicket, requiredCounts, reason).
 // When haveValidTicket=false, reason provides a user-friendly failure code that can be surfaced to fallback.
 func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, map[string]uint32, string) {
+	// Collect target exec messages in tx order and delegate to preselected variant
+	var execMsgs []*wasmtypes.MsgExecuteContract
+	for _, m := range tx.GetMsgs() {
+		msg, ok := m.(*wasmtypes.MsgExecuteContract)
+		if !ok || msg.Contract != contractAddr {
+			continue
+		}
+		execMsgs = append(execMsgs, msg)
+	}
+	if len(execMsgs) == 0 {
+		return false, nil, "no_target_messages"
+	}
+	return sctd.validateMethodTicketsStreamingPreselected(ctx, contractAddr, userAddr, execMsgs)
+}
+
+// validateMethodTicketsStreamingPreselected is a more efficient variant that accepts the
+// pre-filtered MsgExecuteContract list for the target contract to avoid re-scanning tx messages.
+func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPreselected(ctx sdk.Context, contractAddr, userAddr string, execMsgs []*wasmtypes.MsgExecuteContract) (bool, map[string]uint32, string) {
 	params := sctd.keeper.GetParams(ctx)
 	nameLimit := params.MaxMethodNameBytes
 	depthLimit := params.MaxMethodJsonDepth
@@ -183,11 +201,7 @@ func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sd
 
 	saw := false
 
-	for _, m := range tx.GetMsgs() {
-		msg, ok := m.(*wasmtypes.MsgExecuteContract)
-		if !ok || msg.Contract != contractAddr {
-			continue
-		}
+	for _, msg := range execMsgs {
 		saw = true
 
 		key, ok := firstTopLevelKey([]byte(msg.Msg), depthLimit)
@@ -310,19 +324,13 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	params := sctd.keeper.GetParams(ctx)
 	if !params.SponsorshipEnabled {
 		if !ctx.IsCheckTx() {
-			// Best-effort: if there is a contract execute message, attach its address for observability
-			contractForEvent := ""
-			for _, m := range tx.GetMsgs() {
-				if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok {
-					contractForEvent = msg.Contract
-					break
-				}
-			}
+			// Use a single pre-scan pass to find first contract address for observability
+			_, firstContract, _ := preScanTxForSponsorship(tx)
 			ev := sdk.NewEvent(types.EventTypeSponsorshipDisabled,
 				sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
 			)
-			if contractForEvent != "" {
-				ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyContractAddress, contractForEvent))
+			if firstContract != "" {
+				ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyContractAddress, firstContract))
 			}
 			ctx.EventManager().EmitEvent(ev)
 		}
@@ -332,8 +340,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		return next(ctx, tx, simulate)
 	}
 
-	// Find and validate contract execution messages
-	validation := validateSponsoredTransaction(tx)
+	// Find and validate contract execution messages (single pass). Also collect target exec messages.
+	validation, _, execMsgs := preScanTxForSponsorship(tx)
 
 	// If no sponsorship should be attempted, pass through with context-aware UX
 	if !validation.SuggestSponsor {
@@ -435,12 +443,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 		// Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
 		if params.MaxExecMsgsPerTxForSponsor > 0 {
-			execCount := 0
-			for _, m := range tx.GetMsgs() {
-				if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
-					execCount++
-				}
-			}
+			execCount := len(execMsgs)
 			if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
 				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
 				// Emit skip event only in DeliverTx
@@ -462,12 +465,10 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// 0 disables this guard.
 		if params.MaxPolicyExecMsgBytes > 0 {
 			var tooLarge bool
-			for _, m := range tx.GetMsgs() {
-				if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
-					if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
-						tooLarge = true
-						break
-					}
+			for _, msg := range execMsgs {
+				if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
+					tooLarge = true
+					break
 				}
 			}
 			if tooLarge {
@@ -529,7 +530,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		// This avoids building the entire key list and short-circuits on the first failure.
 		haveValidTicket := false
 		var requiredCounts map[string]uint32
-		if ok, counts, reason := sctd.validateMethodTicketsStreaming(ctx, contractAddr, userAddr.String(), tx); ok {
+		if ok, counts, reason := sctd.validateMethodTicketsStreamingPreselected(ctx, contractAddr, userAddr.String(), execMsgs); ok {
 			haveValidTicket = true
 			requiredCounts = counts
 		} else {
@@ -635,77 +636,60 @@ type TransactionValidationResult struct {
 
 // validateSponsoredTransaction validates that the transaction meets sponsor requirements
 // Returns validation result instead of error to allow fallback to user payment
-func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
+// preScanTxForSponsorship performs a single pass over tx messages to:
+// - determine if we should attempt sponsorship (and the normalized contract address)
+// - collect the first contract address (for observability when sponsorship is disabled)
+// - gather all MsgExecuteContract messages targeting that contract in order
+func preScanTxForSponsorship(tx sdk.Tx) (*TransactionValidationResult, string, []*wasmtypes.MsgExecuteContract) {
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {
-		return &TransactionValidationResult{
-			ContractAddress: "",
-			SuggestSponsor:  false,
-			SkipReason:      "",
-		}
+		return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: ""}, "", nil
 	}
 
-	// We record a normalized(bech32) contract address only after successful validation.
-	// This avoids echoing raw, potentially malicious input into logs or reasons.
-	var sponsoredContract string
+	var firstContractMsg string  // for event observability
+	var sponsoredContract string // normalized contract when valid
+	var execMsgs []*wasmtypes.MsgExecuteContract
 
-	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
 		msgType := sdk.MsgTypeURL(msg)
-
 		switch execMsg := msg.(type) {
-		// contract execution message
 		case *wasmtypes.MsgExecuteContract:
-			// Normalize incoming address first; if invalid, skip sponsorship without echoing raw input
-			if acc, err := sdk.AccAddressFromBech32(execMsg.Contract); err != nil {
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					SuggestSponsor:  false,
-					SkipReason:      "invalid_contract_address",
-				}
-			} else {
-				normalized := acc.String()
-				if sponsoredContract == "" {
-					// First valid contract message - record normalized address
-					sponsoredContract = normalized
-				} else {
-					// Additional contract message - must match first (normalized) address
-					if normalized != sponsoredContract {
-						return &TransactionValidationResult{
-							ContractAddress: "",
-							SuggestSponsor:  false,
-							SkipReason:      "multiple contracts in tx",
-						}
-					}
-				}
+			// record first contract message address as-is (for disabled path observability)
+			if firstContractMsg == "" {
+				firstContractMsg = execMsg.Contract
 			}
-		default:
-			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
-			// If the first transaction is a non-contract transaction, it indicates a normal regular transaction.
-			// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
+			// Normalize and validate
+			acc, err := sdk.AccAddressFromBech32(execMsg.Contract)
+			if err != nil {
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: "invalid_contract_address"}, firstContractMsg, nil
+			}
+			normalized := acc.String()
 			if sponsoredContract == "" {
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					SuggestSponsor:  false,
-					SkipReason:      "",
-				}
-			} else {
-				// Found non-contract message later in the transaction - skip sponsorship
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					SuggestSponsor:  false,
-					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
-				}
+				sponsoredContract = normalized
+			} else if normalized != sponsoredContract {
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: "multiple contracts in tx"}, firstContractMsg, nil
 			}
+			// Defer appending exec messages until we are sure sponsorship is suggested (but we can collect progressively)
+			execMsgs = append(execMsgs, execMsg)
+		default:
+			if sponsoredContract == "" {
+				// lead non-contract msg: pass through
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: ""}, firstContractMsg, nil
+			}
+			// Found non-contract after contract: mixed messages
+			return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType)}, firstContractMsg, nil
 		}
 	}
 
-	// If we get here, all messages are contract messages for the same contract
-	return &TransactionValidationResult{
-		ContractAddress: sponsoredContract, // normalized bech32 string
-		SuggestSponsor:  true,
-		SkipReason:      "",
-	}
+	// All messages are contract execs to the same contract
+	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: "",}, firstContractMsg, execMsgs
+}
+
+// validateSponsoredTransaction validates tx shape for sponsorship. It delegates to preScanTxForSponsorship
+// to avoid duplicating logic and to keep tests stable.
+func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
+	v, _, _ := preScanTxForSponsorship(tx)
+	return v
 }
 
 // handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves
