@@ -2,6 +2,8 @@ package sponsor
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"testing"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -421,6 +423,121 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	expectedFeeCollectorBalance := initialFeeCollectorBalance.Add(minRequiredFee)
 	suite.Require().True(finalFeeCollectorBalance.IsEqual(expectedFeeCollectorBalance))
 }
+
+// TestPerDigestTicketEventsDeterministicOrder ensures that per‑digest events are emitted
+// in a deterministic (lexicographic by digest) order.
+func (suite *SponsorDecoratorTestSuite) TestPerDigestTicketEventsDeterministicOrder() {
+    // Prepare contract and sponsor
+    suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+
+    // Create sponsor and fund sufficiently
+    maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000_000)))
+    fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000_000)))
+    suite.createAndFundSponsor(suite.contract, true, maxGrant, fund)
+
+    // Issue tickets for three methods in arbitrary order
+    ms := keeper.NewMsgServerImplWithDeps(suite.keeper, suite.bankKeeper, suite.accountKeeper)
+    ctx := sdk.WrapSDKContext(suite.ctx)
+    methods := []string{"gamma", "alpha", "beta"}
+    for _, m := range methods {
+        _, err := ms.IssuePolicyTicket(ctx, &types.MsgIssuePolicyTicket{
+            Creator:         suite.admin.String(),
+            ContractAddress: suite.contract.String(),
+            UserAddress:     suite.user.String(),
+            Method:          m,
+            Uses:            1,
+            TtlBlocks:       5,
+        })
+        suite.Require().NoError(err)
+    }
+
+    // Build digestCounts map in non-deterministic order
+    digests := make([]string, 0, len(methods))
+    for _, m := range methods {
+        d := suite.keeper.ComputeMethodDigestSingle(suite.contract.String(), m)
+        digests = append(digests, d)
+    }
+    // Shuffle order by picking 1,0,2 (gamma, alpha, beta)
+    digestCounts := map[string]uint32{
+        digests[0]: 1,
+        digests[2]: 1,
+        digests[1]: 1,
+    }
+
+    // Get sponsor address
+    s, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+    suite.Require().True(found)
+    sponsorAddr, err := sdk.AccAddressFromBech32(s.SponsorAddress)
+    suite.Require().NoError(err)
+
+    // Prepare sponsor payment with digest counts
+    fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+    sp := SponsorPaymentInfo{
+        ContractAddr: suite.contract,
+        SponsorAddr:  sponsorAddr,
+        UserAddr:     suite.user,
+        Fee:          fee,
+        IsSponsored:  true,
+        DigestCounts: digestCounts,
+    }
+
+    // Construct tx and call decorator (DeliverTx path to emit events)
+    tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+    preLen := len(suite.ctx.EventManager().Events())
+    ctxWith := suite.ctx.WithValue(sponsorPaymentKey{}, sp)
+    next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil }
+    newCtx, err := suite.sponsorDecorator.AnteHandle(ctxWith, tx, false, next)
+    suite.Require().NoError(err)
+
+    // Collect only the new events emitted by AnteHandle
+    events := newCtx.EventManager().Events()
+    suite.Require().True(len(events) >= preLen)
+    events = events[preLen:]
+
+    // Extract per-digest ticket events and their digests in emitted order
+    var emitted []string
+    for _, ev := range events {
+        if ev.Type == types.EventTypeSponsoredTxTicket {
+            for _, attr := range ev.Attributes {
+                if string(attr.Key) == types.AttributeKeyDigest {
+                    emitted = append(emitted, string(attr.Value))
+                    break
+                }
+            }
+        }
+    }
+
+    // Expect one event per digest, in lexicographic order by digest
+    suite.Require().Len(emitted, len(digestCounts))
+    expected := make([]string, 0, len(digestCounts))
+    for d := range digestCounts { expected = append(expected, d) }
+    sort.Strings(expected)
+    suite.Require().Equal(expected, emitted, "per-digest events must be emitted in lexicographic order of digest")
+}
+
+// Unit tests for sortedDigestKeys helper to guarantee deterministic order logic
+func TestSortedDigestKeysDeterministic(t *testing.T) {
+    counts := map[string]uint32{"z": 1, "a": 3, "m": 2, "aa": 1, "ab": 4}
+    got := sortedDigestKeys(counts)
+    want := []string{"a", "aa", "ab", "m", "z"}
+    if !reflect.DeepEqual(got, want) {
+        t.Fatalf("sortedDigestKeys order mismatch. got=%v want=%v", got, want)
+    }
+    // Calling again should yield identical order
+    got2 := sortedDigestKeys(counts)
+    if !reflect.DeepEqual(got2, want) {
+        t.Fatalf("sortedDigestKeys not stable across calls. got2=%v want=%v", got2, want)
+    }
+}
+
+func TestSortedDigestKeysEmpty(t *testing.T) {
+    counts := map[string]uint32{}
+    got := sortedDigestKeys(counts)
+    if len(got) != 0 {
+        t.Fatalf("expected empty result, got=%v", got)
+    }
+}
+
 
 // TestSimulationModeNoDeduction tests that simulation mode doesn't deduct fees
 // This ensures simulation doesn't affect actual balances

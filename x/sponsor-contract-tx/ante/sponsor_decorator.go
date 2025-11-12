@@ -11,6 +11,7 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	"math"
+	"sort"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -229,9 +230,11 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
         ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
         ctx.EventManager().EmitEvent(ev)
 
-        // Emit per-digest ticket detail events (one per digest)
+        // Emit per-digest ticket detail events (one per digest). Use deterministic order.
         if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-            for dg, consumed := range sp.DigestCounts {
+            keys := sortedDigestKeys(sp.DigestCounts)
+            for _, dg := range keys {
+                consumed := sp.DigestCounts[dg]
                 // Fetch post state
                 postUses := uint32(0)
                 method := ""
@@ -329,4 +332,16 @@ func getTxPriority(fee sdk.Coins, gas int64) int64 {
 	}
 
 	return priority
+}
+
+// sortedDigestKeys returns the map keys in a deterministic lexical order.
+// This is used solely for emitting per-digest events to make their order stable
+// for off-chain consumers (indexers, explorers, etc.).
+func sortedDigestKeys(counts map[string]uint32) []string {
+    keys := make([]string, 0, len(counts))
+    for k := range counts {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
+    return keys
 }
