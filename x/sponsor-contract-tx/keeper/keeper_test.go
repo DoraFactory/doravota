@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/store"
+	"github.com/cosmos/cosmos-sdk/store/prefix"
 	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -104,10 +105,45 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
 
 // setupKeeperSimple provides backward compatibility for simple tests
 func setupKeeperSimple(t *testing.T) (Keeper, sdk.Context) {
-	keeper, ctx, _ := setupKeeper(t)
-	return keeper, ctx
+    keeper, ctx, _ := setupKeeper(t)
+    return keeper, ctx
 }
 
+func TestComputeDigestDeterministic(t *testing.T) { t.Skip("ComputeDigest removed") }
+
+func TestEffectiveTicketTTLForContract(t *testing.T) {
+    keeper, ctx := setupKeeperSimple(t)
+    params := types.DefaultParams()
+    params.PolicyTicketTtlBlocks = 30
+    require.NoError(t, keeper.SetParams(ctx, params))
+
+    contract := "dora1contractttl__________________________"
+    // No sponsor override -> default
+    eff := keeper.EffectiveTicketTTLForContract(ctx, contract)
+    require.Equal(t, uint32(30), eff)
+
+    // No per-contract override: effective equals global always
+    s := types.ContractSponsor{ContractAddress: contract, IsSponsored: true}
+    require.NoError(t, keeper.SetSponsor(ctx, s))
+    eff = keeper.EffectiveTicketTTLForContract(ctx, contract)
+    require.Equal(t, uint32(30), eff)
+}
+
+
+func TestRevokePolicyTicket(t *testing.T) {
+    keeper, ctx := setupKeeperSimple(t)
+    // create a ticket
+    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: uint64(ctx.BlockHeight()+10)}
+    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+    // revoke
+    err := keeper.RevokePolicyTicket(ctx, "c", "u", "d")
+    require.NoError(t, err)
+    _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "d")
+    require.False(t, ok)
+    // revoke non-existing
+    err = keeper.RevokePolicyTicket(ctx, "c", "u", "d")
+    require.Error(t, err)
+}
 func TestSetSponsor(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
@@ -264,6 +300,145 @@ func TestGetAllSponsors(t *testing.T) {
 	assert.False(t, contractAddrs["dora1contract456"])
 	assert.True(t, contractAddrs["dora1contract789"])
 }
+
+// helper: count keys under a prefix store
+func countKeys(ps storetypes.KVStore) int {
+    it := ps.Iterator(nil, nil)
+    defer it.Close()
+    n := 0
+    for ; it.Valid(); it.Next() { n++ }
+    return n
+}
+
+func TestExpiryIndex_WriteAndGC(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    // set block height to 100
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+
+    // create tickets with various expiry heights
+    // expired: 90,95,99; not expired: 100 (equal), 120 (future)
+    tks := []types.PolicyTicket{
+        {ContractAddress: "c", UserAddress: "u", Digest: "d90", ExpiryHeight: 90, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d95", ExpiryHeight: 95, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d99", ExpiryHeight: 99, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d100", ExpiryHeight: 100, UsesRemaining: 1},
+        {ContractAddress: "c", UserAddress: "u", Digest: "d120", ExpiryHeight: 120, UsesRemaining: 1},
+    }
+    for _, tk := range tks {
+        require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+    }
+
+    // verify index keys exist
+    idxStore := prefix.NewStore(ctx.KVStore(kpr.storeKey), types.ExpiryIndexKeyPrefix)
+    require.GreaterOrEqual(t, countKeys(idxStore), 5)
+
+    // run GC with small budget: 2
+    kpr.GarbageCollectByExpiry(ctx, 2)
+
+    // d90, d95 should be gone; others remain
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d90")
+    require.False(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d95")
+    require.False(t, ok)
+    // not-yet-deleted expired d99 remains until next GC tick
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+    require.True(t, ok)
+    // non-expired remain
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+    require.True(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+    require.True(t, ok)
+
+    // run GC again with larger budget: should delete remaining expired (d99), but not d100/d120
+    kpr.GarbageCollectByExpiry(ctx, 10)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+    require.False(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+    require.True(t, ok)
+    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+    require.True(t, ok)
+}
+
+func TestConsumePolicyTicket_MarksConsumedKeepsRecord(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 50})
+    // single-use ticket
+    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 60, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+
+    // consume -> should mark consumed and keep record
+    require.NoError(t, kpr.ConsumePolicyTicket(ctx, "c", "u", "d"))
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.True(t, ok)
+    require.True(t, got.Consumed)
+
+    // index should remain until expiry; GC will remove later
+    idxKey := types.GetExpiryIndexKey(60, "c", "u", "d")
+    idxStore := ctx.KVStore(kpr.storeKey)
+    require.True(t, idxStore.Has(idxKey))
+}
+
+func TestDeleteAndRevoke_RemoveIndex(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 10, UsesRemaining: 3}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+
+    // delete
+    kpr.DeletePolicyTicket(ctx, "c", "u", "d")
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.False(t, ok)
+    idxKey := types.GetExpiryIndexKey(10, "c", "u", "d")
+    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+
+    // set again and revoke
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+    require.NoError(t, kpr.RevokePolicyTicket(ctx, "c", "u", "d"))
+    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+}
+
+func TestBulkConsume_MarksConsumedOnZeroUse(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 1})
+    // two tickets
+    t1 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d1", ExpiryHeight: 5, UsesRemaining: 2}
+    t2 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d2", ExpiryHeight: 5, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, t1))
+    require.NoError(t, kpr.SetPolicyTicket(ctx, t2))
+
+    // consume d1 by 1 (remain 1), d2 by 1 (becomes 0 -> mark consumed)
+    err := kpr.ConsumePolicyTicketsBulk(ctx, "c", "u", map[string]uint32{"d1": 1, "d2": 1})
+    require.NoError(t, err)
+
+    // d1 remains
+    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d1")
+    require.True(t, ok)
+    // d2 remains but consumed
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d2")
+    require.True(t, ok)
+    require.True(t, got.Consumed)
+}
+
+func TestGetPolicyTicket_DoesNotDeleteExpired(t *testing.T) {
+    kpr, ctx := setupKeeperSimple(t)
+    // set height high and create expired ticket
+    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 90, UsesRemaining: 1}
+    require.NoError(t, kpr.SetPolicyTicket(ctx, tkt))
+    // call Get -> should not delete even if expired
+    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+    require.True(t, ok)
+    require.Equal(t, uint64(90), got.ExpiryHeight)
+    // verify keys remain
+    idx := types.GetExpiryIndexKey(90, "c", "u", "d")
+    store := ctx.KVStore(kpr.storeKey)
+    require.True(t, store.Has(idx))
+    require.True(t, store.Has(types.GetPolicyTicketKey("c", "u", "d")))
+}
+
+// removed: HasAnyLiveMethodTicket tests; ante now uses exact digest lookups
+
+// TestCheckContractPolicy_InvalidJSONResponse deprecated: policy probe removed
+func TestCheckContractPolicy_InvalidJSONResponse(t *testing.T) { t.Skip("policy probe removed") }
 
 func TestUpdateSponsor(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
@@ -605,6 +780,34 @@ func TestLogger(t *testing.T) {
 	logger.Info("test log message")
 }
 
+// ExpiryHeight==0 tickets should be removed after height advances and GC runs.
+func TestGarbageCollect_ZeroExpiry_RemovedAfterHeightAdvance(t *testing.T) {
+    keeper, ctx := setupKeeperSimple(t)
+    // Insert a ticket expiring at height 0
+    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:zero", ExpiryHeight: 0}
+    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+    if _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero"); !ok { t.Fatalf("ticket not inserted") }
+    // Advance height beyond 0 and collect
+    ctx = ctx.WithBlockHeight(1)
+    keeper.GarbageCollectByExpiry(ctx, 10)
+    _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero")
+    require.False(t, ok)
+}
+
+// HasAnyLiveMethodTicket only returns true for unconsumed, unexpired method tickets (prefix "m:").
+// removed: HasAnyLiveMethodTicket tests; ante now uses exact digest lookups
+
+// ComputeMethodDigest must be stable and include a separator to avoid collisions.
+func TestComputeMethodDigest_StableSeparator(t *testing.T) {
+    keeper, _ := setupKeeperSimple(t)
+    c := "contract1"
+    d1 := keeper.ComputeMethodDigest(c, []string{"ab", "c"})
+    d2 := keeper.ComputeMethodDigest(c, []string{"a", "bc"})
+    require.NotEqual(t, d1, d2)
+    require.Contains(t, d1, "m:")
+    require.Contains(t, d2, "m:")
+}
+
 // TestGetAuthority tests the GetAuthority function
 func TestGetAuthority(t *testing.T) {
 	keeper, _ := setupKeeperSimple(t)
@@ -616,60 +819,59 @@ func TestGetAuthority(t *testing.T) {
 	require.NoError(t, err, "Authority should be a valid bech32 address")
 }
 
-// TestCheckContractPolicy tests the CheckContractPolicy function
-func TestCheckContractPolicy(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
+// Bulk consumption: exact uses should consume and mark ticket as consumed
+func TestConsumePolicyTicketsBulk_ExactExhaust(t *testing.T) {
+    k, ctx := setupKeeperSimple(t)
+    // Prepare a method digest and a ticket with uses=3
+    contract := "c"
+    user := "u"
+    md := k.ComputeMethodDigest(contract, []string{"inc"})
+    tkt := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 3}
+    require.NoError(t, k.SetPolicyTicket(ctx, tkt))
 
-	// Use proper bech32 address generated from bytes
-	contractAddrBytes := []byte("contractaddr12345678")
-	contractAddr := sdk.AccAddress(contractAddrBytes).String()
-	userAddr := sdk.AccAddress("user________________")
-
-	// Set up contract
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Create a mock transaction
-	msg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"test": "message"}`),
-	}
-
-	// Test with valid contract
-	result, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg}))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.True(t, result.Eligible) // Mock wasm keeper returns eligible: true
+    // Consume exactly 3 uses
+    err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{md: 3})
+    require.NoError(t, err)
+    t2, ok := k.GetPolicyTicket(ctx, contract, user, md)
+    require.True(t, ok)
+    require.Equal(t, uint32(0), t2.UsesRemaining)
+    require.True(t, t2.Consumed)
 }
+
+// Bulk consumption atomicity: when one digest is insufficient, none are consumed
+func TestConsumePolicyTicketsBulk_AtomicFailure_Mixed(t *testing.T) {
+    k, ctx := setupKeeperSimple(t)
+    contract := "c"
+    user := "u"
+    inc := k.ComputeMethodDigest(contract, []string{"inc"})
+    dec := k.ComputeMethodDigest(contract, []string{"dec"})
+    // inc has enough uses; dec has zero
+    require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: inc, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 2}))
+    require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: dec, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 0}))
+
+    // Attempt to consume inc:2 and dec:1 -> should fail atomically
+    err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{inc: 2, dec: 1})
+    require.Error(t, err)
+    // Verify no changes applied
+    tInc, _ := k.GetPolicyTicket(ctx, contract, user, inc)
+    tDec, _ := k.GetPolicyTicket(ctx, contract, user, dec)
+    require.Equal(t, uint32(2), tInc.UsesRemaining)
+    require.False(t, tInc.Consumed)
+    require.Equal(t, uint32(0), tDec.UsesRemaining)
+    require.False(t, tDec.Consumed)
+}
+
+// TestCheckContractPolicy deprecated: policy probe removed
+func TestCheckContractPolicy(t *testing.T) { t.Skip("policy probe removed") }
 
 // TestExtractAllContractMessages tests the extractAllContractMessages function
-func TestExtractAllContractMessages(t *testing.T) {
-	keeper, _ := setupKeeperSimple(t)
+func TestExtractAllContractMessages(t *testing.T) { t.Skip("policy probe helpers removed") }
 
-	contractAddr1 := "dora1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6hm4xs"
-	userAddr := "dora1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqfnkgf3"
+// Test that messages with multiple top-level keys are rejected to prevent non-determinism
+func TestExtractAllContractMessages_MultipleTopLevelKeysError(t *testing.T) { t.Skip("policy probe helpers removed") }
 
-	// Create mixed messages
-	msgs := []sdk.Msg{
-		&wasmtypes.MsgExecuteContract{
-			Sender:   userAddr,
-			Contract: contractAddr1,
-			Msg:      []byte(`{"test": "message1"}`),
-		},
-		&wasmtypes.MsgExecuteContract{
-			Sender:   userAddr,
-			Contract: contractAddr1,
-			Msg:      []byte(`{"increment": {"amount": 1}}`),
-		},
-	}
-
-	tx := createMockTx(msgs)
-	contractMsgs, err := keeper.extractAllContractMessages(tx, contractAddr1)
-	require.NoError(t, err)
-	require.Len(t, contractMsgs, 2)
-	require.Equal(t, "test", contractMsgs[0].MsgType)
-	require.Equal(t, "increment", contractMsgs[1].MsgType)
-}
+// Test that MsgData preserves the raw JSON bytes from the tx for determinism
+func TestExtractAllContractMessages_UsesRawMsgBytes(t *testing.T) { t.Skip("policy probe helpers removed") }
 
 // TestValidateContractExists tests the ValidateContractExists function
 func TestValidateContractExists(t *testing.T) {
@@ -743,22 +945,17 @@ func TestGetSetParams(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
 	// Get default params
-	params := keeper.GetParams(ctx)
-	require.True(t, params.SponsorshipEnabled)
-	require.Equal(t, uint64(2500000), params.MaxGasPerSponsorship)
+    params := keeper.GetParams(ctx)
+    require.True(t, params.SponsorshipEnabled)
 
 	// Set custom params
-	customParams := types.Params{
-		SponsorshipEnabled:   false,
-		MaxGasPerSponsorship: 1000000,
-	}
+    customParams := types.Params{SponsorshipEnabled: false}
 	err := keeper.SetParams(ctx, customParams)
 	require.NoError(t, err)
 
 	// Verify params were set
 	retrievedParams := keeper.GetParams(ctx)
-	require.False(t, retrievedParams.SponsorshipEnabled)
-	require.Equal(t, uint64(1000000), retrievedParams.MaxGasPerSponsorship)
+    require.False(t, retrievedParams.SponsorshipEnabled)
 }
 
 // TestUserGrantUsageLifecycle tests the full lifecycle of user grant usage
@@ -916,77 +1113,10 @@ func TestGetSponsorErrorHandling(t *testing.T) {
 }
 
 // TestCheckContractPolicyErrorCases tests error handling in CheckContractPolicy
-func TestCheckContractPolicyErrorCases(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-
-	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
-	userAddr := sdk.AccAddress("user________________")
-
-	// Test with no contract messages for valid contract
-	_, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no contract execution messages found")
-
-	// Test with truly invalid bech32 address
-	msg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: "invalid-address",
-		Msg:      []byte(`{"test": "message"}`),
-	}
-
-	_, err = keeper.CheckContractPolicy(ctx, "invalid-address", userAddr, createMockTx([]sdk.Msg{msg}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid contract address")
-
-	// Set up contract
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Test with contract query returning not eligible
-	msg2 := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"test": "message"}`),
-	}
-
-	// Mock the wasm keeper to return not eligible
-	wasmKeeper.SetQueryResponse(`{"eligible": false, "reason": "test rejection"}`)
-
-	result, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg2}))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.False(t, result.Eligible)
-	require.Contains(t, result.Reason, "test rejection")
-
-	// Test with invalid JSON in contract message
-	invalidMsg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{invalid json`),
-	}
-
-	_, err = keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{invalidMsg}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to extract contract messages")
-}
+func TestCheckContractPolicyErrorCases(t *testing.T) { t.Skip("policy probe removed") }
 
 // TestExtractAllContractMessagesErrorCases tests error handling in extractAllContractMessages
-func TestExtractAllContractMessagesErrorCases(t *testing.T) {
-	keeper, _ := setupKeeperSimple(t)
-
-	contractAddr := sdk.AccAddress([]byte("contract1___________")).String()
-	userAddr := sdk.AccAddress("user________________")
-
-	// Test with invalid JSON message
-	invalidMsg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{invalid json`),
-	}
-
-	_, err := keeper.extractAllContractMessages(createMockTx([]sdk.Msg{invalidMsg}), contractAddr)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to parse contract message")
-}
+func TestExtractAllContractMessagesErrorCases(t *testing.T) { t.Skip("policy probe helpers removed") }
 
 // TestUserGrantUsageErrorHandling tests error handling in user grant usage functions
 func TestUserGrantUsageErrorHandling(t *testing.T) {
@@ -1022,17 +1152,13 @@ func TestParamsErrorHandling(t *testing.T) {
 
 	// Test setting params with marshal error is unlikely in real scenarios
 	// but we can test the success path thoroughly
-	params := types.Params{
-		SponsorshipEnabled:   true,
-		MaxGasPerSponsorship: 0, // Edge case: zero gas limit
-	}
+    params := types.Params{SponsorshipEnabled: true}
 
 	err := keeper.SetParams(ctx, params)
 	require.NoError(t, err)
 
 	retrievedParams := keeper.GetParams(ctx)
-	require.True(t, retrievedParams.SponsorshipEnabled)
-	require.Equal(t, uint64(0), retrievedParams.MaxGasPerSponsorship)
+    require.True(t, retrievedParams.SponsorshipEnabled)
 }
 
 // TestNewKeeperAndBasicFunctions tests the NewKeeper constructor and basic functions
@@ -1073,48 +1199,61 @@ func TestNewKeeperAndBasicFunctions(t *testing.T) {
 
 // TestUpdateParams tests the UpdateParams message server function
 func TestUpdateParams(t *testing.T) {
-	keeper, ctx, _, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, _, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	// Test with valid authority
 	authority := keeper.GetAuthority()
-	msg := &types.MsgUpdateParams{
-		Authority: authority,
-		Params: types.Params{
-			SponsorshipEnabled:   false,
-			MaxGasPerSponsorship: 3000000,
-		},
-	}
+    msg := &types.MsgUpdateParams{
+        Authority: authority,
+        Params: types.Params{
+            SponsorshipEnabled:    false,
+            PolicyTicketTtlBlocks: 30,
+            MaxMethodTicketUsesPerIssue: 3,
+        },
+    }
 
-	_, err := msgServer.UpdateParams(ctx, msg)
-	require.NoError(t, err)
+    // Capture events
+    evCtx := sdk.UnwrapSDKContext(ctx).WithEventManager(sdk.NewEventManager())
+    _, err := msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+    require.NoError(t, err)
 
-	// Verify params were updated
-	params := keeper.GetParams(sdk.UnwrapSDKContext(ctx))
-	require.False(t, params.SponsorshipEnabled)
-	require.Equal(t, uint64(3000000), params.MaxGasPerSponsorship)
+    // Verify params were updated
+    params := keeper.GetParams(evCtx)
+    require.False(t, params.SponsorshipEnabled)
+    // Check update event attributes present
+    found := false
+    for _, ev := range evCtx.EventManager().Events() {
+        if ev.Type != types.EventTypeUpdateParams { continue }
+        kv := map[string]string{}
+        for _, a := range ev.Attributes { kv[a.Key] = a.Value }
+        if kv[types.AttributeKeyAuthority] == authority && kv[types.AttributeKeySponsorshipEnabled] == "false" {
+            found = true
+            break
+        }
+    }
+    require.True(t, found)
 
 	// Test with invalid authority
 	msg.Authority = "invalid-authority"
-	_, err = msgServer.UpdateParams(ctx, msg)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "invalid authority")
+    _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "invalid authority")
 
-	// Test with invalid params (negative gas)
-	msg.Authority = authority
-	msg.Params.MaxGasPerSponsorship = 0 // Invalid: should be > 0 according to validation rules
+    // Test with invalid params (TTL zero)
+    msg.Authority = authority
+    msg.Params.PolicyTicketTtlBlocks = 0
 
 	// First check if the types package has validation that catches this
-	err = msg.Params.Validate()
-	if err != nil {
-		_, err = msgServer.UpdateParams(ctx, msg)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "invalid module parameters")
-	} else {
-		// If validation doesn't catch it, the function should still succeed
-		_, err = msgServer.UpdateParams(ctx, msg)
-		require.NoError(t, err)
-	}
+    err = msg.Params.Validate()
+    if err != nil {
+        _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+        require.Error(t, err)
+        require.Contains(t, err.Error(), "invalid module parameters")
+    } else {
+        _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+        require.Error(t, err)
+    }
 }
 
 // TestLegacyQuerier tests the legacy querier functions
@@ -1196,52 +1335,7 @@ func TestMoreEdgeCases(t *testing.T) {
 }
 
 // TestCheckContractPolicyAdvancedCases tests advanced scenarios for CheckContractPolicy
-func TestCheckContractPolicyAdvancedCases(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-
-	contractAddr := sdk.AccAddress([]byte("advancedcontract____")).String()
-	userAddr := sdk.AccAddress("advanceduser_______")
-
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Test with multiple contract messages in one transaction
-	msg1 := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"action1": {"param": "value1"}}`),
-	}
-	msg2 := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"action2": {"param": "value2"}}`),
-	}
-
-	// All messages should be eligible
-	wasmKeeper.SetQueryResponse(`{"eligible": true}`)
-	result, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg1, msg2}))
-	require.NoError(t, err)
-	require.True(t, result.Eligible)
-
-	// Test with one message not eligible (should fail entire check)
-	wasmKeeper.SetQueryResponse(`{"eligible": false, "reason": "action not allowed"}`)
-	result, err = keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg1, msg2}))
-	require.NoError(t, err)
-	require.False(t, result.Eligible)
-	require.Contains(t, result.Reason, "action not allowed")
-
-	// Test with mixed transaction (some for this contract, some for others)
-	otherContractAddr := sdk.AccAddress([]byte("othercontract_______")).String()
-	otherMsg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: otherContractAddr,
-		Msg:      []byte(`{"other": "message"}`),
-	}
-
-	wasmKeeper.SetQueryResponse(`{"eligible": true}`)
-	result, err = keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg1, otherMsg, msg2}))
-	require.NoError(t, err)
-	require.True(t, result.Eligible)
-}
+func TestCheckContractPolicyAdvancedCases(t *testing.T) { t.Skip("policy probe removed") }
 
 // Legacy querier removed: coverage via gRPC query tests
 func TestLegacyQuerierFullCoverage(t *testing.T) {}
@@ -1382,8 +1476,8 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 // TestMsgServerComprehensiveDeleteSponsor tests DeleteSponsor with full coverage
 func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
-	keeper, ctx, wasmKeeper, _, bankKeeper := setupKeeperWithDeps(t)
-	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper)
+	keeper, ctx, wasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	contractAddr := sdk.AccAddress([]byte("contractaddr12345678")).String()
 	adminAddr := sdk.AccAddress("admin_______________")
@@ -1440,6 +1534,123 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 	// Verify sponsor was deleted
 	_, found = keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
 	require.False(t, found)
+}
+
+// Admin cleared: original creator should be able to manage sponsor (update/delete/withdraw)
+func TestMsgServer_AdminCleared_CreatorFallback(t *testing.T) {
+    keeper, ctx, msgServer, wasmKeeper, bankKeeper := setupMsgServerEnv(t)
+
+    contractAddr := sdk.AccAddress([]byte("contractadminclear____")).String()
+    adminAddr := sdk.AccAddress("admin_______________")
+    creator := adminAddr // creator equals initial admin at set time
+
+    // Set up contract and initial sponsor via SetSponsor
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+    setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+    _, err := msgServer.SetSponsor(ctx, setMsg)
+    require.NoError(t, err)
+
+    // Clear admin on wasm contract
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // 1) UpdateSponsor should be allowed by original creator when admin is cleared
+    upd := &types.MsgUpdateSponsor{
+        Creator:         creator.String(),
+        ContractAddress: contractAddr,
+        IsSponsored:     false,
+        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(2000)}},
+    }
+    _, err = msgServer.UpdateSponsor(ctx, upd)
+    require.NoError(t, err)
+
+    // 2) DeleteSponsor should be allowed by original creator when balance is zero
+    // First ensure zero balance (should be zero by default)
+    del := &types.MsgDeleteSponsor{Creator: creator.String(), ContractAddress: contractAddr}
+    _, err = msgServer.DeleteSponsor(ctx, del)
+    require.NoError(t, err)
+
+    // Recreate sponsor and fund sponsor address to test Withdraw fallback
+    // Restore admin first so SetSponsor passes admin validation
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+    _, _ = msgServer.SetSponsor(ctx, setMsg)
+    // fund sponsor address
+    sp, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
+    require.True(t, found)
+    sponsorAddr, e := sdk.AccAddressFromBech32(sp.SponsorAddress)
+    require.NoError(t, e)
+    // mint and send funds to sponsor address
+    amt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+    // use bankKeeper from env to mint via module then send
+    // Note: setupMsgServerEnv created bankKeeper with module account; mint to module then send
+    require.NoError(t, bankKeeper.MintCoins(sdk.UnwrapSDKContext(ctx), types.ModuleName, amt))
+    require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(sdk.UnwrapSDKContext(ctx), types.ModuleName, sponsorAddr, amt))
+
+    // Clear admin again
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // 3) Withdraw by creator when admin cleared
+    w := &types.MsgWithdrawSponsorFunds{Creator: creator.String(), ContractAddress: contractAddr, Recipient: creator.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}}
+    _, err = msgServer.WithdrawSponsorFunds(ctx, w)
+    require.NoError(t, err)
+}
+
+// Admin cleared but caller is not original creator -> unauthorized
+func TestMsgServer_AdminCleared_CreatorMismatch_Unauthorized(t *testing.T) {
+    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+    contractAddr := sdk.AccAddress([]byte("contractadminclear_mis__")).String()
+    adminAddr := sdk.AccAddress("admin_______________")
+    other := sdk.AccAddress("other_______________")
+
+    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant))
+    require.NoError(t, err)
+    // Clear admin
+    wasmKeeper.SetContractInfo(contractAddr, "")
+
+    // Update by non-creator should be rejected
+    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: other.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    // Delete by non-creator should be rejected
+    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: other.String(), ContractAddress: contractAddr})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    // Withdraw by non-creator should be rejected
+    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: other.String(), ContractAddress: contractAddr, Recipient: other.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+}
+
+// Admin present but creator is not current admin -> creator should not be able to manage
+func TestMsgServer_AdminPresent_CreatorNotAdmin_Unauthorized(t *testing.T) {
+    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+    contractAddr := sdk.AccAddress([]byte("contractadminpresent___")).String()
+    initialAdmin := sdk.AccAddress("adminA______________")
+    newAdmin := sdk.AccAddress("adminB______________")
+
+    wasmKeeper.SetContractInfo(contractAddr, initialAdmin.String())
+    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, initGrant))
+    require.NoError(t, err)
+
+    // Change admin to newAdmin
+    wasmKeeper.SetContractInfo(contractAddr, newAdmin.String())
+
+    // Original creator (initial admin) should not be authorized now
+    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
+
+    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: initialAdmin.String(), ContractAddress: contractAddr, Recipient: initialAdmin.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "not contract admin")
 }
 
 // TestMsgServerComprehensiveWithdrawFunds tests WithdrawSponsorFunds with full coverage
@@ -1555,10 +1766,7 @@ func TestErrorPathsInKeeper(t *testing.T) {
 	require.NotNil(t, pageRes)
 
 	// Test SetParams with marshal error (hard to trigger, but test success path)
-	params := types.Params{
-		SponsorshipEnabled:   true,
-		MaxGasPerSponsorship: 1000000,
-	}
+    params := types.Params{SponsorshipEnabled: true}
 	err = keeper.SetParams(ctx, params)
 	require.NoError(t, err)
 
@@ -1579,129 +1787,6 @@ func TestErrorPathsInKeeper(t *testing.T) {
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
 	require.Equal(t, sdk.NewInt(100), finalUsage.TotalGrantUsed[0].Amount)
-}
-
-// TestAdvancedContractPolicyChecks tests more complex contract policy scenarios
-func TestAdvancedContractPolicyChecks(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-
-	contractAddr := sdk.AccAddress([]byte("advancedpolicycheck__")).String()
-	userAddr := sdk.AccAddress("policyuser_________")
-
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Test with contract query that returns invalid JSON
-	msg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"valid": "json"}`),
-	}
-
-	wasmKeeper.SetQueryResponse(`{invalid json}`)
-	_, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to unmarshal query response")
-
-	// Test with contract query that returns eligible without reason
-	wasmKeeper.SetQueryResponse(`{"eligible": false}`)
-	result, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg}))
-	require.NoError(t, err)
-	require.False(t, result.Eligible)
-	require.Contains(t, result.Reason, "no reason provided")
-
-	// Test with multiple messages where second fails
-	msg1 := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"action1": "success"}`),
-	}
-	msg2 := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"action2": "should_fail"}`),
-	}
-
-	// Set up mock to return eligible for first call, not eligible for second
-	callCount := 0
-	wasmKeeper.SetCustomQueryHandler(func(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
-		callCount++
-		if callCount == 1 {
-			return []byte(`{"eligible": true}`), nil
-		}
-		return []byte(`{"eligible": false, "reason": "action2 not allowed"}`), nil
-	})
-
-	result, err = keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg1, msg2}))
-	require.NoError(t, err)
-	require.False(t, result.Eligible)
-	require.Contains(t, result.Reason, "action2 not allowed")
-
-	// Clear custom handler
-	wasmKeeper.SetQueryResponse(`{"eligible": true}`)
-}
-
-// TestCompleteErrorPathCoverage tests all remaining error paths for 100% coverage
-func TestCompleteErrorPathCoverage(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-
-	contractAddr := sdk.AccAddress([]byte("errorcoveragetest___")).String()
-	userAddr := sdk.AccAddress("errorcoveruser_____")
-
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Test 1: JSON marshal error in CheckContractPolicy (simulate invalid data)
-	// This is very hard to trigger with normal Go json.Marshal, but we can test the path
-	// by using an invalid message structure. For now, let's focus on other error paths.
-
-	// Test 2: QuerySmart error in CheckContractPolicy
-	msg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"test": "message"}`),
-	}
-
-	wasmKeeper.SetCustomQueryHandler(func(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
-		return nil, fmt.Errorf("query smart failed for testing")
-	})
-
-	_, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to query contract")
-
-	// Test 3: Marshal error in JSON query message (very hard to trigger)
-	// Skip this as it requires special conditions
-
-	// Test 4: GetSponsor unmarshal error (simulate corrupted store data)
-	// This is also hard to test without directly corrupting the store
-
-	// Test 5: Test IterateSponsors with unmarshal error handling
-	// Also hard to simulate without store corruption
-
-	// Test 6: SetParams marshal error
-	// json.Marshal of Params struct rarely fails, skip this edge case
-
-	// Test 7: SetUserGrantUsage marshal error
-	// Also rare, skip this edge case
-
-	// Test 8: UpdateUserGrantUsage with nil coin handling
-	userAddr2 := sdk.AccAddress("testuser2__________").String()
-	contractAddr2 := sdk.AccAddress([]byte("testcontract2_______")).String()
-
-	// Create usage with valid coin first
-	usage := types.NewUserGrantUsage(userAddr2, contractAddr2)
-	usage.TotalGrantUsed = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}}
-	err = keeper.SetUserGrantUsage(ctx, usage)
-	require.NoError(t, err)
-
-	// Test update
-	err = keeper.UpdateUserGrantUsage(ctx, userAddr2, contractAddr2, sdk.NewCoins(sdk.NewInt64Coin("peaka", 50)))
-	require.NoError(t, err)
-
-	// Verify the result
-	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr2, contractAddr2)
-	require.Equal(t, sdk.NewInt(150), finalUsage.TotalGrantUsed[0].Amount)
-
-	wasmKeeper.SetQueryResponse(`{"eligible": true}`) // Reset
 }
 
 // TestMessageServerErrorPaths tests remaining message server error paths
@@ -1800,31 +1885,7 @@ func TestAdvancedEdgeCases(t *testing.T) {
 }
 
 // TestMockWasmKeeperErrorSimulation tests error simulation capabilities
-func TestMockWasmKeeperErrorSimulation(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
-
-	contractAddr := sdk.AccAddress([]byte("errortest___________")).String()
-	userAddr := sdk.AccAddress("erroruser__________")
-
-	wasmKeeper.SetContractInfo(contractAddr, "admin")
-
-	// Test JSON marshal error in CheckContractPolicy by using custom handler
-	// that checks the input and returns error for specific case
-	wasmKeeper.SetCustomQueryHandler(func(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
-		// Always return an error to test the error path in CheckContractPolicy
-		return nil, fmt.Errorf("simulated QuerySmart error")
-	})
-
-	msg := &wasmtypes.MsgExecuteContract{
-		Sender:   userAddr.String(),
-		Contract: contractAddr,
-		Msg:      []byte(`{"test": "message"}`),
-	}
-
-	_, err := keeper.CheckContractPolicy(ctx, contractAddr, userAddr, createMockTx([]sdk.Msg{msg}))
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to query contract")
-}
+func TestMockWasmKeeperErrorSimulation(t *testing.T) { t.Skip("policy probe removed") }
 
 // TestRemainingUncoveredPaths tests any remaining uncovered code paths
 func TestRemainingUncoveredPaths(t *testing.T) {
@@ -1933,7 +1994,7 @@ func TestFinalCoverageGaps(t *testing.T) {
 
 // TestSpecificUncoveredLines tests specific uncovered lines for 100% coverage
 func TestSpecificUncoveredLines(t *testing.T) {
-	keeper, ctx, wasmKeeper := setupKeeper(t)
+	keeper, ctx, _ := setupKeeper(t)
 
 	// Test GetSponsorsPaginated error path (line 69-71 in grpc_query.go)
 	t.Run("AllSponsors_pagination_error", func(t *testing.T) {
@@ -1954,27 +2015,8 @@ func TestSpecificUncoveredLines(t *testing.T) {
 		}
 	})
 
-	// Test CheckContractPolicy unmarshal error path: provide a minimal tx and invalid JSON response
-	t.Run("CheckContractPolicy_unmarshal_error", func(t *testing.T) {
-		contractAddr := sdk.AccAddress([]byte("contract_unmarshal_____"))
-		userAddr := sdk.AccAddress("user________________")
-
-		// Set contract info so ValidateContractExists passes
-		wasmKeeper.SetContractInfo(contractAddr.String(), "admin")
-
-		// Minimal tx with one contract execute message to the target contract
-		exec := &wasmtypes.MsgExecuteContract{Sender: userAddr.String(), Contract: contractAddr.String(), Msg: []byte(`{"any":{}}`)}
-		mockTx := miniTx{msgs: []sdk.Msg{exec}}
-
-		// Return invalid JSON from QuerySmart to trigger unmarshal error
-		wasmKeeper.SetCustomQueryHandler(func(ctx sdk.Context, caddr sdk.AccAddress, req []byte) ([]byte, error) {
-			return []byte("invalid json"), nil
-		})
-
-		_, err := keeper.CheckContractPolicy(ctx, contractAddr.String(), userAddr, mockTx)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "failed to unmarshal")
-	})
+	// Test CheckContractPolicy unmarshal error path: deprecated
+	t.Run("CheckContractPolicy_unmarshal_error", func(t *testing.T) { t.Skip("policy probe removed") })
 
 	// Test GetUserGrantUsage unmarshal error path (lines 460-464 in keeper.go)
 	t.Run("GetUserGrantUsage_unmarshal_error", func(t *testing.T) {
@@ -2025,4 +2067,58 @@ func TestSpecificUncoveredLines(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "sponsor not found")
 	})
+}
+
+
+
+// Test that a non-admin creator equal to sponsor.ticket_issuer_address is authorized to issue tickets
+func TestIssuePolicyTicket_IssuerAddressAuthorized(t *testing.T) {
+    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+    // Setup: admin A, issuer B
+    admin := sdk.AccAddress([]byte("admin_issuer_auth________")).String()
+    issuer := sdk.AccAddress([]byte("issuer_issuer_auth_______")).String()
+    user := sdk.AccAddress([]byte("user_issuer_auth_________")).String()
+    contract := sdk.AccAddress([]byte("contract_issuer_auth____")).String()
+
+    mockWasmKeeper.SetContractInfo(contract, admin)
+    // Set sponsor with ticket_issuer_address=issuer
+    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
+
+    // Non-admin issuer issues a method ticket
+    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+        Creator:         issuer,
+        ContractAddress: contract,
+        UserAddress:     user,
+        Method:          "inc",
+        Uses:            1,
+    })
+    require.NoError(t, err)
+    require.True(t, resp.Created)
+    // Ticket stored
+    _, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
+    require.True(t, ok)
+}
+
+// Test that a non-admin creator not equal to ticket_issuer_address is rejected
+func TestIssuePolicyTicket_IssuerUnauthorized(t *testing.T) {
+    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+    admin := sdk.AccAddress([]byte("admin_issuer_unauth______")).String()
+    issuer := sdk.AccAddress([]byte("issuer_issuer_unauth_____")).String()
+    outsider := sdk.AccAddress([]byte("outsider_issuer_unauth__")).String()
+    user := sdk.AccAddress([]byte("user_issuer_unauth_______")).String()
+    contract := sdk.AccAddress([]byte("contract_issuer_unauth__")).String()
+
+    mockWasmKeeper.SetContractInfo(contract, admin)
+    // Set sponsor with issuer=issuer
+    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
+
+    // Outsider (neither admin nor issuer) should fail
+    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+        Creator:         outsider,
+        ContractAddress: contract,
+        UserAddress:     user,
+        Method:          "inc",
+        Uses:            1,
+    })
+    require.Error(t, err)
 }

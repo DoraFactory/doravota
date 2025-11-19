@@ -1,22 +1,48 @@
 package sponsor_test
 
 import (
-	"testing"
+    "testing"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/stretchr/testify/suite"
+    dbm "github.com/cometbft/cometbft-db"
+    "github.com/cometbft/cometbft/libs/log"
+    tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+    "github.com/cosmos/cosmos-sdk/codec"
+    codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+    "github.com/cosmos/cosmos-sdk/store"
+    storetypes "github.com/cosmos/cosmos-sdk/store/types"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/cosmos/cosmos-sdk/types/address"
+    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+    "github.com/stretchr/testify/require"
+    "github.com/stretchr/testify/suite"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    sponsor "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
+
+// mockWasmKeeper is a simple WasmKeeperInterface mock for genesis tests
+type mockWasmKeeper struct {
+    allowAll bool
+    exists   map[string]bool
+}
+
+func (m *mockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+    if m == nil {
+        return nil
+    }
+    if m.allowAll {
+        return &wasmtypes.ContractInfo{Creator: "creator"}
+    }
+    if m.exists != nil && m.exists[contractAddress.String()] {
+        return &wasmtypes.ContractInfo{Creator: "creator"}
+    }
+    return nil
+}
+
+func (m *mockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+    return nil, nil
+}
 
 // setupKeeper creates a test keeper for genesis tests
 func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
@@ -38,8 +64,9 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		t.Fatalf("Failed to load store: %v", err)
 	}
 
-	// Create keeper
-	k := keeper.NewKeeper(cdc, storeKey, nil, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn") // Mock wasm keeper not needed for genesis tests
+    // Create keeper with mock wasm keeper (allow all contracts)
+    mw := &mockWasmKeeper{allowAll: true}
+    k := keeper.NewKeeper(cdc, storeKey, mw, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
 
 	// Create context
 	ctx := sdk.NewContext(
@@ -68,15 +95,20 @@ type GenesisTestSuite struct {
 }
 
 func (suite *GenesisTestSuite) SetupTest() {
-	// Set up keeper and context
-	suite.keeper, suite.ctx = setupKeeper(suite.T())
+    // Set up keeper and context
+    suite.keeper, suite.ctx = setupKeeper(suite.T())
 
-	// Set up test data
-	suite.contractAddr1 = "dora1contract1____________"
-	suite.contractAddr2 = "dora1contract2____________"
-	suite.admin = sdk.AccAddress("admin_______________")
-	suite.user1 = sdk.AccAddress("user1_______________")
-	suite.user2 = sdk.AccAddress("user2_______________")
+    // Set up test data
+    mk := func(seed byte) sdk.AccAddress {
+        b := make([]byte, 20)
+        for i := range b { b[i] = seed }
+        return sdk.AccAddress(b)
+    }
+    suite.contractAddr1 = mk(1).String()
+    suite.contractAddr2 = mk(2).String()
+    suite.admin = mk(3)
+    suite.user1 = mk(4)
+    suite.user2 = mk(5)
 }
 
 // TestDefaultGenesis tests that the default genesis state is valid
@@ -86,7 +118,7 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 	// Test default values
 	suite.Require().NotNil(genesis.Params, "Default should have params")
 	suite.Require().True(genesis.Params.SponsorshipEnabled, "Default should enable sponsorship")
-	suite.Require().Equal(uint64(2500000), genesis.Params.MaxGasPerSponsorship, "Default max gas should be 2.5M")
+    // removed gas param; ensure defaults are present
 	suite.Require().Empty(genesis.Sponsors, "Default should have no sponsors")
 
 	// Validate default genesis using the validation function
@@ -96,47 +128,122 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 
 // TestValidateGenesis tests genesis state validation
 func (suite *GenesisTestSuite) TestValidateGenesis() {
-	testCases := []struct {
-		name      string
-		genesis   *types.GenesisState
-		expectErr bool
-	}{
+    testCases := []struct {
+        name      string
+        genesis   *types.GenesisState
+        expectErr bool
+    }{
 		{
 			name:      "default genesis",
 			genesis:   types.DefaultGenesisState(),
 			expectErr: false,
 		},
-		{
-			name: "valid genesis with sponsors",
-			genesis: func() *types.GenesisState {
-				params := types.DefaultParams()
-				return &types.GenesisState{
-					Params: &params,
-					Sponsors: []*types.ContractSponsor{
-						{
-							ContractAddress: suite.contractAddr1,
-							CreatorAddress:  suite.admin.String(),
-							IsSponsored:     true,
-							MaxGrantPerUser: []*sdk.Coin{
-								{Denom: "peaka", Amount: sdk.NewInt(1000)},
-							},
-						},
-					},
-				}
-			}(),
-			expectErr: false,
-		},
-		{
-			name: "invalid params - zero max gas",
-			genesis: &types.GenesisState{
-				Params: &types.Params{
-					SponsorshipEnabled:   false,
-					MaxGasPerSponsorship: 0, // Invalid
-				},
-				Sponsors: []*types.ContractSponsor{},
-			},
-			expectErr: true,
-		},
+        {
+            name: "valid genesis with sponsors",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                // derive sponsor address
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: suite.contractAddr1,
+                            CreatorAddress:  suite.admin.String(),
+                            SponsorAddress:  sponsorAddr,
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+                        },
+                    },
+                }
+            }(),
+            expectErr: false,
+        },
+        {
+            name: "policy_ticket method too long rejected",
+            genesis: func() *types.GenesisState {
+                p := types.DefaultParams()
+                p.MaxMethodNameBytes = 4
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"longname"})
+                return &types.GenesisState{
+                    Params: &p,
+                    PolicyTickets: []*types.PolicyTicket{{
+                        ContractAddress: suite.contractAddr1,
+                        UserAddress:     suite.user1.String(),
+                        Digest:          md,
+                        ExpiryHeight:    1,
+                        UsesRemaining:   1,
+                        IssuedHeight:    1,
+                        Method:          "longname",
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "valid genesis with policy tickets",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                // Build a method ticket digest for method "inc"
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: suite.contractAddr1,
+                            CreatorAddress:  suite.admin.String(),
+                            SponsorAddress:  sponsorAddr,
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+                        },
+                    },
+                    PolicyTickets: []*types.PolicyTicket{{
+                        ContractAddress: suite.contractAddr1,
+                        UserAddress:     suite.user1.String(),
+                        Digest:          md,
+                        ExpiryHeight:    100,
+                        UsesRemaining:   1,
+                        IssuedHeight:    1,
+                        Method:          "inc",
+                    }},
+                }
+            }(),
+            expectErr: false,
+        },
+        {
+            name: "duplicate policy tickets rejected",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+                t := &types.PolicyTicket{
+                    ContractAddress: suite.contractAddr1,
+                    UserAddress:     suite.user1.String(),
+                    Digest:          md,
+                    ExpiryHeight:    100,
+                    UsesRemaining:   1,
+                    IssuedHeight:    1,
+                    Method:          "inc",
+                }
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+                    }},
+                    PolicyTickets: []*types.PolicyTicket{t, t},
+                }
+            }(),
+            expectErr: true,
+        },
+        // removed gas param test
 		{
 			name: "duplicate sponsors",
 			genesis: func() *types.GenesisState {
@@ -181,42 +288,194 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
 			}(),
 			expectErr: true,
 		},
-		{
-			name: "sponsor with invalid contract address",
-			genesis: func() *types.GenesisState {
-				params := types.DefaultParams()
-				return &types.GenesisState{
-					Params: &params,
-					Sponsors: []*types.ContractSponsor{
-						{
-							ContractAddress: "invalid-address", // Invalid bech32
-							CreatorAddress:  suite.admin.String(),
-							IsSponsored:     true,
-							MaxGrantPerUser: []*sdk.Coin{},
-						},
-					},
-				}
-			}(),
-			expectErr: false, // Note: ValidateGenesis doesn't validate bech32 format
-		},
-		{
-			name: "sponsor with empty creator address",
-			genesis: func() *types.GenesisState {
-				params := types.DefaultParams()
-				return &types.GenesisState{
-					Params: &params,
-					Sponsors: []*types.ContractSponsor{
-						{
-							ContractAddress: suite.contractAddr1,
-							CreatorAddress:  "", // Empty, but this is valid in genesis
-							IsSponsored:     true,
-							MaxGrantPerUser: []*sdk.Coin{},
-						},
-					},
-				}
-			}(),
-			expectErr: false, // Note: ValidateGenesis allows empty creator address
-		},
+        {
+            name: "sponsor with invalid contract address",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: "invalid-address", // Invalid bech32
+                            CreatorAddress:  suite.admin.String(),
+                            SponsorAddress:  suite.admin.String(),
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{},
+                        },
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "sponsor with empty creator address",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: suite.contractAddr1,
+                            CreatorAddress:  "", // now invalid
+                            SponsorAddress:  sponsorAddr,
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+                        },
+                    },
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "sponsor address not derived from contract",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                // wrong sponsor address
+                wrong := suite.user1.String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  wrong,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "is sponsored but max_grant_per_user empty",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{}, // invalid now
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "user grant usage references unknown sponsor",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{},
+                    UserGrantUsages: []*types.UserGrantUsage{{
+                        UserAddress:     suite.user1.String(),
+                        ContractAddress: suite.contractAddr1,
+                        TotalGrantUsed:  []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "user grant usage exceeds sponsor limit",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(10)}},
+                    }},
+                    UserGrantUsages: []*types.UserGrantUsage{{
+                        UserAddress:     suite.user1.String(),
+                        ContractAddress: suite.contractAddr1,
+                        TotalGrantUsed:  []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(11)}},
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "sponsor timestamps invalid (created_at > updated_at)",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        CreatedAt:       100,
+                        UpdatedAt:       50,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "user grant usage negative time",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(10)}},
+                    }},
+                    UserGrantUsages: []*types.UserGrantUsage{{
+                        UserAddress:     suite.user1.String(),
+                        ContractAddress: suite.contractAddr1,
+                        TotalGrantUsed:  []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+                        LastUsedTime:    -1,
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "user grant usage negative amount",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(10)}},
+                    }},
+                    UserGrantUsages: []*types.UserGrantUsage{{
+                        UserAddress:     suite.user1.String(),
+                        ContractAddress: suite.contractAddr1,
+                        TotalGrantUsed:  []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(-1)}},
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
 	}
 
 	for _, tc := range testCases {
@@ -233,28 +492,34 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
 
 // TestInitExportGenesis tests genesis initialization and export
 func (suite *GenesisTestSuite) TestInitExportGenesis() {
-	// Create a genesis state with test data
-	originalGenesis := &types.GenesisState{
-		Params: &types.Params{
-			SponsorshipEnabled:   true,
-			MaxGasPerSponsorship: 1500000,
-		},
-		Sponsors: []*types.ContractSponsor{
-			{
-				ContractAddress: suite.contractAddr1,
-				CreatorAddress:  suite.admin.String(),
-				IsSponsored:     true,
-				MaxGrantPerUser: []*sdk.Coin{
-					{Denom: "peaka", Amount: sdk.NewInt(5000)},
-				},
-			},
-			{
-				ContractAddress: suite.contractAddr2,
-				CreatorAddress:  suite.admin.String(),
-				IsSponsored:     false,
-				MaxGrantPerUser: []*sdk.Coin{},
-			},
-		},
+    // Create a genesis state with test data
+    // derive sponsor addresses
+    ca1, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+    ca2, _ := sdk.AccAddressFromBech32(suite.contractAddr2)
+    sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
+    sp2 := sdk.AccAddress(address.Derive(ca2, []byte("sponsor"))).String()
+    originalGenesis := &types.GenesisState{
+        Params: &types.Params{
+            SponsorshipEnabled:   true,
+        },
+        Sponsors: []*types.ContractSponsor{
+            {
+                ContractAddress: suite.contractAddr1,
+                CreatorAddress:  suite.admin.String(),
+                SponsorAddress:  sp1,
+                IsSponsored:     true,
+                MaxGrantPerUser: []*sdk.Coin{
+                    {Denom: "peaka", Amount: sdk.NewInt(5000)},
+                },
+            },
+            {
+                ContractAddress: suite.contractAddr2,
+                CreatorAddress:  suite.admin.String(),
+                SponsorAddress:  sp2,
+                IsSponsored:     false,
+                MaxGrantPerUser: []*sdk.Coin{},
+            },
+        },
 		UserGrantUsages: []*types.UserGrantUsage{
 			{
 				UserAddress:     suite.user1.String(),
@@ -268,12 +533,11 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	}
 
 	// Initialize genesis
-	sponsor.InitGenesis(suite.ctx, suite.keeper, *originalGenesis)
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *originalGenesis)
 
-	// Verify parameters were set
-	params := suite.keeper.GetParams(suite.ctx)
-	suite.Require().True(params.SponsorshipEnabled)
-	suite.Require().Equal(uint64(1500000), params.MaxGasPerSponsorship)
+    // Verify parameters were set
+    params := suite.keeper.GetParams(suite.ctx)
+    suite.Require().True(params.SponsorshipEnabled)
 
 	// Verify sponsors were created
 	sponsor1, found := suite.keeper.GetSponsor(suite.ctx, suite.contractAddr1)
@@ -296,12 +560,11 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	suite.Require().True(usage1.TotalGrantUsed[0].Amount.Equal(sdk.NewInt(750)))
 	suite.Require().Equal(int64(123456789), usage1.LastUsedTime)
 
-	// Export genesis and compare
-	exportedGenesis := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    // Export genesis and compare
+    exportedGenesis := sponsor.ExportGenesis(suite.ctx, suite.keeper)
 
-	// Compare parameters
-	suite.Require().Equal(originalGenesis.Params.SponsorshipEnabled, exportedGenesis.Params.SponsorshipEnabled)
-	suite.Require().Equal(originalGenesis.Params.MaxGasPerSponsorship, exportedGenesis.Params.MaxGasPerSponsorship)
+    // Compare parameters
+    suite.Require().Equal(originalGenesis.Params.SponsorshipEnabled, exportedGenesis.Params.SponsorshipEnabled)
 
 	// Compare sponsors count
 	suite.Require().Len(exportedGenesis.Sponsors, len(originalGenesis.Sponsors))
@@ -321,7 +584,7 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 		suite.Require().Equal(len(originalSponsor.MaxGrantPerUser), len(exportedSponsor.MaxGrantPerUser))
 	}
 
-	// Compare exported user grant usages
+    // Compare exported user grant usages
 	exportedUsageMap := make(map[string]*types.UserGrantUsage)
 	for _, usage := range exportedGenesis.UserGrantUsages {
 		exportedUsageMap[usage.UserAddress+"/"+usage.ContractAddress] = usage
@@ -339,24 +602,94 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	}
 }
 
+// Test that policy tickets are initialized from genesis and exported back
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_InitExport() {
+    // Prepare one method ticket in genesis
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 50),
+            UsesRemaining:   2,
+            IssuedHeight:    uint64(suite.ctx.BlockHeight()),
+            Method:          "inc",
+        }},
+    }
+
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Verify ticket present in store
+    t, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    suite.Require().Equal("inc", t.Method)
+    suite.Require().Equal(uint32(2), t.UsesRemaining)
+
+    // Export and verify ticket round-trips
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found, "export should include policy ticket")
+}
+
+// Tickets included in genesis that are already expired should be initialized
+// and can be removed by the module's GC routine.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
+    // Create an expired ticket at genesis (expiry < current height)
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight()), // expired when now > expiry
+            UsesRemaining:   1,
+            IssuedHeight:    1,
+            Method:          "inc",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present initially
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    // Advance height and run GC
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Should be removed
+    _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().False(ok)
+}
+
 // TestGenesisRoundTrip tests that genesis init->export->init produces identical state
 func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	// Create original genesis state
-	originalGenesis := &types.GenesisState{
-		Params: &types.Params{
-			SponsorshipEnabled:   false,
-			MaxGasPerSponsorship: 3000000,
-		},
-		Sponsors: []*types.ContractSponsor{
-			{
-				ContractAddress: suite.contractAddr1,
-				CreatorAddress:  suite.admin.String(),
-				IsSponsored:     true,
-				MaxGrantPerUser: []*sdk.Coin{
-					{Denom: "peaka", Amount: sdk.NewInt(10000)},
-				},
-			},
-		},
+    // derive sponsor address
+    ca1, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+    sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
+    originalGenesis := &types.GenesisState{
+        Params: &types.Params{
+            SponsorshipEnabled:   false,
+        },
+        Sponsors: []*types.ContractSponsor{
+            {
+                ContractAddress: suite.contractAddr1,
+                CreatorAddress:  suite.admin.String(),
+                SponsorAddress:  sp1,
+                IsSponsored:     true,
+                MaxGrantPerUser: []*sdk.Coin{
+                    {Denom: "peaka", Amount: sdk.NewInt(10000)},
+                },
+            },
+        },
 		UserGrantUsages: []*types.UserGrantUsage{
 			{
 				UserAddress:     suite.user1.String(),
@@ -386,7 +719,7 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 
 	// Compare the two exports - they should be identical
 	suite.Require().Equal(firstExport.Params.SponsorshipEnabled, secondExport.Params.SponsorshipEnabled)
-	suite.Require().Equal(firstExport.Params.MaxGasPerSponsorship, secondExport.Params.MaxGasPerSponsorship)
+    // removed gas param
 	suite.Require().Len(secondExport.Sponsors, len(firstExport.Sponsors))
 	suite.Require().Len(secondExport.UserGrantUsages, len(firstExport.UserGrantUsages))
 
@@ -402,6 +735,125 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 		suite.Require().Equal(firstExport.UserGrantUsages[0].ContractAddress, secondExport.UserGrantUsages[0].ContractAddress)
 		suite.Require().Equal(firstExport.UserGrantUsages[0].LastUsedTime, secondExport.UserGrantUsages[0].LastUsedTime)
 	}
+}
+
+// Tickets that are consumed and expired at or before current height should be removed by GC after height advances.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRemoves() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight()),
+            UsesRemaining:   0,
+            Consumed:        true,
+            IssuedHeight:    1,
+            Method:          "inc",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present initially
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    // Advance height and GC
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Should be removed
+    _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().False(ok)
+}
+
+// Consumed but unexpired ticket should be preserved by GC and exported/imported intact.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Preserved() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"dec"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 10),
+            UsesRemaining:   0,
+            Consumed:        true,
+            IssuedHeight:    1,
+            Method:          "dec",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Advance height and run GC (should keep, not expired)
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Still present
+    t, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    suite.Require().True(t.Consumed)
+    // Export and ensure ticket exists in export
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            suite.Require().True(pt.Consumed)
+            break
+        }
+    }
+    suite.Require().True(found)
+}
+
+// UsesRemaining=0 and not consumed is allowed to import; if not expired, it should be preserved and exported back.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"ping"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 5),
+            UsesRemaining:   0,
+            Consumed:        false,
+            IssuedHeight:    1,
+            Method:          "ping",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present and preserved by export
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found)
+}
+
+// Method is optional display-only field; digest remains the key. Empty method should be accepted by genesis validation.
+func (suite *GenesisTestSuite) TestValidateGenesis_PolicyTicket_MethodOptional() {
+    p := types.DefaultParams()
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"noop"})
+    g := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    1,
+            UsesRemaining:   1,
+            IssuedHeight:    1,
+            Method:          "",
+        }},
+    }
+    err := types.ValidateGenesis(*g)
+    suite.Require().NoError(err)
 }
 
 // TestEmptyGenesis tests initialization with minimal genesis state
@@ -422,32 +874,36 @@ func (suite *GenesisTestSuite) TestEmptyGenesis() {
 	suite.Require().Empty(exported.UserGrantUsages)
 
 	// Parameters should be set to defaults
-	params = suite.keeper.GetParams(suite.ctx)
-	defaultParams := types.DefaultParams()
-	suite.Require().Equal(defaultParams.SponsorshipEnabled, params.SponsorshipEnabled)
-	suite.Require().Equal(defaultParams.MaxGasPerSponsorship, params.MaxGasPerSponsorship)
+    params = suite.keeper.GetParams(suite.ctx)
+    defaultParams := types.DefaultParams()
+    suite.Require().Equal(defaultParams.SponsorshipEnabled, params.SponsorshipEnabled)
 }
 
 // TestGenesisWithDuplicateValidation tests that duplicate detection works
 func (suite *GenesisTestSuite) TestGenesisWithDuplicateValidation() {
-	params := types.DefaultParams()
-	duplicateGenesis := &types.GenesisState{
-		Params: &params,
-		Sponsors: []*types.ContractSponsor{
-			{
-				ContractAddress: suite.contractAddr1,
-				CreatorAddress:  suite.admin.String(),
-				IsSponsored:     true,
-				MaxGrantPerUser: []*sdk.Coin{},
-			},
-			{
-				ContractAddress: suite.contractAddr1, // Duplicate
-				CreatorAddress:  suite.admin.String(),
-				IsSponsored:     false,
-				MaxGrantPerUser: []*sdk.Coin{},
-			},
-		},
-	}
+    params := types.DefaultParams()
+    // derive correct sponsor address from contract for validity
+    ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+    sp := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+    duplicateGenesis := &types.GenesisState{
+        Params: &params,
+        Sponsors: []*types.ContractSponsor{
+            {
+                ContractAddress: suite.contractAddr1,
+                CreatorAddress:  suite.admin.String(),
+                SponsorAddress:  sp,
+                IsSponsored:     true,
+                MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+            },
+            {
+                ContractAddress: suite.contractAddr1, // Duplicate
+                CreatorAddress:  suite.admin.String(),
+                SponsorAddress:  sp,
+                IsSponsored:     false,
+                MaxGrantPerUser: []*sdk.Coin{},
+            },
+        },
+    }
 
 	err := types.ValidateGenesis(*duplicateGenesis)
 	suite.Require().Error(err, "Should detect duplicate sponsors")
@@ -455,5 +911,107 @@ func (suite *GenesisTestSuite) TestGenesisWithDuplicateValidation() {
 }
 
 func TestGenesisTestSuite(t *testing.T) {
-	suite.Run(t, new(GenesisTestSuite))
+    suite.Run(t, new(GenesisTestSuite))
+}
+
+// TestInitGenesis_ContractMustExistAndSponsorDerived validates InitGenesis panics when contract doesn't exist or sponsor mismatch
+func (suite *GenesisTestSuite) TestInitGenesis_ContractMustExistAndSponsorDerived() {
+    // Build a fresh keeper with selective wasm mock
+    registry := codectypes.NewInterfaceRegistry()
+    cdc := codec.NewProtoCodec(registry)
+    storeKey := sdk.NewKVStoreKey(types.StoreKey)
+    db := dbm.NewMemDB()
+    ms := store.NewCommitMultiStore(db)
+    ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
+    require.NoError(suite.T(), ms.LoadLatestVersion())
+
+    // Deny all contracts exist
+    denyMock := &mockWasmKeeper{allowAll: false, exists: map[string]bool{}}
+    kDeny := keeper.NewKeeper(cdc, storeKey, denyMock, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
+    ctxDeny := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
+
+    ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+    sp := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+    pBad := types.DefaultParams()
+    badGenesis := &types.GenesisState{
+        Params: &pBad,
+        Sponsors: []*types.ContractSponsor{{
+            ContractAddress: suite.contractAddr1,
+            CreatorAddress:  suite.admin.String(),
+            SponsorAddress:  sp,
+            IsSponsored:     true,
+            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+        }},
+    }
+    suite.Require().Panics(func() { sponsor.InitGenesis(ctxDeny, *kDeny, *badGenesis) }, "should panic when contract does not exist")
+
+    // Allow all contracts exist but provide wrong sponsor address
+    allowMock := &mockWasmKeeper{allowAll: true}
+    kAllow := keeper.NewKeeper(cdc, storeKey, allowMock, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
+    ctxAllow := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
+    pWrong := types.DefaultParams()
+    wrongGenesis := &types.GenesisState{
+        Params: &pWrong,
+        Sponsors: []*types.ContractSponsor{{
+            ContractAddress: suite.contractAddr1,
+            CreatorAddress:  suite.admin.String(),
+            SponsorAddress:  suite.user1.String(), // wrong derived address
+            IsSponsored:     true,
+            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}},
+        }},
+    }
+    suite.Require().Panics(func() { sponsor.InitGenesis(ctxAllow, *kAllow, *wrongGenesis) }, "should panic when sponsor address mismatches derivation")
+}
+
+// TestExportGenesis_RoundTrip_Normalizes ensures MaxGrantPerUser is normalized on import/export
+func (suite *GenesisTestSuite) TestExportGenesis_RoundTrip_Normalizes() {
+    // Build a genesis with duplicate denom entries
+    params := types.DefaultParams()
+    ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+    sp := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+    genesis := &types.GenesisState{
+        Params: &params,
+        Sponsors: []*types.ContractSponsor{{
+            ContractAddress: suite.contractAddr1,
+            CreatorAddress:  suite.admin.String(),
+            SponsorAddress:  sp,
+            IsSponsored:     true,
+            MaxGrantPerUser: []*sdk.Coin{
+                {Denom: "peaka", Amount: sdk.NewInt(1)},
+                {Denom: "peaka", Amount: sdk.NewInt(2)},
+            },
+        }},
+    }
+
+    // Initialize and export
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *genesis)
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+
+    suite.Require().Len(exported.Sponsors, 1)
+    out := exported.Sponsors[0].MaxGrantPerUser
+    suite.Require().Len(out, 1)
+    suite.Require().Equal("peaka", out[0].Denom)
+    suite.Require().Equal(sdk.NewInt(3), out[0].Amount)
+}
+
+// TestParamsRoundTrip_IncludesNewField ensures new params fields are preserved across init/export
+func (suite *GenesisTestSuite) TestParamsRoundTrip_IncludesNewField() {
+    params := types.DefaultParams()
+    params.SponsorshipEnabled = true
+    // set other param to ensure export-path remains intact
+    params.PolicyTicketTtlBlocks = 77
+    // Removed: PolicyProbeGasPrice
+    params.PolicyTicketTtlBlocks = 9
+    params.MaxMethodTicketUsesPerIssue = 11
+
+    genesis := &types.GenesisState{ Params: &params }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *genesis)
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+
+    suite.Require().NotNil(exported.Params)
+    suite.Require().Equal(params.SponsorshipEnabled, exported.Params.SponsorshipEnabled)
+    suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
+    // Removed: PolicyProbeGasPrice
+    suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
+    suite.Require().Equal(params.MaxMethodTicketUsesPerIssue, exported.Params.MaxMethodTicketUsesPerIssue)
 }

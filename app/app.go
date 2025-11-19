@@ -762,7 +762,7 @@ func New(
 		icaModule,
 		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
 		// sponsor module
-        sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper),
+        sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper, app.AccountKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -853,7 +853,7 @@ func New(
 	app.MountMemoryStores(memKeys)
 
 	// initialize BaseApp
-	app.setAnteHandler(encodingConfig.TxConfig, wasmConfig, keys[wasm.StoreKey])
+	app.setAnteHandler(encodingConfig.TxConfig, wasmConfig, keys[wasm.StoreKey], appOpts)
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
@@ -891,22 +891,23 @@ func New(
 	return app
 }
 
-func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.WasmConfig, txCounterStoreKey storetypes.StoreKey) {
-	anteHandler, err := NewAnteHandler(
-		HandlerOptions{
-			HandlerOptions: ante.HandlerOptions{
-				AccountKeeper:   app.AccountKeeper,
-				BankKeeper:      app.BankKeeper,
-				SignModeHandler: txConfig.SignModeHandler(),
-				FeegrantKeeper:  app.FeeGrantKeeper,
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
-			},
-			IBCKeeper:         app.IBCKeeper,
-			WasmConfig:        &wasmConfig,
-			TXCounterStoreKey: txCounterStoreKey,
-			SponsorKeeper:     app.SponsorKeeper,
-		},
-	)
+func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.WasmConfig, txCounterStoreKey storetypes.StoreKey, appOpts servertypes.AppOptions) {
+    anteHandler, err := NewAnteHandler(
+        HandlerOptions{
+            HandlerOptions: ante.HandlerOptions{
+                AccountKeeper:   app.AccountKeeper,
+                BankKeeper:      app.BankKeeper,
+                SignModeHandler: txConfig.SignModeHandler(),
+                FeegrantKeeper:  app.FeeGrantKeeper,
+                SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+            },
+            IBCKeeper:         app.IBCKeeper,
+            WasmConfig:        &wasmConfig,
+            TXCounterStoreKey: txCounterStoreKey,
+            SponsorKeeper:     app.SponsorKeeper,
+            AppOptions:        appOpts,
+        },
+    )
 	if err != nil {
 		panic(fmt.Errorf("failed to create AnteHandler: %s", err))
 	}

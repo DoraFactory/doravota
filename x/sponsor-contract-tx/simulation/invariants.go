@@ -83,7 +83,7 @@ func SponsorConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 							msg += fmt.Sprintf("sponsored contract %s has nil coin in MaxGrantPerUser\n", sponsor.ContractAddress)
 							continue
 						}
-						if coin.Denom != "peaka" {
+						if coin.Denom != types.SponsorshipDenom {
 							broken = true
 							msg += fmt.Sprintf("sponsored contract %s has invalid denom %s in MaxGrantPerUser\n", sponsor.ContractAddress, coin.Denom)
 						}
@@ -146,21 +146,11 @@ func ParamsConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 
 		params := k.GetParams(ctx)
 
-		// Check 1: MaxGasPerSponsorship should be within valid range
-		if params.MaxGasPerSponsorship == 0 {
-			broken = true
-			msg += "MaxGasPerSponsorship cannot be zero\n"
-		}
-		if params.MaxGasPerSponsorship > 50000000 { // 50M gas upper limit
-			broken = true
-			msg += fmt.Sprintf("MaxGasPerSponsorship %d exceeds maximum allowed (50,000,000)\n", params.MaxGasPerSponsorship)
-		}
-
-		// Check 2: Parameter validation
-		if err := params.Validate(); err != nil {
-			broken = true
-			msg += fmt.Sprintf("parameter validation failed: %v\n", err)
-		}
+        // Parameter validation
+        if err := params.Validate(); err != nil {
+            broken = true
+            msg += fmt.Sprintf("parameter validation failed: %v\n", err)
+        }
 
 		return sdk.FormatInvariant(types.ModuleName, InvariantParamsConsistency, msg), broken
 	}

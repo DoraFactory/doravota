@@ -32,9 +32,82 @@ func GetTxCmd() *cobra.Command {
 		GetCmdUpdateSponsor(),
 		GetCmdDeleteSponsor(),
 		GetCmdWithdrawSponsorFunds(),
+		GetCmdIssuePolicyTicket(),
+		GetCmdRevokePolicyTicket(),
 	)
 
 	return cmd
+}
+
+// GetCmdIssuePolicyTicket submits a MsgIssuePolicyTicket (admin or ticket issuer)
+func GetCmdIssuePolicyTicket() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "issue-ticket [contract-address] [user-address] --method name [--method name]... [--uses N]",
+		Short: "Admin or ticket issuer issues a method-level policy ticket",
+		Args:  cobra.ExactArgs(2),
+	}
+	var method string
+	var uses uint32
+	cmd.Flags().StringVar(&method, "method", "", "Top-level execute method name (required)")
+	cmd.Flags().Uint32Var(&uses, "uses", 0, "Requested uses for this ticket (0 or omitted implies 1; clamped by params)")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if strings.TrimSpace(method) == "" {
+			return fmt.Errorf("--method is required")
+		}
+		clientCtx, err := client.GetClientTxContext(cmd)
+		if err != nil {
+			return err
+		}
+		m := &types.MsgIssuePolicyTicket{
+			Creator:         clientCtx.GetFromAddress().String(),
+			ContractAddress: args[0],
+			UserAddress:     args[1],
+			Method:          method,
+			Uses:            uses,
+		}
+		if err := m.ValidateBasic(); err != nil {
+			return err
+		}
+		return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), m)
+	}
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
+// GetCmdRevokePolicyTicket submits a MsgRevokePolicyTicket (admin or ticket issuer)
+func GetCmdRevokePolicyTicket() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "revoke-ticket [contract-address] [user-address] [method]",
+        Short: "Admin or ticket issuer revokes a policy ticket by method",
+        Long: `Revoke a policy ticket by method for a given contract and user.
+
+Only the contract admin or the configured ticket_issuer_address can revoke tickets.
+Provide the top-level CosmWasm execute method name; the chain computes the
+corresponding method digest internally and revokes the unconsumed ticket if it exists.
+
+Example:
+  dorad tx sponsor revoke-ticket <contract> <user> increment \
+    --from <admin> --gas auto --gas-prices 100000000000peaka`,
+        Args:  cobra.ExactArgs(3),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientTxContext(cmd)
+            if err != nil {
+                return err
+            }
+            m := &types.MsgRevokePolicyTicket{
+                Creator:         clientCtx.GetFromAddress().String(),
+                ContractAddress: args[0],
+                UserAddress:     args[1],
+                Method:          args[2],
+            }
+            if err := m.ValidateBasic(); err != nil {
+                return err
+            }
+            return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), m)
+        },
+    }
+    flags.AddTxFlagsToCmd(cmd)
+    return cmd
 }
 
 // GetCmdWithdrawSponsorFunds implements the withdraw sponsor funds command
@@ -156,12 +229,12 @@ func convertDORAToPeaka(doraAmountStr string) (math.Int, error) {
 	return totalPeaka, nil
 }
 
-// parseCoinsWithDORASupport parses coins string with support for DORA to peaka conversion
-// 1 DORA = 10^18 peaka
-// Only supports uppercase "DORA" and "peaka" denominations
+// parseCoinsWithDORASupport parses coins string with support for DORA to base denom conversion
+// 1 DORA = 10^18 base units
+// Only supports uppercase "DORA" and base denom denominations
 // Uses exact decimal math to avoid precision loss
 func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
-	// Convert DORA to peaka if present (case sensitive, only uppercase)
+	// Convert DORA to base denom if present (case sensitive, only uppercase)
 	doraPattern := regexp.MustCompile(`(\d+(?:\.\d+)?)(DORA)`)
 	convertedStr := doraPattern.ReplaceAllStringFunc(coinsStr, func(match string) string {
 		// Extract the amount and unit
@@ -171,13 +244,13 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		}
 		amountStr := submatches[1]
 
-		// Convert DORA to peaka using exact decimal math
+		// Convert DORA to base denom using exact decimal math
 		peakaAmount, err := convertDORAToPeaka(amountStr)
 		if err != nil {
 			return match // Fallback to original on error - will be caught by validation later
 		}
 
-		return peakaAmount.String() + "peaka"
+		return peakaAmount.String() + types.SponsorshipDenom
 	})
 
 	// Parse the converted string
@@ -186,9 +259,9 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 		return nil, err
 	}
 
-	// Validate that only peaka denom is present
+	// Validate that only base denom is present
 	for _, coin := range coins {
-		if coin.Denom != "peaka" {
+		if coin.Denom != types.SponsorshipDenom {
 			return nil, fmt.Errorf("invalid denomination '%s': only 'peaka' and 'DORA' are supported", coin.Denom)
 		}
 		// Friendly validation: disallow zero amounts early at CLI
@@ -198,7 +271,7 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 	}
 
 	// Also reject if total parsed amount equals zero (e.g. input normalizes to empty or zero)
-	if coins.AmountOf("peaka").IsZero() {
+	if coins.AmountOf(types.SponsorshipDenom).IsZero() {
 		return nil, fmt.Errorf("amount must be greater than 0")
 	}
 

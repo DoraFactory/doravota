@@ -182,11 +182,11 @@ var (
 // Test Coins - Common test coin denominations and amounts
 var (
 	TestStakeCoins = sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000000)))
-	TestPeakaCoins = sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+    TestPeakaCoins = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)))
 	TestFeeCoins   = sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(100)))
 	TestMixedCoins = sdk.NewCoins(
 		sdk.NewCoin("stake", sdk.NewInt(1000000)),
-		sdk.NewCoin("peaka", sdk.NewInt(1000000)),
+        sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)),
 	)
 )
 

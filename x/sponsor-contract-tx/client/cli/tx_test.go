@@ -1,14 +1,15 @@
 package cli
 
 import (
-	"fmt"
-	"testing"
+    "fmt"
+    "testing"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/suite"
+    sdk "github.com/cosmos/cosmos-sdk/types"
+    "github.com/spf13/cobra"
+    "github.com/stretchr/testify/suite"
 
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+    "strings"
 )
 
 // TxTestSuite tests the CLI transaction commands
@@ -331,6 +332,11 @@ func (s *TxTestSuite) TestCommandHelp() {
 			GetCmdWithdrawSponsorFunds,
 			"Withdraw funds from the derived sponsor address",
 		},
+		{
+			"revoke-ticket help",
+			GetCmdRevokePolicyTicket,
+			"revokes a policy ticket",
+		},
 	}
 
 	for _, cmdTest := range commands {
@@ -342,6 +348,17 @@ func (s *TxTestSuite) TestCommandHelp() {
 			s.Require().NotEmpty(cmd.Long, "Command should have long help text")
 		})
 	}
+}
+
+// New tests for issue-method-ticket CLI: ensure --uses flag exists
+func (s *TxTestSuite) TestIssueTicketCmd_UsesFlag() {
+    cmd := GetCmdIssuePolicyTicket()
+    s.Require().NotNil(cmd)
+    // Verify flag exists
+    f := cmd.Flags().Lookup("uses")
+    s.Require().NotNilf(f, "--uses flag should be present")
+    // Verify command use line mentions issue-ticket
+    s.Require().Contains(cmd.Use, "issue-ticket")
 }
 
 // TestWithdrawSponsorFundsCmd tests the withdraw-sponsor-funds command
@@ -384,13 +401,32 @@ func (s *TxTestSuite) TestWithdrawSponsorFundsCmd() {
 	}
 }
 
+// TestRevokeTicketCmd tests the revoke-ticket CLI command structure
+func (s *TxTestSuite) TestRevokeTicketCmd() {
+    cmd := GetCmdRevokePolicyTicket()
+    s.Require().NotNil(cmd)
+    // Usage should reflect method, not digest
+    s.Require().Contains(cmd.Use, "revoke-ticket")
+    s.Require().Contains(cmd.Use, "[method]")
+    s.Require().NotContains(cmd.Use, "[digest]")
+    // Short description should mention revoke by method
+    s.Require().Contains(strings.ToLower(cmd.Short), "revoke")
+    s.Require().Contains(strings.ToLower(cmd.Short), "method")
+
+    // Args validation: exactly 3 positional args
+    s.Require().Error(cmd.Args(cmd, []string{}))
+    s.Require().Error(cmd.Args(cmd, []string{s.contractAddr}))
+    s.Require().NoError(cmd.Args(cmd, []string{s.contractAddr, s.userAddr, "increment"}))
+    s.Require().Error(cmd.Args(cmd, []string{s.contractAddr, s.userAddr, "increment", "extra"}))
+}
+
 // TestCommandFlags tests that all commands support standard transaction flags
 func (s *TxTestSuite) TestCommandFlags() {
-	commands := []struct {
-		name    string
-		cmd     func() *cobra.Command
-		minArgs []string
-	}{
+    commands := []struct {
+        name    string
+        cmd     func() *cobra.Command
+        minArgs []string
+    }{
 		{
 			"set-sponsor flags",
 			GetCmdSetSponsor,
@@ -401,12 +437,17 @@ func (s *TxTestSuite) TestCommandFlags() {
 			GetCmdUpdateSponsor,
 			[]string{s.contractAddr, "false"},
 		},
-		{
-			"delete-sponsor flags",
-			GetCmdDeleteSponsor,
-			[]string{s.contractAddr},
-		},
-	}
+        {
+            "delete-sponsor flags",
+            GetCmdDeleteSponsor,
+            []string{s.contractAddr},
+        },
+        {
+            "revoke-ticket flags",
+            GetCmdRevokePolicyTicket,
+            []string{s.contractAddr, s.userAddr, "increment"},
+        },
+    }
 
 	// Standard tx flags to test
 	flagTests := []string{

@@ -2,15 +2,31 @@ package cli_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/suite"
 
+	// Local keeper + types for direct gRPC server testing
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
 )
+
+// dummyWasmKeeper is a minimal stub to satisfy keeper's WasmKeeperInterface in local QueryServer tests
+type dummyWasmKeeper struct{}
+
+func (d dummyWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+	return nil
+}
+func (d dummyWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+	return []byte("{}"), nil
+}
 
 // QueryTestSuite integrates with the cosmos-sdk test framework for CLI testing
 type QueryTestSuite struct {
@@ -207,7 +223,6 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 		})
 	}
 }
-
 // TestQueryUserGrantUsage tests the user grant usage query command
 func (s *QueryTestSuite) TestQueryUserGrantUsage() {
 	val := s.network.Validators[0]
@@ -438,3 +453,58 @@ func (s *QueryTestSuite) TestQueryCmdFlags() {
 func TestQueryTestSuite(t *testing.T) {
 	suite.Run(t, new(QueryTestSuite))
 }
+
+// TestAllSponsorsCLIHasPaginationFlags ensures the all-sponsors command exposes pagination flags.
+func TestAllSponsorsCLIHasPaginationFlags(t *testing.T) {
+	cmd := cli.GetCmdQueryAllSponsors()
+	// Standard pagination flags provided by Cosmos SDK
+	for _, f := range []string{
+		flags.FlagPage,
+		flags.FlagLimit,
+		flags.FlagPageKey,
+		flags.FlagOffset,
+		flags.FlagCountTotal,
+		flags.FlagReverse,
+	} {
+		if cmd.Flags().Lookup(f) == nil {
+			t.Fatalf("expected pagination flag %s to be present on all-sponsors command", f)
+		}
+	}
+}
+
+// --- Unit tests for command wiring (no network) ---
+
+func TestQueryPolicyTicketCmd_Usage(t *testing.T) {
+    cmd := cli.GetCmdQueryPolicyTicket()
+    if cmd == nil { t.Fatalf("nil command") }
+    if got, want := cmd.Use, "ticket"; !strings.Contains(cmd.Use, want) { t.Fatalf("expected Use to contain %q, got %q", want, got) }
+    // Args validation
+    if err := cmd.Args(cmd, []string{"c","u"}); err == nil { t.Fatalf("expected error for too-few args") }
+    if err := cmd.Args(cmd, []string{"c","u","d"}); err != nil { t.Fatalf("unexpected error for exact args: %v", err) }
+}
+
+// Removed probe window, negative probe, and compute-digest query command tests
+
+func TestReadPageRequest_FromFlags(t *testing.T) {
+    // Use the all-sponsors cmd which has pagination flags attached
+    cmd := cli.GetCmdQueryAllSponsors()
+    // Set flags to simulate pagination input
+    fs := cmd.Flags()
+    // page=2, limit=10 => offset=(2-1)*10=10
+    _ = fs.Set(flags.FlagPage, "2")
+    _ = fs.Set(flags.FlagLimit, "10")
+    // page-key overrides key-based pagination
+    _ = fs.Set(flags.FlagPageKey, "aGVsbG8=") // "hello"
+    _ = fs.Set(flags.FlagOffset, "3")         // offset provided too
+    _ = fs.Set(flags.FlagCountTotal, "true")
+    _ = fs.Set(flags.FlagReverse, "true")
+
+    pr, err := cli.ReadPageRequestForTests(cmd)
+    if err != nil { t.Fatalf("readPageRequest error: %v", err) }
+    if pr.Offset == 0 { t.Fatalf("expected non-zero Offset from flags") }
+    if pr.Limit != 10 { t.Fatalf("expected Limit=10, got %d", pr.Limit) }
+    if !pr.CountTotal { t.Fatalf("expected CountTotal=true") }
+    if !pr.Reverse { t.Fatalf("expected Reverse=true") }
+}
+
+// no extra helpers needed

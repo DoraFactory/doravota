@@ -127,7 +127,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 		ContractAddress: suite.Contract.String(),
 		CreatorAddress:  suite.Admin.String(),
 		IsSponsored:     true,
-		MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
+        MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)))),
 	}
 
 	err := suite.Keeper.SetSponsor(suite.Ctx, sponsor)
@@ -138,8 +138,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 
 // SetupKeeperTestParams sets default parameters for testing
 func (suite *TestSuite) SetupKeeperTestParams() {
-	params := types.DefaultParams()
-	params.SponsorshipEnabled = true
-	params.MaxGasPerSponsorship = 1000000
-	suite.Keeper.SetParams(suite.Ctx, params)
+    params := types.DefaultParams()
+    params.SponsorshipEnabled = true
+    suite.Keeper.SetParams(suite.Ctx, params)
 }

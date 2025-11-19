@@ -1,7 +1,9 @@
 package keeper
 
 import (
-	"encoding/json"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 
 	errorsmod "cosmossdk.io/errors"
@@ -17,11 +19,7 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
-// ContractMessage represents a parsed contract execution message
-type ContractMessage struct {
-	MsgType string
-	MsgData string
-}
+// (legacy ContractMessage and policy probe helpers removed)
 
 // WasmKeeperInterface defines the interface we need from wasm keeper
 type WasmKeeperInterface interface {
@@ -55,165 +53,294 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 	return ctx.Logger().With("module", fmt.Sprintf("x/%s", types.ModuleName))
 }
 
+// Cdc exposes the keeper codec for internal module usage (e.g., genesis export)
+func (k Keeper) Cdc() codec.BinaryCodec { return k.cdc }
+
 // GetAuthority returns the authority address for governance
 func (k Keeper) GetAuthority() string {
 	return k.authority
 }
 
-// CheckContractPolicy calls the contract's CheckPolicy query to verify if user is eligible
-// It checks ALL contract execution messages for the specified contract to prevent hitchhiking attacks
-func (k Keeper) CheckContractPolicy(ctx sdk.Context, contractAddr string, userAddr sdk.AccAddress, tx sdk.Tx) (*types.CheckContractPolicyResult, error) {
-	// NOTE: JSON is required for CosmWasm smart contract communication
-	// CosmWasm contracts expect JSON queries and return JSON responses
-	// This cannot be changed to protobuf without breaking contract compatibility
-
-	// Extract all contract messages for security - prevent hitchhiking attacks
-	contractMessages, err := k.extractAllContractMessages(tx, contractAddr)
-	if err != nil {
-		return nil, errorsmod.Wrap(err, "failed to extract contract messages")
+// ComputeMethodDigest computes sha256(contract_address || "method:" || method_names_in_order)
+func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) string {
+	h := sha256.New()
+	h.Write([]byte(contractAddr))
+	h.Write([]byte("method:"))
+	for i, m := range methodNames {
+		h.Write([]byte(m))
+		if i < len(methodNames)-1 {
+			h.Write([]byte{"\x00"[0]}) // separator to avoid collisions
+		}
 	}
-
-	if len(contractMessages) == 0 {
-		return nil, errorsmod.Wrap(types.ErrContractNotFound, fmt.Sprintf("no contract execution messages found for contract %s", contractAddr))
-	}
-
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
-	}
-
-	// Check EVERY contract message for permission - critical for security
-	for i, contractMsg := range contractMessages {
-		// prepare query smart contract message with enhanced parameters
-		queryMsg := map[string]interface{}{
-			"check_policy": map[string]interface{}{
-				"sender":   userAddr.String(),
-				"msg_data": contractMsg.MsgData,
-			},
-		}
-
-		queryBytes, err := json.Marshal(queryMsg)
-		if err != nil {
-			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to marshal query message for message %d", i))
-		}
-
-		// Record gas before contract query
-		gasBefore := ctx.GasMeter().GasConsumed()
-
-		k.Logger(ctx).Debug("executing contract policy query",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"message_index", i,
-			"message_type", contractMsg.MsgType,
-			"gas_before_query", gasBefore,
-		)
-
-		result, err := k.wasmKeeper.QuerySmart(ctx, contractAccAddr, queryBytes)
-
-		// Record gas after contract query
-		gasAfter := ctx.GasMeter().GasConsumed()
-		gasUsedForQuery := gasAfter - gasBefore
-
-		k.Logger(ctx).Debug("contract policy query completed",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"message_index", i,
-			"message_type", contractMsg.MsgType,
-			"gas_before_query", gasBefore,
-			"gas_after_query", gasAfter,
-			"gas_used_for_query", gasUsedForQuery,
-		)
-
-		if err != nil {
-			k.Logger(ctx).Error("contract policy query failed",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-				"message_index", i,
-				"message_type", contractMsg.MsgType,
-				"gas_used_for_query", gasUsedForQuery,
-				"error", err.Error(),
-			)
-			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to query contract for message %d (%s)", i, contractMsg.MsgType))
-		}
-
-		// parse query result
-		var response struct {
-			Eligible bool    `json:"eligible"`
-			Reason   *string `json:"reason"`
-		}
-		if err := json.Unmarshal(result, &response); err != nil {
-			return nil, errorsmod.Wrap(err, fmt.Sprintf("failed to unmarshal query response for message %d", i))
-		}
-
-		// If ANY message is not eligible, return with detailed reason
-		if !response.Eligible {
-			reason := "no reason provided"
-			if response.Reason != nil {
-				reason = *response.Reason
-			}
-			k.Logger(ctx).Info("message not eligible for sponsorship",
-				"contract", contractAddr,
-				"user", userAddr.String(),
-				"message_index", i,
-				"message_type", contractMsg.MsgType,
-				"reason", reason,
-			)
-			// Return detailed reason in result structure
-			detailedReason := fmt.Sprintf("message %d (%s) not eligible: %s", i, contractMsg.MsgType, reason)
-			return &types.CheckContractPolicyResult{
-				Eligible: false,
-				Reason:   detailedReason,
-			}, nil
-		}
-
-		k.Logger(ctx).Debug("message eligible for sponsorship",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"message_index", i,
-			"message_type", contractMsg.MsgType,
-		)
-	}
-
-	// All messages are eligible
-	return &types.CheckContractPolicyResult{
-		Eligible: true,
-		Reason:   "",
-	}, nil
+	return "m:" + hex.EncodeToString(h.Sum(nil))
 }
 
-// extractAllContractMessages extracts ALL contract execution messages for the specified contract
-// This prevents hitchhiking attacks where unauthorized messages are bundled with authorized ones
-func (k Keeper) extractAllContractMessages(tx sdk.Tx, targetContractAddr string) ([]ContractMessage, error) {
-	var contractMessages []ContractMessage
+// ComputeMethodDigestSingle computes sha256(contract_address || "method:" || method_name) for a single method.
+// This avoids temporary slice allocation when only one method name is involved.
+func (k Keeper) ComputeMethodDigestSingle(contractAddr, methodName string) string {
+	h := sha256.New()
+	h.Write([]byte(contractAddr))
+	h.Write([]byte("method:"))
+	h.Write([]byte(methodName))
+	return "m:" + hex.EncodeToString(h.Sum(nil))
+}
 
-	for _, msg := range tx.GetMsgs() {
-		if execMsg, ok := msg.(*wasmtypes.MsgExecuteContract); ok {
-			if execMsg.Contract == targetContractAddr {
-				// Parse the contract message to extract type and data
-				var msgMap map[string]interface{}
-				if err := json.Unmarshal(execMsg.Msg, &msgMap); err != nil {
-					return nil, errorsmod.Wrap(err, "failed to parse contract message")
-				}
+// EffectiveTicketTTLForContract computes the effective TTL in blocks for a contract, honoring per-sponsor override and global cap
+func (k Keeper) EffectiveTicketTTLForContract(ctx sdk.Context, contractAddr string) uint32 {
+	eff := k.GetParams(ctx).PolicyTicketTtlBlocks
+	if eff == 0 {
+		eff = 1
+	}
+	return eff
+}
 
-				// Extract message type and data (assumes single message type per execution)
-				for msgType, _ := range msgMap {
-					// Send the complete ExecuteMsg instead of just the parameters
-					msgDataBytes, err := json.Marshal(msgMap)
-					if err != nil {
-						return nil, errorsmod.Wrap(err, "failed to marshal message data")
-					}
+// === Ticket storage ===
 
-					contractMessages = append(contractMessages, ContractMessage{
-						MsgType: msgType,
-						MsgData: string(msgDataBytes),
-					})
-					break // CosmWasm messages typically have only one top-level key
-				}
-			}
+func (k Keeper) GetPolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) (types.PolicyTicket, bool) {
+	store := ctx.KVStore(k.storeKey)
+	key := types.GetPolicyTicketKey(contractAddr, userAddr, digest)
+	bz := store.Get(key)
+	if bz == nil {
+		return types.PolicyTicket{}, false
+	}
+	var t types.PolicyTicket
+	if err := k.cdc.Unmarshal(bz, &t); err != nil {
+		k.Logger(ctx).Error("failed to unmarshal policy ticket", "err", err)
+		return types.PolicyTicket{}, false
+	}
+	return t, true
+}
+
+func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
+	store := ctx.KVStore(k.storeKey)
+	key := types.GetPolicyTicketKey(t.ContractAddress, t.UserAddress, t.Digest)
+	bz, err := k.cdc.Marshal(&t)
+	if err != nil {
+		return err
+	}
+	store.Set(key, bz)
+	// maintain expiry index for fast GC by expiry height
+	idx := types.GetExpiryIndexKey(t.ExpiryHeight, t.ContractAddress, t.UserAddress, t.Digest)
+	store.Set(idx, []byte{})
+	return nil
+}
+
+// IteratePolicyTickets iterates over all stored policy tickets and invokes cb for each.
+// If cb returns true, iteration stops early.
+func (k Keeper) IteratePolicyTickets(ctx sdk.Context, cb func(key []byte, t types.PolicyTicket) (stop bool)) {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
+	it := sdk.KVStorePrefixIterator(store, []byte{})
+	defer it.Close()
+	for ; it.Valid(); it.Next() {
+		var t types.PolicyTicket
+		if err := k.cdc.Unmarshal(it.Value(), &t); err != nil {
+			k.Logger(ctx).Error("failed to unmarshal policy ticket during iteration", "err", err)
+			continue
+		}
+		if cb(it.Key(), t) {
+			break
 		}
 	}
+}
 
-	return contractMessages, nil
+// GetPolicyTicketsPaginated returns policy tickets filtered by contract and optional user with pagination.
+// contractAddr must be non-empty and a valid bech32 address; userAddr may be empty (to list all users).
+func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAddr string, pageReq *query.PageRequest) ([]*types.PolicyTicket, *query.PageResponse, error) {
+	if err := types.ValidateContractAddress(contractAddr); err != nil {
+		return nil, nil, err
+	}
+	if userAddr != "" {
+		if _, err := sdk.AccAddressFromBech32(userAddr); err != nil {
+			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
+		}
+	}
+	pstore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
+	// Build prefix: contract + "/" [+ user + "/" when provided]
+	p := append([]byte{}, []byte(contractAddr)...)
+	p = append(p, '/')
+	if userAddr != "" {
+		p = append(p, []byte(userAddr)...)
+		p = append(p, '/')
+	}
+	sub := prefix.NewStore(pstore, p)
+	var out []*types.PolicyTicket
+	pageRes, err := query.Paginate(sub, pageReq, func(key, value []byte) error {
+		var t types.PolicyTicket
+		if err := k.cdc.Unmarshal(value, &t); err != nil {
+			return err
+		}
+		tt := t
+		out = append(out, &tt)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, pageRes, nil
+}
+
+// CountLiveTicketsForUserContract returns the number of unconsumed, unexpired tickets for (contract,user).
+// Capacity limits removed: whitelist-based issuance provides sufficient control.
+// HasAnyLiveMethodTicket returns true if there exists at least one unconsumed, unexpired
+// method-bound ticket for (contract,user). This is a fast-path existence check for CheckTx.
+// HasAnyLiveMethodTicket removed; ante now checks exact digests derived from tx methods.
+
+// ConsumePolicyTicket marks a policy ticket as consumed if present and valid
+func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
+	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	if !ok {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
+	}
+	if t.Consumed {
+		return nil
+	}
+	// New semantics:
+	// 1 -> single-use; >1 -> multi-use; 0 -> no usable ticket
+	if t.UsesRemaining == 0 {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket has no remaining uses")
+	}
+	if t.UsesRemaining > 1 {
+		t.UsesRemaining -= 1
+		if t.UsesRemaining == 0 {
+			t.Consumed = true
+		}
+	} else {
+		// last use -> mark consumed and keep record until expiry (GC will remove)
+		t.UsesRemaining = 0
+		t.Consumed = true
+	}
+	return k.SetPolicyTicket(ctx, t)
+}
+
+// ConsumePolicyTicketsBulk validates that for each digest there are at least the required
+// uses remaining and tickets are unconsumed and unexpired, and then consumes them. Either
+// all tickets are consumed or the operation fails without partial consumption.
+func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr string, counts map[string]uint32) error {
+	now := uint64(ctx.BlockHeight())
+	updated := make(map[string]types.PolicyTicket, len(counts))
+	// Validate and compute updated state in-memory
+	for md, cnt := range counts {
+		t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+		if !ok {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
+		}
+		if t.Consumed {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket already consumed")
+		}
+		if now > t.ExpiryHeight {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket expired")
+		}
+		if t.UsesRemaining < cnt {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "insufficient ticket uses")
+		}
+		// apply in-memory
+		t.UsesRemaining -= cnt
+		if t.UsesRemaining == 0 {
+			t.Consumed = true
+		}
+		updated[md] = t
+	}
+	// Apply updates to store
+	for md, t := range updated {
+		if err := k.SetPolicyTicket(ctx, t); err != nil {
+			return err
+		}
+		_ = md
+	}
+	return nil
+}
+
+// DeletePolicyTicket removes a policy ticket by composite key
+func (k Keeper) DeletePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) {
+	store := ctx.KVStore(k.storeKey)
+	// try delete expiry index if ticket present
+	if t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest); ok {
+		idx := types.GetExpiryIndexKey(t.ExpiryHeight, contractAddr, userAddr, digest)
+		store.Delete(idx)
+	}
+	key := types.GetPolicyTicketKey(contractAddr, userAddr, digest)
+	store.Delete(key)
+}
+
+// RevokePolicyTicket removes a policy ticket for (contract,user,digest) if it exists and is not consumed.
+// If the ticket is already consumed or does not exist, it returns an error to signal no-op.
+func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
+	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	if !ok {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
+	}
+	if t.Consumed {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket already consumed")
+	}
+	k.DeletePolicyTicket(ctx, contractAddr, userAddr, digest)
+	return nil
+}
+
+// GC cursor helpers (height + in-bucket last key) – simple binary encoding
+func (k Keeper) getGcCursor(ctx sdk.Context) (uint64, []byte, bool) {
+	store := ctx.KVStore(k.storeKey)
+	bz := store.Get(types.GcCursorKey)
+	if bz == nil {
+		return 0, nil, false
+	}
+	if len(bz) < 8 {
+		return 0, nil, false
+	}
+	h := binary.BigEndian.Uint64(bz[:8])
+	tail := make([]byte, len(bz)-8)
+	copy(tail, bz[8:])
+	return h, tail, true
+}
+
+func (k Keeper) setGcCursor(ctx sdk.Context, height uint64, tail []byte) {
+	store := ctx.KVStore(k.storeKey)
+	out := append(types.EncodeUint64BigEndian(height), tail...)
+	store.Set(types.GcCursorKey, out)
+}
+
+// GarbageCollectByExpiry removes up to maxTickets expired tickets using the expiry index and a persistent cursor
+func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxTickets int) {
+	if maxTickets <= 0 {
+		return
+	}
+	now := uint64(ctx.BlockHeight())
+	height, tail, ok := k.getGcCursor(ctx)
+	if !ok {
+		height = 0
+		tail = nil
+	}
+	removed := 0
+	for removed < maxTickets && height < now {
+		// build per-height prefix store: ExpiryIndexPrefix + BE8(height) + '/'
+		base := prefix.NewStore(ctx.KVStore(k.storeKey), types.ExpiryIndexKeyPrefix)
+		hStore := prefix.NewStore(base, append(types.EncodeUint64BigEndian(height), '/'))
+		var it storetypes.Iterator
+		if len(tail) > 0 {
+			start := append(append([]byte{}, tail...), 0x00)
+			it = hStore.Iterator(start, nil)
+		} else {
+			it = hStore.Iterator(nil, nil)
+		}
+		tStore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
+		for ; it.Valid() && removed < maxTickets; it.Next() {
+			suffix := it.Key() // contract/user/digest
+			tStore.Delete(suffix)
+			hStore.Delete(suffix)
+			removed++
+			tail = make([]byte, len(suffix))
+			copy(tail, suffix)
+		}
+		it.Close()
+		if removed >= maxTickets {
+			k.setGcCursor(ctx, height, tail)
+			return
+		}
+		// done with this height
+		height++
+		tail = nil
+	}
+	// finished for this block
+	k.setGcCursor(ctx, height, nil)
 }
 
 // SetSponsor sets a sponsor in the store
@@ -314,6 +441,42 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 
 	// Check if the user is the admin
 	return contractInfo.Admin == userAddr.String(), nil
+}
+
+// IsSponsorManager checks whether the caller is authorized to manage sponsorship
+// for the given contract. Authorization rule:
+// - If contract Admin exists: only current Admin is authorized
+// - If Admin is cleared: the original Sponsor.CreatorAddress is authorized (fallback)
+func (k Keeper) IsSponsorManager(ctx sdk.Context, contractAddr string, caller sdk.AccAddress) (bool, error) {
+	// Validate contract exists
+	if err := k.ValidateContractExists(ctx, contractAddr); err != nil {
+		return false, err
+	}
+	// Current admin wins
+	if ok, err := k.IsContractAdmin(ctx, contractAddr, caller); err != nil {
+		return false, err
+	} else if ok {
+		return true, nil
+	}
+	// Check if admin cleared, then fallback to sponsor creator
+	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
+	if err != nil {
+		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+	}
+	cinfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
+	if cinfo == nil {
+		return false, types.ErrContractNotFound.Wrapf("contract not found: %s", contractAddr)
+	}
+	if cinfo.Admin == "" {
+		sponsor, found := k.GetSponsor(ctx, contractAddr)
+		if !found {
+			return false, nil
+		}
+		if sponsor.CreatorAddress == caller.String() {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // GetAllSponsors returns all sponsors in the store

@@ -131,12 +131,12 @@ func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper
 		if isSponsored {
 			// When sponsored, require max grant per user (only peaka)
 			amount := sdk.NewInt(int64(r.Intn(1000000) + 1000)) // 1000-1001000
-			maxGrantPerUser = sdk.NewCoins(sdk.NewCoin("peaka", amount))
+            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 		} else {
 			// When not sponsored, max grant can be empty or have peaka
 			if r.Intn(2) == 0 {
 				amount := sdk.NewInt(int64(r.Intn(1000000) + 1000))
-				maxGrantPerUser = sdk.NewCoins(sdk.NewCoin("peaka", amount))
+                maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 			}
 		}
 
@@ -198,10 +198,10 @@ func SimulateMsgUpdateSponsor(ak types.AccountKeeper, bk types.BankKeeper, k kee
 		var maxGrantPerUser sdk.Coins
 		if isSponsored {
 			amount := sdk.NewInt(int64(r.Intn(2000000) + 1000)) // Different range for update
-			maxGrantPerUser = sdk.NewCoins(sdk.NewCoin("peaka", amount))
+            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 		} else if r.Intn(2) == 0 {
 			amount := sdk.NewInt(int64(r.Intn(2000000) + 1000))
-			maxGrantPerUser = sdk.NewCoins(sdk.NewCoin("peaka", amount))
+            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 		}
 
 		// Convert to proto coins

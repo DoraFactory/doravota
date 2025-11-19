@@ -1,10 +1,10 @@
 package sponsor
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math/rand"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math/rand"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -94,6 +94,7 @@ type AppModule struct {
 
 	keeper     keeper.Keeper
 	bankKeeper types.BankKeeper
+	authKeeper types.AuthKeeper
 }
 
 // NewAppModule creates a new AppModule object
@@ -101,11 +102,13 @@ func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
 	bankKeeper types.BankKeeper,
+	authKeeper types.AuthKeeper,
 ) AppModule {
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
 		keeper:         keeper,
 		bankKeeper:     bankKeeper,
+		authKeeper:     authKeeper,
 	}
 }
 
@@ -117,10 +120,10 @@ func (am AppModule) Name() string {
 // RegisterServices registers the sponsor module's services
 func (am AppModule) RegisterServices(cfg module.Configurator) {
 	// Register message server with dependencies
-	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper))
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImplWithDeps(am.keeper, am.bankKeeper, am.authKeeper))
 
-	// Register query server
-	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServer(am.keeper))
+	// Register query server with bank keeper to enable balance queries
+	types.RegisterQueryServer(cfg.QueryServer(), keeper.NewQueryServerWithDeps(am.keeper, am.bankKeeper))
 }
 
 // RegisterInvariants registers the sponsor module's invariants
@@ -152,12 +155,18 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // BeginBlock executes all ABCI BeginBlock logic respective to the sponsor module
-func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {}
+func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
+    // Opportunistic GC: delete a bounded number of expired tickets per block based on params
+    params := am.keeper.GetParams(ctx)
+    n := int(params.TicketGcPerBlock)
+    if n <= 0 {
+        return
+    }
+    am.keeper.GarbageCollectByExpiry(ctx, n)
+}
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module
-func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate {
-	return []abci.ValidatorUpdate{}
-}
+func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate { return []abci.ValidatorUpdate{} }
 
 // GenerateGenesisState creates a randomized GenState of the sponsor module
 func (AppModule) GenerateGenesisState(simState *module.SimulationState) {}

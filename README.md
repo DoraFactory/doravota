@@ -16,4 +16,3 @@ For the most up to date documentation please visit [docs.dorafactory.org](https:
 
 ## Contributing
 Anyone who encounters problems while running the Dora Vota node and using the `dorad` binary application can submit a PR to this repository to contribute your code. We warmly welcome valuable feedback from the community developers.
-
