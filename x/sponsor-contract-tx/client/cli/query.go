@@ -26,12 +26,41 @@ func GetQueryCmd() *cobra.Command {
 		GetCmdQuerySponsorInfo(),
 		GetCmdQueryUserGrantUsage(),
 		GetCmdQueryParams(),
-		GetCmdQueryBlockedStatus(),
-		GetCmdQueryAllBlockedStatuses(),
-	)
+        GetCmdQueryPolicyTicket(),
+        GetCmdQueryPolicyTicketByMethod(),
+        GetCmdQueryPolicyTickets(),
+        GetCmdQuerySponsorBalance(),
+    )
 
 	return cmd
 }
+
+// GetCmdQueryPolicyTicket queries a policy ticket
+func GetCmdQueryPolicyTicket() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "ticket [contract-address] [user-address] [digest]",
+		Short: "Query a policy ticket for (contract,user,digest)",
+		Args:  cobra.ExactArgs(3),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			qc := types.NewQueryClient(clientCtx)
+			res, err := qc.PolicyTicket(context.Background(), &types.QueryPolicyTicketRequest{
+				ContractAddress: args[0], UserAddress: args[1], Digest: args[2],
+			})
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintProto(res)
+		},
+	}
+	flags.AddQueryFlagsToCmd(cmd)
+	return cmd
+}
+
+// Additional query subcommands can be added as needed.
 
 // GetCmdQueryAllSponsors implements the query all-sponsors command
 func GetCmdQueryAllSponsors() *cobra.Command {
@@ -160,81 +189,6 @@ This shows how much of the sponsor's grant the user has already consumed.`,
 	return cmd
 }
 
-// GetCmdQueryBlockedStatus implements the query blocked-status command
-func GetCmdQueryBlockedStatus() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "blocked-status [contract-address] [user-address]",
-		Short: "Query global cooldown status for a user on a contract",
-		Args:  cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-			req := &types.QueryBlockedStatusRequest{
-				ContractAddress: args[0],
-				UserAddress:     args[1],
-			}
-			res, err := queryClient.BlockedStatus(context.Background(), req)
-			if err != nil {
-				return err
-			}
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
-	return cmd
-}
-
-// GetCmdQueryAllBlockedStatuses implements the query all-blocked-statuses command with pagination
-func GetCmdQueryAllBlockedStatuses() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "all-blocked-statuses",
-		Short: "Query all global cooldown records with optional filters and pagination",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			clientCtx, err := client.GetClientQueryContext(cmd)
-			if err != nil {
-				return err
-			}
-
-			queryClient := types.NewQueryClient(clientCtx)
-
-			contract, _ := cmd.Flags().GetString("contract")
-			onlyBlocked, _ := cmd.Flags().GetBool("only-blocked")
-
-			// Read standard pagination flags
-			pageReq, err := readPageRequest(cmd)
-			if err != nil {
-				return err
-			}
-
-			req := &types.QueryAllBlockedStatusesRequest{
-				ContractAddress: contract,
-				OnlyBlocked:     onlyBlocked,
-				Pagination:      pageReq,
-			}
-			res, err := queryClient.AllBlockedStatuses(context.Background(), req)
-			if err != nil {
-				return err
-			}
-			return clientCtx.PrintProto(res)
-		},
-	}
-
-	flags.AddQueryFlagsToCmd(cmd)
-	// Add filtering flags
-	cmd.Flags().String("contract", "", "Filter by contract address")
-	cmd.Flags().Bool("only-blocked", false, "Only include currently blocked entries")
-	// Add pagination flags: page, limit, page-key etc.
-	flags.AddPaginationFlagsToCmd(cmd, "all-blocked-statuses")
-
-	return cmd
-}
-
 // readPageRequest reads pagination flags into a PageRequest. It mirrors client.ReadPageRequest but avoids import churn if versions differ.
 func readPageRequest(cmd *cobra.Command) (*sdkquery.PageRequest, error) {
 	pageReq := &sdkquery.PageRequest{}
@@ -267,4 +221,74 @@ func readPageRequest(cmd *cobra.Command) (*sdkquery.PageRequest, error) {
 	pageReq.CountTotal = countTotal
 	pageReq.Reverse = reverse
 	return pageReq, nil
+}
+
+// ReadPageRequestForTests exposes readPageRequest for unit tests in external package.
+// It is a thin wrapper used only by tests.
+func ReadPageRequestForTests(cmd *cobra.Command) (*sdkquery.PageRequest, error) {
+    return readPageRequest(cmd)
+}
+
+// GetCmdQueryPolicyTickets queries policy tickets with pagination
+func GetCmdQueryPolicyTickets() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "tickets [contract-address] [user-address]",
+        Short: "List policy tickets under a contract (optionally for a user)",
+        Args:  cobra.RangeArgs(1, 2),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            pageReq, err := readPageRequest(cmd)
+            if err != nil { return err }
+            req := &types.QueryPolicyTicketsRequest{ContractAddress: args[0], Pagination: pageReq}
+            if len(args) == 2 { req.UserAddress = args[1] }
+            res, err := qc.PolicyTickets(context.Background(), req)
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    flags.AddPaginationFlagsToCmd(cmd, "tickets")
+    return cmd
+}
+
+// GetCmdQueryPolicyTicketByMethod queries a policy ticket by method name
+func GetCmdQueryPolicyTicketByMethod() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "ticket-by-method [contract-address] [user-address] [method]",
+        Short: "Query a policy ticket for (contract,user,method)",
+        Args:  cobra.ExactArgs(3),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            res, err := qc.PolicyTicketByMethod(context.Background(), &types.QueryPolicyTicketByMethodRequest{
+                ContractAddress: args[0], UserAddress: args[1], Method: args[2],
+            })
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    return cmd
+}
+
+// GetCmdQuerySponsorBalance queries sponsor balance (spendable peaka) for a contract's derived sponsor address
+func GetCmdQuerySponsorBalance() *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "sponsor-balance [contract-address]",
+        Short: "Query sponsor derived address and its spendable peaka balance",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            clientCtx, err := client.GetClientQueryContext(cmd)
+            if err != nil { return err }
+            qc := types.NewQueryClient(clientCtx)
+            res, err := qc.SponsorBalance(context.Background(), &types.QuerySponsorBalanceRequest{ContractAddress: args[0]})
+            if err != nil { return err }
+            return clientCtx.PrintProto(res)
+        },
+    }
+    flags.AddQueryFlagsToCmd(cmd)
+    return cmd
 }

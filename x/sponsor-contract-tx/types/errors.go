@@ -23,4 +23,6 @@ var (
 	ErrInvalidAuthority       = sdkerrors.Register(ModuleName, 15, "invalid authority")
 	ErrSponsorBalanceNotEmpty = sdkerrors.Register(ModuleName, 16, "sponsor address balance must be zero before deletion")
 	ErrSponsorBalanceEmpty    = sdkerrors.Register(ModuleName, 17, "sponsor address balance is zero")
+	// Ticket issuance conflicts
+	ErrPolicyTicketAlreadyExists = sdkerrors.Register(ModuleName, 18, "active policy ticket already exists")
 )

@@ -138,8 +138,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 
 // SetupKeeperTestParams sets default parameters for testing
 func (suite *TestSuite) SetupKeeperTestParams() {
-	params := types.DefaultParams()
-	params.SponsorshipEnabled = true
-	params.MaxGasPerSponsorship = 1000000
-	suite.Keeper.SetParams(suite.Ctx, params)
+    params := types.DefaultParams()
+    params.SponsorshipEnabled = true
+    suite.Keeper.SetParams(suite.Ctx, params)
 }

@@ -6,6 +6,7 @@ package types
 import (
 	fmt "fmt"
 	types "github.com/cosmos/cosmos-sdk/types"
+	_ "github.com/cosmos/gogoproto/gogoproto"
 	proto "github.com/cosmos/gogoproto/proto"
 	io "io"
 	math "math"
@@ -25,13 +26,16 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // ContractSponsor defines the sponsor information for a contract
 type ContractSponsor struct {
-	ContractAddress string        `protobuf:"bytes,1,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
-	IsSponsored     bool          `protobuf:"varint,2,opt,name=is_sponsored,json=isSponsored,proto3" json:"is_sponsored,omitempty"`
-	CreatorAddress  string        `protobuf:"bytes,3,opt,name=creator_address,json=creatorAddress,proto3" json:"creator_address,omitempty"`
-	SponsorAddress  string        `protobuf:"bytes,4,opt,name=sponsor_address,json=sponsorAddress,proto3" json:"sponsor_address,omitempty"`
-	CreatedAt       int64         `protobuf:"varint,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt       int64         `protobuf:"varint,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	MaxGrantPerUser []*types.Coin `protobuf:"bytes,7,rep,name=max_grant_per_user,json=maxGrantPerUser,proto3" json:"max_grant_per_user,omitempty"`
+	ContractAddress string `protobuf:"bytes,1,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	// Optional custom ticket issuer. When set, only the contract admin or this
+	// address is authorized to issue/revoke policy tickets for the contract.
+	TicketIssuerAddress string        `protobuf:"bytes,2,opt,name=ticket_issuer_address,json=ticketIssuerAddress,proto3" json:"ticket_issuer_address,omitempty"`
+	CreatorAddress      string        `protobuf:"bytes,3,opt,name=creator_address,json=creatorAddress,proto3" json:"creator_address,omitempty"`
+	SponsorAddress      string        `protobuf:"bytes,4,opt,name=sponsor_address,json=sponsorAddress,proto3" json:"sponsor_address,omitempty"`
+	IsSponsored         bool          `protobuf:"varint,5,opt,name=is_sponsored,json=isSponsored,proto3" json:"is_sponsored,omitempty"`
+	CreatedAt           int64         `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt           int64         `protobuf:"varint,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	MaxGrantPerUser     []*types.Coin `protobuf:"bytes,8,rep,name=max_grant_per_user,json=maxGrantPerUser,proto3" json:"max_grant_per_user,omitempty"`
 }
 
 func (m *ContractSponsor) Reset()         { *m = ContractSponsor{} }
@@ -74,11 +78,11 @@ func (m *ContractSponsor) GetContractAddress() string {
 	return ""
 }
 
-func (m *ContractSponsor) GetIsSponsored() bool {
+func (m *ContractSponsor) GetTicketIssuerAddress() string {
 	if m != nil {
-		return m.IsSponsored
+		return m.TicketIssuerAddress
 	}
-	return false
+	return ""
 }
 
 func (m *ContractSponsor) GetCreatorAddress() string {
@@ -93,6 +97,13 @@ func (m *ContractSponsor) GetSponsorAddress() string {
 		return m.SponsorAddress
 	}
 	return ""
+}
+
+func (m *ContractSponsor) GetIsSponsored() bool {
+	if m != nil {
+		return m.IsSponsored
+	}
+	return false
 }
 
 func (m *ContractSponsor) GetCreatedAt() int64 {
@@ -121,8 +132,10 @@ type GenesisState struct {
 	Sponsors        []*ContractSponsor `protobuf:"bytes,1,rep,name=sponsors,proto3" json:"sponsors,omitempty"`
 	Params          *Params            `protobuf:"bytes,2,opt,name=params,proto3" json:"params,omitempty"`
 	UserGrantUsages []*UserGrantUsage  `protobuf:"bytes,3,rep,name=user_grant_usages,json=userGrantUsages,proto3" json:"user_grant_usages,omitempty"`
-	// Persist global cooldown records to ensure continuity across upgrades/state-sync
-	FailedAttempts []*FailedAttemptsEntry `protobuf:"bytes,4,rep,name=failed_attempts,json=failedAttempts,proto3" json:"failed_attempts,omitempty"`
+	// Outstanding policy tickets to initialize at genesis. Expired tickets may
+	// also be included; they will be garbage-collected by the module's per-block
+	// GC routine.
+	PolicyTickets []*PolicyTicket `protobuf:"bytes,4,rep,name=policy_tickets,json=policyTickets,proto3" json:"policy_tickets,omitempty"`
 }
 
 func (m *GenesisState) Reset()         { *m = GenesisState{} }
@@ -179,9 +192,9 @@ func (m *GenesisState) GetUserGrantUsages() []*UserGrantUsage {
 	return nil
 }
 
-func (m *GenesisState) GetFailedAttempts() []*FailedAttemptsEntry {
+func (m *GenesisState) GetPolicyTickets() []*PolicyTicket {
 	if m != nil {
-		return m.FailedAttempts
+		return m.PolicyTickets
 	}
 	return nil
 }
@@ -255,178 +268,45 @@ func (m *UserGrantUsage) GetLastUsedTime() int64 {
 	return 0
 }
 
-// FailedAttempts tracks global abuse signals for sponsorship attempts
-type FailedAttempts struct {
-	// number of failed attempts within the sliding window
-	Count uint32 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
-	// window_start_height is the block height when current counting window started
-	WindowStartHeight int64 `protobuf:"varint,2,opt,name=window_start_height,json=windowStartHeight,proto3" json:"window_start_height,omitempty"`
-	// until_height is the block height until which the user is globally blocked
-	UntilHeight int64 `protobuf:"varint,3,opt,name=until_height,json=untilHeight,proto3" json:"until_height,omitempty"`
-	// last_cooldown_blocks stores the last cooldown blocks applied to support multiplicative backoff
-	LastCooldownBlocks uint32 `protobuf:"varint,4,opt,name=last_cooldown_blocks,json=lastCooldownBlocks,proto3" json:"last_cooldown_blocks,omitempty"`
-}
-
-func (m *FailedAttempts) Reset()         { *m = FailedAttempts{} }
-func (m *FailedAttempts) String() string { return proto.CompactTextString(m) }
-func (*FailedAttempts) ProtoMessage()    {}
-func (*FailedAttempts) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eab4c65bac3c53c6, []int{3}
-}
-func (m *FailedAttempts) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *FailedAttempts) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_FailedAttempts.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *FailedAttempts) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_FailedAttempts.Merge(m, src)
-}
-func (m *FailedAttempts) XXX_Size() int {
-	return m.Size()
-}
-func (m *FailedAttempts) XXX_DiscardUnknown() {
-	xxx_messageInfo_FailedAttempts.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_FailedAttempts proto.InternalMessageInfo
-
-func (m *FailedAttempts) GetCount() uint32 {
-	if m != nil {
-		return m.Count
-	}
-	return 0
-}
-
-func (m *FailedAttempts) GetWindowStartHeight() int64 {
-	if m != nil {
-		return m.WindowStartHeight
-	}
-	return 0
-}
-
-func (m *FailedAttempts) GetUntilHeight() int64 {
-	if m != nil {
-		return m.UntilHeight
-	}
-	return 0
-}
-
-func (m *FailedAttempts) GetLastCooldownBlocks() uint32 {
-	if m != nil {
-		return m.LastCooldownBlocks
-	}
-	return 0
-}
-
-// FailedAttemptsEntry binds a (contract,user) pair to its FailedAttempts data
-type FailedAttemptsEntry struct {
-	ContractAddress string          `protobuf:"bytes,1,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
-	UserAddress     string          `protobuf:"bytes,2,opt,name=user_address,json=userAddress,proto3" json:"user_address,omitempty"`
-	Record          *FailedAttempts `protobuf:"bytes,3,opt,name=record,proto3" json:"record,omitempty"`
-}
-
-func (m *FailedAttemptsEntry) Reset()         { *m = FailedAttemptsEntry{} }
-func (m *FailedAttemptsEntry) String() string { return proto.CompactTextString(m) }
-func (*FailedAttemptsEntry) ProtoMessage()    {}
-func (*FailedAttemptsEntry) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eab4c65bac3c53c6, []int{4}
-}
-func (m *FailedAttemptsEntry) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *FailedAttemptsEntry) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_FailedAttemptsEntry.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *FailedAttemptsEntry) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_FailedAttemptsEntry.Merge(m, src)
-}
-func (m *FailedAttemptsEntry) XXX_Size() int {
-	return m.Size()
-}
-func (m *FailedAttemptsEntry) XXX_DiscardUnknown() {
-	xxx_messageInfo_FailedAttemptsEntry.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_FailedAttemptsEntry proto.InternalMessageInfo
-
-func (m *FailedAttemptsEntry) GetContractAddress() string {
-	if m != nil {
-		return m.ContractAddress
-	}
-	return ""
-}
-
-func (m *FailedAttemptsEntry) GetUserAddress() string {
-	if m != nil {
-		return m.UserAddress
-	}
-	return ""
-}
-
-func (m *FailedAttemptsEntry) GetRecord() *FailedAttempts {
-	if m != nil {
-		return m.Record
-	}
-	return nil
-}
-
 // Params defines the parameters for the sponsor module
 type Params struct {
 	// Whether sponsorship is globally enabled
 	SponsorshipEnabled bool `protobuf:"varint,1,opt,name=sponsorship_enabled,json=sponsorshipEnabled,proto3" json:"sponsorship_enabled,omitempty"`
-	// Maximum gas limit per sponsored transaction
-	MaxGasPerSponsorship uint64 `protobuf:"varint,2,opt,name=max_gas_per_sponsorship,json=maxGasPerSponsorship,proto3" json:"max_gas_per_sponsorship,omitempty"`
-	// Whether abuse tracking (global cooldown) is enabled
-	AbuseTrackingEnabled bool `protobuf:"varint,3,opt,name=abuse_tracking_enabled,json=abuseTrackingEnabled,proto3" json:"abuse_tracking_enabled,omitempty"`
-	// Number of failures within window to trigger global cooldown
-	GlobalThreshold uint32 `protobuf:"varint,4,opt,name=global_threshold,json=globalThreshold,proto3" json:"global_threshold,omitempty"`
-	// Base cooldown blocks for first threshold hit
-	GlobalBaseBlocks uint32 `protobuf:"varint,5,opt,name=global_base_blocks,json=globalBaseBlocks,proto3" json:"global_base_blocks,omitempty"`
-	// Multiplicative backoff factor in milli (e.g., 3000 = 3.0x)
-	GlobalBackoffMilli uint32 `protobuf:"varint,6,opt,name=global_backoff_milli,json=globalBackoffMilli,proto3" json:"global_backoff_milli,omitempty"`
-	// Max cooldown blocks cap
-	GlobalMaxBlocks uint32 `protobuf:"varint,7,opt,name=global_max_blocks,json=globalMaxBlocks,proto3" json:"global_max_blocks,omitempty"`
-	// Sliding window size for counting (blocks)
-	GlobalWindowBlocks uint32 `protobuf:"varint,8,opt,name=global_window_blocks,json=globalWindowBlocks,proto3" json:"global_window_blocks,omitempty"`
-	// Number of expired FailedAttempts entries to GC per block (deterministic EndBlock GC)
-	// 0 disables automatic GC
-	GcFailedAttemptsPerBlock uint32 `protobuf:"varint,9,opt,name=gc_failed_attempts_per_block,json=gcFailedAttemptsPerBlock,proto3" json:"gc_failed_attempts_per_block,omitempty"`
+	// PolicyTicketTTLBlocks defines how many blocks a policy ticket remains
+	// valid (short TTL encourages prompt ExecuteTx).
+	// Suggested: 20-30; Range: [1, 1000].
+	PolicyTicketTtlBlocks uint32 `protobuf:"varint,3,opt,name=policy_ticket_ttl_blocks,json=policyTicketTtlBlocks,proto3" json:"policy_ticket_ttl_blocks,omitempty"`
 	// Max number of CosmWasm MsgExecuteContract messages allowed in a single
 	// sponsored transaction (must all target the same contract).
-	// This caps the per-tx policy-check workload to reduce DoS risk.
-	// A value of 0 means "no explicit cap" (not recommended in production).
-	MaxExecMsgsPerTxForSponsor uint32 `protobuf:"varint,10,opt,name=max_exec_msgs_per_tx_for_sponsor,json=maxExecMsgsPerTxForSponsor,proto3" json:"max_exec_msgs_per_tx_for_sponsor,omitempty"`
+	MaxExecMsgsPerTxForSponsor uint32 `protobuf:"varint,4,opt,name=max_exec_msgs_per_tx_for_sponsor,json=maxExecMsgsPerTxForSponsor,proto3" json:"max_exec_msgs_per_tx_for_sponsor,omitempty"`
 	// Max raw JSON bytes allowed per MsgExecuteContract payload to be considered
 	// for sponsorship policy checks. This is a pre-parse size guard executed
 	// before any JSON (un)marshalling to prevent CPU/memory amplification.
 	// 0 disables this guard.
-	MaxPolicyExecMsgBytes uint32 `protobuf:"varint,11,opt,name=max_policy_exec_msg_bytes,json=maxPolicyExecMsgBytes,proto3" json:"max_policy_exec_msg_bytes,omitempty"`
+	MaxPolicyExecMsgBytes uint32 `protobuf:"varint,5,opt,name=max_policy_exec_msg_bytes,json=maxPolicyExecMsgBytes,proto3" json:"max_policy_exec_msg_bytes,omitempty"`
+	// MaxMethodTicketUsesPerIssue caps how many uses an admin-issued method ticket
+	// can have in a single issuance. The actual uses_remaining stored on the ticket
+	// is min(requested_uses, max_method_ticket_uses_per_issue). Range: [1, 100] (suggested default: 3).
+	MaxMethodTicketUsesPerIssue uint32 `protobuf:"varint,6,opt,name=max_method_ticket_uses_per_issue,json=maxMethodTicketUsesPerIssue,proto3" json:"max_method_ticket_uses_per_issue,omitempty"`
+	// Maximum number of expired tickets to garbage-collect per block.
+	TicketGcPerBlock uint32 `protobuf:"varint,7,opt,name=ticket_gc_per_block,json=ticketGcPerBlock,proto3" json:"ticket_gc_per_block,omitempty"`
+	// Maximum allowed size (in bytes) for a single top‑level method name
+	// used in MsgExecuteContract (e.g., {"method":{...}}). This is enforced
+	// when issuing method tickets and during ante parsing to avoid hashing
+	// arbitrarily large keys. Range suggestion: [1, 256].
+	MaxMethodNameBytes uint32 `protobuf:"varint,8,opt,name=max_method_name_bytes,json=maxMethodNameBytes,proto3" json:"max_method_name_bytes,omitempty"`
+	// Maximum JSON nesting depth allowed when scanning MsgExecuteContract payloads
+	// to extract the top-level method key. This acts as a defensive bound against
+	// deeply nested JSON intended to cause excessive decoder recursion.
+	// Suggested default: 20. Reasonable range: [1, 64].
+	MaxMethodJsonDepth uint32 `protobuf:"varint,9,opt,name=max_method_json_depth,json=maxMethodJsonDepth,proto3" json:"max_method_json_depth,omitempty"`
 }
 
 func (m *Params) Reset()         { *m = Params{} }
 func (m *Params) String() string { return proto.CompactTextString(m) }
 func (*Params) ProtoMessage()    {}
 func (*Params) Descriptor() ([]byte, []int) {
-	return fileDescriptor_eab4c65bac3c53c6, []int{5}
+	return fileDescriptor_eab4c65bac3c53c6, []int{3}
 }
 func (m *Params) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -462,58 +342,9 @@ func (m *Params) GetSponsorshipEnabled() bool {
 	return false
 }
 
-func (m *Params) GetMaxGasPerSponsorship() uint64 {
+func (m *Params) GetPolicyTicketTtlBlocks() uint32 {
 	if m != nil {
-		return m.MaxGasPerSponsorship
-	}
-	return 0
-}
-
-func (m *Params) GetAbuseTrackingEnabled() bool {
-	if m != nil {
-		return m.AbuseTrackingEnabled
-	}
-	return false
-}
-
-func (m *Params) GetGlobalThreshold() uint32 {
-	if m != nil {
-		return m.GlobalThreshold
-	}
-	return 0
-}
-
-func (m *Params) GetGlobalBaseBlocks() uint32 {
-	if m != nil {
-		return m.GlobalBaseBlocks
-	}
-	return 0
-}
-
-func (m *Params) GetGlobalBackoffMilli() uint32 {
-	if m != nil {
-		return m.GlobalBackoffMilli
-	}
-	return 0
-}
-
-func (m *Params) GetGlobalMaxBlocks() uint32 {
-	if m != nil {
-		return m.GlobalMaxBlocks
-	}
-	return 0
-}
-
-func (m *Params) GetGlobalWindowBlocks() uint32 {
-	if m != nil {
-		return m.GlobalWindowBlocks
-	}
-	return 0
-}
-
-func (m *Params) GetGcFailedAttemptsPerBlock() uint32 {
-	if m != nil {
-		return m.GcFailedAttemptsPerBlock
+		return m.PolicyTicketTtlBlocks
 	}
 	return 0
 }
@@ -532,79 +363,440 @@ func (m *Params) GetMaxPolicyExecMsgBytes() uint32 {
 	return 0
 }
 
+func (m *Params) GetMaxMethodTicketUsesPerIssue() uint32 {
+	if m != nil {
+		return m.MaxMethodTicketUsesPerIssue
+	}
+	return 0
+}
+
+func (m *Params) GetTicketGcPerBlock() uint32 {
+	if m != nil {
+		return m.TicketGcPerBlock
+	}
+	return 0
+}
+
+func (m *Params) GetMaxMethodNameBytes() uint32 {
+	if m != nil {
+		return m.MaxMethodNameBytes
+	}
+	return 0
+}
+
+func (m *Params) GetMaxMethodJsonDepth() uint32 {
+	if m != nil {
+		return m.MaxMethodJsonDepth
+	}
+	return 0
+}
+
+// PolicyTicket represents an authorization ticket issued by the contract admin.
+// It binds (contract,user,digest) and is computed from method-level digests
+// (e.g., sha256(contract || "method:" || names...)).
+type PolicyTicket struct {
+	ContractAddress string `protobuf:"bytes,1,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	UserAddress     string `protobuf:"bytes,2,opt,name=user_address,json=userAddress,proto3" json:"user_address,omitempty"`
+	// Digest is computed from method names in order (method-level binding).
+	Digest       string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
+	ExpiryHeight uint64 `protobuf:"varint,4,opt,name=expiry_height,json=expiryHeight,proto3" json:"expiry_height,omitempty"`
+	// Remaining uses for this ticket (0 or 1 implies single-use semantics).
+	UsesRemaining uint32 `protobuf:"varint,5,opt,name=uses_remaining,json=usesRemaining,proto3" json:"uses_remaining,omitempty"`
+	Consumed      bool   `protobuf:"varint,6,opt,name=consumed,proto3" json:"consumed,omitempty"`
+	// Block height when this ticket was issued.
+	IssuedHeight uint64 `protobuf:"varint,7,opt,name=issued_height,json=issuedHeight,proto3" json:"issued_height,omitempty"`
+	// Optional plain-text method name for display/query convenience when the
+	// ticket was issued for a single top-level method. Not used as a storage key
+	// (the key remains the digest above) and may be empty when issued for
+	// multiple methods.
+	Method string `protobuf:"bytes,8,opt,name=method,proto3" json:"method,omitempty"`
+}
+
+func (m *PolicyTicket) Reset()         { *m = PolicyTicket{} }
+func (m *PolicyTicket) String() string { return proto.CompactTextString(m) }
+func (*PolicyTicket) ProtoMessage()    {}
+func (*PolicyTicket) Descriptor() ([]byte, []int) {
+	return fileDescriptor_eab4c65bac3c53c6, []int{4}
+}
+func (m *PolicyTicket) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PolicyTicket) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PolicyTicket.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PolicyTicket) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PolicyTicket.Merge(m, src)
+}
+func (m *PolicyTicket) XXX_Size() int {
+	return m.Size()
+}
+func (m *PolicyTicket) XXX_DiscardUnknown() {
+	xxx_messageInfo_PolicyTicket.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PolicyTicket proto.InternalMessageInfo
+
+func (m *PolicyTicket) GetContractAddress() string {
+	if m != nil {
+		return m.ContractAddress
+	}
+	return ""
+}
+
+func (m *PolicyTicket) GetUserAddress() string {
+	if m != nil {
+		return m.UserAddress
+	}
+	return ""
+}
+
+func (m *PolicyTicket) GetDigest() string {
+	if m != nil {
+		return m.Digest
+	}
+	return ""
+}
+
+func (m *PolicyTicket) GetExpiryHeight() uint64 {
+	if m != nil {
+		return m.ExpiryHeight
+	}
+	return 0
+}
+
+func (m *PolicyTicket) GetUsesRemaining() uint32 {
+	if m != nil {
+		return m.UsesRemaining
+	}
+	return 0
+}
+
+func (m *PolicyTicket) GetConsumed() bool {
+	if m != nil {
+		return m.Consumed
+	}
+	return false
+}
+
+func (m *PolicyTicket) GetIssuedHeight() uint64 {
+	if m != nil {
+		return m.IssuedHeight
+	}
+	return 0
+}
+
+func (m *PolicyTicket) GetMethod() string {
+	if m != nil {
+		return m.Method
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*ContractSponsor)(nil), "doravota.sponsor.v1.ContractSponsor")
 	proto.RegisterType((*GenesisState)(nil), "doravota.sponsor.v1.GenesisState")
 	proto.RegisterType((*UserGrantUsage)(nil), "doravota.sponsor.v1.UserGrantUsage")
-	proto.RegisterType((*FailedAttempts)(nil), "doravota.sponsor.v1.FailedAttempts")
-	proto.RegisterType((*FailedAttemptsEntry)(nil), "doravota.sponsor.v1.FailedAttemptsEntry")
 	proto.RegisterType((*Params)(nil), "doravota.sponsor.v1.Params")
+	proto.RegisterType((*PolicyTicket)(nil), "doravota.sponsor.v1.PolicyTicket")
 }
 
 func init() { proto.RegisterFile("doravota/sponsor/v1/sponsor.proto", fileDescriptor_eab4c65bac3c53c6) }
 
 var fileDescriptor_eab4c65bac3c53c6 = []byte{
-	// 924 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x55, 0xcf, 0x6e, 0x1b, 0x45,
-	0x18, 0xcf, 0xc6, 0x89, 0x9b, 0x8c, 0x13, 0x3b, 0x99, 0x04, 0x70, 0x0b, 0x58, 0xae, 0xa9, 0x54,
-	0x17, 0xd1, 0x5d, 0xd2, 0x82, 0x84, 0x54, 0x09, 0x91, 0xa4, 0x49, 0xb9, 0x44, 0x98, 0x75, 0x22,
-	0x24, 0x2e, 0xa3, 0xd9, 0xdd, 0xf1, 0x7a, 0x95, 0xdd, 0x9d, 0xd5, 0xcc, 0x38, 0x59, 0xbf, 0x05,
-	0x8f, 0xc0, 0x15, 0xf1, 0x00, 0xbc, 0x02, 0x9c, 0xe8, 0x91, 0x23, 0x4a, 0x5e, 0x04, 0xcd, 0xb7,
-	0x33, 0x4b, 0xdc, 0x1a, 0xa4, 0xde, 0xec, 0xef, 0xf7, 0x67, 0xbe, 0x7f, 0xb3, 0x83, 0x1e, 0x46,
-	0x5c, 0xd0, 0x2b, 0xae, 0xa8, 0x27, 0x0b, 0x9e, 0x4b, 0x2e, 0xbc, 0xab, 0x03, 0xfb, 0xd3, 0x2d,
-	0x04, 0x57, 0x1c, 0xef, 0x59, 0x8a, 0x6b, 0xe3, 0x57, 0x07, 0x0f, 0x7a, 0x21, 0x97, 0x19, 0x97,
-	0x5e, 0x40, 0x25, 0xf3, 0xae, 0x0e, 0x02, 0xa6, 0xe8, 0x81, 0x17, 0xf2, 0x24, 0xaf, 0x44, 0x83,
-	0xdf, 0x56, 0x51, 0xe7, 0x98, 0xe7, 0x4a, 0xd0, 0x50, 0x8d, 0x2b, 0x19, 0x7e, 0x82, 0x76, 0x42,
-	0x13, 0x22, 0x34, 0x8a, 0x04, 0x93, 0xb2, 0xeb, 0xf4, 0x9d, 0xe1, 0xa6, 0xdf, 0xb1, 0xf1, 0xc3,
-	0x2a, 0x8c, 0x1f, 0xa2, 0xad, 0x44, 0x12, 0x73, 0x1e, 0x8b, 0xba, 0xab, 0x7d, 0x67, 0xb8, 0xe1,
-	0xb7, 0x12, 0x39, 0xb6, 0x21, 0xfc, 0x18, 0x75, 0x42, 0xc1, 0xa8, 0xe2, 0xa2, 0x36, 0x6b, 0x80,
-	0x59, 0xdb, 0x84, 0xad, 0xd7, 0x63, 0xd4, 0x31, 0x46, 0x35, 0x71, 0xad, 0x22, 0x9a, 0xb0, 0x25,
-	0x7e, 0x8c, 0x10, 0x48, 0x59, 0x44, 0xa8, 0xea, 0xae, 0xf7, 0x9d, 0x61, 0xc3, 0xdf, 0x34, 0x91,
-	0x43, 0xa5, 0xe1, 0x59, 0x11, 0x59, 0xb8, 0x59, 0xc1, 0x26, 0x72, 0xa8, 0xf0, 0x29, 0xc2, 0x19,
-	0x2d, 0x49, 0x2c, 0x68, 0xae, 0x48, 0xc1, 0x04, 0x99, 0x49, 0x26, 0xba, 0xf7, 0xfa, 0x8d, 0x61,
-	0xeb, 0xd9, 0x7d, 0xb7, 0x6a, 0x97, 0xab, 0xdb, 0xe5, 0x9a, 0x76, 0xb9, 0xc7, 0x3c, 0xc9, 0xfd,
-	0x4e, 0x46, 0xcb, 0x57, 0x5a, 0x33, 0x62, 0xe2, 0x42, 0x32, 0x31, 0xf8, 0x65, 0x15, 0x6d, 0xbd,
-	0x62, 0x39, 0x93, 0x89, 0x1c, 0x2b, 0xaa, 0x18, 0xfe, 0x06, 0x6d, 0x98, 0x44, 0x75, 0xbb, 0xb4,
-	0xdd, 0x23, 0x77, 0xc9, 0x48, 0xdc, 0x37, 0xda, 0xed, 0xd7, 0x2a, 0xfc, 0x1c, 0x35, 0x0b, 0x2a,
-	0x68, 0x26, 0xa1, 0x8f, 0xad, 0x67, 0x1f, 0x2e, 0xd5, 0x8f, 0x80, 0xe2, 0x1b, 0x2a, 0xfe, 0x0e,
-	0xed, 0xea, 0x0a, 0x4c, 0x41, 0x33, 0x49, 0x63, 0xa6, 0x3b, 0xac, 0xcf, 0xff, 0x64, 0xa9, 0x5e,
-	0x67, 0x0f, 0x95, 0x5c, 0x68, 0xae, 0xdf, 0x99, 0x2d, 0xfc, 0x97, 0xf8, 0x7b, 0xd4, 0x99, 0xd0,
-	0x24, 0x85, 0xf6, 0x29, 0x96, 0x15, 0x4a, 0xcf, 0x41, 0xdb, 0x0d, 0x97, 0xda, 0x9d, 0x02, 0xf7,
-	0xd0, 0x50, 0x4f, 0x72, 0x25, 0xe6, 0x7e, 0x7b, 0xb2, 0x10, 0x1c, 0xfc, 0xe1, 0xa0, 0xf6, 0xe2,
-	0xb1, 0x7a, 0x73, 0x20, 0xed, 0xc5, 0x05, 0x6b, 0xe9, 0x98, 0x9d, 0xf3, 0xb2, 0x3d, 0x5c, 0x5d,
-	0xbe, 0x87, 0xc7, 0x68, 0x47, 0x71, 0x45, 0xd3, 0xba, 0x0b, 0x2c, 0x32, 0x3d, 0xf8, 0x9f, 0x91,
-	0xb6, 0x41, 0x62, 0x72, 0x62, 0x11, 0x7e, 0x84, 0xda, 0x29, 0x95, 0x95, 0x9a, 0xa8, 0x24, 0x63,
-	0xb0, 0x7f, 0x0d, 0x7f, 0x4b, 0x47, 0x35, 0xe3, 0x3c, 0xc9, 0xd8, 0xe0, 0x57, 0x07, 0xb5, 0x17,
-	0x6b, 0xc6, 0xfb, 0x68, 0x3d, 0xe4, 0xb3, 0x5c, 0x41, 0x11, 0xdb, 0x7e, 0xf5, 0x07, 0xbb, 0x68,
-	0xef, 0x3a, 0xc9, 0x23, 0x7e, 0x4d, 0xa4, 0xa2, 0x42, 0x91, 0x29, 0x4b, 0xe2, 0xa9, 0x82, 0x0a,
-	0x1a, 0xfe, 0x6e, 0x05, 0x8d, 0x35, 0xf2, 0x2d, 0x00, 0xd0, 0x91, 0x5c, 0x25, 0xa9, 0x25, 0x36,
-	0x80, 0xd8, 0x82, 0x98, 0xa1, 0x7c, 0x8e, 0xf6, 0x21, 0xc3, 0x90, 0xf3, 0x34, 0xe2, 0xd7, 0x39,
-	0x09, 0x52, 0x1e, 0x5e, 0x56, 0xf7, 0x64, 0xdb, 0xc7, 0x1a, 0x3b, 0x36, 0xd0, 0x11, 0x20, 0x83,
-	0x9f, 0x1d, 0xb4, 0xb7, 0x64, 0x42, 0xef, 0x78, 0xc7, 0x17, 0x26, 0xb5, 0xfa, 0xf6, 0xa4, 0x5e,
-	0xa0, 0xa6, 0x60, 0x21, 0x17, 0x11, 0x24, 0xfd, 0x5f, 0x8b, 0xb7, 0x98, 0x87, 0x6f, 0x24, 0x83,
-	0x3f, 0xd7, 0x50, 0xb3, 0xda, 0x69, 0xec, 0xa1, 0x3d, 0x7b, 0x19, 0xa6, 0x49, 0x41, 0x58, 0x4e,
-	0x83, 0x94, 0x45, 0x90, 0xd8, 0x86, 0x8f, 0xef, 0x40, 0x27, 0x15, 0x82, 0xbf, 0x44, 0x1f, 0xc0,
-	0x65, 0xa6, 0x12, 0xae, 0xf2, 0x1d, 0x06, 0xa4, 0xb9, 0xe6, 0xef, 0xeb, 0x6b, 0x4b, 0xe5, 0x88,
-	0x89, 0xf1, 0xbf, 0x18, 0xfe, 0x02, 0xbd, 0x4f, 0x83, 0x99, 0x64, 0x44, 0x17, 0x7a, 0x99, 0xe4,
-	0x71, 0x7d, 0x54, 0x03, 0x8e, 0xda, 0x07, 0xf4, 0xdc, 0x80, 0xf6, 0xb0, 0x27, 0x68, 0x27, 0x4e,
-	0x79, 0x40, 0x53, 0xa2, 0xa6, 0x82, 0xc9, 0x29, 0x4f, 0x23, 0xd3, 0xf9, 0x4e, 0x15, 0x3f, 0xb7,
-	0x61, 0xfc, 0x19, 0xc2, 0x86, 0xaa, 0xd7, 0xce, 0x8e, 0x69, 0x1d, 0xc8, 0xc6, 0xe4, 0x88, 0x4a,
-	0x56, 0x0d, 0x49, 0x8f, 0xb5, 0x66, 0x87, 0x97, 0x7c, 0x32, 0x21, 0x59, 0x92, 0xa6, 0x09, 0x7c,
-	0xbb, 0xb6, 0x7d, 0x6c, 0xf9, 0x00, 0x9d, 0x69, 0x04, 0x7f, 0x8a, 0x76, 0x8d, 0x42, 0x97, 0x6f,
-	0xec, 0xef, 0xdd, 0xcd, 0xe5, 0x8c, 0x96, 0x6f, 0xb9, 0x9b, 0x75, 0x34, 0xf4, 0x8d, 0xbb, 0xee,
-	0x3f, 0x00, 0x64, 0x14, 0x5f, 0xa3, 0x8f, 0xe2, 0x90, 0xbc, 0xf1, 0x11, 0x80, 0x06, 0x83, 0xb4,
-	0xbb, 0x09, 0xca, 0x6e, 0x1c, 0x2e, 0x4e, 0x74, 0xc4, 0x04, 0x18, 0xe0, 0x97, 0xa8, 0xaf, 0xd3,
-	0x62, 0x25, 0x0b, 0x49, 0x26, 0xe3, 0x4a, 0xaa, 0x4a, 0x32, 0xe1, 0xf5, 0x88, 0xba, 0x08, 0x3c,
-	0x1e, 0x64, 0xb4, 0x3c, 0x29, 0x59, 0x78, 0x26, 0x63, 0x2d, 0x3f, 0x2f, 0x4f, 0xb9, 0x1d, 0x14,
-	0xfe, 0x0a, 0xdd, 0xd7, 0x2e, 0x05, 0x4f, 0x93, 0x70, 0x5e, 0x9b, 0x91, 0x60, 0xae, 0x98, 0xec,
-	0xb6, 0x40, 0xfe, 0x5e, 0x46, 0xcb, 0x11, 0xe0, 0xc6, 0xe4, 0x48, 0x83, 0x47, 0x17, 0xbf, 0xdf,
-	0xf4, 0x9c, 0xd7, 0x37, 0x3d, 0xe7, 0xef, 0x9b, 0x9e, 0xf3, 0xd3, 0x6d, 0x6f, 0xe5, 0xf5, 0x6d,
-	0x6f, 0xe5, 0xaf, 0xdb, 0xde, 0xca, 0x8f, 0x2f, 0xe2, 0x44, 0x4d, 0x67, 0x81, 0x1b, 0xf2, 0xcc,
-	0x7b, 0xc9, 0x05, 0x3d, 0xa5, 0xa1, 0xe2, 0x62, 0xee, 0xd5, 0xaf, 0x6b, 0x69, 0x1f, 0xd5, 0xa7,
-	0xf6, 0x1a, 0x3c, 0x55, 0xa5, 0xa7, 0xe6, 0x05, 0x93, 0x41, 0x13, 0x9e, 0xcc, 0xe7, 0xff, 0x04,
-	0x00, 0x00, 0xff, 0xff, 0x37, 0x08, 0x01, 0xf3, 0x8c, 0x07, 0x00, 0x00,
+	// 893 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x55, 0xcb, 0x6e, 0x23, 0x45,
+	0x14, 0x9d, 0xb6, 0x07, 0x8f, 0x53, 0xf1, 0x23, 0x54, 0xc8, 0xc8, 0x93, 0x11, 0x96, 0xe3, 0x19,
+	0x44, 0x58, 0xa4, 0x5b, 0xce, 0x2c, 0x40, 0x62, 0x43, 0xde, 0x03, 0xd2, 0x40, 0x54, 0x49, 0x16,
+	0xb0, 0x29, 0x95, 0xbb, 0x2f, 0xed, 0x66, 0xdc, 0x5d, 0xad, 0xaa, 0x72, 0xd4, 0xfe, 0x0b, 0xb6,
+	0xec, 0x58, 0xf2, 0x29, 0xb0, 0x41, 0xb3, 0x64, 0x89, 0x92, 0x25, 0x3f, 0x81, 0xea, 0x65, 0xec,
+	0x60, 0x21, 0xb1, 0xeb, 0x3a, 0xf7, 0xdc, 0xe7, 0xb9, 0x55, 0x8d, 0xf6, 0x12, 0x2e, 0xd8, 0x2d,
+	0x57, 0x2c, 0x92, 0x25, 0x2f, 0x24, 0x17, 0xd1, 0xed, 0xc8, 0x7f, 0x86, 0xa5, 0xe0, 0x8a, 0xe3,
+	0x6d, 0x4f, 0x09, 0x3d, 0x7e, 0x3b, 0xda, 0xed, 0xc7, 0x5c, 0xe6, 0x5c, 0x46, 0x63, 0x26, 0x21,
+	0xba, 0x1d, 0x8d, 0x41, 0xb1, 0x51, 0x14, 0xf3, 0xac, 0xb0, 0x4e, 0xbb, 0x1f, 0xa4, 0x3c, 0xe5,
+	0xe6, 0x33, 0xd2, 0x5f, 0x16, 0x1d, 0xfe, 0x55, 0x43, 0xdd, 0x13, 0x5e, 0x28, 0xc1, 0x62, 0x75,
+	0x65, 0x83, 0xe1, 0x4f, 0xd0, 0x56, 0xec, 0x20, 0xca, 0x92, 0x44, 0x80, 0x94, 0xbd, 0x60, 0x10,
+	0xec, 0x6f, 0x90, 0xae, 0xc7, 0x8f, 0x2c, 0x8c, 0x0f, 0xd1, 0x8e, 0xca, 0xe2, 0xb7, 0xa0, 0x68,
+	0x26, 0xe5, 0x0c, 0xc4, 0x82, 0x5f, 0x33, 0xfc, 0x6d, 0x6b, 0xfc, 0xd2, 0xd8, 0xbc, 0xcf, 0xc7,
+	0xa8, 0x1b, 0x0b, 0x60, 0x8a, 0xff, 0xc3, 0xae, 0x1b, 0x76, 0xc7, 0xc1, 0x4b, 0x44, 0xd7, 0xdf,
+	0x82, 0xf8, 0xd8, 0x12, 0x1d, 0xec, 0x89, 0x7b, 0xa8, 0x95, 0x49, 0xea, 0x40, 0x48, 0x7a, 0xef,
+	0x0d, 0x82, 0xfd, 0x26, 0xd9, 0xcc, 0xe4, 0x95, 0x87, 0xf0, 0x87, 0x08, 0x99, 0xe8, 0x90, 0x50,
+	0xa6, 0x7a, 0x8d, 0x41, 0xb0, 0x5f, 0x27, 0x1b, 0x0e, 0x39, 0x52, 0xda, 0x3c, 0x2b, 0x13, 0x6f,
+	0x7e, 0x62, 0xcd, 0x0e, 0x39, 0x52, 0xf8, 0x1c, 0xe1, 0x9c, 0x55, 0x34, 0x15, 0xac, 0x50, 0xb4,
+	0x04, 0x41, 0x67, 0x12, 0x44, 0xaf, 0x39, 0xa8, 0xef, 0x6f, 0x1e, 0x3e, 0x0b, 0xed, 0xe0, 0x43,
+	0x3d, 0xf8, 0xd0, 0x0d, 0x3e, 0x3c, 0xe1, 0x59, 0x41, 0xba, 0x39, 0xab, 0x2e, 0xb4, 0xcf, 0x25,
+	0x88, 0x1b, 0x09, 0x62, 0xf8, 0x73, 0x0d, 0xb5, 0x2e, 0xa0, 0x00, 0x99, 0xc9, 0x2b, 0xc5, 0x14,
+	0xe0, 0x2f, 0x50, 0xd3, 0x95, 0xad, 0x47, 0xac, 0xc3, 0xbd, 0x0c, 0xd7, 0x88, 0x1b, 0x3e, 0x90,
+	0x88, 0x2c, 0xbc, 0xf0, 0x2b, 0xd4, 0x28, 0x99, 0x60, 0xb9, 0x1d, 0xf9, 0xe6, 0xe1, 0xf3, 0xb5,
+	0xfe, 0x97, 0x86, 0x42, 0x1c, 0x15, 0x7f, 0x83, 0xde, 0xd7, 0x1d, 0xb8, 0x86, 0x66, 0x92, 0xa5,
+	0xa0, 0x45, 0xd0, 0xf9, 0x5f, 0xac, 0xf5, 0xd7, 0xd5, 0x9b, 0x4e, 0x6e, 0x34, 0x97, 0x74, 0x67,
+	0x2b, 0x67, 0x89, 0x5f, 0xa3, 0x4e, 0xc9, 0xa7, 0x59, 0x3c, 0xa7, 0x56, 0x71, 0xad, 0x94, 0x8e,
+	0xb6, 0xb7, 0xbe, 0x1a, 0x43, 0xbd, 0x36, 0x4c, 0xd2, 0x2e, 0x97, 0x4e, 0x72, 0xf8, 0x5b, 0x80,
+	0x3a, 0xab, 0xd9, 0xb4, 0xbc, 0xa6, 0xda, 0xd5, 0x5d, 0xdc, 0xd4, 0x98, 0xdf, 0x80, 0x75, 0x2b,
+	0x5b, 0x5b, 0xbf, 0xb2, 0x27, 0x68, 0x4b, 0x71, 0xc5, 0xa6, 0x8b, 0xe6, 0x21, 0x71, 0xad, 0xff,
+	0x87, 0x92, 0x1d, 0xe3, 0xe2, 0x6a, 0x82, 0x04, 0xbf, 0x44, 0x9d, 0x29, 0x93, 0xd6, 0x9b, 0xaa,
+	0x2c, 0x07, 0xb3, 0x99, 0x75, 0xd2, 0xd2, 0xa8, 0x66, 0x5c, 0x67, 0x39, 0x0c, 0x7f, 0xaf, 0xa3,
+	0x86, 0x9d, 0x3c, 0x8e, 0xd0, 0xb6, 0x97, 0x6c, 0x92, 0x95, 0x14, 0x0a, 0x36, 0x9e, 0x42, 0x62,
+	0x5a, 0x69, 0x12, 0xbc, 0x64, 0x3a, 0xb3, 0x16, 0xfc, 0x29, 0xea, 0xad, 0x4c, 0x94, 0x2a, 0x35,
+	0xa5, 0xe3, 0x29, 0x8f, 0xdf, 0xda, 0xeb, 0xd2, 0x26, 0x3b, 0xcb, 0x83, 0xbb, 0x56, 0xd3, 0x63,
+	0x63, 0xc4, 0xa7, 0x68, 0xa0, 0x77, 0x15, 0x2a, 0x88, 0x69, 0x2e, 0x53, 0x69, 0xf6, 0x55, 0x55,
+	0xf4, 0x7b, 0x2e, 0xfc, 0x15, 0x31, 0xc5, 0xb6, 0xc9, 0x6e, 0xce, 0xaa, 0xb3, 0x0a, 0xe2, 0x37,
+	0x32, 0x95, 0x97, 0x20, 0xae, 0xab, 0x73, 0x2e, 0xfc, 0x1b, 0xf0, 0x19, 0x7a, 0xa6, 0xa3, 0xb8,
+	0x12, 0x7c, 0x30, 0x3a, 0x9e, 0x2b, 0x90, 0xe6, 0x7e, 0xb5, 0xc9, 0x4e, 0xce, 0x2a, 0xab, 0xa4,
+	0x0b, 0x72, 0xac, 0x8d, 0xf8, 0xcc, 0xe6, 0xcf, 0x41, 0x4d, 0x78, 0xe2, 0x8b, 0x9f, 0x49, 0xb0,
+	0x85, 0x98, 0x67, 0xc2, 0xdc, 0xbf, 0x36, 0x79, 0x9e, 0xb3, 0xea, 0x8d, 0xa1, 0xd9, 0x1e, 0x6e,
+	0x24, 0xe8, 0x3a, 0xcc, 0x6b, 0x81, 0x0f, 0x90, 0x7b, 0x3c, 0x68, 0x1a, 0x1b, 0x4f, 0xd3, 0xbb,
+	0xb9, 0x9a, 0x6d, 0xb2, 0x65, 0x4d, 0x17, 0xf1, 0x25, 0x08, 0xd3, 0x36, 0x1e, 0xa1, 0x9d, 0xa5,
+	0xac, 0x05, 0xcb, 0xc1, 0xd5, 0xda, 0x34, 0x0e, 0x78, 0x91, 0xea, 0x6b, 0x96, 0x83, 0x2d, 0x74,
+	0xd5, 0xe5, 0x07, 0xc9, 0x0b, 0x9a, 0x40, 0xa9, 0x26, 0xbd, 0x8d, 0x07, 0x2e, 0x5f, 0x49, 0x5e,
+	0x9c, 0x6a, 0xcb, 0xf0, 0xa7, 0x1a, 0x6a, 0x2d, 0x2f, 0xef, 0xff, 0x79, 0x2a, 0x1f, 0x6e, 0x71,
+	0xed, 0xdf, 0x5b, 0xfc, 0x14, 0x35, 0x92, 0x2c, 0x05, 0xa9, 0xdc, 0x83, 0xe8, 0x4e, 0xf8, 0x05,
+	0x6a, 0x43, 0x55, 0x66, 0x62, 0x4e, 0x27, 0x90, 0xa5, 0x13, 0x65, 0xf4, 0x7b, 0x4c, 0x5a, 0x16,
+	0x7c, 0x6d, 0x30, 0xfc, 0x11, 0xea, 0x98, 0x29, 0x0b, 0xc8, 0x59, 0x56, 0x64, 0x45, 0xea, 0x64,
+	0x6a, 0x6b, 0x94, 0x78, 0x10, 0xef, 0xa2, 0x66, 0xcc, 0x0b, 0x39, 0xcb, 0x21, 0x31, 0x32, 0x34,
+	0xc9, 0xe2, 0xac, 0xf3, 0x18, 0x7d, 0x12, 0x9f, 0xe7, 0x89, 0xcd, 0x63, 0x41, 0x97, 0xe7, 0x29,
+	0x6a, 0xd8, 0x91, 0x99, 0xd1, 0x6e, 0x10, 0x77, 0x3a, 0xfe, 0xf6, 0x97, 0xbb, 0x7e, 0xf0, 0xeb,
+	0x5d, 0x3f, 0x78, 0x77, 0xd7, 0x0f, 0xfe, 0xbc, 0xeb, 0x07, 0x3f, 0xde, 0xf7, 0x1f, 0xbd, 0xbb,
+	0xef, 0x3f, 0xfa, 0xe3, 0xbe, 0xff, 0xe8, 0xbb, 0xcf, 0xd3, 0x4c, 0x4d, 0x66, 0xe3, 0x30, 0xe6,
+	0x79, 0x74, 0xca, 0x05, 0x3b, 0x67, 0xb1, 0xe2, 0x62, 0x1e, 0x2d, 0x7e, 0x76, 0x95, 0xff, 0xc7,
+	0x1d, 0xf8, 0xc1, 0x1d, 0xa8, 0x2a, 0x52, 0xf3, 0x12, 0xe4, 0xb8, 0x61, 0xfe, 0x55, 0xaf, 0xfe,
+	0x0e, 0x00, 0x00, 0xff, 0xff, 0x28, 0x75, 0x75, 0xb0, 0x1b, 0x07, 0x00, 0x00,
 }
 
+func (this *ContractSponsor) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ContractSponsor)
+	if !ok {
+		that2, ok := that.(ContractSponsor)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ContractAddress != that1.ContractAddress {
+		return false
+	}
+	if this.TicketIssuerAddress != that1.TicketIssuerAddress {
+		return false
+	}
+	if this.CreatorAddress != that1.CreatorAddress {
+		return false
+	}
+	if this.SponsorAddress != that1.SponsorAddress {
+		return false
+	}
+	if this.IsSponsored != that1.IsSponsored {
+		return false
+	}
+	if this.CreatedAt != that1.CreatedAt {
+		return false
+	}
+	if this.UpdatedAt != that1.UpdatedAt {
+		return false
+	}
+	if len(this.MaxGrantPerUser) != len(that1.MaxGrantPerUser) {
+		return false
+	}
+	for i := range this.MaxGrantPerUser {
+		if !this.MaxGrantPerUser[i].Equal(that1.MaxGrantPerUser[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *GenesisState) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GenesisState)
+	if !ok {
+		that2, ok := that.(GenesisState)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Sponsors) != len(that1.Sponsors) {
+		return false
+	}
+	for i := range this.Sponsors {
+		if !this.Sponsors[i].Equal(that1.Sponsors[i]) {
+			return false
+		}
+	}
+	if !this.Params.Equal(that1.Params) {
+		return false
+	}
+	if len(this.UserGrantUsages) != len(that1.UserGrantUsages) {
+		return false
+	}
+	for i := range this.UserGrantUsages {
+		if !this.UserGrantUsages[i].Equal(that1.UserGrantUsages[i]) {
+			return false
+		}
+	}
+	if len(this.PolicyTickets) != len(that1.PolicyTickets) {
+		return false
+	}
+	for i := range this.PolicyTickets {
+		if !this.PolicyTickets[i].Equal(that1.PolicyTickets[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *UserGrantUsage) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*UserGrantUsage)
+	if !ok {
+		that2, ok := that.(UserGrantUsage)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.UserAddress != that1.UserAddress {
+		return false
+	}
+	if this.ContractAddress != that1.ContractAddress {
+		return false
+	}
+	if len(this.TotalGrantUsed) != len(that1.TotalGrantUsed) {
+		return false
+	}
+	for i := range this.TotalGrantUsed {
+		if !this.TotalGrantUsed[i].Equal(that1.TotalGrantUsed[i]) {
+			return false
+		}
+	}
+	if this.LastUsedTime != that1.LastUsedTime {
+		return false
+	}
+	return true
+}
+func (this *Params) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Params)
+	if !ok {
+		that2, ok := that.(Params)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.SponsorshipEnabled != that1.SponsorshipEnabled {
+		return false
+	}
+	if this.PolicyTicketTtlBlocks != that1.PolicyTicketTtlBlocks {
+		return false
+	}
+	if this.MaxExecMsgsPerTxForSponsor != that1.MaxExecMsgsPerTxForSponsor {
+		return false
+	}
+	if this.MaxPolicyExecMsgBytes != that1.MaxPolicyExecMsgBytes {
+		return false
+	}
+	if this.MaxMethodTicketUsesPerIssue != that1.MaxMethodTicketUsesPerIssue {
+		return false
+	}
+	if this.TicketGcPerBlock != that1.TicketGcPerBlock {
+		return false
+	}
+	if this.MaxMethodNameBytes != that1.MaxMethodNameBytes {
+		return false
+	}
+	if this.MaxMethodJsonDepth != that1.MaxMethodJsonDepth {
+		return false
+	}
+	return true
+}
+func (this *PolicyTicket) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PolicyTicket)
+	if !ok {
+		that2, ok := that.(PolicyTicket)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.ContractAddress != that1.ContractAddress {
+		return false
+	}
+	if this.UserAddress != that1.UserAddress {
+		return false
+	}
+	if this.Digest != that1.Digest {
+		return false
+	}
+	if this.ExpiryHeight != that1.ExpiryHeight {
+		return false
+	}
+	if this.UsesRemaining != that1.UsesRemaining {
+		return false
+	}
+	if this.Consumed != that1.Consumed {
+		return false
+	}
+	if this.IssuedHeight != that1.IssuedHeight {
+		return false
+	}
+	if this.Method != that1.Method {
+		return false
+	}
+	return true
+}
 func (m *ContractSponsor) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -636,16 +828,26 @@ func (m *ContractSponsor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 				i = encodeVarintSponsor(dAtA, i, uint64(size))
 			}
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x42
 		}
 	}
 	if m.UpdatedAt != 0 {
 		i = encodeVarintSponsor(dAtA, i, uint64(m.UpdatedAt))
 		i--
-		dAtA[i] = 0x30
+		dAtA[i] = 0x38
 	}
 	if m.CreatedAt != 0 {
 		i = encodeVarintSponsor(dAtA, i, uint64(m.CreatedAt))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.IsSponsored {
+		i--
+		if m.IsSponsored {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
 		i--
 		dAtA[i] = 0x28
 	}
@@ -663,15 +865,12 @@ func (m *ContractSponsor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
-	if m.IsSponsored {
+	if len(m.TicketIssuerAddress) > 0 {
+		i -= len(m.TicketIssuerAddress)
+		copy(dAtA[i:], m.TicketIssuerAddress)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.TicketIssuerAddress)))
 		i--
-		if m.IsSponsored {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
+		dAtA[i] = 0x12
 	}
 	if len(m.ContractAddress) > 0 {
 		i -= len(m.ContractAddress)
@@ -703,10 +902,10 @@ func (m *GenesisState) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.FailedAttempts) > 0 {
-		for iNdEx := len(m.FailedAttempts) - 1; iNdEx >= 0; iNdEx-- {
+	if len(m.PolicyTickets) > 0 {
+		for iNdEx := len(m.PolicyTickets) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := m.FailedAttempts[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				size, err := m.PolicyTickets[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -816,98 +1015,6 @@ func (m *UserGrantUsage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *FailedAttempts) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *FailedAttempts) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *FailedAttempts) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.LastCooldownBlocks != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.LastCooldownBlocks))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.UntilHeight != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.UntilHeight))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.WindowStartHeight != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.WindowStartHeight))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Count != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *FailedAttemptsEntry) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *FailedAttemptsEntry) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *FailedAttemptsEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Record != nil {
-		{
-			size, err := m.Record.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintSponsor(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x1a
-	}
-	if len(m.UserAddress) > 0 {
-		i -= len(m.UserAddress)
-		copy(dAtA[i:], m.UserAddress)
-		i = encodeVarintSponsor(dAtA, i, uint64(len(m.UserAddress)))
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.ContractAddress) > 0 {
-		i -= len(m.ContractAddress)
-		copy(dAtA[i:], m.ContractAddress)
-		i = encodeVarintSponsor(dAtA, i, uint64(len(m.ContractAddress)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *Params) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -928,60 +1035,40 @@ func (m *Params) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.MaxMethodJsonDepth != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxMethodJsonDepth))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.MaxMethodNameBytes != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxMethodNameBytes))
+		i--
+		dAtA[i] = 0x40
+	}
+	if m.TicketGcPerBlock != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.TicketGcPerBlock))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.MaxMethodTicketUsesPerIssue != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxMethodTicketUsesPerIssue))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.MaxPolicyExecMsgBytes != 0 {
 		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxPolicyExecMsgBytes))
 		i--
-		dAtA[i] = 0x58
+		dAtA[i] = 0x28
 	}
 	if m.MaxExecMsgsPerTxForSponsor != 0 {
 		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxExecMsgsPerTxForSponsor))
 		i--
-		dAtA[i] = 0x50
-	}
-	if m.GcFailedAttemptsPerBlock != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GcFailedAttemptsPerBlock))
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.GlobalWindowBlocks != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalWindowBlocks))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.GlobalMaxBlocks != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalMaxBlocks))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.GlobalBackoffMilli != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalBackoffMilli))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.GlobalBaseBlocks != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalBaseBlocks))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.GlobalThreshold != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.GlobalThreshold))
-		i--
 		dAtA[i] = 0x20
 	}
-	if m.AbuseTrackingEnabled {
-		i--
-		if m.AbuseTrackingEnabled {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
+	if m.PolicyTicketTtlBlocks != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.PolicyTicketTtlBlocks))
 		i--
 		dAtA[i] = 0x18
-	}
-	if m.MaxGasPerSponsorship != 0 {
-		i = encodeVarintSponsor(dAtA, i, uint64(m.MaxGasPerSponsorship))
-		i--
-		dAtA[i] = 0x10
 	}
 	if m.SponsorshipEnabled {
 		i--
@@ -992,6 +1079,82 @@ func (m *Params) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PolicyTicket) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PolicyTicket) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PolicyTicket) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Method) > 0 {
+		i -= len(m.Method)
+		copy(dAtA[i:], m.Method)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.Method)))
+		i--
+		dAtA[i] = 0x42
+	}
+	if m.IssuedHeight != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.IssuedHeight))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.Consumed {
+		i--
+		if m.Consumed {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.UsesRemaining != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.UsesRemaining))
+		i--
+		dAtA[i] = 0x28
+	}
+	if m.ExpiryHeight != 0 {
+		i = encodeVarintSponsor(dAtA, i, uint64(m.ExpiryHeight))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.Digest) > 0 {
+		i -= len(m.Digest)
+		copy(dAtA[i:], m.Digest)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.Digest)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.UserAddress) > 0 {
+		i -= len(m.UserAddress)
+		copy(dAtA[i:], m.UserAddress)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.UserAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ContractAddress) > 0 {
+		i -= len(m.ContractAddress)
+		copy(dAtA[i:], m.ContractAddress)
+		i = encodeVarintSponsor(dAtA, i, uint64(len(m.ContractAddress)))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -1017,8 +1180,9 @@ func (m *ContractSponsor) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovSponsor(uint64(l))
 	}
-	if m.IsSponsored {
-		n += 2
+	l = len(m.TicketIssuerAddress)
+	if l > 0 {
+		n += 1 + l + sovSponsor(uint64(l))
 	}
 	l = len(m.CreatorAddress)
 	if l > 0 {
@@ -1027,6 +1191,9 @@ func (m *ContractSponsor) Size() (n int) {
 	l = len(m.SponsorAddress)
 	if l > 0 {
 		n += 1 + l + sovSponsor(uint64(l))
+	}
+	if m.IsSponsored {
+		n += 2
 	}
 	if m.CreatedAt != 0 {
 		n += 1 + sovSponsor(uint64(m.CreatedAt))
@@ -1065,8 +1232,8 @@ func (m *GenesisState) Size() (n int) {
 			n += 1 + l + sovSponsor(uint64(l))
 		}
 	}
-	if len(m.FailedAttempts) > 0 {
-		for _, e := range m.FailedAttempts {
+	if len(m.PolicyTickets) > 0 {
+		for _, e := range m.PolicyTickets {
 			l = e.Size()
 			n += 1 + l + sovSponsor(uint64(l))
 		}
@@ -1100,28 +1267,40 @@ func (m *UserGrantUsage) Size() (n int) {
 	return n
 }
 
-func (m *FailedAttempts) Size() (n int) {
+func (m *Params) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Count != 0 {
-		n += 1 + sovSponsor(uint64(m.Count))
+	if m.SponsorshipEnabled {
+		n += 2
 	}
-	if m.WindowStartHeight != 0 {
-		n += 1 + sovSponsor(uint64(m.WindowStartHeight))
+	if m.PolicyTicketTtlBlocks != 0 {
+		n += 1 + sovSponsor(uint64(m.PolicyTicketTtlBlocks))
 	}
-	if m.UntilHeight != 0 {
-		n += 1 + sovSponsor(uint64(m.UntilHeight))
+	if m.MaxExecMsgsPerTxForSponsor != 0 {
+		n += 1 + sovSponsor(uint64(m.MaxExecMsgsPerTxForSponsor))
 	}
-	if m.LastCooldownBlocks != 0 {
-		n += 1 + sovSponsor(uint64(m.LastCooldownBlocks))
+	if m.MaxPolicyExecMsgBytes != 0 {
+		n += 1 + sovSponsor(uint64(m.MaxPolicyExecMsgBytes))
+	}
+	if m.MaxMethodTicketUsesPerIssue != 0 {
+		n += 1 + sovSponsor(uint64(m.MaxMethodTicketUsesPerIssue))
+	}
+	if m.TicketGcPerBlock != 0 {
+		n += 1 + sovSponsor(uint64(m.TicketGcPerBlock))
+	}
+	if m.MaxMethodNameBytes != 0 {
+		n += 1 + sovSponsor(uint64(m.MaxMethodNameBytes))
+	}
+	if m.MaxMethodJsonDepth != 0 {
+		n += 1 + sovSponsor(uint64(m.MaxMethodJsonDepth))
 	}
 	return n
 }
 
-func (m *FailedAttemptsEntry) Size() (n int) {
+func (m *PolicyTicket) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1135,51 +1314,25 @@ func (m *FailedAttemptsEntry) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovSponsor(uint64(l))
 	}
-	if m.Record != nil {
-		l = m.Record.Size()
+	l = len(m.Digest)
+	if l > 0 {
 		n += 1 + l + sovSponsor(uint64(l))
 	}
-	return n
-}
-
-func (m *Params) Size() (n int) {
-	if m == nil {
-		return 0
+	if m.ExpiryHeight != 0 {
+		n += 1 + sovSponsor(uint64(m.ExpiryHeight))
 	}
-	var l int
-	_ = l
-	if m.SponsorshipEnabled {
+	if m.UsesRemaining != 0 {
+		n += 1 + sovSponsor(uint64(m.UsesRemaining))
+	}
+	if m.Consumed {
 		n += 2
 	}
-	if m.MaxGasPerSponsorship != 0 {
-		n += 1 + sovSponsor(uint64(m.MaxGasPerSponsorship))
+	if m.IssuedHeight != 0 {
+		n += 1 + sovSponsor(uint64(m.IssuedHeight))
 	}
-	if m.AbuseTrackingEnabled {
-		n += 2
-	}
-	if m.GlobalThreshold != 0 {
-		n += 1 + sovSponsor(uint64(m.GlobalThreshold))
-	}
-	if m.GlobalBaseBlocks != 0 {
-		n += 1 + sovSponsor(uint64(m.GlobalBaseBlocks))
-	}
-	if m.GlobalBackoffMilli != 0 {
-		n += 1 + sovSponsor(uint64(m.GlobalBackoffMilli))
-	}
-	if m.GlobalMaxBlocks != 0 {
-		n += 1 + sovSponsor(uint64(m.GlobalMaxBlocks))
-	}
-	if m.GlobalWindowBlocks != 0 {
-		n += 1 + sovSponsor(uint64(m.GlobalWindowBlocks))
-	}
-	if m.GcFailedAttemptsPerBlock != 0 {
-		n += 1 + sovSponsor(uint64(m.GcFailedAttemptsPerBlock))
-	}
-	if m.MaxExecMsgsPerTxForSponsor != 0 {
-		n += 1 + sovSponsor(uint64(m.MaxExecMsgsPerTxForSponsor))
-	}
-	if m.MaxPolicyExecMsgBytes != 0 {
-		n += 1 + sovSponsor(uint64(m.MaxPolicyExecMsgBytes))
+	l = len(m.Method)
+	if l > 0 {
+		n += 1 + l + sovSponsor(uint64(l))
 	}
 	return n
 }
@@ -1252,10 +1405,10 @@ func (m *ContractSponsor) Unmarshal(dAtA []byte) error {
 			m.ContractAddress = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsSponsored", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TicketIssuerAddress", wireType)
 			}
-			var v int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -1265,12 +1418,24 @@ func (m *ContractSponsor) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.IsSponsored = bool(v != 0)
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TicketIssuerAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatorAddress", wireType)
@@ -1337,6 +1502,26 @@ func (m *ContractSponsor) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 5:
 			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IsSponsored", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.IsSponsored = bool(v != 0)
+		case 6:
+			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
 			}
 			m.CreatedAt = 0
@@ -1354,7 +1539,7 @@ func (m *ContractSponsor) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 6:
+		case 7:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field UpdatedAt", wireType)
 			}
@@ -1373,7 +1558,7 @@ func (m *ContractSponsor) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 7:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxGrantPerUser", wireType)
 			}
@@ -1563,7 +1748,7 @@ func (m *GenesisState) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FailedAttempts", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field PolicyTickets", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1590,8 +1775,8 @@ func (m *GenesisState) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.FailedAttempts = append(m.FailedAttempts, &FailedAttemptsEntry{})
-			if err := m.FailedAttempts[len(m.FailedAttempts)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.PolicyTickets = append(m.PolicyTickets, &PolicyTicket{})
+			if err := m.PolicyTickets[len(m.PolicyTickets)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1783,7 +1968,7 @@ func (m *UserGrantUsage) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
+func (m *Params) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1806,17 +1991,17 @@ func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: FailedAttempts: wiretype end group for non-group")
+			return fmt.Errorf("proto: Params: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: FailedAttempts: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Params: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SponsorshipEnabled", wireType)
 			}
-			m.Count = 0
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -1826,35 +2011,17 @@ func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Count |= uint32(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WindowStartHeight", wireType)
-			}
-			m.WindowStartHeight = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.WindowStartHeight |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
+			m.SponsorshipEnabled = bool(v != 0)
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UntilHeight", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field PolicyTicketTtlBlocks", wireType)
 			}
-			m.UntilHeight = 0
+			m.PolicyTicketTtlBlocks = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -1864,16 +2031,16 @@ func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.UntilHeight |= int64(b&0x7F) << shift
+				m.PolicyTicketTtlBlocks |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LastCooldownBlocks", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxExecMsgsPerTxForSponsor", wireType)
 			}
-			m.LastCooldownBlocks = 0
+			m.MaxExecMsgsPerTxForSponsor = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -1883,7 +2050,102 @@ func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.LastCooldownBlocks |= uint32(b&0x7F) << shift
+				m.MaxExecMsgsPerTxForSponsor |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxPolicyExecMsgBytes", wireType)
+			}
+			m.MaxPolicyExecMsgBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxPolicyExecMsgBytes |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxMethodTicketUsesPerIssue", wireType)
+			}
+			m.MaxMethodTicketUsesPerIssue = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxMethodTicketUsesPerIssue |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TicketGcPerBlock", wireType)
+			}
+			m.TicketGcPerBlock = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TicketGcPerBlock |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxMethodNameBytes", wireType)
+			}
+			m.MaxMethodNameBytes = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxMethodNameBytes |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxMethodJsonDepth", wireType)
+			}
+			m.MaxMethodJsonDepth = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSponsor
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxMethodJsonDepth |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1909,7 +2171,7 @@ func (m *FailedAttempts) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *FailedAttemptsEntry) Unmarshal(dAtA []byte) error {
+func (m *PolicyTicket) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1932,10 +2194,10 @@ func (m *FailedAttemptsEntry) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: FailedAttemptsEntry: wiretype end group for non-group")
+			return fmt.Errorf("proto: PolicyTicket: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: FailedAttemptsEntry: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PolicyTicket: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2004,9 +2266,9 @@ func (m *FailedAttemptsEntry) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Record", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Digest", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2016,142 +2278,29 @@ func (m *FailedAttemptsEntry) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthSponsor
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex < 0 {
 				return ErrInvalidLengthSponsor
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if m.Record == nil {
-				m.Record = &FailedAttempts{}
-			}
-			if err := m.Record.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
+			m.Digest = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipSponsor(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthSponsor
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *Params) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowSponsor
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Params: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Params: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SponsorshipEnabled", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.SponsorshipEnabled = bool(v != 0)
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MaxGasPerSponsorship", wireType)
-			}
-			m.MaxGasPerSponsorship = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxGasPerSponsorship |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AbuseTrackingEnabled", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.AbuseTrackingEnabled = bool(v != 0)
 		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GlobalThreshold", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ExpiryHeight", wireType)
 			}
-			m.GlobalThreshold = 0
+			m.ExpiryHeight = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2161,16 +2310,16 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.GlobalThreshold |= uint32(b&0x7F) << shift
+				m.ExpiryHeight |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 5:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GlobalBaseBlocks", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field UsesRemaining", wireType)
 			}
-			m.GlobalBaseBlocks = 0
+			m.UsesRemaining = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2180,16 +2329,16 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.GlobalBaseBlocks |= uint32(b&0x7F) << shift
+				m.UsesRemaining |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 6:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GlobalBackoffMilli", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Consumed", wireType)
 			}
-			m.GlobalBackoffMilli = 0
+			var v int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2199,16 +2348,17 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.GlobalBackoffMilli |= uint32(b&0x7F) << shift
+				v |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.Consumed = bool(v != 0)
 		case 7:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GlobalMaxBlocks", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field IssuedHeight", wireType)
 			}
-			m.GlobalMaxBlocks = 0
+			m.IssuedHeight = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2218,16 +2368,16 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.GlobalMaxBlocks |= uint32(b&0x7F) << shift
+				m.IssuedHeight |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GlobalWindowBlocks", wireType)
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Method", wireType)
 			}
-			m.GlobalWindowBlocks = 0
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSponsor
@@ -2237,68 +2387,24 @@ func (m *Params) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.GlobalWindowBlocks |= uint32(b&0x7F) << shift
+				stringLen |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GcFailedAttemptsPerBlock", wireType)
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSponsor
 			}
-			m.GcFailedAttemptsPerBlock = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.GcFailedAttemptsPerBlock |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSponsor
 			}
-		case 10:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MaxExecMsgsPerTxForSponsor", wireType)
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
 			}
-			m.MaxExecMsgsPerTxForSponsor = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxExecMsgsPerTxForSponsor |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 11:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MaxPolicyExecMsgBytes", wireType)
-			}
-			m.MaxPolicyExecMsgBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowSponsor
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MaxPolicyExecMsgBytes |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
+			m.Method = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipSponsor(dAtA[iNdEx:])

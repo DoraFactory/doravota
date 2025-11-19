@@ -2,30 +2,20 @@ package cli_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/spf13/cobra"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	// Local keeper + types for direct gRPC server testing
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkquery "github.com/cosmos/cosmos-sdk/types/query"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
-	keeperpkg "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
-	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // dummyWasmKeeper is a minimal stub to satisfy keeper's WasmKeeperInterface in local QueryServer tests
@@ -233,127 +223,6 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 		})
 	}
 }
-
-// --- Local helpers for direct QueryServer tests (no full network needed) ---
-
-func newLocalKeeperAndCtx(t *testing.T) (keeperpkg.Keeper, sdk.Context) {
-	t.Helper()
-	// minimal in-memory app state for keeper
-	registry := codectypes.NewInterfaceRegistry()
-	cdc := codec.NewProtoCodec(registry)
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
-	db := dbm.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
-	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
-	require.NoError(t, ms.LoadLatestVersion())
-	k := keeperpkg.NewKeeper(cdc, storeKey, dummyWasmKeeper{}, "cosmos1authority_____________________")
-	ctx := sdk.NewContext(ms, tmproto.Header{}, false, log.NewNopLogger())
-	return *k, ctx
-}
-
-// The following tests exercise the gRPC QueryServer methods for global cooldown within this CLI test file,
-// as requested, without spinning up a full network.
-
-func TestBlockedStatus_BasicCLI(t *testing.T) {
-	k, ctx := newLocalKeeperAndCtx(t)
-	q := keeperpkg.NewQueryServer(k)
-	wctx := sdk.WrapSDKContext(ctx)
-
-	// nil request
-	_, err := q.BlockedStatus(wctx, nil)
-	require.Error(t, err)
-
-	// invalid addresses
-	_, err = q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: "", UserAddress: ""})
-	require.Error(t, err)
-	_, err = q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: "invalid", UserAddress: "invalid"})
-	require.Error(t, err)
-
-	// helper to build valid bech32 address strings
-	mkAddr := func(seed byte) string {
-		b := make([]byte, 20)
-		for i := range b {
-			b[i] = seed
-		}
-		return sdk.AccAddress(b).String()
-	}
-	contract := mkAddr(1)
-	user := mkAddr(2)
-
-	// not found
-	resp, err := q.BlockedStatus(wctx, &types.QueryBlockedStatusRequest{ContractAddress: contract, UserAddress: user})
-	require.NoError(t, err)
-	require.False(t, resp.Blocked)
-
-	// blocked record
-	ctx = ctx.WithBlockHeight(100)
-	k.SetFailedAttempts(ctx, contract, user, types.FailedAttempts{UntilHeight: 110, WindowStartHeight: 90, Count: 2})
-	resp, err = q.BlockedStatus(sdk.WrapSDKContext(ctx), &types.QueryBlockedStatusRequest{ContractAddress: contract, UserAddress: user})
-	require.NoError(t, err)
-	require.True(t, resp.Blocked)
-	require.Equal(t, uint32(10), resp.RemainingBlocks)
-	require.Equal(t, uint32(2), resp.Count)
-}
-
-func TestAllBlockedStatuses_FiltersAndPaginationCLI(t *testing.T) {
-	k, ctx := newLocalKeeperAndCtx(t)
-	q := keeperpkg.NewQueryServer(k)
-	ctx = ctx.WithBlockHeight(500)
-	wctx := sdk.WrapSDKContext(ctx)
-
-	params := types.DefaultParams()
-	params.GlobalWindowBlocks = 50
-	require.NoError(t, k.SetParams(ctx, params))
-
-	mkAddr2 := func(seed byte) string {
-		b := make([]byte, 20)
-		for i := range b {
-			b[i] = seed
-		}
-		return sdk.AccAddress(b).String()
-	}
-	cA := mkAddr2(10)
-	uA1 := mkAddr2(11)
-	uA2 := mkAddr2(12)
-	cB := mkAddr2(20)
-	uB1 := mkAddr2(21)
-
-	k.SetFailedAttempts(ctx, cA, uA1, types.FailedAttempts{UntilHeight: 520, WindowStartHeight: 480})
-	k.SetFailedAttempts(ctx, cA, uA2, types.FailedAttempts{UntilHeight: 490, WindowStartHeight: 480, Count: 1})
-	k.SetFailedAttempts(ctx, cB, uB1, types.FailedAttempts{UntilHeight: 460, WindowStartHeight: 400})
-	// Note: cannot inject a corrupt record here since keeper's storeKey is unexported outside package
-
-	// nil request
-	_, err := q.AllBlockedStatuses(wctx, nil)
-	require.Error(t, err)
-
-	// invalid contract filter
-	_, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{ContractAddress: "invalid"})
-	require.Error(t, err)
-
-	// list all
-	resp, err := q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{})
-	require.NoError(t, err)
-	require.Len(t, resp.Statuses, 2)
-
-	// only blocked
-	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{OnlyBlocked: true})
-	require.NoError(t, err)
-	require.Len(t, resp.Statuses, 1)
-	require.True(t, resp.Statuses[0].Blocked)
-
-	// filter by contract
-	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{ContractAddress: cA})
-	require.NoError(t, err)
-	require.Len(t, resp.Statuses, 2)
-
-	// pagination: limit 1
-	resp, err = q.AllBlockedStatuses(wctx, &types.QueryAllBlockedStatusesRequest{Pagination: &sdkquery.PageRequest{Limit: 1}})
-	require.NoError(t, err)
-	require.LessOrEqual(t, len(resp.Statuses), 1)
-	require.NotNil(t, resp.Pagination)
-}
-
 // TestQueryUserGrantUsage tests the user grant usage query command
 func (s *QueryTestSuite) TestQueryUserGrantUsage() {
 	val := s.network.Validators[0]
@@ -499,16 +368,6 @@ func (s *QueryTestSuite) TestQueryCmdHelp() {
 			cli.GetCmdQueryUserGrantUsage,
 			"Query grant usage for a specific user and contract",
 		},
-		{
-			"blocked-status help",
-			cli.GetCmdQueryBlockedStatus,
-			"Query global cooldown status",
-		},
-		{
-			"all-blocked-statuses help",
-			cli.GetCmdQueryAllBlockedStatuses,
-			"global cooldown records",
-		},
 	}
 
 	for _, tc := range testCases {
@@ -612,3 +471,40 @@ func TestAllSponsorsCLIHasPaginationFlags(t *testing.T) {
 		}
 	}
 }
+
+// --- Unit tests for command wiring (no network) ---
+
+func TestQueryPolicyTicketCmd_Usage(t *testing.T) {
+    cmd := cli.GetCmdQueryPolicyTicket()
+    if cmd == nil { t.Fatalf("nil command") }
+    if got, want := cmd.Use, "ticket"; !strings.Contains(cmd.Use, want) { t.Fatalf("expected Use to contain %q, got %q", want, got) }
+    // Args validation
+    if err := cmd.Args(cmd, []string{"c","u"}); err == nil { t.Fatalf("expected error for too-few args") }
+    if err := cmd.Args(cmd, []string{"c","u","d"}); err != nil { t.Fatalf("unexpected error for exact args: %v", err) }
+}
+
+// Removed probe window, negative probe, and compute-digest query command tests
+
+func TestReadPageRequest_FromFlags(t *testing.T) {
+    // Use the all-sponsors cmd which has pagination flags attached
+    cmd := cli.GetCmdQueryAllSponsors()
+    // Set flags to simulate pagination input
+    fs := cmd.Flags()
+    // page=2, limit=10 => offset=(2-1)*10=10
+    _ = fs.Set(flags.FlagPage, "2")
+    _ = fs.Set(flags.FlagLimit, "10")
+    // page-key overrides key-based pagination
+    _ = fs.Set(flags.FlagPageKey, "aGVsbG8=") // "hello"
+    _ = fs.Set(flags.FlagOffset, "3")         // offset provided too
+    _ = fs.Set(flags.FlagCountTotal, "true")
+    _ = fs.Set(flags.FlagReverse, "true")
+
+    pr, err := cli.ReadPageRequestForTests(cmd)
+    if err != nil { t.Fatalf("readPageRequest error: %v", err) }
+    if pr.Offset == 0 { t.Fatalf("expected non-zero Offset from flags") }
+    if pr.Limit != 10 { t.Fatalf("expected Limit=10, got %d", pr.Limit) }
+    if !pr.CountTotal { t.Fatalf("expected CountTotal=true") }
+    if !pr.Reverse { t.Fatalf("expected Reverse=true") }
+}
+
+// no extra helpers needed

@@ -217,81 +217,6 @@ func TestGenesisValidation(t *testing.T) {
     require.Contains(t, err.Error(), "contract address cannot be empty")
 }
 
-func TestParamsBackoffMilliValidation(t *testing.T) {
-    p := DefaultParams()
-    p.AbuseTrackingEnabled = true
-
-    // valid lower bound
-    p.GlobalBackoffMilli = 1000
-    require.NoError(t, p.Validate())
-
-    // below lower bound
-    p.GlobalBackoffMilli = 999
-    require.Error(t, p.Validate())
-
-    // upper bound valid
-    p.GlobalBackoffMilli = 100000
-    require.NoError(t, p.Validate())
-
-    // above upper bound
-    p.GlobalBackoffMilli = 100001
-    require.Error(t, p.Validate())
-}
-
-func TestParamsThresholdUpperBound(t *testing.T) {
-    p := DefaultParams()
-    p.AbuseTrackingEnabled = true
-
-    // upper bound valid
-    p.GlobalThreshold = 100000
-    require.NoError(t, p.Validate())
-
-    // above upper bound invalid
-    p.GlobalThreshold = 100001
-    require.Error(t, p.Validate())
-}
-
-func TestValidateGenesis_FailedAttemptsNumericChecks(t *testing.T) {
-    // Build a minimal valid genesis
-    p := DefaultParams()
-    p.AbuseTrackingEnabled = true
-    gen := DefaultGenesisState()
-    gen.Params = &p
-
-    // construct valid bech32 addresses
-    mkAddr := func(seed byte) string {
-        b := make([]byte, 20)
-        for i := range b { b[i] = seed }
-        return sdk.AccAddress(b).String()
-    }
-    contract := mkAddr(1)
-    user := mkAddr(2)
-
-    // Case 1: negative heights should be rejected
-    gen.FailedAttempts = []*FailedAttemptsEntry{
-        {
-            ContractAddress: contract,
-            UserAddress:     user,
-            Record: &FailedAttempts{Count: 0, WindowStartHeight: -1, UntilHeight: 10},
-        },
-    }
-    err := ValidateGenesis(*gen)
-    require.Error(t, err)
-
-    // Case 2: last_cooldown_blocks cannot exceed GlobalMaxBlocks
-    gen = DefaultGenesisState()
-    gen.Params = &p
-    gen.FailedAttempts = []*FailedAttemptsEntry{
-        {
-            ContractAddress: contract,
-            UserAddress:     user,
-            Record: &FailedAttempts{Count: 0, WindowStartHeight: 0, UntilHeight: 0, LastCooldownBlocks: p.GlobalMaxBlocks + 1},
-        },
-    }
-    err = ValidateGenesis(*gen)
-    require.Error(t, err)
-}
-
 // --- Genesis audit focused tests ---
 
 func TestValidateGenesis_SponsorAddressFields(t *testing.T) {
@@ -472,19 +397,80 @@ func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
     require.Contains(t, err.Error(), "exceeds max_grant_per_user")
 }
 
-func TestValidateGenesis_FailedAttempts_LastCooldownAtBoundary(t *testing.T) {
+func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {
+    // default should be 50
     p := DefaultParams()
-    p.AbuseTrackingEnabled = true
-    gen := DefaultGenesisState()
-    gen.Params = &p
+    require.Equal(t, uint32(50), p.MaxMethodTicketUsesPerIssue)
+    require.NoError(t, p.Validate())
 
-    contract := mkAddr(31)
-    user := mkAddr(32)
-    gen.FailedAttempts = []*FailedAttemptsEntry{{
-        ContractAddress: contract,
-        UserAddress:     user,
-        Record:          &FailedAttempts{Count: 0, WindowStartHeight: 0, UntilHeight: 0, LastCooldownBlocks: p.GlobalMaxBlocks},
-    }}
-    err := ValidateGenesis(*gen)
-    require.NoError(t, err)
+    // 0 -> invalid
+    p0 := p
+    p0.MaxMethodTicketUsesPerIssue = 0
+    require.Error(t, p0.Validate())
+
+    // 1 -> ok
+    p1 := p
+    p1.MaxMethodTicketUsesPerIssue = 1
+    require.NoError(t, p1.Validate())
+
+    // 100 -> ok
+    p100 := p
+    p100.MaxMethodTicketUsesPerIssue = 100
+    require.NoError(t, p100.Validate())
+
+    // 101 -> invalid
+    p101 := p
+    p101.MaxMethodTicketUsesPerIssue = 101
+    require.Error(t, p101.Validate())
+}
+
+func TestParams_MaxPolicyExecMsgBytes_UpperBound(t *testing.T) {
+    p := DefaultParams()
+    // at bound ok
+    p.MaxPolicyExecMsgBytes = 1024 * 1024
+    require.NoError(t, p.Validate())
+    // above bound invalid
+    p.MaxPolicyExecMsgBytes = 1024*1024 + 1
+    require.Error(t, p.Validate())
+}
+
+func TestMsgIssuePolicyTicket_ValidateBasic_MethodOnly(t *testing.T) {
+    validCreator := mkAddr(31)
+    validContract := mkAddr(32)
+    validUser := mkAddr(33)
+
+    // valid baseline
+    msg := MsgIssuePolicyTicket{
+        Creator:         validCreator,
+        ContractAddress: validContract,
+        UserAddress:     validUser,
+        Method:          "ping",
+        Uses:            0,
+    }
+    require.NoError(t, msg.ValidateBasic())
+
+    // empty methods -> error
+    msgEmpty := msg
+    msgEmpty.Method = ""
+    err := msgEmpty.ValidateBasic()
+    require.Error(t, err)
+    require.Contains(t, err.Error(), "method is required")
+
+    // invalid creator address
+    msgBadCreator := msg
+    msgBadCreator.Creator = "invalid"
+    err = msgBadCreator.ValidateBasic()
+    require.Error(t, err)
+
+    // invalid contract address
+    msgBadContract := msg
+    msgBadContract.ContractAddress = "invalid"
+    err = msgBadContract.ValidateBasic()
+    require.Error(t, err)
+
+    // invalid user address
+    msgBadUser := msg
+    msgBadUser.UserAddress = "invalid"
+    err = msgBadUser.ValidateBasic()
+    require.Error(t, err)
 }

@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/binary"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -25,12 +26,14 @@ var (
 	// UserGrantUsageKeyPrefix defines the prefix for user grant usage records
 	UserGrantUsageKeyPrefix = []byte{0x03}
 
-	// FailedAttemptsKeyPrefix defines the prefix for global failed attempts records
-	FailedAttemptsKeyPrefix = []byte{0x04}
+	// PolicyTicketKeyPrefix defines the prefix for stored policy tickets
+	PolicyTicketKeyPrefix = []byte{0x10}
 
-	// Parameter store keys
-	KeySponsorshipEnabled   = []byte("SponsorshipEnabled")
-	KeyMaxGasPerSponsorship = []byte("MaxGasPerSponsorship")
+	// ExpiryIndexKeyPrefix defines the prefix for expiry-time ordered ticket index
+	ExpiryIndexKeyPrefix = []byte{0x11}
+
+	// GcCursorKey stores the GC cursor (height and optional in-bucket key)
+	GcCursorKey = []byte{0x12}
 )
 
 // GetSponsorKey returns the store key for a sponsor record
@@ -47,12 +50,43 @@ func GetUserGrantUsageKey(userAddr, contractAddr string) []byte {
 	return key
 }
 
-// FailedAttemptsKey returns the store key for a global failed attempts record
-// Format: FailedAttemptsKeyPrefix + contractAddr + "/" + userAddr
-func FailedAttemptsKey(contractAddr, userAddr string) []byte {
-	key := append(FailedAttemptsKeyPrefix, []byte(contractAddr)...)
+// GetPolicyTicketKey returns the store key for a policy ticket
+// Format: PolicyTicketKeyPrefix + contractAddr + "/" + userAddr + "/" + digest
+func GetPolicyTicketKey(contractAddr, userAddr, digest string) []byte {
+	key := append(PolicyTicketKeyPrefix, []byte(contractAddr)...)
 	key = append(key, []byte("/")...)
 	key = append(key, []byte(userAddr)...)
+	key = append(key, []byte("/")...)
+	key = append(key, []byte(digest)...)
+	return key
+}
+
+// EncodeUint64BigEndian encodes a uint64 as 8-byte big-endian
+func EncodeUint64BigEndian(x uint64) []byte {
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, x)
+	return bz
+}
+
+// GetExpiryIndexPrefixForHeight returns the prefix for a specific expiry height bucket
+func GetExpiryIndexPrefixForHeight(expiryHeight uint64) []byte {
+	p := append([]byte{}, ExpiryIndexKeyPrefix...)
+	p = append(p, EncodeUint64BigEndian(expiryHeight)...)
+	p = append(p, '/')
+	return p
+}
+
+// GetExpiryIndexKey returns the index key for (expiry, contract, user, digest)
+// Format: ExpiryIndexKeyPrefix | BE8(expiry_height) | '/' | contract | '/' | user | '/' | digest
+func GetExpiryIndexKey(expiryHeight uint64, contractAddr, userAddr, digest string) []byte {
+	key := append([]byte{}, ExpiryIndexKeyPrefix...)
+	key = append(key, EncodeUint64BigEndian(expiryHeight)...)
+	key = append(key, '/')
+	key = append(key, []byte(contractAddr)...)
+	key = append(key, '/')
+	key = append(key, []byte(userAddr)...)
+	key = append(key, '/')
+	key = append(key, []byte(digest)...)
 	return key
 }
 

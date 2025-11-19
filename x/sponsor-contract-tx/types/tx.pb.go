@@ -34,10 +34,13 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 // MsgSetSponsor defines the message to set a sponsor
 type MsgSetSponsor struct {
-	Creator         string        `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
-	ContractAddress string        `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
-	IsSponsored     bool          `protobuf:"varint,3,opt,name=is_sponsored,json=isSponsored,proto3" json:"is_sponsored,omitempty"`
-	MaxGrantPerUser []*types.Coin `protobuf:"bytes,4,rep,name=max_grant_per_user,json=maxGrantPerUser,proto3" json:"max_grant_per_user,omitempty"`
+	Creator         string `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	ContractAddress string `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	// Optional custom ticket issuer. When set, only the contract admin or this
+	// address is authorized to issue/revoke policy tickets for the contract.
+	TicketIssuerAddress string        `protobuf:"bytes,3,opt,name=ticket_issuer_address,json=ticketIssuerAddress,proto3" json:"ticket_issuer_address,omitempty"`
+	IsSponsored         bool          `protobuf:"varint,4,opt,name=is_sponsored,json=isSponsored,proto3" json:"is_sponsored,omitempty"`
+	MaxGrantPerUser     []*types.Coin `protobuf:"bytes,5,rep,name=max_grant_per_user,json=maxGrantPerUser,proto3" json:"max_grant_per_user,omitempty"`
 }
 
 func (m *MsgSetSponsor) Reset()         { *m = MsgSetSponsor{} }
@@ -116,6 +119,10 @@ type MsgUpdateSponsor struct {
 	ContractAddress string        `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
 	IsSponsored     bool          `protobuf:"varint,3,opt,name=is_sponsored,json=isSponsored,proto3" json:"is_sponsored,omitempty"`
 	MaxGrantPerUser []*types.Coin `protobuf:"bytes,4,rep,name=max_grant_per_user,json=maxGrantPerUser,proto3" json:"max_grant_per_user,omitempty"`
+	// Optional custom ticket issuer. When set, only the contract admin or this
+	// address is authorized to issue/revoke policy tickets for the contract. If
+	// omitted or empty, the existing value remains unchanged.
+	TicketIssuerAddress string `protobuf:"bytes,5,opt,name=ticket_issuer_address,json=ticketIssuerAddress,proto3" json:"ticket_issuer_address,omitempty"`
 }
 
 func (m *MsgUpdateSponsor) Reset()         { *m = MsgUpdateSponsor{} }
@@ -420,6 +427,189 @@ func (m *MsgWithdrawSponsorFundsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgWithdrawSponsorFundsResponse proto.InternalMessageInfo
 
+// MsgIssuePolicyTicket defines a manager-or-issuer message to issue a ticket bound
+// to one or more method names (top-level execute keys). Parameters are not
+// included, enabling method-level whitelisting.
+type MsgIssuePolicyTicket struct {
+	Creator         string `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	ContractAddress string `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	UserAddress     string `protobuf:"bytes,3,opt,name=user_address,json=userAddress,proto3" json:"user_address,omitempty"`
+	// Top-level execute method name. Exactly one is required.
+	Method string `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
+	// Requested uses for this ticket. The chain clamps to the current
+	// max_method_ticket_uses_per_issue param. 0 or omitted implies 1.
+	Uses uint32 `protobuf:"varint,5,opt,name=uses,proto3" json:"uses,omitempty"`
+	// Optional ticket TTL in blocks. When set to >0, the ticket expiry is set to
+	// current_block_height + ttl_blocks. When omitted or 0, the module default
+	// policy_ticket_ttl_blocks applies.
+	TtlBlocks uint32 `protobuf:"varint,6,opt,name=ttl_blocks,json=ttlBlocks,proto3" json:"ttl_blocks,omitempty"`
+}
+
+func (m *MsgIssuePolicyTicket) Reset()         { *m = MsgIssuePolicyTicket{} }
+func (m *MsgIssuePolicyTicket) String() string { return proto.CompactTextString(m) }
+func (*MsgIssuePolicyTicket) ProtoMessage()    {}
+func (*MsgIssuePolicyTicket) Descriptor() ([]byte, []int) {
+	return fileDescriptor_22461c0ea8a50db3, []int{10}
+}
+func (m *MsgIssuePolicyTicket) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgIssuePolicyTicket) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgIssuePolicyTicket.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgIssuePolicyTicket) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgIssuePolicyTicket.Merge(m, src)
+}
+func (m *MsgIssuePolicyTicket) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgIssuePolicyTicket) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgIssuePolicyTicket.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgIssuePolicyTicket proto.InternalMessageInfo
+
+type MsgIssuePolicyTicketResponse struct {
+	Created bool          `protobuf:"varint,1,opt,name=created,proto3" json:"created,omitempty"`
+	Ticket  *PolicyTicket `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
+}
+
+func (m *MsgIssuePolicyTicketResponse) Reset()         { *m = MsgIssuePolicyTicketResponse{} }
+func (m *MsgIssuePolicyTicketResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgIssuePolicyTicketResponse) ProtoMessage()    {}
+func (*MsgIssuePolicyTicketResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_22461c0ea8a50db3, []int{11}
+}
+func (m *MsgIssuePolicyTicketResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgIssuePolicyTicketResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgIssuePolicyTicketResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgIssuePolicyTicketResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgIssuePolicyTicketResponse.Merge(m, src)
+}
+func (m *MsgIssuePolicyTicketResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgIssuePolicyTicketResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgIssuePolicyTicketResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgIssuePolicyTicketResponse proto.InternalMessageInfo
+
+func (m *MsgIssuePolicyTicketResponse) GetCreated() bool {
+	if m != nil {
+		return m.Created
+	}
+	return false
+}
+
+func (m *MsgIssuePolicyTicketResponse) GetTicket() *PolicyTicket {
+	if m != nil {
+		return m.Ticket
+	}
+	return nil
+}
+
+// MsgRevokePolicyTicket defines a manager-or-issuer message to revoke (delete) a policy ticket
+// for (contract,user,method). The server computes the method digest from
+// contract_address + "method:" + method. Only unconsumed tickets may be revoked.
+type MsgRevokePolicyTicket struct {
+	Creator         string `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	ContractAddress string `protobuf:"bytes,2,opt,name=contract_address,json=contractAddress,proto3" json:"contract_address,omitempty"`
+	UserAddress     string `protobuf:"bytes,3,opt,name=user_address,json=userAddress,proto3" json:"user_address,omitempty"`
+	// Top-level execute method name to revoke.
+	Method string `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
+}
+
+func (m *MsgRevokePolicyTicket) Reset()         { *m = MsgRevokePolicyTicket{} }
+func (m *MsgRevokePolicyTicket) String() string { return proto.CompactTextString(m) }
+func (*MsgRevokePolicyTicket) ProtoMessage()    {}
+func (*MsgRevokePolicyTicket) Descriptor() ([]byte, []int) {
+	return fileDescriptor_22461c0ea8a50db3, []int{12}
+}
+func (m *MsgRevokePolicyTicket) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRevokePolicyTicket) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRevokePolicyTicket.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRevokePolicyTicket) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRevokePolicyTicket.Merge(m, src)
+}
+func (m *MsgRevokePolicyTicket) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRevokePolicyTicket) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRevokePolicyTicket.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRevokePolicyTicket proto.InternalMessageInfo
+
+type MsgRevokePolicyTicketResponse struct {
+}
+
+func (m *MsgRevokePolicyTicketResponse) Reset()         { *m = MsgRevokePolicyTicketResponse{} }
+func (m *MsgRevokePolicyTicketResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgRevokePolicyTicketResponse) ProtoMessage()    {}
+func (*MsgRevokePolicyTicketResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_22461c0ea8a50db3, []int{13}
+}
+func (m *MsgRevokePolicyTicketResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgRevokePolicyTicketResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgRevokePolicyTicketResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgRevokePolicyTicketResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRevokePolicyTicketResponse.Merge(m, src)
+}
+func (m *MsgRevokePolicyTicketResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgRevokePolicyTicketResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRevokePolicyTicketResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRevokePolicyTicketResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*MsgSetSponsor)(nil), "doravota.sponsor.v1.MsgSetSponsor")
 	proto.RegisterType((*MsgSetSponsorResponse)(nil), "doravota.sponsor.v1.MsgSetSponsorResponse")
@@ -431,57 +621,75 @@ func init() {
 	proto.RegisterType((*MsgUpdateParamsResponse)(nil), "doravota.sponsor.v1.MsgUpdateParamsResponse")
 	proto.RegisterType((*MsgWithdrawSponsorFunds)(nil), "doravota.sponsor.v1.MsgWithdrawSponsorFunds")
 	proto.RegisterType((*MsgWithdrawSponsorFundsResponse)(nil), "doravota.sponsor.v1.MsgWithdrawSponsorFundsResponse")
+	proto.RegisterType((*MsgIssuePolicyTicket)(nil), "doravota.sponsor.v1.MsgIssuePolicyTicket")
+	proto.RegisterType((*MsgIssuePolicyTicketResponse)(nil), "doravota.sponsor.v1.MsgIssuePolicyTicketResponse")
+	proto.RegisterType((*MsgRevokePolicyTicket)(nil), "doravota.sponsor.v1.MsgRevokePolicyTicket")
+	proto.RegisterType((*MsgRevokePolicyTicketResponse)(nil), "doravota.sponsor.v1.MsgRevokePolicyTicketResponse")
 }
 
 func init() { proto.RegisterFile("doravota/sponsor/v1/tx.proto", fileDescriptor_22461c0ea8a50db3) }
 
 var fileDescriptor_22461c0ea8a50db3 = []byte{
-	// 713 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe4, 0x56, 0xbf, 0x6f, 0xd3, 0x40,
-	0x18, 0x8d, 0xd3, 0x52, 0xe8, 0xb5, 0x55, 0x8b, 0x69, 0x15, 0xd7, 0x20, 0xa7, 0xb5, 0x40, 0xaa,
-	0x22, 0x62, 0x2b, 0x01, 0x55, 0x50, 0x26, 0xda, 0xaa, 0x4c, 0x95, 0xaa, 0x44, 0x15, 0x02, 0x21,
-	0x59, 0x17, 0xfb, 0xe4, 0x5a, 0xc2, 0x3e, 0xeb, 0xee, 0x12, 0x52, 0x26, 0xc4, 0x84, 0x98, 0x18,
-	0x19, 0x2b, 0xb1, 0xc0, 0xd6, 0x01, 0x09, 0x26, 0xe6, 0x8e, 0x15, 0x13, 0x13, 0x42, 0xe9, 0x50,
-	0xfe, 0x0c, 0x14, 0xfb, 0xce, 0x8d, 0x8b, 0xdd, 0x94, 0xa9, 0x03, 0x4b, 0x14, 0x7f, 0xef, 0x7d,
-	0x3f, 0xde, 0xb3, 0xbf, 0xd3, 0x81, 0x1b, 0x0e, 0x26, 0xb0, 0x83, 0x19, 0x34, 0x69, 0x88, 0x03,
-	0x8a, 0x89, 0xd9, 0xa9, 0x99, 0xac, 0x6b, 0x84, 0x04, 0x33, 0x2c, 0x5f, 0x13, 0xa8, 0xc1, 0x51,
-	0xa3, 0x53, 0x53, 0x67, 0x5d, 0xec, 0xe2, 0x08, 0x37, 0xfb, 0xff, 0x62, 0xaa, 0x3a, 0x6f, 0x63,
-	0xea, 0x63, 0x6a, 0xc5, 0x40, 0xfc, 0xc0, 0xa1, 0x52, 0xfc, 0x64, 0xfa, 0xd4, 0xed, 0x57, 0xf7,
-	0xa9, 0xcb, 0x81, 0xab, 0xd0, 0xf7, 0x02, 0x6c, 0x46, 0xbf, 0x3c, 0xa4, 0x71, 0x6e, 0x0b, 0x52,
-	0x64, 0x76, 0x6a, 0x2d, 0xc4, 0x60, 0xcd, 0xb4, 0xb1, 0x17, 0x70, 0x7c, 0x31, 0x6b, 0x5e, 0x31,
-	0x5c, 0x44, 0xd1, 0x3f, 0x14, 0xc1, 0xd4, 0x26, 0x75, 0x9b, 0x88, 0x35, 0xe3, 0xb8, 0x5c, 0x07,
-	0x97, 0x6d, 0x82, 0x20, 0xc3, 0x44, 0x91, 0x16, 0xa4, 0xa5, 0xf1, 0x55, 0xe5, 0xfb, 0xe7, 0xea,
-	0x2c, 0x9f, 0xf1, 0xa1, 0xe3, 0x10, 0x44, 0x69, 0x93, 0x11, 0x2f, 0x70, 0x1b, 0x82, 0x28, 0xaf,
-	0x81, 0x19, 0x1b, 0x07, 0x8c, 0x40, 0x9b, 0x59, 0x30, 0xa6, 0x28, 0xc5, 0x21, 0xc9, 0xd3, 0x22,
-	0x83, 0x87, 0xe5, 0x45, 0x30, 0xe9, 0x51, 0x8b, 0x8f, 0x87, 0x1c, 0x65, 0x64, 0x41, 0x5a, 0xba,
-	0xd2, 0x98, 0xf0, 0x68, 0x53, 0x84, 0xe4, 0x0d, 0x20, 0xfb, 0xb0, 0x6b, 0xb9, 0x04, 0x06, 0xcc,
-	0x0a, 0x11, 0xb1, 0xda, 0x14, 0x11, 0x65, 0x74, 0x61, 0x64, 0x69, 0xa2, 0x3e, 0x6f, 0xf0, 0x36,
-	0x7d, 0x37, 0x0c, 0xee, 0x86, 0xb1, 0x86, 0xbd, 0xa0, 0x31, 0xed, 0xc3, 0xee, 0xa3, 0x7e, 0xce,
-	0x16, 0x22, 0xdb, 0x14, 0x91, 0x15, 0xe3, 0xcd, 0x5e, 0xb9, 0xf0, 0x7b, 0xaf, 0x5c, 0x78, 0x7d,
-	0xbc, 0x5f, 0x11, 0x2a, 0xde, 0x1e, 0xef, 0x57, 0xe6, 0x84, 0x51, 0x29, 0x4f, 0xf4, 0x12, 0x98,
-	0x4b, 0x05, 0x1a, 0x28, 0xe2, 0x21, 0xfd, 0x53, 0x11, 0xcc, 0x6c, 0x52, 0x77, 0x3b, 0x74, 0x20,
-	0x43, 0xff, 0x93, 0x83, 0xb5, 0x3c, 0x07, 0x95, 0x01, 0x07, 0x53, 0xb6, 0xe8, 0x2a, 0x50, 0x4e,
-	0xc7, 0x12, 0x1f, 0xbf, 0x49, 0x91, 0x8f, 0xeb, 0xe8, 0x39, 0xba, 0x78, 0x1f, 0xcf, 0x27, 0x2e,
-	0x35, 0x2b, 0x17, 0x97, 0x8a, 0x25, 0xe2, 0xbe, 0x4a, 0x60, 0x3a, 0x51, 0xbe, 0x05, 0x09, 0xf4,
-	0xa9, 0xbc, 0x0c, 0xc6, 0x61, 0x9b, 0xed, 0x60, 0xe2, 0xb1, 0xdd, 0xa1, 0xea, 0x4e, 0xa8, 0xf2,
-	0x7d, 0x30, 0x16, 0x46, 0x15, 0x22, 0x55, 0x13, 0xf5, 0xeb, 0x46, 0xc6, 0xa9, 0x63, 0xc4, 0x4d,
-	0x56, 0x47, 0x0f, 0x7e, 0x96, 0x0b, 0x0d, 0x9e, 0xb0, 0x52, 0x1f, 0x54, 0x75, 0x52, 0xb2, 0xaf,
-	0xab, 0xf4, 0xd7, 0x4b, 0x8b, 0x2b, 0xe8, 0xf3, 0xa0, 0x74, 0x2a, 0x94, 0xa8, 0xfa, 0x52, 0x8c,
-	0xb0, 0xc7, 0x1e, 0xdb, 0x71, 0x08, 0x7c, 0xc1, 0x45, 0x6f, 0xb4, 0x03, 0x87, 0x5e, 0xdc, 0x06,
-	0x2c, 0x83, 0x71, 0x82, 0x6c, 0x2f, 0xf4, 0x50, 0xc0, 0xa2, 0xcf, 0xff, 0x4c, 0x5b, 0x13, 0xaa,
-	0x5c, 0x03, 0x63, 0xd0, 0xc7, 0xed, 0x80, 0x0d, 0x5f, 0x05, 0x4e, 0x5c, 0xb9, 0x97, 0xf7, 0x91,
-	0x94, 0x07, 0xcc, 0xcc, 0x72, 0x47, 0x5f, 0x04, 0xe5, 0x1c, 0x48, 0x98, 0x5b, 0x7f, 0x3f, 0x0a,
-	0x46, 0x36, 0xa9, 0x2b, 0x3f, 0x03, 0x60, 0xe0, 0x68, 0xd6, 0x33, 0x5f, 0x76, 0xea, 0x64, 0x52,
-	0x2b, 0xc3, 0x39, 0xa2, 0x8b, 0x8c, 0xc0, 0x54, 0xfa, 0xe4, 0xba, 0x95, 0x97, 0x9c, 0xa2, 0xa9,
-	0xd5, 0x73, 0xd1, 0x06, 0xdb, 0xa4, 0x17, 0x3b, 0xb7, 0x4d, 0x8a, 0x96, 0xdf, 0x26, 0x73, 0xcd,
-	0xe4, 0x16, 0x98, 0x4c, 0xad, 0xd8, 0xcd, 0xb3, 0xa7, 0x8c, 0x59, 0xea, 0xed, 0xf3, 0xb0, 0x92,
-	0x1e, 0x2f, 0xc1, 0x6c, 0xe6, 0x07, 0x9f, 0x5b, 0x25, 0x8b, 0xad, 0xde, 0xfd, 0x17, 0xb6, 0xe8,
-	0xad, 0x5e, 0x7a, 0x75, 0xbc, 0x5f, 0x91, 0x56, 0x9f, 0x7c, 0xec, 0x69, 0xd2, 0x41, 0x4f, 0x93,
-	0x0e, 0x7b, 0x9a, 0xf4, 0xab, 0xa7, 0x49, 0xef, 0x8e, 0xb4, 0xc2, 0xe1, 0x91, 0x56, 0xf8, 0x71,
-	0xa4, 0x15, 0x9e, 0x3e, 0x70, 0x3d, 0xb6, 0xd3, 0x6e, 0x19, 0x36, 0xf6, 0xcd, 0x75, 0x4c, 0xe0,
-	0x06, 0xb4, 0x19, 0x26, 0xbb, 0x66, 0x72, 0x13, 0xe8, 0x8a, 0x0b, 0x40, 0x55, 0xec, 0x4e, 0x95,
-	0x75, 0x4d, 0xb6, 0x1b, 0x22, 0xda, 0x1a, 0x8b, 0xee, 0x04, 0x77, 0xfe, 0x04, 0x00, 0x00, 0xff,
-	0xff, 0xa2, 0xf9, 0x34, 0x4e, 0xe8, 0x08, 0x00, 0x00,
+	// 944 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xdc, 0x57, 0x41, 0x6f, 0xe3, 0x44,
+	0x14, 0x8e, 0xd3, 0x36, 0x6c, 0x5e, 0x5b, 0x75, 0x77, 0xb6, 0xa5, 0xae, 0x69, 0x93, 0xd6, 0x02,
+	0xa9, 0x54, 0xd4, 0x56, 0x02, 0x54, 0x90, 0x3d, 0xd1, 0x5d, 0x15, 0x21, 0x51, 0xa9, 0x72, 0x59,
+	0x21, 0x10, 0x52, 0x34, 0x71, 0x46, 0xae, 0xd5, 0xd8, 0x13, 0x66, 0x26, 0x21, 0xe5, 0x04, 0x9c,
+	0x10, 0x27, 0xfe, 0x00, 0xd2, 0x1e, 0x39, 0xf6, 0x80, 0x04, 0x27, 0xce, 0x7b, 0x42, 0x2b, 0x4e,
+	0x9c, 0x10, 0x6a, 0x0f, 0xe5, 0xca, 0x89, 0x2b, 0xca, 0x78, 0xec, 0xc6, 0x8d, 0x4d, 0xb2, 0x5c,
+	0x2a, 0x71, 0x89, 0xe2, 0xf7, 0xbe, 0xf7, 0xde, 0xbc, 0xef, 0xcb, 0x7b, 0x13, 0xc3, 0x7a, 0x9b,
+	0x32, 0xdc, 0xa7, 0x02, 0xdb, 0xbc, 0x4b, 0x43, 0x4e, 0x99, 0xdd, 0xaf, 0xd9, 0x62, 0x60, 0x75,
+	0x19, 0x15, 0x14, 0xdd, 0x8f, 0xbd, 0x96, 0xf2, 0x5a, 0xfd, 0x9a, 0xb1, 0xec, 0x51, 0x8f, 0x4a,
+	0xbf, 0x3d, 0xfc, 0x16, 0x41, 0x8d, 0x35, 0x97, 0xf2, 0x80, 0xf2, 0x66, 0xe4, 0x88, 0x1e, 0x94,
+	0x6b, 0x35, 0x7a, 0xb2, 0x03, 0xee, 0x0d, 0xb3, 0x07, 0xdc, 0x53, 0x8e, 0x7b, 0x38, 0xf0, 0x43,
+	0x6a, 0xcb, 0x4f, 0x65, 0xaa, 0x28, 0x6c, 0x0b, 0x73, 0x62, 0xf7, 0x6b, 0x2d, 0x22, 0x70, 0xcd,
+	0x76, 0xa9, 0x1f, 0x2a, 0xff, 0x56, 0xd6, 0x79, 0xe3, 0xc3, 0x49, 0x88, 0xf9, 0x57, 0x11, 0x16,
+	0x0f, 0xb9, 0x77, 0x4c, 0xc4, 0x71, 0x64, 0x47, 0x75, 0x78, 0xc1, 0x65, 0x04, 0x0b, 0xca, 0x74,
+	0x6d, 0x53, 0xdb, 0x2e, 0xef, 0xeb, 0xbf, 0xfe, 0xb0, 0xbb, 0xac, 0xce, 0xf8, 0x4e, 0xbb, 0xcd,
+	0x08, 0xe7, 0xc7, 0x82, 0xf9, 0xa1, 0xe7, 0xc4, 0x40, 0xf4, 0x10, 0xee, 0xba, 0x34, 0x14, 0x0c,
+	0xbb, 0xa2, 0x89, 0x23, 0x88, 0x5e, 0x9c, 0x10, 0xbc, 0x14, 0x47, 0x28, 0x33, 0x7a, 0x1f, 0x56,
+	0x84, 0xef, 0x9e, 0x12, 0xd1, 0xf4, 0x39, 0xef, 0x11, 0x96, 0x64, 0x9a, 0x99, 0x90, 0xe9, 0x7e,
+	0x14, 0xf6, 0x9e, 0x8c, 0x8a, 0xb3, 0x6d, 0xc1, 0x82, 0xcf, 0x9b, 0xaa, 0x59, 0xd2, 0xd6, 0x67,
+	0x37, 0xb5, 0xed, 0x3b, 0xce, 0xbc, 0xcf, 0x8f, 0x63, 0x13, 0x3a, 0x00, 0x14, 0xe0, 0x41, 0xd3,
+	0x63, 0x38, 0x14, 0xcd, 0x2e, 0x61, 0xcd, 0x1e, 0x27, 0x4c, 0x9f, 0xdb, 0x9c, 0xd9, 0x9e, 0xaf,
+	0xaf, 0x59, 0xaa, 0xd4, 0x90, 0x5b, 0x4b, 0x71, 0x6b, 0x3d, 0xa4, 0x7e, 0xe8, 0x2c, 0x05, 0x78,
+	0xf0, 0xee, 0x30, 0xe6, 0x88, 0xb0, 0xc7, 0x9c, 0xb0, 0x86, 0xf5, 0xf5, 0x93, 0x6a, 0xe1, 0xcf,
+	0x27, 0xd5, 0xc2, 0x57, 0x57, 0xe7, 0x3b, 0x31, 0x27, 0xdf, 0x5c, 0x9d, 0xef, 0xac, 0xc4, 0xb4,
+	0xa7, 0x18, 0x36, 0x57, 0x61, 0x25, 0x65, 0x70, 0x88, 0xc4, 0x11, 0xf3, 0xef, 0x22, 0xdc, 0x3d,
+	0xe4, 0xde, 0xe3, 0x6e, 0x1b, 0x0b, 0x72, 0xeb, 0x7a, 0xdc, 0x64, 0x70, 0x66, 0x5a, 0x06, 0x67,
+	0x9f, 0x97, 0xc1, 0x7c, 0xe9, 0xe7, 0xfe, 0x83, 0xf4, 0x8d, 0x5a, 0x9e, 0x1e, 0xfa, 0x88, 0x1e,
+	0x29, 0x92, 0x4d, 0x03, 0xf4, 0x9b, 0xb6, 0x44, 0x95, 0x9f, 0x35, 0xa9, 0xca, 0x23, 0xd2, 0x21,
+	0xb7, 0xaf, 0xca, 0x74, 0xcd, 0xa5, 0xce, 0xaa, 0x9a, 0x4b, 0xd9, 0x92, 0xe6, 0x7e, 0xd2, 0x60,
+	0x29, 0xe9, 0xfc, 0x08, 0x33, 0x1c, 0x70, 0xb4, 0x07, 0x65, 0xdc, 0x13, 0x27, 0x94, 0xf9, 0xe2,
+	0x6c, 0x62, 0x77, 0xd7, 0x50, 0xf4, 0x36, 0x94, 0xba, 0x32, 0x83, 0xec, 0x6a, 0xbe, 0xfe, 0x92,
+	0x95, 0xb1, 0x11, 0xad, 0xa8, 0xc8, 0xfe, 0xec, 0xd3, 0xdf, 0xab, 0x05, 0x47, 0x05, 0x34, 0xea,
+	0xa3, 0x5d, 0x5d, 0xa7, 0x1c, 0xf6, 0xb5, 0x3a, 0x26, 0x5a, 0x94, 0xc1, 0x5c, 0x83, 0xd5, 0x1b,
+	0xa6, 0xa4, 0xab, 0x1f, 0x8b, 0xd2, 0xf7, 0xa1, 0x2f, 0x4e, 0xda, 0x0c, 0x7f, 0xa6, 0x9a, 0x3e,
+	0xe8, 0x85, 0x6d, 0x7e, 0x7b, 0xf3, 0xb4, 0x07, 0x65, 0x46, 0x5c, 0xbf, 0xeb, 0x93, 0x50, 0x4c,
+	0xdc, 0x69, 0xd7, 0x50, 0x54, 0x83, 0x12, 0x0e, 0x68, 0x2f, 0x14, 0x93, 0x07, 0x4b, 0x01, 0x1b,
+	0x6f, 0xe5, 0xfd, 0x48, 0xaa, 0x23, 0x64, 0x66, 0xb1, 0x63, 0x6e, 0x41, 0x35, 0xc7, 0x95, 0x90,
+	0xfb, 0x4b, 0x11, 0x96, 0x0f, 0xb9, 0x27, 0x67, 0xee, 0x88, 0x76, 0x7c, 0xf7, 0xec, 0x03, 0x39,
+	0x84, 0xb7, 0xc7, 0xec, 0x03, 0x58, 0x18, 0x2e, 0x9e, 0xa9, 0x2f, 0x8c, 0xf9, 0x21, 0x3a, 0x0e,
+	0x7e, 0x11, 0x4a, 0x01, 0x11, 0x27, 0x34, 0xba, 0x22, 0xca, 0x8e, 0x7a, 0x42, 0x08, 0x66, 0x7b,
+	0x9c, 0x44, 0x2b, 0x68, 0xd1, 0x91, 0xdf, 0xd1, 0x06, 0x80, 0x10, 0x9d, 0x66, 0xab, 0x43, 0xdd,
+	0x53, 0xae, 0x97, 0xa4, 0xa7, 0x2c, 0x44, 0x67, 0x5f, 0x1a, 0x1a, 0x6f, 0xe6, 0xd1, 0xbe, 0x3e,
+	0x42, 0xfb, 0x18, 0x6f, 0x26, 0x87, 0xf5, 0x2c, 0x7b, 0x4c, 0x38, 0xd2, 0x15, 0xaf, 0xa4, 0x2d,
+	0x79, 0xbd, 0xe3, 0xc4, 0x8f, 0xc3, 0x89, 0x8b, 0x16, 0xa0, 0x9a, 0xb8, 0xad, 0xec, 0x89, 0x1b,
+	0x4d, 0xaa, 0x02, 0xcc, 0xef, 0x8a, 0xf2, 0x16, 0x72, 0x48, 0x9f, 0x9e, 0xfe, 0x8f, 0x65, 0x6c,
+	0xec, 0xe5, 0x69, 0xb2, 0x31, 0xa2, 0xc9, 0x38, 0x0b, 0x66, 0x15, 0x36, 0x32, 0x1d, 0xb1, 0x2a,
+	0xf5, 0x2f, 0x4b, 0x30, 0x73, 0xc8, 0x3d, 0xf4, 0x09, 0xc0, 0xc8, 0xbf, 0x27, 0x33, 0x53, 0x81,
+	0xd4, 0x75, 0x6f, 0xec, 0x4c, 0xc6, 0x24, 0xda, 0x13, 0x58, 0x4c, 0xff, 0x1d, 0x78, 0x25, 0x2f,
+	0x38, 0x05, 0x33, 0x76, 0xa7, 0x82, 0x8d, 0x96, 0x49, 0xdf, 0x6f, 0xb9, 0x65, 0x52, 0xb0, 0xfc,
+	0x32, 0x99, 0xb7, 0x0d, 0x6a, 0xc1, 0x42, 0xea, 0xa6, 0x79, 0xf9, 0xdf, 0x4f, 0x19, 0xa1, 0x8c,
+	0xd7, 0xa6, 0x41, 0x25, 0x35, 0x3e, 0x87, 0xe5, 0xcc, 0xbd, 0x9f, 0x9b, 0x25, 0x0b, 0x6d, 0xbc,
+	0xf1, 0x3c, 0xe8, 0xa4, 0xf6, 0xa7, 0x70, 0x6f, 0x7c, 0x2d, 0xbe, 0x9a, 0x97, 0x6a, 0x0c, 0x6a,
+	0xd4, 0xa6, 0x86, 0x26, 0x25, 0x05, 0xa0, 0x8c, 0x19, 0xce, 0xfd, 0x89, 0x8d, 0x63, 0x8d, 0xfa,
+	0xf4, 0xd8, 0xb8, 0xaa, 0x31, 0xf7, 0xc5, 0xd5, 0xf9, 0x8e, 0xb6, 0xff, 0xd1, 0xf7, 0x17, 0x15,
+	0xed, 0xe9, 0x45, 0x45, 0x7b, 0x76, 0x51, 0xd1, 0xfe, 0xb8, 0xa8, 0x68, 0xdf, 0x5e, 0x56, 0x0a,
+	0xcf, 0x2e, 0x2b, 0x85, 0xdf, 0x2e, 0x2b, 0x85, 0x8f, 0x1f, 0x78, 0xbe, 0x38, 0xe9, 0xb5, 0x2c,
+	0x97, 0x06, 0xf6, 0x23, 0xca, 0xf0, 0x01, 0x76, 0x05, 0x65, 0x67, 0x76, 0xf2, 0x56, 0x32, 0x88,
+	0x5f, 0x46, 0x76, 0xe3, 0x55, 0xb0, 0x2b, 0x06, 0xb6, 0x38, 0xeb, 0x12, 0xde, 0x2a, 0xc9, 0xf7,
+	0x93, 0xd7, 0xff, 0x09, 0x00, 0x00, 0xff, 0xff, 0x57, 0x64, 0x3d, 0xc5, 0x74, 0x0d, 0x00, 0x00,
 }
 
 func (this *MsgSetSponsorResponse) Equal(that interface{}) bool {
@@ -589,6 +797,54 @@ func (this *MsgWithdrawSponsorFundsResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *MsgIssuePolicyTicketResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*MsgIssuePolicyTicketResponse)
+	if !ok {
+		that2, ok := that.(MsgIssuePolicyTicketResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Created != that1.Created {
+		return false
+	}
+	if !this.Ticket.Equal(that1.Ticket) {
+		return false
+	}
+	return true
+}
+func (this *MsgRevokePolicyTicketResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*MsgRevokePolicyTicketResponse)
+	if !ok {
+		that2, ok := that.(MsgRevokePolicyTicketResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
@@ -612,6 +868,16 @@ type MsgClient interface {
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
 	// WithdrawSponsorFunds withdraws funds from the derived sponsor address to recipient (admin only)
 	WithdrawSponsorFunds(ctx context.Context, in *MsgWithdrawSponsorFunds, opts ...grpc.CallOption) (*MsgWithdrawSponsorFundsResponse, error)
+	// IssuePolicyTicket allows the sponsor admin or the configured ticket issuer
+	// to issue a policy ticket for
+	// (contract,user,digest) without any probe step. Useful for whitelisting flows.
+	// The issued ticket obeys the effective TTL rules.
+	IssuePolicyTicket(ctx context.Context, in *MsgIssuePolicyTicket, opts ...grpc.CallOption) (*MsgIssuePolicyTicketResponse, error)
+	// RevokePolicyTicket allows the sponsor admin or the configured ticket issuer
+	// to revoke an existing, unconsumed
+	// policy ticket for (contract,user,digest). If the ticket does not exist or has
+	// already been consumed, the call fails.
+	RevokePolicyTicket(ctx context.Context, in *MsgRevokePolicyTicket, opts ...grpc.CallOption) (*MsgRevokePolicyTicketResponse, error)
 }
 
 type msgClient struct {
@@ -667,6 +933,24 @@ func (c *msgClient) WithdrawSponsorFunds(ctx context.Context, in *MsgWithdrawSpo
 	return out, nil
 }
 
+func (c *msgClient) IssuePolicyTicket(ctx context.Context, in *MsgIssuePolicyTicket, opts ...grpc.CallOption) (*MsgIssuePolicyTicketResponse, error) {
+	out := new(MsgIssuePolicyTicketResponse)
+	err := c.cc.Invoke(ctx, "/doravota.sponsor.v1.Msg/IssuePolicyTicket", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) RevokePolicyTicket(ctx context.Context, in *MsgRevokePolicyTicket, opts ...grpc.CallOption) (*MsgRevokePolicyTicketResponse, error) {
+	out := new(MsgRevokePolicyTicketResponse)
+	err := c.cc.Invoke(ctx, "/doravota.sponsor.v1.Msg/RevokePolicyTicket", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
 	// SetSponsor sets a sponsor for a contract
@@ -679,6 +963,16 @@ type MsgServer interface {
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
 	// WithdrawSponsorFunds withdraws funds from the derived sponsor address to recipient (admin only)
 	WithdrawSponsorFunds(context.Context, *MsgWithdrawSponsorFunds) (*MsgWithdrawSponsorFundsResponse, error)
+	// IssuePolicyTicket allows the sponsor admin or the configured ticket issuer
+	// to issue a policy ticket for
+	// (contract,user,digest) without any probe step. Useful for whitelisting flows.
+	// The issued ticket obeys the effective TTL rules.
+	IssuePolicyTicket(context.Context, *MsgIssuePolicyTicket) (*MsgIssuePolicyTicketResponse, error)
+	// RevokePolicyTicket allows the sponsor admin or the configured ticket issuer
+	// to revoke an existing, unconsumed
+	// policy ticket for (contract,user,digest). If the ticket does not exist or has
+	// already been consumed, the call fails.
+	RevokePolicyTicket(context.Context, *MsgRevokePolicyTicket) (*MsgRevokePolicyTicketResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
@@ -699,6 +993,12 @@ func (*UnimplementedMsgServer) UpdateParams(ctx context.Context, req *MsgUpdateP
 }
 func (*UnimplementedMsgServer) WithdrawSponsorFunds(ctx context.Context, req *MsgWithdrawSponsorFunds) (*MsgWithdrawSponsorFundsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method WithdrawSponsorFunds not implemented")
+}
+func (*UnimplementedMsgServer) IssuePolicyTicket(ctx context.Context, req *MsgIssuePolicyTicket) (*MsgIssuePolicyTicketResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IssuePolicyTicket not implemented")
+}
+func (*UnimplementedMsgServer) RevokePolicyTicket(ctx context.Context, req *MsgRevokePolicyTicket) (*MsgRevokePolicyTicketResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokePolicyTicket not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
@@ -795,6 +1095,42 @@ func _Msg_WithdrawSponsorFunds_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_IssuePolicyTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgIssuePolicyTicket)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).IssuePolicyTicket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/doravota.sponsor.v1.Msg/IssuePolicyTicket",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).IssuePolicyTicket(ctx, req.(*MsgIssuePolicyTicket))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_RevokePolicyTicket_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRevokePolicyTicket)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RevokePolicyTicket(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/doravota.sponsor.v1.Msg/RevokePolicyTicket",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RevokePolicyTicket(ctx, req.(*MsgRevokePolicyTicket))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var Msg_serviceDesc = _Msg_serviceDesc
 var _Msg_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "doravota.sponsor.v1.Msg",
@@ -819,6 +1155,14 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WithdrawSponsorFunds",
 			Handler:    _Msg_WithdrawSponsorFunds_Handler,
+		},
+		{
+			MethodName: "IssuePolicyTicket",
+			Handler:    _Msg_IssuePolicyTicket_Handler,
+		},
+		{
+			MethodName: "RevokePolicyTicket",
+			Handler:    _Msg_RevokePolicyTicket_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -856,7 +1200,7 @@ func (m *MsgSetSponsor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 				i = encodeVarintTx(dAtA, i, uint64(size))
 			}
 			i--
-			dAtA[i] = 0x22
+			dAtA[i] = 0x2a
 		}
 	}
 	if m.IsSponsored {
@@ -867,7 +1211,14 @@ func (m *MsgSetSponsor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x18
+		dAtA[i] = 0x20
+	}
+	if len(m.TicketIssuerAddress) > 0 {
+		i -= len(m.TicketIssuerAddress)
+		copy(dAtA[i:], m.TicketIssuerAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.TicketIssuerAddress)))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if len(m.ContractAddress) > 0 {
 		i -= len(m.ContractAddress)
@@ -929,6 +1280,13 @@ func (m *MsgUpdateSponsor) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.TicketIssuerAddress) > 0 {
+		i -= len(m.TicketIssuerAddress)
+		copy(dAtA[i:], m.TicketIssuerAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.TicketIssuerAddress)))
+		i--
+		dAtA[i] = 0x2a
+	}
 	if len(m.MaxGrantPerUser) > 0 {
 		for iNdEx := len(m.MaxGrantPerUser) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1197,6 +1555,186 @@ func (m *MsgWithdrawSponsorFundsResponse) MarshalToSizedBuffer(dAtA []byte) (int
 	return len(dAtA) - i, nil
 }
 
+func (m *MsgIssuePolicyTicket) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgIssuePolicyTicket) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgIssuePolicyTicket) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.TtlBlocks != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.TtlBlocks))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.Uses != 0 {
+		i = encodeVarintTx(dAtA, i, uint64(m.Uses))
+		i--
+		dAtA[i] = 0x28
+	}
+	if len(m.Method) > 0 {
+		i -= len(m.Method)
+		copy(dAtA[i:], m.Method)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Method)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.UserAddress) > 0 {
+		i -= len(m.UserAddress)
+		copy(dAtA[i:], m.UserAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.UserAddress)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.ContractAddress) > 0 {
+		i -= len(m.ContractAddress)
+		copy(dAtA[i:], m.ContractAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.ContractAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Creator) > 0 {
+		i -= len(m.Creator)
+		copy(dAtA[i:], m.Creator)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Creator)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgIssuePolicyTicketResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgIssuePolicyTicketResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgIssuePolicyTicketResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Ticket != nil {
+		{
+			size, err := m.Ticket.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintTx(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Created {
+		i--
+		if m.Created {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgRevokePolicyTicket) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRevokePolicyTicket) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRevokePolicyTicket) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Method) > 0 {
+		i -= len(m.Method)
+		copy(dAtA[i:], m.Method)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Method)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.UserAddress) > 0 {
+		i -= len(m.UserAddress)
+		copy(dAtA[i:], m.UserAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.UserAddress)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.ContractAddress) > 0 {
+		i -= len(m.ContractAddress)
+		copy(dAtA[i:], m.ContractAddress)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.ContractAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Creator) > 0 {
+		i -= len(m.Creator)
+		copy(dAtA[i:], m.Creator)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Creator)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgRevokePolicyTicketResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgRevokePolicyTicketResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgRevokePolicyTicketResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintTx(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTx(v)
 	base := offset
@@ -1219,6 +1757,10 @@ func (m *MsgSetSponsor) Size() (n int) {
 		n += 1 + l + sovTx(uint64(l))
 	}
 	l = len(m.ContractAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.TicketIssuerAddress)
 	if l > 0 {
 		n += 1 + l + sovTx(uint64(l))
 	}
@@ -1265,6 +1807,10 @@ func (m *MsgUpdateSponsor) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovTx(uint64(l))
 		}
+	}
+	l = len(m.TicketIssuerAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
 	}
 	return n
 }
@@ -1356,6 +1902,87 @@ func (m *MsgWithdrawSponsorFunds) Size() (n int) {
 }
 
 func (m *MsgWithdrawSponsorFundsResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *MsgIssuePolicyTicket) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Creator)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.ContractAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.UserAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Method)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	if m.Uses != 0 {
+		n += 1 + sovTx(uint64(m.Uses))
+	}
+	if m.TtlBlocks != 0 {
+		n += 1 + sovTx(uint64(m.TtlBlocks))
+	}
+	return n
+}
+
+func (m *MsgIssuePolicyTicketResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Created {
+		n += 2
+	}
+	if m.Ticket != nil {
+		l = m.Ticket.Size()
+		n += 1 + l + sovTx(uint64(l))
+	}
+	return n
+}
+
+func (m *MsgRevokePolicyTicket) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Creator)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.ContractAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.UserAddress)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Method)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	return n
+}
+
+func (m *MsgRevokePolicyTicketResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1464,6 +2091,38 @@ func (m *MsgSetSponsor) Unmarshal(dAtA []byte) error {
 			m.ContractAddress = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TicketIssuerAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TicketIssuerAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field IsSponsored", wireType)
 			}
@@ -1483,7 +2142,7 @@ func (m *MsgSetSponsor) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.IsSponsored = bool(v != 0)
-		case 4:
+		case 5:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MaxGrantPerUser", wireType)
 			}
@@ -1734,6 +2393,38 @@ func (m *MsgUpdateSponsor) Unmarshal(dAtA []byte) error {
 			if err := m.MaxGrantPerUser[len(m.MaxGrantPerUser)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TicketIssuerAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TicketIssuerAddress = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2342,6 +3033,556 @@ func (m *MsgWithdrawSponsorFundsResponse) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: MsgWithdrawSponsorFundsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgIssuePolicyTicket) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgIssuePolicyTicket: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgIssuePolicyTicket: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Creator = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ContractAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ContractAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Method", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Method = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Uses", wireType)
+			}
+			m.Uses = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Uses |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TtlBlocks", wireType)
+			}
+			m.TtlBlocks = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TtlBlocks |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgIssuePolicyTicketResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgIssuePolicyTicketResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgIssuePolicyTicketResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Created", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Created = bool(v != 0)
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ticket", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Ticket == nil {
+				m.Ticket = &PolicyTicket{}
+			}
+			if err := m.Ticket.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRevokePolicyTicket) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRevokePolicyTicket: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRevokePolicyTicket: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Creator", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Creator = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ContractAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ContractAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UserAddress", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.UserAddress = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Method", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Method = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgRevokePolicyTicketResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgRevokePolicyTicketResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgRevokePolicyTicketResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

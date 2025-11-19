@@ -1,19 +1,19 @@
 package sponsor
 
 import (
-    "fmt"
+	"bytes"
+	"encoding/json"
+	"fmt"
 
-    errorsmod "cosmossdk.io/errors"
-    wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-    ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
-    authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
-    bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	errorsmod "cosmossdk.io/errors"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
+	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
-    "sync"
-    "time"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 // Context key for sponsor payment information
@@ -26,6 +26,228 @@ type SponsorPaymentInfo struct {
 	UserAddr     sdk.AccAddress
 	Fee          sdk.Coins
 	IsSponsored  bool
+	// Two-phase add-ons
+	// DigestCounts holds required method digests and the number of times to consume
+	DigestCounts map[string]uint32
+}
+
+// ExecTicketGateInfo marks that a transaction has a valid policy ticket in CheckTx.
+// Presence of this value in context indicates authorization to bypass standard fee checks in CheckTx.
+type execTicketGateKey struct{}
+
+type ExecTicketGateInfo struct {
+	ContractAddr string
+	UserAddr     string
+}
+
+// computeMethodDigestTx extracts method names (top-level keys) from each MsgExecuteContract
+// for the target contract. It enforces exactly one top-level key per message without fully
+// unmarshalling nested JSON (only scans top-level structure) and returns the method digest.
+// extractMethodKeysTx returns the ordered list of top-level method names for all
+// MsgExecuteContract targeting the given contract in this tx. Returns ok=false
+// when no such messages exist or any message does not have exactly one top-level key.
+// (extractMethodKeysTx removed; replaced by validateMethodTicketsStreaming)
+
+// firstTopLevelKey scans only the top-level JSON object and returns the sole key
+// when exactly one top-level key is present; otherwise returns ok=false. It does
+// not unmarshal nested structures to avoid unnecessary CPU/memory overhead.
+func firstTopLevelKey(data []byte, depthLimit uint32) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	// Expect '{'
+	tok, err := dec.Token()
+	if err != nil {
+		return "", false
+	}
+	if d, ok := tok.(json.Delim); !ok || d != '{' {
+		return "", false
+	}
+
+	var first string
+	keyCount := 0
+	// Read key-value pairs at top-level only
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		k, ok := t.(string)
+		if !ok {
+			return "", false
+		}
+		// skip the corresponding value efficiently
+		if err := skipValue(dec, depthLimit); err != nil {
+			return "", false
+		}
+		keyCount++
+		if keyCount == 1 {
+			first = k
+		}
+		if keyCount > 1 { // more than one top-level key
+			// consume rest of top-level to leave decoder consistent
+			for dec.More() {
+				if err := skipPair(dec, depthLimit); err != nil {
+					break
+				}
+			}
+			// read closing '}'
+			_, _ = dec.Token()
+			return "", false
+		}
+	}
+	// read closing '}'
+	_, _ = dec.Token()
+	if keyCount != 1 {
+		return "", false
+	}
+	return first, true
+}
+
+// skipValue skips the next JSON value from decoder
+func skipValue(dec *json.Decoder, limit uint32) error { return skipValueDepth(dec, 0, limit) }
+
+func skipValueDepth(dec *json.Decoder, depth int, limit uint32) error {
+	if limit == 0 {
+		limit = 20
+	}
+	if depth > int(limit) {
+		return fmt.Errorf("json depth exceeds maximum: %d", limit)
+	}
+	t, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if d, ok := t.(json.Delim); ok {
+		switch d {
+		case '{':
+			for dec.More() {
+				if err := skipPairDepth(dec, depth+1, limit); err != nil {
+					return err
+				}
+			}
+			_, err = dec.Token() // '}'
+			return err
+		case '[':
+			for dec.More() {
+				if err := skipValueDepth(dec, depth+1, limit); err != nil {
+					return err
+				}
+			}
+			_, err = dec.Token() // ']'
+			return err
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// skipPair skips a single key-value pair in an object
+func skipPair(dec *json.Decoder, limit uint32) error { return skipPairDepth(dec, 0, limit) }
+func skipPairDepth(dec *json.Decoder, depth int, limit uint32) error {
+	if limit == 0 {
+		limit = 20
+	}
+	if depth > int(limit) {
+		return fmt.Errorf("json depth exceeds maximum: %d", limit)
+	}
+	t, err := dec.Token() // key
+	if err != nil {
+		return err
+	}
+	if _, ok := t.(string); !ok {
+		return fmt.Errorf("invalid object key")
+	}
+	return skipValueDepth(dec, depth, limit)
+}
+
+// validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
+// It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
+// Returns (haveValidTicket, requiredCounts, reason).
+// validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
+// It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
+// Returns (haveValidTicket, requiredCounts, reason).
+// When haveValidTicket=false, reason provides a user-friendly failure code that can be surfaced to fallback.
+func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, map[string]uint32, string) {
+	// Collect target exec messages in tx order and delegate to preselected variant
+	var execMsgs []*wasmtypes.MsgExecuteContract
+	for _, m := range tx.GetMsgs() {
+		msg, ok := m.(*wasmtypes.MsgExecuteContract)
+		if !ok || msg.Contract != contractAddr {
+			continue
+		}
+		execMsgs = append(execMsgs, msg)
+	}
+	if len(execMsgs) == 0 {
+		return false, nil, "no_target_messages"
+	}
+	return sctd.validateMethodTicketsStreamingPreselected(ctx, contractAddr, userAddr, execMsgs)
+}
+
+// validateMethodTicketsStreamingPreselected is a more efficient variant that accepts the
+// pre-filtered MsgExecuteContract list for the target contract to avoid re-scanning tx messages.
+func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPreselected(ctx sdk.Context, contractAddr, userAddr string, execMsgs []*wasmtypes.MsgExecuteContract) (bool, map[string]uint32, string) {
+	params := sctd.keeper.GetParams(ctx)
+	nameLimit := params.MaxMethodNameBytes
+	depthLimit := params.MaxMethodJsonDepth
+	now := uint64(ctx.BlockHeight())
+
+	// Caches to avoid repeated digest computation and KV lookups for the same method
+	methodDigestCache := make(map[string]string) // method -> digest
+	availableByMethod := make(map[string]uint32) // method -> usesRemaining
+	requiredByMethod := make(map[string]uint32)  // method -> required count in this tx
+
+	// Final outputs by digest (accumulated from method-level counts)
+	requiredByDigest := make(map[string]uint32)
+
+	saw := false
+
+	for _, msg := range execMsgs {
+		saw = true
+
+		key, ok := firstTopLevelKey([]byte(msg.Msg), depthLimit)
+		if !ok {
+			return false, nil, "invalid_json"
+		}
+		if nameLimit != 0 && uint32(len(key)) > nameLimit {
+			return false, nil, "method_name_too_long"
+		}
+
+		// Resolve digest for this method (compute once per method)
+		md, have := methodDigestCache[key]
+		if !have {
+			md = sctd.keeper.ComputeMethodDigestSingle(contractAddr, key)
+			methodDigestCache[key] = md
+			// On first time seeing this method, load available uses for its digest
+			t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+			if !ok {
+				return false, nil, "ticket_not_found"
+			}
+			if t.Consumed {
+				return false, nil, "ticket_consumed"
+			}
+			if now > t.ExpiryHeight {
+				return false, nil, "ticket_expired"
+			}
+			if t.UsesRemaining == 0 {
+				return false, nil, "insufficient_ticket_uses"
+			}
+			availableByMethod[key] = t.UsesRemaining
+		}
+
+		// Increment required count for this method and check against available uses
+		requiredByMethod[key]++
+		if requiredByMethod[key] > availableByMethod[key] {
+			return false, nil, "insufficient_ticket_uses"
+		}
+
+		// Keep digest-based required counts for downstream bulk consumption
+		requiredByDigest[md]++
+	}
+
+	if !saw {
+		return false, nil, "no_target_messages"
+	}
+	return true, requiredByDigest, ""
 }
 
 // SponsorContractTxAnteDecorator handles sponsoring contract transactions
@@ -34,446 +256,27 @@ type SponsorContractTxAnteDecorator struct {
 	accountKeeper authkeeper.AccountKeeper
 	bankKeeper    bankkeeper.Keeper
 	txFeeChecker  ante.TxFeeChecker
-	cstate        *cooldownState
-}
-
-// cooldownState holds node-local cooldown entries for CheckTx-only protections.
-// It is NOT persisted and has no effect on DeliverTx/Simulate semantics.
-type cooldownEntry struct {
-    cooldownUntil time.Time
-    windowStart   time.Time
-    fails         int
-    cooldownDur   time.Duration
-}
-
-type cooldownState struct {
-    mu                     sync.RWMutex
-    entries                map[string]*cooldownEntry // key -> entry
-    enabled                bool
-    baseTTL                time.Duration   // initial cooldown duration
-    maxTTL                 time.Duration   // maximum cooldown duration cap
-    backoffFactor          float64         // multiplicative backoff factor (e.g., 2.0)
-    threshold              int             // failures needed within window to trigger cooldown
-    window                 time.Duration   // counting window for failures
-    maxEntries             int             // global cap (0 = unlimited)
-    maxEntriesPerContract  int             // per-contract cap (0 = unlimited)
-    contractCounts         map[string]int  // contract -> active entry count
 }
 
 // sanitizeForLog trims and strips control characters to avoid log amplification/injection.
 // It is intended for log/event fields only and does not affect returned error strings.
 func sanitizeForLog(s string) string {
-    // Replace common control characters with spaces and cap length
-    const max = 256
-    out := make([]rune, 0, len(s))
-    for _, r := range s {
-        if r == '\n' || r == '\r' || r == '\t' || r < 32 {
-            r = ' '
-        }
-        out = append(out, r)
-        if len(out) >= max {
-            break
-        }
-    }
-    return string(out)
+	// Replace common control characters with spaces and cap length
+	const max = 256
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r == '\n' || r == '\r' || r == '\t' || r < 32 {
+			r = ' '
+		}
+		out = append(out, r)
+		if len(out) >= max {
+			break
+		}
+	}
+	return string(out)
 }
 
-func newCooldownState() *cooldownState {
-    return &cooldownState{
-        entries:       make(map[string]*cooldownEntry),
-        enabled:       true,
-        baseTTL:       60 * time.Second,
-        maxTTL:        30 * time.Minute,
-        backoffFactor: 2.0,
-        threshold:     1,              // default keeps previous behavior; can be raised via config
-        window:        60 * time.Second,
-        // Enable conservative capacity limits to prevent local memory DoS
-        maxEntries:    10000,
-        maxEntriesPerContract: 1000,
-        contractCounts: make(map[string]int),
-    }
-}
-
-func (cs *cooldownState) key(contract, user string) string {
-	return contract + "|" + user
-}
-
-// onCooldown returns true if key is active; lazily cleans up expired entries.
-func (cs *cooldownState) onCooldown(contract, user string, now time.Time) (bool, time.Duration) {
-    if cs == nil || !cs.enabled {
-        return false, 0
-    }
-    k := cs.key(contract, user)
-    // Fast path: read lock
-    cs.mu.RLock()
-    ent, ok := cs.entries[k]
-    if !ok || ent == nil {
-        cs.mu.RUnlock()
-        return false, 0
-    }
-    if now.Before(ent.cooldownUntil) {
-        remain := ent.cooldownUntil.Sub(now)
-        cs.mu.RUnlock()
-        return true, remain
-    }
-    cs.mu.RUnlock()
-
-    // Slow path: write lock, re-check and clean if needed
-    cs.mu.Lock()
-    defer cs.mu.Unlock()
-
-    ent, ok = cs.entries[k]
-    if !ok || ent == nil {
-        return false, 0
-    }
-    if now.Before(ent.cooldownUntil) {
-        return true, ent.cooldownUntil.Sub(now)
-    }
-    // expired; clear cooldown or drop idle
-    if now.Sub(ent.windowStart) > cs.window {
-        delete(cs.entries, k)
-        if cnt := cs.contractCounts[contract]; cnt > 0 {
-            cnt--
-            if cnt <= 0 { delete(cs.contractCounts, contract) } else { cs.contractCounts[contract] = cnt }
-        }
-    } else {
-        ent.cooldownUntil = time.Time{}
-    }
-    return false, 0
-}
-
-// indexRune returns index of r in s or -1.
-func indexRune(s string, r rune) int {
-    for i, ch := range s {
-        if ch == r { return i }
-    }
-    return -1
-}
-
-// ensureCapacity evicts idle entries when caps are exceeded (best-effort).
-func (cs *cooldownState) ensureCapacity(contract string, now time.Time) {
-    if cs.maxEntries <= 0 && cs.maxEntriesPerContract <= 0 {
-        return
-    }
-    // Phase 1: snapshot minimal state under read lock
-    type snap struct{ key, contract string; win time.Time; idle bool }
-    var (
-        needPer, needGlobal bool
-        idleCandsAll []snap
-        idleCandsContract []snap
-        allCands  []snap
-        maxEntries = cs.maxEntries
-        maxPer    = cs.maxEntriesPerContract
-    )
-    cs.mu.RLock()
-    if maxPer > 0 && cs.contractCounts[contract] >= maxPer { needPer = true }
-    if maxEntries > 0 && len(cs.entries) >= maxEntries { needGlobal = true }
-    if needPer || needGlobal {
-        idleCandsAll = make([]snap, 0)
-        idleCandsContract = make([]snap, 0)
-        allCands = make([]snap, 0, len(cs.entries))
-        for k, ent := range cs.entries {
-            if ent == nil { continue }
-            c := ""
-            if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
-            s := snap{key: k, contract: c, win: ent.windowStart, idle: ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window}
-            allCands = append(allCands, s)
-            if s.idle { idleCandsAll = append(idleCandsAll, s) }
-            if s.idle && c == contract { idleCandsContract = append(idleCandsContract, s) }
-        }
-    }
-    cs.mu.RUnlock()
-    if !(needPer || needGlobal) { return }
-
-    // Phase 2: plan evictions outside of lock (linear min when deleting 1)
-    
-    plan := make([]snap, 0)
-    if needPer {
-        // remove one idle for this contract (oldest)
-        if len(idleCandsContract) > 0 {
-            oldest := idleCandsContract[0]
-            for _, s := range idleCandsContract {
-                if s.win.Before(oldest.win) { oldest = s }
-            }
-            plan = append(plan, oldest)
-        }
-        if len(plan) == 0 {
-            // fallback: remove oldest (any state) within this contract
-            has := false
-            var oldest snap
-            for _, s := range allCands {
-                if s.contract != contract { continue }
-                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
-            }
-            if has { plan = append(plan, oldest) }
-        }
-    }
-    if needGlobal {
-        // compute how many to remove to be strictly below cap after adding 1 potential new entry
-        // remove at least 1 if at cap
-        needed := 1
-        // prefer oldest idle across all; if none, oldest across all
-        if needed > 0 && len(idleCandsAll) > 0 {
-            // find oldest idle not already in plan
-            has := false
-            var oldest snap
-            for _, s := range idleCandsAll {
-                dup := false
-                for _, p := range plan { if p.key == s.key { dup = true; break } }
-                if dup { continue }
-                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
-            }
-            if has { plan = append(plan, oldest); needed-- }
-        }
-        if needed > 0 {
-            has := false
-            var oldest snap
-            for _, s := range allCands {
-                dup := false
-                for _, p := range plan { if p.key == s.key { dup = true; break } }
-                if dup { continue }
-                if !has || s.win.Before(oldest.win) { oldest = s; has = true }
-            }
-            if has { plan = append(plan, oldest); needed-- }
-        }
-    }
-
-    if len(plan) == 0 { return }
-
-    // Phase 3: apply deletions under lock (re-validate existence)
-    cs.mu.Lock()
-    defer cs.mu.Unlock()
-    for _, s := range plan {
-        if _, ok := cs.entries[s.key]; !ok { continue }
-        delete(cs.entries, s.key)
-        if s.contract != "" {
-            if cnt := cs.contractCounts[s.contract]; cnt > 0 {
-                cnt--
-                if cnt <= 0 { delete(cs.contractCounts, s.contract) } else { cs.contractCounts[s.contract] = cnt }
-            }
-        }
-    }
-}
-
-// ensureCapacityLocked evicts entries while holding the write lock to honor caps.
-// It removes at most one per-contract idle/oldest and at most one global idle/oldest
-// to make room for a potential new entry. Caller must hold cs.mu.Lock.
-func (cs *cooldownState) ensureCapacityLocked(contract string, now time.Time) {
-    if cs.maxEntries <= 0 && cs.maxEntriesPerContract <= 0 {
-        return
-    }
-
-    needPer := cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract
-    needGlobal := cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries
-    if !needPer && !needGlobal {
-        return
-    }
-
-    type snap struct{ key, contract string; win time.Time; idle bool }
-    var (
-        idleCandsAll      []snap
-        idleCandsContract []snap
-        allCands          []snap
-    )
-
-    allCands = make([]snap, 0, len(cs.entries))
-    for k, ent := range cs.entries {
-        if ent == nil { continue }
-        c := ""
-        if idx := indexRune(k, '|'); idx > 0 { c = k[:idx] }
-        s := snap{key: k, contract: c, win: ent.windowStart, idle: ent.cooldownUntil.IsZero() && now.Sub(ent.windowStart) > cs.window}
-        allCands = append(allCands, s)
-        if s.idle { idleCandsAll = append(idleCandsAll, s) }
-        if s.idle && c == contract { idleCandsContract = append(idleCandsContract, s) }
-    }
-
-    // Plan keys to delete
-    planKeys := make(map[string]struct{})
-
-    if needPer {
-        // Oldest idle within this contract
-        var oldest *snap
-        for i := range idleCandsContract {
-            if oldest == nil || idleCandsContract[i].win.Before(oldest.win) {
-                oldest = &idleCandsContract[i]
-            }
-        }
-        if oldest == nil {
-            // Fallback: oldest (any state) within this contract
-            var anyOldest *snap
-            for i := range allCands {
-                s := &allCands[i]
-                if s.contract != contract { continue }
-                if anyOldest == nil || s.win.Before(anyOldest.win) { anyOldest = s }
-            }
-            if anyOldest != nil { planKeys[anyOldest.key] = struct{}{} }
-        } else {
-            planKeys[oldest.key] = struct{}{}
-        }
-    }
-
-    if needGlobal {
-        // Prefer oldest idle globally (not already planned), else oldest globally
-        var chosen *snap
-        for i := range idleCandsAll {
-            s := &idleCandsAll[i]
-            if _, dup := planKeys[s.key]; dup { continue }
-            if chosen == nil || s.win.Before(chosen.win) { chosen = s }
-        }
-        if chosen == nil {
-            for i := range allCands {
-                s := &allCands[i]
-                if _, dup := planKeys[s.key]; dup { continue }
-                if chosen == nil || s.win.Before(chosen.win) { chosen = s }
-            }
-        }
-        if chosen != nil { planKeys[chosen.key] = struct{}{} }
-    }
-
-    // Apply deletions
-    for key := range planKeys {
-        if _, ok := cs.entries[key]; !ok { continue }
-        delete(cs.entries, key)
-        c := ""
-        if idx := indexRune(key, '|'); idx > 0 { c = key[:idx] }
-        if c != "" {
-            if cnt := cs.contractCounts[c]; cnt > 0 {
-                cnt--
-                if cnt <= 0 { delete(cs.contractCounts, c) } else { cs.contractCounts[c] = cnt }
-            }
-        }
-    }
-}
-
-// recordFailure increments counters and starts cooldown when threshold reached within window.
-func (cs *cooldownState) recordFailure(contract, user string, now time.Time) {
-    if cs == nil || !cs.enabled {
-        return
-    }
-    k := cs.key(contract, user)
-    cs.mu.Lock()
-    ent, ok := cs.entries[k]
-    if !ok || ent == nil {
-        // Ensure capacity while holding the write lock
-        cs.ensureCapacityLocked(contract, now)
-        // If still at capacity, drop creation to avoid overshoot under concurrency
-        if (cs.maxEntries > 0 && len(cs.entries) >= cs.maxEntries) ||
-           (cs.maxEntriesPerContract > 0 && cs.contractCounts[contract] >= cs.maxEntriesPerContract) {
-            cs.mu.Unlock()
-            return
-        }
-		ent = &cooldownEntry{windowStart: now, fails: 1, cooldownDur: cs.baseTTL}
-		// If threshold is 1, start cooldown immediately
-		if cs.threshold <= 1 {
-            dur := ent.cooldownDur
-            if dur <= 0 { dur = cs.baseTTL }
-            ent.cooldownUntil = now.Add(dur)
-            next := time.Duration(float64(dur) * cs.backoffFactor)
-            if next > cs.maxTTL { next = cs.maxTTL }
-            ent.cooldownDur = next
-            ent.fails = 0
-            ent.windowStart = now
-        }
-        cs.entries[k] = ent
-        cs.contractCounts[contract]++
-        cs.mu.Unlock()
-        return
-    }
-    // window check
-    if now.Sub(ent.windowStart) > cs.window {
-        ent.windowStart = now
-        ent.fails = 1
-        cs.mu.Unlock()
-        return
-    }
-    ent.fails++
-    if ent.fails >= cs.threshold {
-        // start cooldown with current duration and prepare next duration by backoff
-        dur := ent.cooldownDur
-        if dur <= 0 {
-            dur = cs.baseTTL
-        }
-        ent.cooldownUntil = now.Add(dur)
-        next := time.Duration(float64(dur) * cs.backoffFactor)
-        if next > cs.maxTTL {
-            next = cs.maxTTL
-        }
-        ent.cooldownDur = next
-        ent.fails = 0
-        ent.windowStart = now
-    }
-    cs.mu.Unlock()
-}
-
-// WithCooldownConfig applies node-local cooldown configuration.
-type CooldownConfig struct {
-    Enabled       *bool
-    BaseTTL       *time.Duration
-    MaxTTL        *time.Duration
-    BackoffFactor *float64
-    Threshold     *int
-    Window        *time.Duration
-    MaxEntries    *int
-    MaxEntriesPerContract *int
-}
-
-func (d SponsorContractTxAnteDecorator) WithCooldownConfig(cfg CooldownConfig) SponsorContractTxAnteDecorator {
-    if d.cstate == nil {
-        d.cstate = newCooldownState()
-    }
-    if cfg.Enabled != nil {
-        d.cstate.enabled = *cfg.Enabled
-    }
-    if cfg.BaseTTL != nil {
-        d.cstate.baseTTL = *cfg.BaseTTL
-    }
-    if cfg.MaxTTL != nil {
-        d.cstate.maxTTL = *cfg.MaxTTL
-    }
-    if cfg.BackoffFactor != nil {
-        d.cstate.backoffFactor = *cfg.BackoffFactor
-    }
-    if cfg.Threshold != nil {
-        d.cstate.threshold = *cfg.Threshold
-    }
-    if cfg.Window != nil {
-        d.cstate.window = *cfg.Window
-    }
-    if cfg.MaxEntries != nil {
-        d.cstate.maxEntries = *cfg.MaxEntries
-    }
-    if cfg.MaxEntriesPerContract != nil {
-        d.cstate.maxEntriesPerContract = *cfg.MaxEntriesPerContract
-    }
-    // Normalize invalid values to safe defaults to avoid local logic anomalies
-    if d.cstate.baseTTL < 0 {
-        d.cstate.baseTTL = 0
-    }
-    if d.cstate.maxTTL < 0 {
-        d.cstate.maxTTL = 0
-    }
-    if d.cstate.maxTTL < d.cstate.baseTTL {
-        d.cstate.maxTTL = d.cstate.baseTTL
-    }
-    if d.cstate.backoffFactor <= 0 {
-        d.cstate.backoffFactor = 1.0
-    }
-    if d.cstate.threshold < 1 {
-        d.cstate.threshold = 1
-    }
-    if d.cstate.window < 0 {
-        d.cstate.window = 0
-    }
-    if d.cstate.maxEntries < 0 {
-        d.cstate.maxEntries = 0
-    }
-    if d.cstate.maxEntriesPerContract < 0 {
-        d.cstate.maxEntriesPerContract = 0
-    }
-    return d
-}
-
-// NewSponsorContractTxAnteDecorator creates a new ante decorator for sponsored contract transactions
+// NewSponsorContractTxAnteDecorator creates a new ante decorator for sponsored contract transactions (two‑phase: requires ticket)
 func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authkeeper.AccountKeeper, bk bankkeeper.Keeper, txFeeChecker ante.TxFeeChecker) SponsorContractTxAnteDecorator {
 	if txFeeChecker == nil {
 		txFeeChecker = SponsorTxFeeCheckerWithValidatorMinGasPrices
@@ -483,7 +286,6 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 		accountKeeper: ak,
 		bankKeeper:    bk,
 		txFeeChecker:  txFeeChecker,
-		cstate:        newCooldownState(),
 	}
 }
 
@@ -495,11 +297,9 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 // - Global toggle: respects module params; when disabled, sponsorship is skipped with informative events/errors.
 // - Signer model: single-signer only; FeePayer must match the validated signer to prevent spoofing.
 // - Self-pay preference: if user has sufficient balance for the declared fee, sponsorship is skipped (see note below).
-// - Policy check: runs the contract's policy query in a gas-limited context; any panic is recovered; gas used is always charged to the main context.
-// - Failure handling: any policy error or nil-result is treated uniformly as a failure; emits a sponsorship_skipped event (DeliverTx only) and falls back.
-// - Success path: verifies user grant limit and sponsor balance, then places SponsorPaymentInfo into context for the fee decorator to deduct.
-// Notes:
-// - The self-pay decision currently uses the tx-declared fee, not the min required fee from TxFeeChecker. If strict parity with validator min gas prices is needed, consider integrating TxFeeChecker here as well.
+// - Two-phase rule: does NOT run policy checks here. ExecuteTx requires a valid ticket; policy checks run only in MsgProbeSponsorship (DeliverTx).
+// - Success path: verify grant limit and sponsor balance, then inject SponsorPaymentInfo for the sponsor-aware fee decorator to deduct/reimburse.
+// - Self-pay preference: if the user balance covers fees, skip sponsorship and let the user pay.
 func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -520,34 +320,28 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 	}
 
-    // Global toggle: if sponsorship is disabled, skip immediately before any contract-specific work
-    params := sctd.keeper.GetParams(ctx)
-    if !params.SponsorshipEnabled {
-        if !ctx.IsCheckTx() {
-            // Best-effort: if there is a contract execute message, attach its address for observability
-            contractForEvent := ""
-            for _, m := range tx.GetMsgs() {
-                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok {
-                    contractForEvent = msg.Contract
-                    break
-                }
-            }
-            ev := sdk.NewEvent(types.EventTypeSponsorshipDisabled,
-                sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
-            )
-            if contractForEvent != "" {
-                ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyContractAddress, contractForEvent))
-            }
-            ctx.EventManager().EmitEvent(ev)
-        }
-        ctx.Logger().With("module", "sponsor-contract-tx").Info(
-            "sponsorship globally disabled, using standard fee processing",
-        )
-        return next(ctx, tx, simulate)
-    }
+	// Global toggle: if sponsorship is disabled, skip immediately before any contract-specific work
+	params := sctd.keeper.GetParams(ctx)
+	if !params.SponsorshipEnabled {
+		if !ctx.IsCheckTx() {
+			// Use a single pre-scan pass to find first contract address for observability
+			_, firstContract, _ := preScanTxForSponsorship(tx)
+			ev := sdk.NewEvent(types.EventTypeSponsorshipDisabled,
+				sdk.NewAttribute(types.AttributeKeyReason, "global_sponsorship_disabled"),
+			)
+			if firstContract != "" {
+				ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyContractAddress, firstContract))
+			}
+			ctx.EventManager().EmitEvent(ev)
+		}
+		ctx.Logger().With("module", "sponsor-contract-tx").Info(
+			"sponsorship globally disabled, using standard fee processing",
+		)
+		return next(ctx, tx, simulate)
+	}
 
-	// Find and validate contract execution messages
-	validation := validateSponsoredTransaction(tx)
+	// Find and validate contract execution messages (single pass). Also collect target exec messages.
+	validation, _, execMsgs := preScanTxForSponsorship(tx)
 
 	// If no sponsorship should be attempted, pass through with context-aware UX
 	if !validation.SuggestSponsor {
@@ -570,11 +364,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		return next(ctx, tx, simulate)
 	}
 
-    contractAddr := validation.ContractAddress
+	contractAddr := validation.ContractAddress
 
-    // Determine the user address (validated signer / feepayer) once and reuse.
-    // If we cannot determine it, most sponsor paths will fall back to standard processing.
-    userAddr, userAddrErr := sctd.getUserAddressForSponsorship(tx)
+	// Determine the user address (validated signer / feepayer) once and reuse.
+	// If we cannot determine it, most sponsor paths will fall back to standard processing.
+	userAddr, userAddrErr := sctd.getUserAddressForSponsorship(tx)
 
 	// Validate contract exists before proceeding (early exit):
 	// - In CheckTx: return an error to avoid entering mempool with a non-existent contract.
@@ -621,8 +415,8 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 
 	// If found and sponsored, proceed with sponsorship logic
 	if found && sponsor.IsSponsored {
-        // Reuse the determined user address; if unavailable, fall back
-        if userAddrErr != nil {
+		// Reuse the determined user address; if unavailable, fall back
+		if userAddrErr != nil {
 			// If we can't determine a consistent user address, fall back to standard processing
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"falling back to standard fee processing due to signer inconsistency",
@@ -636,61 +430,7 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
-        // Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
-        if params.MaxExecMsgsPerTxForSponsor > 0 {
-            execCount := 0
-            for _, m := range tx.GetMsgs() {
-                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
-                    execCount++
-                }
-            }
-            if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
-                reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
-                // Emit skip event only in DeliverTx
-                if !ctx.IsCheckTx() {
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeSponsorshipSkipped,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyReason, reason),
-                        ),
-                    )
-                }
-                // Fallback to standard processing with explicit reason
-                return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
-            }
-        }
-
-        // Enforce per-message raw JSON payload size (bytes) before any JSON parsing to prevent CPU amplification.
-        // 0 disables this guard.
-        if params.MaxPolicyExecMsgBytes > 0 {
-            var tooLarge bool
-            for _, m := range tx.GetMsgs() {
-                if msg, ok := m.(*wasmtypes.MsgExecuteContract); ok && msg.Contract == contractAddr {
-                    if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
-                        tooLarge = true
-                        break
-                    }
-                }
-            }
-            if tooLarge {
-                // Emit skip event only in DeliverTx
-                if !ctx.IsCheckTx() {
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeSponsorshipSkipped,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyReason, "policy_payload_too_large"),
-                        ),
-                    )
-                }
-                // Fallback to standard processing; provide reason for observability
-                return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy_payload_too_large")
-            }
-        }
-
-		// Before any potentially expensive work in CheckTx, enforce validator min gas price
-		// using the configured txFeeChecker. This rejects low-fee spam early.
+		// CheckTx: enforce min gas price as early as possible before any method parsing/digest lookups
 		if ctx.IsCheckTx() && !simulate {
 			checker := sctd.txFeeChecker
 			if checker == nil {
@@ -701,39 +441,71 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			}
 		}
 
-        // Check the tx fee. Use txFeeChecker to compute effective/required fees
-        // so self-pay and subsequent checks align with minimum gas price policy.
+		// Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
+		if params.MaxExecMsgsPerTxForSponsor > 0 {
+			execCount := len(execMsgs)
+			if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
+				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
+				// Emit skip event only in DeliverTx
+				if !ctx.IsCheckTx() {
+					ctx.EventManager().EmitEvent(
+						sdk.NewEvent(
+							types.EventTypeSponsorshipSkipped,
+							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+							sdk.NewAttribute(types.AttributeKeyReason, reason),
+						),
+					)
+				}
+				// Fallback to standard processing with explicit reason
+				return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
+			}
+		}
+
+		// Enforce per-message raw JSON payload size (bytes) before any JSON parsing to prevent CPU amplification.
+		// 0 disables this guard.
+		if params.MaxPolicyExecMsgBytes > 0 {
+			var tooLarge bool
+			for _, msg := range execMsgs {
+				if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
+					tooLarge = true
+					break
+				}
+			}
+			if tooLarge {
+				// Emit skip event only in DeliverTx
+				if !ctx.IsCheckTx() {
+					ctx.EventManager().EmitEvent(
+						sdk.NewEvent(
+							types.EventTypeSponsorshipSkipped,
+							sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+							sdk.NewAttribute(types.AttributeKeyReason, "policy_payload_too_large"),
+						),
+					)
+				}
+				// Fallback to standard processing; provide reason for observability
+				return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "policy_payload_too_large")
+			}
+		}
+
+		// Early fee path: prefer cheapest exits and grant pre-check before any digest work
 		if feeTx, ok := tx.(sdk.FeeTx); ok {
-            declaredFee := feeTx.GetFee()
-			// 1. Zero fee early exit: Only effective in mempool (CheckTx), does not affect simulate/DeliverTx.
+			declaredFee := feeTx.GetFee()
+			// Zero fee in CheckTx: skip sponsorship path
 			if declaredFee.IsZero() && ctx.IsCheckTx() && !simulate {
-				ctx.Logger().With("module", "sponsor-contract-tx").Info(
-					"zero-fee tx; skipping sponsorship checks",
-					"contract", contractAddr,
-					"user", userAddr.String(),
-				)
 				return next(ctx, tx, simulate)
 			}
-			// 2. Non-zero fee and early exit allowed: Only determined when fee>0; both simulate and DeliverTx allow skipping (events are only emitted in DeliverTx)
+			// Validate fee denom for sponsorship context (only 'peaka')
 			if !declaredFee.IsZero() {
-				feeCheck := declaredFee
-				for _, c := range feeCheck {
+				for _, c := range declaredFee {
 					if c.Denom != types.SponsorshipDenom {
 						return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "only supports 'peaka' as fee denom; found: %s", c.Denom)
 					}
 				}
-                // Compute effective/required fee using txFeeChecker for consistency with mempool policy
-                effectiveFee := sctd.getEffectiveFee(ctx, tx)
-
+			}
+			// Self-pay early exit: user can cover fee → no sponsorship checks
+			if !declaredFee.IsZero() {
 				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-				if userBalance.IsAllGTE(effectiveFee) {
-					ctx.Logger().With("module", "sponsor-contract-tx").Info(
-						"user can self-pay; skipping sponsorship checks",
-						"contract", contractAddr,
-						"user", userAddr.String(),
-						"user_balance", userBalance.String(),
-						"required_fee", effectiveFee.String(),
-					)
+				if userBalance.IsAllGTE(declaredFee) {
 					if !ctx.IsCheckTx() {
 						ctx.EventManager().EmitEvent(
 							sdk.NewEvent(
@@ -741,390 +513,118 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
 								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
 								sdk.NewAttribute(types.AttributeKeyReason, "user has sufficient balance to pay fees themselves, skipping sponsor"),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
+								sdk.NewAttribute(types.AttributeKeyFeeAmount, declaredFee.String()),
 							),
 						)
 					}
 					return next(ctx, tx, simulate)
 				}
-
-				// Early user grant-vs-fee short-circuit BEFORE running policy queries to avoid unnecessary contract work
-				// If the transaction fee exceeds the user's remaining sponsored grant, skip sponsorship immediately.
-                if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, effectiveFee); err != nil {
-					// Emit skip event only in DeliverTx mode
-					if !ctx.IsCheckTx() {
-						ctx.EventManager().EmitEvent(
-							sdk.NewEvent(
-								types.EventTypeSponsorshipSkipped,
-								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-								sdk.NewAttribute(types.AttributeKeyReason, "grant_below_tx_fee"),
-							),
-						)
-					}
-					// If user can self-pay, gracefully fallback; otherwise propagate the grant-limit error
-					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-					if userBalance.IsAllGTE(effectiveFee) {
-						return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, "grant_below_tx_fee")
-					}
-					return ctx, err
-				}
-
-				// Early sponsor balance quick-check BEFORE running policy queries to avoid heavy work
-				// Validate sponsor address and ensure sponsor has enough spendable balance for this fee
-				sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-				if err != nil {
-					return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
-				}
-                sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
-                if !sponsorBalance.IsAllGTE(effectiveFee) {
-					// Emit sponsor insufficient funds event only in DeliverTx mode
-					if !ctx.IsCheckTx() {
-						ctx.EventManager().EmitEvent(
-							sdk.NewEvent(
-								types.EventTypeSponsorInsufficient,
-								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-								sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAccAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
-							),
-						)
-					}
-					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, effectiveFee, sponsorBalance)
+				// Pre-check grant limit before digest parsing (applies to both CheckTx and DeliverTx)
+				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, declaredFee); err != nil {
+					return ctx, errorsmod.Wrapf(err, "user grant limit exceeded")
 				}
 			}
 		}
 
-		// Check global cooldown (block-height based) before running policy queries
-        if !simulate {
-            if blocked, remain := sctd.keeper.IsGloballyBlocked(ctx, contractAddr, userAddr.String()); blocked {
-                msg := fmt.Sprintf("sponsorship globally blocked for %d blocks due to recent failed attempts", remain)
-                return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, msg)
-            }
-        }
+		// Compute digest coverage after cheap checks using streaming validation.
+		// This avoids building the entire key list and short-circuits on the first failure.
+		haveValidTicket := false
+		var requiredCounts map[string]uint32
+		if ok, counts, reason := sctd.validateMethodTicketsStreamingPreselected(ctx, contractAddr, userAddr.String(), execMsgs); ok {
+			haveValidTicket = true
+			requiredCounts = counts
+		} else {
+			// No valid ticket: go through fallback path (both CheckTx and DeliverTx).
+			// In CheckTx: this may return error when user cannot self-pay; in DeliverTx: error includes a clear reason.
+			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
+		}
 
-        // Check local cooldown before running policy queries (CheckTx only):
-        // This protection is mempool-scoped and intentionally does not affect DeliverTx.
-        // It is a best-effort local shield against spam and does not defend against
-        // validators/privileged block construction.
-        if ctx.IsCheckTx() && !simulate && sctd.cstate != nil && sctd.cstate.enabled {
-            // Prefer block time for consistency across nodes; fallback to wall clock if unavailable
-            now := ctx.BlockTime()
-            if now.IsZero() { now = time.Now() }
-            if blocked, remain := sctd.cstate.onCooldown(contractAddr, userAddr.String(), now); blocked {
-                // Format remaining seconds, rounding up to the nearest second
-                secs := int64(remain / time.Second)
-                if remain%time.Second != 0 { secs++ }
-                msg := fmt.Sprintf("sponsorship temporarily blocked for %ds due to recent failed attempts", secs)
-                return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, msg)
-            }
-        }
-
-		// Create a gas-limited context to prevent DoS attacks through contract queries.
-		// Gas used in the limited context is always charged back to the main context
-		// (both on success and failure) to ensure consistent cost accounting.
-		gasLimit := params.MaxGasPerSponsorship
-
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"starting contract policy check with gas limit",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"gas_limit", gasLimit,
-		)
-
-		// Create a limited gas meter for the policy check
-		limitedGasMeter := sdk.NewGasMeter(gasLimit)
-		limitedCtx := ctx.WithGasMeter(limitedGasMeter)
-
-		var policyResult *types.CheckContractPolicyResult
-		var policyErr error
-
-		// Call contract to check if user is eligible according to contract policy.
-		// Use a function with named return values so the defer can convert panics to errors
-		// and set result=nil in failure cases.
-		policyResult, policyErr = func() (result *types.CheckContractPolicyResult, err error) {
-			defer func() {
-				if r := recover(); r != nil {
-					gasUsedOnPanic := limitedGasMeter.GasConsumed()
-					// Handle gas limit exceeded panic
-					if _, ok := r.(sdk.ErrorOutOfGas); ok {
-						ctx.Logger().With("module", "sponsor-contract-tx").Error(
-							"contract policy check exceeded gas limit",
-							"contract", contractAddr,
-							"user", userAddr.String(),
-							"gas_limit", gasLimit,
-							"gas_used", gasUsedOnPanic,
-							"gas_overflow", gasUsedOnPanic-gasLimit,
-						)
-						err = errorsmod.Wrapf(types.ErrGasLimitExceeded,
-							"contract policy check exceeded gas limit: %d, used: %d",
-							gasLimit, gasUsedOnPanic)
-						result = nil // Ensure result is nil when error occurs
-					} else {
-						// Handle all other types of panics gracefully to prevent chain halt
-						// Log the error for debugging but don't crash the node
-						ctx.Logger().With("module", "sponsor-contract-tx").Error(
-							"unexpected panic during contract policy check",
-							"contract", contractAddr,
-							"user", userAddr.String(),
-							"error", r,
-							"gas_used", gasUsedOnPanic,
-						)
-						err = errorsmod.Wrapf(types.ErrPolicyCheckFailed,
-							"contract policy check failed due to unexpected error: %v", r)
-						result = nil // Ensure result is nil when error occurs
+		// Sponsor balance pre-check (only when we already have a valid ticket)
+		if haveValidTicket {
+			if feeTx, ok := tx.(sdk.FeeTx); ok {
+				declaredFee := feeTx.GetFee()
+				if sponsor.SponsorAddress != "" {
+					if sAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress); err == nil {
+						if sctd.accountKeeper.GetAccount(ctx, sAddr) == nil {
+							return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sAddr.String())
+						}
+						if spendable := sctd.bankKeeper.SpendableCoins(ctx, sAddr); !spendable.IsAllGTE(declaredFee) {
+							return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor insufficient funds: need %s, have %s", declaredFee.String(), spendable.String())
+						}
 					}
 				}
-			}()
-			return sctd.keeper.CheckContractPolicy(limitedCtx, contractAddr, userAddr, tx)
-		}()
-
-		// Always read gas consumed from the limited gas meter for consistent accounting
-		gasUsed := limitedGasMeter.GasConsumed()
-
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"contract policy check completed",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"gas_used", gasUsed,
-			"gas_limit", gasLimit,
-			"gas_remaining", gasLimit-gasUsed,
-		)
-
-		// Unified handling: treat any error or nil result as a failed policy check
-		if policyErr != nil || policyResult == nil {
-			// Always account for the gas burned during the policy check so low-fee
-			// transactions cannot spam expensive contract queries at zero cost.
-			consumeGasSafely(ctx, gasUsed, "contract policy check (failed)")
-
-			var reasonFromError string
-			if policyErr != nil {
-				// Policy check failed with error (contract query failed, parsing failed, etc.)
-				ctx.Logger().With("module", "sponsor-contract-tx").Error(
-					"contract policy check failed",
-					"contract", contractAddr,
-					"user", userAddr.String(),
-					"gas_used", gasUsed,
-					"error", sanitizeForLog(policyErr.Error()),
-				)
-				reasonFromError = policyErr.Error()
-			} else {
-				// Safety: nil result without error
-				ctx.Logger().With("module", "sponsor-contract-tx").Error(
-					"policy result is unexpectedly nil despite no error",
-					"contract", contractAddr,
-					"user", userAddr.String(),
-				)
-				reasonFromError = "policy check returned nil result"
 			}
+		}
 
-			// Emit a skip event for observability (DeliverTx only)
-			if !ctx.IsCheckTx() {
+		// (sponsor-specific pre-checks executed earlier inside fee block when haveValidTicket)
+		// Two-phase flow: inject sponsor info only in DeliverTx; in CheckTx, mark authorization when a valid ticket exists.
+		if haveValidTicket {
+			contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
+			sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
+			fee := sdk.NewCoins()
+			if feeTx, ok := tx.(sdk.FeeTx); ok {
+				fee = feeTx.GetFee()
+			}
+			sInfo := SponsorPaymentInfo{
+				ContractAddr: contractAccAddr,
+				SponsorAddr:  sponsorAccAddr,
+				UserAddr:     userAddr,
+				Fee:          fee,
+				IsSponsored:  true,
+				DigestCounts: requiredCounts,
+			}
+			ctx = ctx.WithValue(sponsorPaymentKey{}, sInfo)
+		}
+
+		// Two‑phase requires ticket: after (optional) sponsor injection via ticket,
+		// continue to next ante without running legacy policy checks here.
+		return next(ctx, tx, simulate)
+	} else { // Not sponsored (including not found), skip sponsorship logic
+		// In CheckTx: do not error; pass through without sponsorship checks
+		if ctx.IsCheckTx() {
+			return next(ctx, tx, simulate)
+		}
+		// DeliverTx: emit skip event and, if needed, check self-pay affordability to return a clear error
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent(
+				types.EventTypeSponsorshipSkipped,
+				sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
+				sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+			),
+		)
+		if feeTx, ok := tx.(sdk.FeeTx); ok {
+			declaredFee := feeTx.GetFee()
+			if !declaredFee.IsZero() && userAddrErr == nil && !userAddr.Empty() {
+				effectiveFee := sctd.getEffectiveFee(ctx, tx)
+				userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
+				if !userBalance.IsAllGTE(effectiveFee) {
+					return ctx, errorsmod.Wrapf(
+						sdkerrors.ErrInsufficientFunds,
+						"sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
+						contractAddr,
+						userAddr.String(),
+						effectiveFee.String(),
+						userBalance.String(),
+					)
+				}
+				// self-pay path: record event and continue
 				ctx.EventManager().EmitEvent(
 					sdk.NewEvent(
-						types.EventTypeSponsorshipSkipped,
+						types.EventTypeUserSelfPay,
 						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-						sdk.NewAttribute(types.AttributeKeyReason, sanitizeForLog(reasonFromError)),
+						sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+						sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
+						sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
 					),
 				)
 			}
-            // Handle fallback; if in CheckTx and fallback returns error, record local cooldown
-            newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reasonFromError)
-            if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
-                now := ctx.BlockTime()
-                if now.IsZero() { now = time.Now() }
-                sctd.cstate.recordFailure(contractAddr, userAddr.String(), now)
-            }
-            // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
-            if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {
-                if blocked, untilH, _ := sctd.keeper.IncrementFailedAttempts(ctx, contractAddr, userAddr.String()); blocked {
-                    ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                        "global cooldown started due to repeated failures",
-                        "contract", contractAddr,
-                        "user", userAddr.String(),
-                        "until_height", untilH,
-                    )
-                    // Emit event for observability on DeliverTx path
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeGlobalCooldownStarted,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                            sdk.NewAttribute(types.AttributeKeyUntilHeight, fmt.Sprintf("%d", untilH)),
-                        ),
-                    )
-                }
-            }
-            return newCtx, fbErr
-        }
-
-		// Policy check succeeded; consume gas on the main context for consistent estimation
-		consumeGasSafely(ctx, gasUsed, "contract policy check")
-
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"gas consumed for contract policy check",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-			"gas_consumed", gasUsed,
-			"total_gas_after", ctx.GasMeter().GasConsumed(),
-		)
-
-		// check if the result is eligible
-		if !policyResult.Eligible {
-			// User is not eligible according to contract policy, use the specific reason from contract if provided and go back to standard fee processing
-            newCtx, fbErr := sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, policyResult.Reason)
-            if ctx.IsCheckTx() && fbErr != nil && sctd.cstate != nil && sctd.cstate.enabled {
-                now := ctx.BlockTime()
-                if now.IsZero() { now = time.Now() }
-                sctd.cstate.recordFailure(contractAddr, userAddr.String(), now)
-            }
-            // On DeliverTx path, if user cannot self-pay (fbErr is ErrInsufficientFunds), increment global failed attempts
-            if !ctx.IsCheckTx() && fbErr != nil && sdkerrors.ErrInsufficientFunds.Is(fbErr) {
-                if blocked, untilH, _ := sctd.keeper.IncrementFailedAttempts(ctx, contractAddr, userAddr.String()); blocked {
-                    ctx.Logger().With("module", "sponsor-contract-tx").Info(
-                        "global cooldown started due to multiple ineligible failures",
-                        "contract", contractAddr,
-                        "user", userAddr.String(),
-                        "until_height", untilH,
-                    )
-                    // Emit event for observability on DeliverTx path
-                    ctx.EventManager().EmitEvent(
-                        sdk.NewEvent(
-                            types.EventTypeGlobalCooldownStarted,
-                            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-                            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                            sdk.NewAttribute(types.AttributeKeyUntilHeight, fmt.Sprintf("%d", untilH)),
-                        ),
-                    )
-                }
-            }
-            return newCtx, fbErr
-        }
-
-		ctx.Logger().With("module", "sponsor-contract-tx").Info(
-			"user is eligible for sponsored transaction according to contract policy",
-			"contract", contractAddr,
-			"user", userAddr.String(),
-		)
-
-		// If result is eligible, proceed with sponsorship
-		// Validate sponsor address
-		sponsorAccAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-		if err != nil {
-			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid sponsor address")
 		}
-
-		// Also validate contract address for context
-		contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-		if err != nil {
-			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
-		}
-
-		// Handle sponsored fee payment using feegrant-like mechanism
-		feeTx, ok := tx.(sdk.FeeTx)
-		if ok {
-			fee := feeTx.GetFee()
-			if !fee.IsZero() {
-				// Check user's grant limit before processing the transaction and check if the current usage will overflow the max spend limit
-				if err := sctd.keeper.CheckUserGrantLimit(ctx, userAddr.String(), contractAddr, fee); err != nil {
-					return ctx, err
-				}
-
-				// Check if sponsor has sufficient balance
-				sponsorBalance := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr)
-				if !sponsorBalance.IsAllGTE(fee) {
-					// Emit sponsor insufficient funds event only in DeliverTx mode
-					if !ctx.IsCheckTx() {
-						ctx.EventManager().EmitEvent(
-							sdk.NewEvent(
-								types.EventTypeSponsorInsufficient,
-								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-								sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAccAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, fee.String()),
-							),
-						)
-					}
-					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "user has insufficient balance and sponsor account %s also has insufficient funds: required %s, available %s", sponsorAccAddr, fee, sponsorBalance)
-				}
-
-				// Store sponsor payment info in context (type-safe key) so the sponsor-aware
-				// fee decorator can deduct fees from the sponsor.
-				// Do not use FeeGranter here to avoid conflicting with the native feegrant module.
-				sponsorPayment := SponsorPaymentInfo{
-					ContractAddr: contractAccAddr,
-					SponsorAddr:  sponsorAccAddr,
-					UserAddr:     userAddr,
-					Fee:          fee,
-					IsSponsored:  true,
-				}
-				ctx = ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
-
-				ctx.Logger().With("module", "sponsor-contract-tx").Info(
-					"sponsor info stored in context",
-					"contract", contractAccAddr.String(),
-					"sponsor", sponsorAccAddr.String(),
-					"user", userAddr.String(),
-					"fee", fee.String(),
-				)
-			}
-		}
-
-		// Event will be emitted in sponsor_decorator.go after successful fee deduction
-	} else if found && !sponsor.IsSponsored { // If not found or not sponsored, skip sponsorship logic
-		// Sponsorship is disabled for this contract
-		// Emit an informative skip event for observability (DeliverTx only)
-		if !ctx.IsCheckTx() {
-			ctx.EventManager().EmitEvent(
-				sdk.NewEvent(
-					types.EventTypeSponsorshipSkipped,
-					sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-					sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-				),
-			)
-		}
-
-			// If the user cannot afford the fee themselves, return a clearer error
-			if feeTx, ok := tx.(sdk.FeeTx); ok {
-			declaredFee := feeTx.GetFee()
-			if !declaredFee.IsZero() {
-                // Align with fee policy using txFeeChecker
-                effectiveFee := sctd.getEffectiveFee(ctx, tx)
-				if userAddrErr == nil && !userAddr.Empty() {
-					userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
-					if !userBalance.IsAllGTE(effectiveFee) {
-						// Provide a user-facing reason to explain lack of sponsorship
-						return ctx, errorsmod.Wrapf(
-							sdkerrors.ErrInsufficientFunds,
-							"sponsorship disabled for contract %s; user %s has insufficient balance to pay fees. Required: %s, Available: %s",
-							contractAddr,
-							userAddr.String(),
-							effectiveFee.String(),
-							userBalance.String(),
-						)
-					}
-					// If user can self-pay, record a helpful event in DeliverTx
-					if !ctx.IsCheckTx() {
-						ctx.EventManager().EmitEvent(
-							sdk.NewEvent(
-								types.EventTypeUserSelfPay,
-								sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr),
-								sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-								sdk.NewAttribute(types.AttributeKeyReason, "contract_sponsorship_disabled"),
-								sdk.NewAttribute(types.AttributeKeyFeeAmount, effectiveFee.String()),
-							),
-						)
-					}
-				}
-			}
-		}
-
 		ctx.Logger().With("module", "sponsor-contract-tx").Info(
 			"sponsorship disabled for contract; using standard fee processing",
 			"contract", contractAddr,
 		)
+		return next(ctx, tx, simulate)
 	}
-
-	return next(ctx, tx, simulate)
 }
 
 // TransactionValidationResult holds the result of transaction validation
@@ -1136,77 +636,60 @@ type TransactionValidationResult struct {
 
 // validateSponsoredTransaction validates that the transaction meets sponsor requirements
 // Returns validation result instead of error to allow fallback to user payment
-func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
+// preScanTxForSponsorship performs a single pass over tx messages to:
+// - determine if we should attempt sponsorship (and the normalized contract address)
+// - collect the first contract address (for observability when sponsorship is disabled)
+// - gather all MsgExecuteContract messages targeting that contract in order
+func preScanTxForSponsorship(tx sdk.Tx) (*TransactionValidationResult, string, []*wasmtypes.MsgExecuteContract) {
 	msgs := tx.GetMsgs()
 	if len(msgs) == 0 {
-		return &TransactionValidationResult{
-			ContractAddress: "",
-			SuggestSponsor:  false,
-			SkipReason:      "",
-		}
+		return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: ""}, "", nil
 	}
 
-    // We record a normalized(bech32) contract address only after successful validation.
-    // This avoids echoing raw, potentially malicious input into logs or reasons.
-    var sponsoredContract string
+	var firstContractMsg string  // for event observability
+	var sponsoredContract string // normalized contract when valid
+	var execMsgs []*wasmtypes.MsgExecuteContract
 
-	// Check messages - for sponsored transactions, only allow MsgExecuteContract to the same sponsored contract
 	for _, msg := range msgs {
 		msgType := sdk.MsgTypeURL(msg)
-
 		switch execMsg := msg.(type) {
-		// contract execution message
-        case *wasmtypes.MsgExecuteContract:
-            // Normalize incoming address first; if invalid, skip sponsorship without echoing raw input
-            if acc, err := sdk.AccAddressFromBech32(execMsg.Contract); err != nil {
-                return &TransactionValidationResult{
-                    ContractAddress: "",
-                    SuggestSponsor:  false,
-                    SkipReason:      "invalid_contract_address",
-                }
-            } else {
-                normalized := acc.String()
-                if sponsoredContract == "" {
-                    // First valid contract message - record normalized address
-                    sponsoredContract = normalized
-                } else {
-                    // Additional contract message - must match first (normalized) address
-                    if normalized != sponsoredContract {
-                        return &TransactionValidationResult{
-                            ContractAddress: "",
-                            SuggestSponsor:  false,
-                            SkipReason:      "multiple contracts in tx",
-                        }
-                    }
-                }
-            }
-        default:
-			// Found non-contract message firstly in the transaction, pass through(no sponsor needed)
-			// If the first transaction is a non-contract transaction, it indicates a normal regular transaction.
-			// We do not need to mark the event, just execute it like a regular transaction, and the user will not perceive it.
-			if sponsoredContract == "" {
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					SuggestSponsor:  false,
-					SkipReason:      "",
-				}
-			} else {
-				// Found non-contract message later in the transaction - skip sponsorship
-				return &TransactionValidationResult{
-					ContractAddress: "",
-					SuggestSponsor:  false,
-					SkipReason:      fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType),
-				}
+		case *wasmtypes.MsgExecuteContract:
+			// record first contract message address as-is (for disabled path observability)
+			if firstContractMsg == "" {
+				firstContractMsg = execMsg.Contract
 			}
+			// Normalize and validate
+			acc, err := sdk.AccAddressFromBech32(execMsg.Contract)
+			if err != nil {
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: "invalid_contract_address"}, firstContractMsg, nil
+			}
+			normalized := acc.String()
+			if sponsoredContract == "" {
+				sponsoredContract = normalized
+			} else if normalized != sponsoredContract {
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: "multiple contracts in tx"}, firstContractMsg, nil
+			}
+			// Defer appending exec messages until we are sure sponsorship is suggested (but we can collect progressively)
+			execMsgs = append(execMsgs, execMsg)
+		default:
+			if sponsoredContract == "" {
+				// lead non-contract msg: pass through
+				return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: ""}, firstContractMsg, nil
+			}
+			// Found non-contract after contract: mixed messages
+			return &TransactionValidationResult{ContractAddress: "", SuggestSponsor: false, SkipReason: fmt.Sprintf("transaction contains mixed messages: contract + non-contract (%s)", msgType)}, firstContractMsg, nil
 		}
 	}
 
-	// If we get here, all messages are contract messages for the same contract
-	return &TransactionValidationResult{
-		ContractAddress: sponsoredContract, // normalized bech32 string
-		SuggestSponsor:  true,
-		SkipReason:      "",
-	}
+	// All messages are contract execs to the same contract
+	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: "",}, firstContractMsg, execMsgs
+}
+
+// validateSponsoredTransaction validates tx shape for sponsorship. It delegates to preScanTxForSponsorship
+// to avoid duplicating logic and to keep tests stable.
+func validateSponsoredTransaction(tx sdk.Tx) *TransactionValidationResult {
+	v, _, _ := preScanTxForSponsorship(tx)
+	return v
 }
 
 // handleSponsorshipFallback handles the case when sponsorship is denied but user might pay themselves
@@ -1220,6 +703,10 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 	userAddr sdk.AccAddress,
 	reason string,
 ) (newCtx sdk.Context, err error) {
+	// In simulation, do not reject due to fallback; just proceed
+	if simulate {
+		return next(ctx, tx, simulate)
+	}
 	// Get transaction fee to check if user can afford it
 	feeTx, ok := tx.(sdk.FeeTx)
 	if !ok {
@@ -1227,13 +714,13 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 		return next(ctx, tx, simulate)
 	}
 
-    // Compute effective/required fee using txFeeChecker for consistent behavior
-    declaredFee := feeTx.GetFee()
-    if declaredFee.IsZero() {
-        // Zero fee transaction, just proceed
-        return next(ctx, tx, simulate)
-    }
-    effectiveFee := sctd.getEffectiveFee(ctx, tx)
+	// Compute effective/required fee using txFeeChecker for consistent behavior
+	declaredFee := feeTx.GetFee()
+	if declaredFee.IsZero() {
+		// Zero fee transaction, just proceed
+		return next(ctx, tx, simulate)
+	}
+	effectiveFee := sctd.getEffectiveFee(ctx, tx)
 
 	// Check if user has sufficient balance to pay the fee themselves
 	userBalance := sctd.bankKeeper.SpendableCoins(ctx, userAddr)
@@ -1342,38 +829,19 @@ func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.T
 	return validatedSigner, nil
 }
 
-// consumeGasSafely attempts to consume gas on the main context and logs an error if it panics.
-// This prevents a second panic during failure-path accounting from crashing the node.
-func consumeGasSafely(ctx sdk.Context, gasUsed uint64, desc string) {
-	if gasUsed == 0 {
-		return
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			ctx.Logger().With("module", "sponsor-contract-tx").Error(
-				"failed to consume gas on main context",
-				"gas_to_consume", gasUsed,
-				"recovery_error", r,
-			)
-		}
-	}()
-	// consume gas on the main context for consistency with CheckTx validation
-	ctx.GasMeter().ConsumeGas(gasUsed, desc)
-}
-
 // getEffectiveFee computes the effective/required fee for a tx using the configured
 // txFeeChecker when available; falls back to the declared fee. This keeps self-pay
 // checks, grant-limit checks, and sponsor balance checks consistent with fee policy.
 func (sctd SponsorContractTxAnteDecorator) getEffectiveFee(ctx sdk.Context, tx sdk.Tx) sdk.Coins {
-    feeTx, ok := tx.(sdk.FeeTx)
-    if !ok {
-        return sdk.Coins{}
-    }
-    declaredFee := feeTx.GetFee()
-    if sctd.txFeeChecker != nil {
-        if eff, _, err := sctd.txFeeChecker(ctx, tx); err == nil {
-            return eff
-        }
-    }
-    return declaredFee
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return sdk.Coins{}
+	}
+	declaredFee := feeTx.GetFee()
+	if sctd.txFeeChecker != nil {
+		if eff, _, err := sctd.txFeeChecker(ctx, tx); err == nil {
+			return eff
+		}
+	}
+	return declaredFee
 }

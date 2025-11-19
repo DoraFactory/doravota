@@ -42,34 +42,40 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		}
 	}
 
-	// Set user grant usage state
-	for _, usage := range genState.UserGrantUsages {
-		if usage == nil {
-			continue
-		}
+    // Set user grant usage state
+    for _, usage := range genState.UserGrantUsages {
+        if usage == nil {
+            continue
+        }
+        if err := k.SetUserGrantUsage(ctx, *usage); err != nil {
+            panic(fmt.Errorf("failed to set user grant usage during genesis initialization: %w", err))
+        }
+    }
 
-		if err := k.SetUserGrantUsage(ctx, *usage); err != nil {
-			panic(fmt.Errorf("failed to set user grant usage during genesis initialization: %w", err))
-		}
-	}
+    // Set outstanding policy tickets (including near-expiry tickets). These may be
+    // garbage-collected later by the per-block GC routine.
+    // Enforce method length limit using current module params
+    mLimit := k.GetParams(ctx).MaxMethodNameBytes
+    for _, t := range genState.PolicyTickets {
+        if t == nil { continue }
+        // Basic defensive checks
+        if err := types.ValidateContractAddress(t.ContractAddress); err != nil {
+            panic(fmt.Errorf("invalid policy ticket contract in genesis: %w", err))
+        }
+        if _, err := sdk.AccAddressFromBech32(t.UserAddress); err != nil {
+            panic(fmt.Errorf("invalid policy ticket user address in genesis: %w", err))
+        }
+        if t.Digest == "" {
+            panic(fmt.Errorf("invalid policy ticket digest in genesis: empty"))
+        }
+        if t.Method != "" && mLimit != 0 && uint32(len(t.Method)) > mLimit {
+            panic(fmt.Errorf("invalid policy ticket method in genesis: too long"))
+        }
+        if err := k.SetPolicyTicket(ctx, *t); err != nil {
+            panic(fmt.Errorf("failed to set policy ticket during genesis initialization: %w", err))
+        }
+    }
 
-	// Set failed attempts (global cooldown) state
-	for _, fa := range genState.FailedAttempts {
-		if fa == nil || fa.Record == nil {
-			continue
-		}
-		// Validate addresses
-		if err := types.ValidateContractAddress(fa.ContractAddress); err != nil {
-			panic(fmt.Errorf("invalid failed-attempts contract address in genesis: %w", err))
-		}
-		if fa.UserAddress == "" {
-			panic(fmt.Errorf("invalid failed-attempts user address in genesis: empty"))
-		}
-		if _, err := sdk.AccAddressFromBech32(fa.UserAddress); err != nil {
-			panic(fmt.Errorf("invalid failed-attempts user address in genesis: %w", err))
-		}
-		k.SetFailedAttempts(ctx, fa.ContractAddress, fa.UserAddress, *fa.Record)
-	}
 }
 
 // ExportGenesis returns the capability module's exported genesis
@@ -88,16 +94,22 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 	}
 	genesis.Sponsors = sponsorPtrs
 
-	// Export user grant usage records
-	usages := k.GetAllUserGrantUsages(ctx)
-	usagePtrs := make([]*types.UserGrantUsage, len(usages))
-	for i := range usages {
-		usagePtrs[i] = &usages[i]
-	}
-	genesis.UserGrantUsages = usagePtrs
+    // Export user grant usage records
+    usages := k.GetAllUserGrantUsages(ctx)
+    usagePtrs := make([]*types.UserGrantUsage, len(usages))
+    for i := range usages {
+        usagePtrs[i] = &usages[i]
+    }
+    genesis.UserGrantUsages = usagePtrs
 
-	// Export failed attempts (global cooldown) records via keeper helper
-	genesis.FailedAttempts = k.GetAllFailedAttemptsEntries(ctx)
+    // Export policy tickets
+    var tickets []*types.PolicyTicket
+    k.IteratePolicyTickets(ctx, func(_ []byte, t types.PolicyTicket) (stop bool) {
+        tt := t
+        tickets = append(tickets, &tt)
+        return false
+    })
+    genesis.PolicyTickets = tickets
 
-	return genesis
+    return genesis
 }

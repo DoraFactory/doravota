@@ -118,7 +118,7 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 	// Test default values
 	suite.Require().NotNil(genesis.Params, "Default should have params")
 	suite.Require().True(genesis.Params.SponsorshipEnabled, "Default should enable sponsorship")
-	suite.Require().Equal(uint64(2500000), genesis.Params.MaxGasPerSponsorship, "Default max gas should be 2.5M")
+    // removed gas param; ensure defaults are present
 	suite.Require().Empty(genesis.Sponsors, "Default should have no sponsors")
 
 	// Validate default genesis using the validation function
@@ -128,12 +128,6 @@ func (suite *GenesisTestSuite) TestDefaultGenesis() {
 
 // TestValidateGenesis tests genesis state validation
 func (suite *GenesisTestSuite) TestValidateGenesis() {
-    // helper for valid bech32 acc address
-    mkAddr := func(seed byte) string {
-        b := make([]byte, 20)
-        for i := range b { b[i] = seed }
-        return sdk.AccAddress(b).String()
-    }
     testCases := []struct {
         name      string
         genesis   *types.GenesisState
@@ -166,17 +160,90 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
             }(),
             expectErr: false,
         },
-		{
-			name: "invalid params - zero max gas",
-			genesis: &types.GenesisState{
-				Params: &types.Params{
-					SponsorshipEnabled:   false,
-					MaxGasPerSponsorship: 0, // Invalid
-				},
-				Sponsors: []*types.ContractSponsor{},
-			},
-			expectErr: true,
-		},
+        {
+            name: "policy_ticket method too long rejected",
+            genesis: func() *types.GenesisState {
+                p := types.DefaultParams()
+                p.MaxMethodNameBytes = 4
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"longname"})
+                return &types.GenesisState{
+                    Params: &p,
+                    PolicyTickets: []*types.PolicyTicket{{
+                        ContractAddress: suite.contractAddr1,
+                        UserAddress:     suite.user1.String(),
+                        Digest:          md,
+                        ExpiryHeight:    1,
+                        UsesRemaining:   1,
+                        IssuedHeight:    1,
+                        Method:          "longname",
+                    }},
+                }
+            }(),
+            expectErr: true,
+        },
+        {
+            name: "valid genesis with policy tickets",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                // Build a method ticket digest for method "inc"
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{
+                        {
+                            ContractAddress: suite.contractAddr1,
+                            CreatorAddress:  suite.admin.String(),
+                            SponsorAddress:  sponsorAddr,
+                            IsSponsored:     true,
+                            MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+                        },
+                    },
+                    PolicyTickets: []*types.PolicyTicket{{
+                        ContractAddress: suite.contractAddr1,
+                        UserAddress:     suite.user1.String(),
+                        Digest:          md,
+                        ExpiryHeight:    100,
+                        UsesRemaining:   1,
+                        IssuedHeight:    1,
+                        Method:          "inc",
+                    }},
+                }
+            }(),
+            expectErr: false,
+        },
+        {
+            name: "duplicate policy tickets rejected",
+            genesis: func() *types.GenesisState {
+                params := types.DefaultParams()
+                ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
+                sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+                md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+                t := &types.PolicyTicket{
+                    ContractAddress: suite.contractAddr1,
+                    UserAddress:     suite.user1.String(),
+                    Digest:          md,
+                    ExpiryHeight:    100,
+                    UsesRemaining:   1,
+                    IssuedHeight:    1,
+                    Method:          "inc",
+                }
+                return &types.GenesisState{
+                    Params: &params,
+                    Sponsors: []*types.ContractSponsor{{
+                        ContractAddress: suite.contractAddr1,
+                        CreatorAddress:  suite.admin.String(),
+                        SponsorAddress:  sponsorAddr,
+                        IsSponsored:     true,
+                        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+                    }},
+                    PolicyTickets: []*types.PolicyTicket{t, t},
+                }
+            }(),
+            expectErr: true,
+        },
+        // removed gas param test
 		{
 			name: "duplicate sponsors",
 			genesis: func() *types.GenesisState {
@@ -409,78 +476,6 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
             }(),
             expectErr: true,
         },
-        // FailedAttempts validation cases
-        {
-            name: "failed attempts entry is nil",
-            genesis: func() *types.GenesisState {
-                p := types.DefaultParams()
-                return &types.GenesisState{
-                    Params:          &p,
-                    Sponsors:        []*types.ContractSponsor{},
-                    UserGrantUsages: []*types.UserGrantUsage{},
-                    FailedAttempts:  []*types.FailedAttemptsEntry{nil},
-                }
-            }(),
-            expectErr: true,
-        },
-        {
-            name: "failed attempts record is nil",
-            genesis: func() *types.GenesisState {
-                c := mkAddr(1); u := mkAddr(2)
-                p := types.DefaultParams()
-                return &types.GenesisState{
-                    Params:          &p,
-                    Sponsors:        []*types.ContractSponsor{},
-                    UserGrantUsages: []*types.UserGrantUsage{},
-                    FailedAttempts: []*types.FailedAttemptsEntry{
-                        {ContractAddress: c, UserAddress: u, Record: nil},
-                    },
-                }
-            }(),
-            expectErr: true,
-        },
-        {
-            name: "failed attempts invalid contract address",
-            genesis: func() *types.GenesisState {
-                u := mkAddr(2)
-                p := types.DefaultParams()
-                return &types.GenesisState{
-                    Params:          &p,
-                    FailedAttempts: []*types.FailedAttemptsEntry{
-                        {ContractAddress: "invalid", UserAddress: u, Record: &types.FailedAttempts{}},
-                    },
-                }
-            }(),
-            expectErr: true,
-        },
-        {
-            name: "failed attempts empty user address",
-            genesis: func() *types.GenesisState {
-                c := mkAddr(1)
-                p := types.DefaultParams()
-                return &types.GenesisState{
-                    Params:          &p,
-                    FailedAttempts: []*types.FailedAttemptsEntry{
-                        {ContractAddress: c, UserAddress: "", Record: &types.FailedAttempts{}},
-                    },
-                }
-            }(),
-            expectErr: true,
-        },
-        {
-            name: "failed attempts invalid user address",
-            genesis: func() *types.GenesisState {
-                c := mkAddr(1)
-                p := types.DefaultParams()
-                return &types.GenesisState{
-                    Params:          &p,
-                    FailedAttempts: []*types.FailedAttemptsEntry{
-                        {ContractAddress: c, UserAddress: "invalid-user", Record: &types.FailedAttempts{}},
-                    },
-                }
-            }(),
-            expectErr: true,
-        },
 	}
 
 	for _, tc := range testCases {
@@ -506,7 +501,6 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
     originalGenesis := &types.GenesisState{
         Params: &types.Params{
             SponsorshipEnabled:   true,
-            MaxGasPerSponsorship: 1500000,
         },
         Sponsors: []*types.ContractSponsor{
             {
@@ -539,12 +533,11 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	}
 
 	// Initialize genesis
-	sponsor.InitGenesis(suite.ctx, suite.keeper, *originalGenesis)
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *originalGenesis)
 
-	// Verify parameters were set
-	params := suite.keeper.GetParams(suite.ctx)
-	suite.Require().True(params.SponsorshipEnabled)
-	suite.Require().Equal(uint64(1500000), params.MaxGasPerSponsorship)
+    // Verify parameters were set
+    params := suite.keeper.GetParams(suite.ctx)
+    suite.Require().True(params.SponsorshipEnabled)
 
 	// Verify sponsors were created
 	sponsor1, found := suite.keeper.GetSponsor(suite.ctx, suite.contractAddr1)
@@ -567,12 +560,11 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	suite.Require().True(usage1.TotalGrantUsed[0].Amount.Equal(sdk.NewInt(750)))
 	suite.Require().Equal(int64(123456789), usage1.LastUsedTime)
 
-	// Export genesis and compare
-	exportedGenesis := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    // Export genesis and compare
+    exportedGenesis := sponsor.ExportGenesis(suite.ctx, suite.keeper)
 
-	// Compare parameters
-	suite.Require().Equal(originalGenesis.Params.SponsorshipEnabled, exportedGenesis.Params.SponsorshipEnabled)
-	suite.Require().Equal(originalGenesis.Params.MaxGasPerSponsorship, exportedGenesis.Params.MaxGasPerSponsorship)
+    // Compare parameters
+    suite.Require().Equal(originalGenesis.Params.SponsorshipEnabled, exportedGenesis.Params.SponsorshipEnabled)
 
 	// Compare sponsors count
 	suite.Require().Len(exportedGenesis.Sponsors, len(originalGenesis.Sponsors))
@@ -592,7 +584,7 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 		suite.Require().Equal(len(originalSponsor.MaxGrantPerUser), len(exportedSponsor.MaxGrantPerUser))
 	}
 
-	// Compare exported user grant usages
+    // Compare exported user grant usages
 	exportedUsageMap := make(map[string]*types.UserGrantUsage)
 	for _, usage := range exportedGenesis.UserGrantUsages {
 		exportedUsageMap[usage.UserAddress+"/"+usage.ContractAddress] = usage
@@ -610,6 +602,73 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
 	}
 }
 
+// Test that policy tickets are initialized from genesis and exported back
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_InitExport() {
+    // Prepare one method ticket in genesis
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 50),
+            UsesRemaining:   2,
+            IssuedHeight:    uint64(suite.ctx.BlockHeight()),
+            Method:          "inc",
+        }},
+    }
+
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Verify ticket present in store
+    t, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    suite.Require().Equal("inc", t.Method)
+    suite.Require().Equal(uint32(2), t.UsesRemaining)
+
+    // Export and verify ticket round-trips
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found, "export should include policy ticket")
+}
+
+// Tickets included in genesis that are already expired should be initialized
+// and can be removed by the module's GC routine.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
+    // Create an expired ticket at genesis (expiry < current height)
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight()), // expired when now > expiry
+            UsesRemaining:   1,
+            IssuedHeight:    1,
+            Method:          "inc",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present initially
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    // Advance height and run GC
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Should be removed
+    _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().False(ok)
+}
+
 // TestGenesisRoundTrip tests that genesis init->export->init produces identical state
 func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	// Create original genesis state
@@ -619,7 +678,6 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
     originalGenesis := &types.GenesisState{
         Params: &types.Params{
             SponsorshipEnabled:   false,
-            MaxGasPerSponsorship: 3000000,
         },
         Sponsors: []*types.ContractSponsor{
             {
@@ -661,7 +719,7 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 
 	// Compare the two exports - they should be identical
 	suite.Require().Equal(firstExport.Params.SponsorshipEnabled, secondExport.Params.SponsorshipEnabled)
-	suite.Require().Equal(firstExport.Params.MaxGasPerSponsorship, secondExport.Params.MaxGasPerSponsorship)
+    // removed gas param
 	suite.Require().Len(secondExport.Sponsors, len(firstExport.Sponsors))
 	suite.Require().Len(secondExport.UserGrantUsages, len(firstExport.UserGrantUsages))
 
@@ -679,70 +737,123 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
 	}
 }
 
-// TestFailedAttemptsGenesisRoundTrip verifies failed-attempts (global cooldown) state survives Export -> Init
-func (suite *GenesisTestSuite) TestFailedAttemptsGenesisRoundTrip() {
-    // Helper to make valid bech32 addresses
-    mkAddr := func(seed byte) string {
-        b := make([]byte, 20)
-        for i := range b { b[i] = seed }
-        return sdk.AccAddress(b).String()
+// Tickets that are consumed and expired at or before current height should be removed by GC after height advances.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRemoves() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"inc"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight()),
+            UsesRemaining:   0,
+            Consumed:        true,
+            IssuedHeight:    1,
+            Method:          "inc",
+        }},
     }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present initially
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    // Advance height and GC
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Should be removed
+    _, ok = suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().False(ok)
+}
 
-    contract1 := mkAddr(1)
-    user1 := mkAddr(2)
-    contract2 := mkAddr(3)
-    user2 := mkAddr(4)
-
-    // Prepare original genesis with failed-attempts entries
-    params := types.DefaultParams()
-    original := &types.GenesisState{
-        Params: &params,
-        Sponsors: []*types.ContractSponsor{},
-        UserGrantUsages: []*types.UserGrantUsage{},
-        FailedAttempts: []*types.FailedAttemptsEntry{
-            {
-                ContractAddress: contract1,
-                UserAddress:     user1,
-                Record: &types.FailedAttempts{
-                    Count:             0,
-                    WindowStartHeight: 100,
-                    UntilHeight:       150,
-                },
-            },
-            {
-                ContractAddress: contract2,
-                UserAddress:     user2,
-                Record: &types.FailedAttempts{
-                    Count:             2,
-                    WindowStartHeight: 200,
-                    UntilHeight:       0,
-                },
-            },
-        },
+// Consumed but unexpired ticket should be preserved by GC and exported/imported intact.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Preserved() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"dec"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 10),
+            UsesRemaining:   0,
+            Consumed:        true,
+            IssuedHeight:    1,
+            Method:          "dec",
+        }},
     }
-
-    // Init with original
-    sponsor.InitGenesis(suite.ctx, suite.keeper, *original)
-
-    // Export current state
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Advance height and run GC (should keep, not expired)
+    suite.ctx = suite.ctx.WithBlockHeight(suite.ctx.BlockHeight() + 1)
+    suite.keeper.GarbageCollectByExpiry(suite.ctx, 10)
+    // Still present
+    t, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    suite.Require().True(t.Consumed)
+    // Export and ensure ticket exists in export
     exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
-    // Basic presence
-    suite.Require().Len(exported.FailedAttempts, 2)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            suite.Require().True(pt.Consumed)
+            break
+        }
+    }
+    suite.Require().True(found)
+}
 
-    // Create new keeper and context; import exported
-    k2, ctx2 := setupKeeper(suite.T())
-    sponsor.InitGenesis(ctx2, k2, *exported)
+// UsesRemaining=0 and not consumed is allowed to import; if not expired, it should be preserved and exported back.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"ping"})
+    p := types.DefaultParams()
+    gen := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 5),
+            UsesRemaining:   0,
+            Consumed:        false,
+            IssuedHeight:    1,
+            Method:          "ping",
+        }},
+    }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
+    // Present and preserved by export
+    _, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contractAddr1, suite.user1.String(), md)
+    suite.Require().True(ok)
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+    found := false
+    for _, pt := range exported.PolicyTickets {
+        if pt.ContractAddress == suite.contractAddr1 && pt.UserAddress == suite.user1.String() && pt.Digest == md {
+            found = true
+            break
+        }
+    }
+    suite.Require().True(found)
+}
 
-    // Verify failed attempts restored
-    rec1, found1 := k2.GetFailedAttempts(ctx2, contract1, user1)
-    suite.Require().True(found1)
-    suite.Require().Equal(int64(150), rec1.UntilHeight)
-    suite.Require().Equal(int64(100), rec1.WindowStartHeight)
-
-    rec2, found2 := k2.GetFailedAttempts(ctx2, contract2, user2)
-    suite.Require().True(found2)
-    suite.Require().Equal(uint32(2), rec2.Count)
-    suite.Require().Equal(int64(0), rec2.UntilHeight)
+// Method is optional display-only field; digest remains the key. Empty method should be accepted by genesis validation.
+func (suite *GenesisTestSuite) TestValidateGenesis_PolicyTicket_MethodOptional() {
+    p := types.DefaultParams()
+    md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"noop"})
+    g := &types.GenesisState{
+        Params: &p,
+        PolicyTickets: []*types.PolicyTicket{{
+            ContractAddress: suite.contractAddr1,
+            UserAddress:     suite.user1.String(),
+            Digest:          md,
+            ExpiryHeight:    1,
+            UsesRemaining:   1,
+            IssuedHeight:    1,
+            Method:          "",
+        }},
+    }
+    err := types.ValidateGenesis(*g)
+    suite.Require().NoError(err)
 }
 
 // TestEmptyGenesis tests initialization with minimal genesis state
@@ -763,10 +874,9 @@ func (suite *GenesisTestSuite) TestEmptyGenesis() {
 	suite.Require().Empty(exported.UserGrantUsages)
 
 	// Parameters should be set to defaults
-	params = suite.keeper.GetParams(suite.ctx)
-	defaultParams := types.DefaultParams()
-	suite.Require().Equal(defaultParams.SponsorshipEnabled, params.SponsorshipEnabled)
-	suite.Require().Equal(defaultParams.MaxGasPerSponsorship, params.MaxGasPerSponsorship)
+    params = suite.keeper.GetParams(suite.ctx)
+    defaultParams := types.DefaultParams()
+    suite.Require().Equal(defaultParams.SponsorshipEnabled, params.SponsorshipEnabled)
 }
 
 // TestGenesisWithDuplicateValidation tests that duplicate detection works
@@ -882,4 +992,26 @@ func (suite *GenesisTestSuite) TestExportGenesis_RoundTrip_Normalizes() {
     suite.Require().Len(out, 1)
     suite.Require().Equal("peaka", out[0].Denom)
     suite.Require().Equal(sdk.NewInt(3), out[0].Amount)
+}
+
+// TestParamsRoundTrip_IncludesNewField ensures new params fields are preserved across init/export
+func (suite *GenesisTestSuite) TestParamsRoundTrip_IncludesNewField() {
+    params := types.DefaultParams()
+    params.SponsorshipEnabled = true
+    // set other param to ensure export-path remains intact
+    params.PolicyTicketTtlBlocks = 77
+    // Removed: PolicyProbeGasPrice
+    params.PolicyTicketTtlBlocks = 9
+    params.MaxMethodTicketUsesPerIssue = 11
+
+    genesis := &types.GenesisState{ Params: &params }
+    sponsor.InitGenesis(suite.ctx, suite.keeper, *genesis)
+    exported := sponsor.ExportGenesis(suite.ctx, suite.keeper)
+
+    suite.Require().NotNil(exported.Params)
+    suite.Require().Equal(params.SponsorshipEnabled, exported.Params.SponsorshipEnabled)
+    suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
+    // Removed: PolicyProbeGasPrice
+    suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
+    suite.Require().Equal(params.MaxMethodTicketUsesPerIssue, exported.Params.MaxMethodTicketUsesPerIssue)
 }

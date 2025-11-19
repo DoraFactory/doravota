@@ -29,6 +29,18 @@ service Msg {
 
   // WithdrawSponsorFunds withdraws funds from the derived sponsor address to recipient (admin only)
   rpc WithdrawSponsorFunds(MsgWithdrawSponsorFunds) returns (MsgWithdrawSponsorFundsResponse);
+
+  // IssuePolicyTicket allows the sponsor admin or the configured ticket issuer
+  // to issue a policy ticket for
+  // (contract,user,digest) without any probe step. Useful for whitelisting flows.
+  // The issued ticket obeys the effective TTL rules.
+  rpc IssuePolicyTicket(MsgIssuePolicyTicket) returns (MsgIssuePolicyTicketResponse);
+
+  // RevokePolicyTicket allows the sponsor admin or the configured ticket issuer
+  // to revoke an existing, unconsumed
+  // policy ticket for (contract,user,digest). If the ticket does not exist or has
+  // already been consumed, the call fails.
+  rpc RevokePolicyTicket(MsgRevokePolicyTicket) returns (MsgRevokePolicyTicketResponse);
 }
 
 // MsgSetSponsor defines the message to set a sponsor
@@ -42,8 +54,12 @@ message MsgSetSponsor {
   string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
   string contract_address = 2
       [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
-  bool is_sponsored = 3;
-  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 4;
+  // Optional custom ticket issuer. When set, only the contract admin or this
+  // address is authorized to issue/revoke policy tickets for the contract.
+  string ticket_issuer_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  bool is_sponsored = 4;
+  repeated cosmos.base.v1beta1.Coin max_grant_per_user = 5;
+
 }
 
 // MsgSetSponsorResponse defines the response to MsgSetSponsor
@@ -62,6 +78,10 @@ message MsgUpdateSponsor {
       [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
   bool is_sponsored = 3;
   repeated cosmos.base.v1beta1.Coin max_grant_per_user = 4;
+  // Optional custom ticket issuer. When set, only the contract admin or this
+  // address is authorized to issue/revoke policy tickets for the contract. If
+  // omitted or empty, the existing value remains unchanged.
+  string ticket_issuer_address = 5 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
 }
 
 // MsgUpdateSponsorResponse defines the response to MsgUpdateSponsor
@@ -117,3 +137,51 @@ message MsgWithdrawSponsorFunds {
 
 // MsgWithdrawSponsorFundsResponse defines the response
 message MsgWithdrawSponsorFundsResponse {}
+
+// MsgIssuePolicyTicket defines a manager-or-issuer message to issue a ticket bound
+// to one or more method names (top-level execute keys). Parameters are not
+// included, enabling method-level whitelisting.
+message MsgIssuePolicyTicket {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "sponsor/MsgIssuePolicyTicket";
+
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string contract_address = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string user_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // Top-level execute method name. Exactly one is required.
+  string method = 4;
+  // Requested uses for this ticket. The chain clamps to the current
+  // max_method_ticket_uses_per_issue param. 0 or omitted implies 1.
+  uint32 uses = 5;
+  // Optional ticket TTL in blocks. When set to >0, the ticket expiry is set to
+  // current_block_height + ttl_blocks. When omitted or 0, the module default
+  // policy_ticket_ttl_blocks applies.
+  uint32 ttl_blocks = 6;
+}
+
+message MsgIssuePolicyTicketResponse {
+  bool created = 1; // true if a new ticket was created; false if existing returned
+  PolicyTicket ticket = 2;
+}
+
+// MsgRevokePolicyTicket defines a manager-or-issuer message to revoke (delete) a policy ticket
+// for (contract,user,method). The server computes the method digest from
+// contract_address + "method:" + method. Only unconsumed tickets may be revoked.
+message MsgRevokePolicyTicket {
+  option (cosmos.msg.v1.signer) = "creator";
+  option (amino.name) = "sponsor/MsgRevokePolicyTicket";
+
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string creator = 1 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string contract_address = 2 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  string user_address = 3 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // Top-level execute method name to revoke.
+  string method = 4;
+}
+
+message MsgRevokePolicyTicketResponse {}
