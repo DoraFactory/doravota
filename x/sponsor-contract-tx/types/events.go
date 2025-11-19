@@ -1,0 +1,58 @@
+package types
+
+// Event types for the sponsor module
+const (
+    EventTypeSetSponsor            = "set_sponsor"
+    EventTypeUpdateSponsor         = "update_sponsor"
+    EventTypeDeleteSponsor         = "delete_sponsor"
+    EventTypeSponsoredTx           = "sponsored_transaction"
+    EventTypeSponsoredTxTicket     = "sponsored_tx_ticket" // New: per-digest ticket detail for a sponsored tx
+    EventTypePolicyTicketRevoked    = "policy_ticket_revoked"
+    EventTypePolicyTicketIssued     = "policy_ticket_issued"
+    EventTypeTicketUsesClamped      = "ticket_uses_clamped"
+	EventTypePolicyTicketIssueConflict = "policy_ticket_issue_conflict" // New: conflict when issuing an existing active ticket
+	EventTypeSponsorUsage          = "sponsor_usage_updated"      // New: track usage updates
+	EventTypeSponsorInsufficient   = "sponsor_insufficient_funds" // New: sponsor can't pay
+	EventTypeUserSelfPay           = "user_self_pay"              // New: user paid themselves
+	EventTypeSponsorshipSkipped    = "sponsorship_skipped"        // New: sponsorship skipped due to transaction structure
+	EventTypeSponsorshipDisabled   = "sponsorship_disabled"       // New: sponsorship globally disabled
+	EventTypeUpdateParams          = "update_params"              // New: governance parameter updates
+    EventTypeSponsorWithdrawal     = "sponsor_withdraw_funds"     // New: sponsor funds withdrawal
+
+
+)
+
+// Event attribute keys
+const (
+	AttributeKeyCreator              = "creator"
+	AttributeKeySponsorAddress       = "sponsor_address"
+	AttributeKeyContractAddress      = "contract_address"
+	AttributeKeyIsSponsored          = "is_sponsored"
+	AttributeKeyUser                 = "user"
+    AttributeKeySponsorAmount        = "sponsor_amount"
+    AttributeKeyFeeAmount            = "fee_amount"
+	AttributeKeyReason               = "reason"
+	AttributeKeyTransactionType      = "transaction_type"
+	AttributeKeyAuthority            = "authority"
+	AttributeKeySponsorshipEnabled   = "sponsorship_enabled"
+	AttributeKeyRecipient            = "recipient"
+	AttributeKeyUntilHeight          = "until_height"
+    AttributeKeyDigest               = "digest"
+    AttributeKeyExpiryHeight         = "expiry_height"
+    AttributeKeyTtlLeft              = "ttl_left"
+    AttributeKeyMethod               = "method"
+    AttributeKeyUsesConsumed         = "uses_consumed"           // New: consumed uses for this digest in the tx
+    AttributeKeyUsesRemainingPre     = "uses_remaining_pre"      // New: pre-consumption remaining uses
+    AttributeKeyUsesRemainingPost    = "uses_remaining_post"     // New: post-consumption remaining uses
+    AttributeKeyRequestedUses        = "requested_uses"
+    AttributeKeyClampedTo            = "clamped_to"
+    // Param update attribute keys
+    AttributeKeyPolicyTicketTtlBlocks       = "policy_ticket_ttl_blocks"
+    AttributeKeyMaxExecMsgsPerTxForSponsor  = "max_exec_msgs_per_tx_for_sponsor"
+    AttributeKeyMaxPolicyExecMsgBytes       = "max_policy_exec_msg_bytes"
+    AttributeKeyMaxMethodTicketUsesPerIssue = "max_method_ticket_uses_per_issue"
+    AttributeKeyTicketGcPerBlock            = "ticket_gc_per_block"
+    AttributeKeyMaxMethodNameBytes          = "max_method_name_bytes"
+    AttributeKeyMaxMethodJSONDepth          = "max_method_json_depth"
+	AttributeValueTrue               = "true"
+)

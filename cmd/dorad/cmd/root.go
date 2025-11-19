@@ -368,7 +368,7 @@ func initAppConfig() (string, interface{}) {
 	// - if you set srvCfg.MinGasPrices non-empty, validators CAN tweak their
 	//   own app.toml to override, or use this default value.
 	//
-	srvCfg.MinGasPrices = "100000000000peaka"
+	srvCfg.MinGasPrices = "10000000000peaka"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,

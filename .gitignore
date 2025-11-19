@@ -2,3 +2,42 @@
 .vscode/
 .DS_Store
 release
+
+
+scripts/*
+
+# Rust artifacts
+**/*.rs.bk
+**/Cargo.lock
+
+# Docker volumes
+*_cache/
+registry_cache/
+build/*
+
+docs/static/openapi.json
+
+# Buf generated files
+buf.lock
+proto/buf.lock
+
+# Go build artifacts
+build/
+dist/
+vendor/
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+
+# OS specific files
+Thumbs.db
+.DS_Store
+
+contracts/counter/artifacts
+contracts/counter/target

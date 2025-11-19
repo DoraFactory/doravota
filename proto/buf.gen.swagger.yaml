@@ -1,0 +1,10 @@
+version: v1
+plugins:
+  - plugin: openapiv2
+    out: ../docs/static
+    opt:
+      - allow_merge=true
+      - merge_file_name=openapi
+      - output_format=yaml
+      - logtostderr=true
+      - include_package_in_tags=true
