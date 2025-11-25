@@ -85,238 +85,244 @@ func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, au
 }
 
 func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *MockWasmKeeper, bankkeeper.Keeper) {
-    keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
-    msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
-    return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
+	keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
+	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
+	return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
 }
 
 func TestIssuePolicyTicket_UsesClampAndDecrement(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
-    // Set params with a known cap
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 3
-    require.NoError(t, keeper.SetParams(ctx, p))
+	// Set params with a known cap
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 3
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    // Prepare valid bech32 addresses
-    contract := sdk.AccAddress([]byte("contract_issue_method____")).String()
-    creator := sdk.AccAddress([]byte("creator_issue_method_____"))
-    user := sdk.AccAddress([]byte("user_issue_method________"))
+	// Prepare valid bech32 addresses
+	contract := sdk.AccAddress([]byte("contract_issue_method____")).String()
+	creator := sdk.AccAddress([]byte("creator_issue_method_____"))
+	user := sdk.AccAddress([]byte("user_issue_method________"))
 
-    // Mock contract info with admin = creator
-    mockWasmKeeper.SetContractInfo(contract, creator.String())
-    // Require sponsor exists for issuance
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	// Mock contract info with admin = creator
+	mockWasmKeeper.SetContractInfo(contract, creator.String())
+	// Require sponsor exists for issuance
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // Issue with uses well above the cap (e.g., 10 > 3) and one method
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         creator.String(),
-        ContractAddress: contract,
-        UserAddress:     user.String(),
-        Method:          "do",
-        Uses:            10,
-    })
-    require.NoError(t, err)
-    require.NotNil(t, resp)
-    require.True(t, resp.Created)
-    require.NotNil(t, resp.Ticket)
-    // Clamped to 3
-    require.Equal(t, uint32(3), resp.Ticket.UsesRemaining)
+	// Issue with uses well above the cap (e.g., 10 > 3) and one method
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         creator.String(),
+		ContractAddress: contract,
+		UserAddress:     user.String(),
+		Method:          "do",
+		Uses:            10,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.True(t, resp.Created)
+	require.NotNil(t, resp.Ticket)
+	// Clamped to 3
+	require.Equal(t, uint32(3), resp.Ticket.UsesRemaining)
 
-    // Fetch from store; should match
-    tkt, ok := keeper.GetPolicyTicket(ctx, contract, user.String(), resp.Ticket.Digest)
-    require.True(t, ok)
-    require.Equal(t, uint32(3), tkt.UsesRemaining)
-    require.False(t, tkt.Consumed)
+	// Fetch from store; should match
+	tkt, ok := keeper.GetPolicyTicket(ctx, contract, user.String(), resp.Ticket.Digest)
+	require.True(t, ok)
+	require.Equal(t, uint32(3), tkt.UsesRemaining)
+	require.False(t, tkt.Consumed)
 
-    // Consume twice; uses should decrement, not consumed yet
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
-    tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
-    require.Equal(t, uint32(2), tkt.UsesRemaining)
-    require.False(t, tkt.Consumed)
+	// Consume twice; uses should decrement, not consumed yet
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
+	tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
+	require.Equal(t, uint32(2), tkt.UsesRemaining)
+	require.False(t, tkt.Consumed)
 
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
-    tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
-    require.Equal(t, uint32(1), tkt.UsesRemaining)
-    require.False(t, tkt.Consumed)
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
+	tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
+	require.Equal(t, uint32(1), tkt.UsesRemaining)
+	require.False(t, tkt.Consumed)
 
-    // Final consume: reaches 0 and consumed=true
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
-    tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
-    require.Equal(t, uint32(0), tkt.UsesRemaining)
-    require.True(t, tkt.Consumed)
+	// Final consume: reaches 0 and consumed=true
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user.String(), tkt.Digest))
+	tkt, _ = keeper.GetPolicyTicket(ctx, contract, user.String(), tkt.Digest)
+	require.Equal(t, uint32(0), tkt.UsesRemaining)
+	require.True(t, tkt.Consumed)
 }
 
 func TestIssuePolicyTicket_UsesZeroTreatedAsOne(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
-    // Default params default to 3; keep it
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 3
-    require.NoError(t, keeper.SetParams(ctx, p))
+	// Default params default to 3; keep it
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 3
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    // Valid addresses
-    contract := sdk.AccAddress([]byte("contract_issue_method_u0")).String()
-    creator := sdk.AccAddress([]byte("creator_issue_method_u0")).String()
-    user := sdk.AccAddress([]byte("user_issue_method_u0__")).String()
+	// Valid addresses
+	contract := sdk.AccAddress([]byte("contract_issue_method_u0")).String()
+	creator := sdk.AccAddress([]byte("creator_issue_method_u0")).String()
+	user := sdk.AccAddress([]byte("user_issue_method_u0__")).String()
 
-    mockWasmKeeper.SetContractInfo(contract, creator)
-    // Require sponsor exists for issuance
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	mockWasmKeeper.SetContractInfo(contract, creator)
+	// Require sponsor exists for issuance
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // Issue with uses = 0 (or omitted), treated as 1
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         creator,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "call",
-        Uses:            0,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
+	// Issue with uses = 0 (or omitted), treated as 1
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         creator,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "call",
+		Uses:            0,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
 
-    // Consume once -> consumed
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
-    tkt, _ := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
-    require.Equal(t, uint32(0), tkt.UsesRemaining)
-    require.True(t, tkt.Consumed)
+	// Consume once -> consumed
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
+	tkt, _ := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
+	require.Equal(t, uint32(0), tkt.UsesRemaining)
+	require.True(t, tkt.Consumed)
 }
-
 
 // Removed: probe window tests
 
 func TestKeeper_GarbageCollect_ExpiredOnly(t *testing.T) {
-    keeper, ctx, _, accountKeeper, bankKeeper := setupKeeperWithDeps(t)
-    _ = accountKeeper; _ = bankKeeper
-    // Ensure we have a positive block height to avoid uint underflow when computing expired heights
-    ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 10)
-    // insert tickets: one expired, one alive
-    now := uint64(ctx.BlockHeight())
-    t1 := types.PolicyTicket{ContractAddress: "c1", UserAddress: "u1", Digest: "d1", ExpiryHeight: now - 1}
-    t2 := types.PolicyTicket{ContractAddress: "c2", UserAddress: "u2", Digest: "d2", ExpiryHeight: now + 10}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, t1))
-    require.NoError(t, keeper.SetPolicyTicket(ctx, t2))
+	keeper, ctx, _, accountKeeper, bankKeeper := setupKeeperWithDeps(t)
+	_ = accountKeeper
+	_ = bankKeeper
+	// Ensure we have a positive block height to avoid uint underflow when computing expired heights
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 10)
+	// insert tickets: one expired, one alive
+	now := uint64(ctx.BlockHeight())
+	t1 := types.PolicyTicket{ContractAddress: "c1", UserAddress: "u1", Digest: "d1", ExpiryHeight: now - 1}
+	t2 := types.PolicyTicket{ContractAddress: "c2", UserAddress: "u2", Digest: "d2", ExpiryHeight: now + 10}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, t1))
+	require.NoError(t, keeper.SetPolicyTicket(ctx, t2))
 
-    // run GC deleting all expired items
-    keeper.GarbageCollectByExpiry(ctx, 10)
-    // expired items removed/invalidated, alive remain
-    _, ok := keeper.GetPolicyTicket(ctx, "c1", "u1", "d1"); require.False(t, ok)
-    _, ok = keeper.GetPolicyTicket(ctx, "c2", "u2", "d2"); require.True(t, ok)
-    // Removed negative probe cache assertions
+	// run GC deleting all expired items
+	keeper.GarbageCollectByExpiry(ctx, 10)
+	// expired items removed/invalidated, alive remain
+	_, ok := keeper.GetPolicyTicket(ctx, "c1", "u1", "d1")
+	require.False(t, ok)
+	_, ok = keeper.GetPolicyTicket(ctx, "c2", "u2", "d2")
+	require.True(t, ok)
+	// Removed negative probe cache assertions
 }
 
 func TestMsgServer_RevokePolicyTicket(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
-    _ = bankKeeper
-    // Params
-    params := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, params))
-    // Contract admin
-    admin := sdk.AccAddress([]byte("admin_addr_revoke__________"))
-    contract := sdk.AccAddress([]byte("contract_addr_revoke_______"))
-    mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
-    // Sponsor exists
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
+	keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
+	_ = bankKeeper
+	// Params
+	params := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, params))
+	// Contract admin
+	admin := sdk.AccAddress([]byte("admin_addr_revoke__________"))
+	contract := sdk.AccAddress([]byte("contract_addr_revoke_______"))
+	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
+	// Sponsor exists
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
 
-    // Create a ticket to revoke
-    user := sdk.AccAddress([]byte("user_addr_revoke___________")).String()
-    method := "ping"
-    digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
-    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10), Method: method}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+	// Create a ticket to revoke
+	user := sdk.AccAddress([]byte("user_addr_revoke___________")).String()
+	method := "ping"
+	digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
+	tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight() + 10), Method: method}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
 
-    // Revoke by admin
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
-    _, err := msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          method,
-    })
-    require.NoError(t, err)
-    // Ticket gone
-    _, ok := keeper.GetPolicyTicket(ctx, contract.String(), user, digest)
-    require.False(t, ok)
-    // Event emitted
-    found := false
-    for _, ev := range ctx.EventManager().Events() {
-        if ev.Type != types.EventTypePolicyTicketRevoked { continue }
-        attrs := map[string]string{}
-        for _, a := range ev.Attributes { attrs[a.Key] = a.Value }
-        if attrs[types.AttributeKeyMethod] == "ping" {
-            found = true
-            break
-        }
-    }
-    require.True(t, found, "revoked event should include method attribute")
+	// Revoke by admin
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	_, err := msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          method,
+	})
+	require.NoError(t, err)
+	// Ticket gone
+	_, ok := keeper.GetPolicyTicket(ctx, contract.String(), user, digest)
+	require.False(t, ok)
+	// Event emitted
+	found := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type != types.EventTypePolicyTicketRevoked {
+			continue
+		}
+		attrs := map[string]string{}
+		for _, a := range ev.Attributes {
+			attrs[a.Key] = a.Value
+		}
+		if attrs[types.AttributeKeyMethod] == "ping" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "revoked event should include method attribute")
 
-    // Revoke again -> error (not found)
-    _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          method,
-    })
-    require.Error(t, err)
+	// Revoke again -> error (not found)
+	_, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          method,
+	})
+	require.Error(t, err)
 
-    // Create consumed ticket -> error
-    method2 := "pong"
-    digest2 := keeper.ComputeMethodDigestSingle(contract.String(), method2)
-    tkt2 := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest2, ExpiryHeight: uint64(ctx.BlockHeight()+10), Consumed: true, Method: method2}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt2))
-    _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          method2,
-    })
-    require.Error(t, err)
+	// Create consumed ticket -> error
+	method2 := "pong"
+	digest2 := keeper.ComputeMethodDigestSingle(contract.String(), method2)
+	tkt2 := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user, Digest: digest2, ExpiryHeight: uint64(ctx.BlockHeight() + 10), Consumed: true, Method: method2}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, tkt2))
+	_, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          method2,
+	})
+	require.Error(t, err)
 
-    // Unauthorized creator -> error
-    notAdmin := sdk.AccAddress([]byte("not_admin_______________"))
-    // ensure contract admin remains admin; attempt revoke
-    _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         notAdmin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          "nope",
-    })
-    require.Error(t, err)
+	// Unauthorized creator -> error
+	notAdmin := sdk.AccAddress([]byte("not_admin_______________"))
+	// ensure contract admin remains admin; attempt revoke
+	_, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         notAdmin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          "nope",
+	})
+	require.Error(t, err)
 }
 
 // Non-admin ticket issuer is authorized to revoke tickets
 func TestRevokePolicyTicket_IssuerAuthorized(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
-    // Setup contract with admin A and ticket issuer B
-    admin := sdk.AccAddress([]byte("admin_rev_issuer_auth____")).String()
-    issuer := sdk.AccAddress([]byte("issuer_rev_issuer_auth___")).String()
-    user := sdk.AccAddress([]byte("user_rev_issuer_auth_____"))
-    contract := sdk.AccAddress([]byte("contract_rev_issuer_____"))
+	// Setup contract with admin A and ticket issuer B
+	admin := sdk.AccAddress([]byte("admin_rev_issuer_auth____")).String()
+	issuer := sdk.AccAddress([]byte("issuer_rev_issuer_auth___")).String()
+	user := sdk.AccAddress([]byte("user_rev_issuer_auth_____"))
+	contract := sdk.AccAddress([]byte("contract_rev_issuer_____"))
 
-    mockWasmKeeper.SetContractInfo(contract.String(), admin)
-    // Set sponsor with ticket issuer address
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true, TicketIssuerAddress: issuer}))
+	mockWasmKeeper.SetContractInfo(contract.String(), admin)
+	// Set sponsor with ticket issuer address
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true, TicketIssuerAddress: issuer}))
 
-    // Create a live ticket to revoke
-    method := "alpha"
-    digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
-    tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight()+10), Method: method}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+	// Create a live ticket to revoke
+	method := "alpha"
+	digest := keeper.ComputeMethodDigestSingle(contract.String(), method)
+	tkt := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: digest, ExpiryHeight: uint64(ctx.BlockHeight() + 10), Method: method}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
 
-    // Revoke by issuer (not admin)
-    _, err := msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         issuer,
-        ContractAddress: contract.String(),
-        UserAddress:     user.String(),
-        Method:          method,
-    })
-    require.NoError(t, err)
+	// Revoke by issuer (not admin)
+	_, err := msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         issuer,
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          method,
+	})
+	require.NoError(t, err)
 
-    // Ticket should be removed
-    _, ok := keeper.GetPolicyTicket(ctx, contract.String(), user.String(), digest)
-    require.False(t, ok)
+	// Ticket should be removed
+	_, ok := keeper.GetPolicyTicket(ctx, contract.String(), user.String(), digest)
+	require.False(t, ok)
 }
 
 func TestMsgServer_SetSponsor(t *testing.T) {
@@ -362,21 +368,21 @@ func TestMsgServer_UpdateSponsor(t *testing.T) {
 
 // Enabling sponsorship requires max_grant_per_user to be provided when none exists
 func TestUpdateSponsor_EnableRequiresGrant(t *testing.T) {
-    keeper, ctx, server, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	keeper, ctx, server, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
-    // Set up contract & admin
-    contractAddr := sdk.AccAddress([]byte("contract_enable_req____")).String()
-    adminAddr := sdk.AccAddress([]byte("admin_enable_req______")).String()
-    mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
+	// Set up contract & admin
+	contractAddr := sdk.AccAddress([]byte("contract_enable_req____")).String()
+	adminAddr := sdk.AccAddress([]byte("admin_enable_req______")).String()
+	mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
-    // Initial sponsor: disabled, no max_grant_per_user
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contractAddr, IsSponsored: false}))
+	// Initial sponsor: disabled, no max_grant_per_user
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contractAddr, IsSponsored: false}))
 
-    // Try to enable without providing MaxGrantPerUser -> should error
-    msg := &types.MsgUpdateSponsor{Creator: adminAddr, ContractAddress: contractAddr, IsSponsored: true}
-    _, err := server.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "max_grant_per_user is required")
+	// Try to enable without providing MaxGrantPerUser -> should error
+	msg := &types.MsgUpdateSponsor{Creator: adminAddr, ContractAddress: contractAddr, IsSponsored: true}
+	_, err := server.UpdateSponsor(sdk.WrapSDKContext(ctx), msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "max_grant_per_user is required")
 }
 
 func TestMsgServer_DeleteSponsor(t *testing.T) {
@@ -640,274 +646,278 @@ func TestMsgServerMultipleSponsors(t *testing.T) {
 
 // When no ticket issuer is set, only the contract admin can issue tickets.
 func TestIssuePolicyTicket_Auth_AdminOnlyWhenNoIssuer(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 
-    // Params
-    params := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, params))
+	// Params
+	params := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, params))
 
-    // Prepare addresses
-    admin := sdk.AccAddress([]byte("admin_issue_noissuer_____"))
-    other := sdk.AccAddress([]byte("other_issue_noissuer_____"))
-    user := sdk.AccAddress([]byte("user_issue_noissuer______"))
-    contract := sdk.AccAddress([]byte("contract_issue_noissuer__"))
+	// Prepare addresses
+	admin := sdk.AccAddress([]byte("admin_issue_noissuer_____"))
+	other := sdk.AccAddress([]byte("other_issue_noissuer_____"))
+	user := sdk.AccAddress([]byte("user_issue_noissuer______"))
+	contract := sdk.AccAddress([]byte("contract_issue_noissuer__"))
 
-    // Contract admin set
-    mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
-    // Sponsor exists but no issuer configured
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
+	// Contract admin set
+	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
+	// Sponsor exists but no issuer configured
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
 
-    // Non-admin attempt -> unauthorized
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         other.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user.String(),
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.Error(t, err)
+	// Non-admin attempt -> unauthorized
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         other.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.Error(t, err)
 
-    // Admin issues successfully
-    _, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user.String(),
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.NoError(t, err)
+	// Admin issues successfully
+	_, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.NoError(t, err)
 }
 
 // When a ticket issuer is set, both admin and issuer are authorized to issue tickets.
 func TestIssuePolicyTicket_Auth_IssuerAndAdminAllowed(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    params := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, params))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	params := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, params))
 
-    admin := sdk.AccAddress([]byte("admin_issue_issuer_auth___")).String()
-    issuer := sdk.AccAddress([]byte("issuer_issue_issuer_auth__")).String()
-    user := sdk.AccAddress([]byte("user_issue_issuer_auth____")).String()
-    contract := sdk.AccAddress([]byte("contract_issue_issuer____")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_issuer_auth___")).String()
+	issuer := sdk.AccAddress([]byte("issuer_issue_issuer_auth__")).String()
+	user := sdk.AccAddress([]byte("user_issue_issuer_auth____")).String()
+	contract := sdk.AccAddress([]byte("contract_issue_issuer____")).String()
 
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    // Configure sponsor with issuer
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	// Configure sponsor with issuer
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
 
-    // Issuer can issue (method inc)
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         issuer,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.NoError(t, err)
+	// Issuer can issue (method inc)
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         issuer,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.NoError(t, err)
 
-    // Admin can issue too, for a different method (dec)
-    _, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "dec",
-        Uses:            1,
-    })
-    require.NoError(t, err)
+	// Admin can issue too, for a different method (dec)
+	_, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "dec",
+		Uses:            1,
+	})
+	require.NoError(t, err)
 
-    // Admin attempting to re-issue the same method should be rejected due to active ticket conflict
-    _, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "active policy ticket already exists")
+	// Admin attempting to re-issue the same method should be rejected due to active ticket conflict
+	_, err = msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "active policy ticket already exists")
 }
 
 // Issuing requires an existing sponsor entry.
 func TestIssuePolicyTicket_RequireSponsor(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Params
-    require.NoError(t, keeper.SetParams(ctx, types.DefaultParams()))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Params
+	require.NoError(t, keeper.SetParams(ctx, types.DefaultParams()))
 
-    admin := sdk.AccAddress([]byte("admin_issue_require_______")).String()
-    user := sdk.AccAddress([]byte("user_issue_require________")).String()
-    contract := sdk.AccAddress([]byte("contract_issue_require____")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
+	admin := sdk.AccAddress([]byte("admin_issue_require_______")).String()
+	user := sdk.AccAddress([]byte("user_issue_require________")).String()
+	contract := sdk.AccAddress([]byte("contract_issue_require____")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
 
-    // No sponsor set -> should fail
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.Error(t, err)
+	// No sponsor set -> should fail
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.Error(t, err)
 }
 
 // Uses clamp should emit the clamped event with requested and clamped_to attributes.
 func TestIssuePolicyTicket_ClampEmitsEvent(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 2
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 2
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    admin := sdk.AccAddress([]byte("admin_issue_clamp_event___")).String()
-    user := sdk.AccAddress([]byte("user_issue_clamp_event____")).String()
-    contract := sdk.AccAddress([]byte("contract_issue_clamp_ev__")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	admin := sdk.AccAddress([]byte("admin_issue_clamp_event___")).String()
+	user := sdk.AccAddress([]byte("user_issue_clamp_event____")).String()
+	contract := sdk.AccAddress([]byte("contract_issue_clamp_ev__")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // Capture events
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "do",
-        Uses:            10, // > 2
-    })
-    require.NoError(t, err)
+	// Capture events
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "do",
+		Uses:            10, // > 2
+	})
+	require.NoError(t, err)
 
-    // Find clamp event
-    found := false
-    for _, ev := range ctx.EventManager().Events() {
-        if ev.Type != types.EventTypeTicketUsesClamped { continue }
-        attrs := map[string]string{}
-        for _, a := range ev.Attributes { attrs[a.Key] = a.Value }
-        if attrs[types.AttributeKeyRequestedUses] == "10" && attrs[types.AttributeKeyClampedTo] == "2" {
-            found = true
-            break
-        }
-    }
-    require.True(t, found, "should emit clamped event with requested and clamped_to")
+	// Find clamp event
+	found := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type != types.EventTypeTicketUsesClamped {
+			continue
+		}
+		attrs := map[string]string{}
+		for _, a := range ev.Attributes {
+			attrs[a.Key] = a.Value
+		}
+		if attrs[types.AttributeKeyRequestedUses] == "10" && attrs[types.AttributeKeyClampedTo] == "2" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "should emit clamped event with requested and clamped_to")
 }
 
 // Re-issuing the same method for the same (contract,user) should be rejected when a live ticket exists.
 func TestIssuePolicyTicket_ReturnExisting_WithoutMutation(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 5
-    p.PolicyTicketTtlBlocks = 30
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 5
+	p.PolicyTicketTtlBlocks = 30
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    admin := sdk.AccAddress([]byte("admin_issue_return_exist__")).String()
-    user := sdk.AccAddress([]byte("user_issue_return_exist___")).String()
-    contract := sdk.AccAddress([]byte("contract_issue_return____")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	admin := sdk.AccAddress([]byte("admin_issue_return_exist__")).String()
+	user := sdk.AccAddress([]byte("user_issue_return_exist___")).String()
+	contract := sdk.AccAddress([]byte("contract_issue_return____")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // First issue
-    resp1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            3,
-    })
-    require.NoError(t, err)
-    require.True(t, resp1.Created)
-    // keep digest locally if needed in future checks (not required for conflict path)
+	// First issue
+	resp1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            3,
+	})
+	require.NoError(t, err)
+	require.True(t, resp1.Created)
+	// keep digest locally if needed in future checks (not required for conflict path)
 
-    // Second issue (same method) should fail with conflict
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
-    resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            4,
-    })
-    require.Error(t, err)
-    require.Nil(t, resp2)
-    require.Contains(t, err.Error(), "active policy ticket already exists")
-    // Conflict event emitted
-    evs := ctx.EventManager().Events()
-    hasConflict := false
-    for _, ev := range evs {
-        if ev.Type == types.EventTypePolicyTicketIssueConflict {
-            hasConflict = true
-            break
-        }
-    }
-    require.True(t, hasConflict)
+	// Second issue (same method) should fail with conflict
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            4,
+	})
+	require.Error(t, err)
+	require.Nil(t, resp2)
+	require.Contains(t, err.Error(), "active policy ticket already exists")
+	// Conflict event emitted
+	evs := ctx.EventManager().Events()
+	hasConflict := false
+	for _, ev := range evs {
+		if ev.Type == types.EventTypePolicyTicketIssueConflict {
+			hasConflict = true
+			break
+		}
+	}
+	require.True(t, hasConflict)
 }
 
 // If an existing ticket is expired or consumed, a new ticket should be created when issuing again.
 func TestIssuePolicyTicket_ReplaceExpiredOrConsumed(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.PolicyTicketTtlBlocks = 20
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.PolicyTicketTtlBlocks = 20
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    admin := sdk.AccAddress([]byte("admin_issue_replace_exist_"))
-    user := sdk.AccAddress([]byte("user_issue_replace_exist__"))
-    contract := sdk.AccAddress([]byte("contract_issue_replace___"))
-    mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
+	admin := sdk.AccAddress([]byte("admin_issue_replace_exist_"))
+	user := sdk.AccAddress([]byte("user_issue_replace_exist__"))
+	contract := sdk.AccAddress([]byte("contract_issue_replace___"))
+	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
 
-    // Insert an expired ticket for method "inc"
-    md := keeper.ComputeMethodDigest(contract.String(), []string{"inc"})
-    expired := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, expired))
+	// Insert an expired ticket for method "inc"
+	md := keeper.ComputeMethodDigest(contract.String(), []string{"inc"})
+	expired := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, expired))
 
-    // Issue again -> should create a new one
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user.String(),
-        Method:          "inc",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    require.Equal(t, md, resp.Ticket.Digest)
-    require.False(t, resp.Ticket.Consumed)
-    require.Greater(t, resp.Ticket.ExpiryHeight, uint64(ctx.BlockHeight()))
+	// Issue again -> should create a new one
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	require.Equal(t, md, resp.Ticket.Digest)
+	require.False(t, resp.Ticket.Consumed)
+	require.Greater(t, resp.Ticket.ExpiryHeight, uint64(ctx.BlockHeight()))
 
-    // Now mark as consumed and try again
-    consumed := resp.Ticket
-    consumed.UsesRemaining = 0
-    consumed.Consumed = true
-    require.NoError(t, keeper.SetPolicyTicket(ctx, *consumed))
-    resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user.String(),
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.NoError(t, err)
-    require.True(t, resp2.Created)
-    require.Equal(t, md, resp2.Ticket.Digest)
-    require.False(t, resp2.Ticket.Consumed)
+	// Now mark as consumed and try again
+	consumed := resp.Ticket
+	consumed.UsesRemaining = 0
+	consumed.Consumed = true
+	require.NoError(t, keeper.SetPolicyTicket(ctx, *consumed))
+	resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+	require.True(t, resp2.Created)
+	require.Equal(t, md, resp2.Ticket.Digest)
+	require.False(t, resp2.Ticket.Consumed)
 }
 
 // Issuance should reject method names exceeding max_method_name_bytes.
 func TestIssuePolicyTicket_MethodNameTooLong_Rejected(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Set small method name limit
-    p := types.DefaultParams()
-    p.MaxMethodNameBytes = 4
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Set small method name limit
+	p := types.DefaultParams()
+	p.MaxMethodNameBytes = 4
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    admin := sdk.AccAddress([]byte("admin_issue_long_method__")).String()
-    user := sdk.AccAddress([]byte("user_issue_long_method___")).String()
-    contract := sdk.AccAddress([]byte("contract_issue_long_meth")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	admin := sdk.AccAddress([]byte("admin_issue_long_method__")).String()
+	user := sdk.AccAddress([]byte("user_issue_long_method___")).String()
+	contract := sdk.AccAddress([]byte("contract_issue_long_meth")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // Long method name -> should error
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "longname",
-        Uses:            1,
-    })
-    require.Error(t, err)
+	// Long method name -> should error
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "longname",
+		Uses:            1,
+	})
+	require.Error(t, err)
 }
 
 // TestMsgServerAdminPermissions tests that only contract admins can manage sponsors
@@ -1687,212 +1697,240 @@ func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
 	require.Error(t, err)
 }
 func TestMsgServer_IssuePolicyTicket_Admin(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
-    _ = bankKeeper
-    params := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, params))
-    admin := sdk.AccAddress([]byte("admin_addr_issue_m_________"))
-    contract := sdk.AccAddress([]byte("contract_addr_issue_m______"))
-    mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
-    user := sdk.AccAddress([]byte("user_issue_m________________")).String()
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          "increment",
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    require.NotNil(t, resp.Ticket)
-    // Digest should match method digest
-    expect := keeper.ComputeMethodDigest(contract.String(), []string{"increment"})
-    require.Equal(t, expect, resp.Ticket.Digest)
+	keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
+	_ = bankKeeper
+	params := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, params))
+	admin := sdk.AccAddress([]byte("admin_addr_issue_m_________"))
+	contract := sdk.AccAddress([]byte("contract_addr_issue_m______"))
+	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
+	user := sdk.AccAddress([]byte("user_issue_m________________")).String()
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          "increment",
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	require.NotNil(t, resp.Ticket)
+	// Digest should match method digest
+	expect := keeper.ComputeMethodDigest(contract.String(), []string{"increment"})
+	require.Equal(t, expect, resp.Ticket.Digest)
 }
 
 func TestMsgServer_IssuePolicyTicket_ConflictOnDuplicate(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
-    _ = bankKeeper
-    params := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, params))
-    admin := sdk.AccAddress([]byte("admin_addr_issue_m_idem____"))
-    contract := sdk.AccAddress([]byte("contract_addr_issue_m_idem_"))
-    mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
-    user := sdk.AccAddress([]byte("user_issue_m_idem__________")).String()
+	keeper, ctx, msgServer, mockWasmKeeper, bankKeeper := setupMsgServerEnv(t)
+	_ = bankKeeper
+	params := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, params))
+	admin := sdk.AccAddress([]byte("admin_addr_issue_m_idem____"))
+	contract := sdk.AccAddress([]byte("contract_addr_issue_m_idem_"))
+	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
+	user := sdk.AccAddress([]byte("user_issue_m_idem__________")).String()
 
-    // First issue
-    resp1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          "increment",
-    })
-    require.NoError(t, err)
-    require.True(t, resp1.Created)
-    require.NotNil(t, resp1.Ticket)
+	// First issue
+	resp1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          "increment",
+	})
+	require.NoError(t, err)
+	require.True(t, resp1.Created)
+	require.NotNil(t, resp1.Ticket)
 
-    // Second issue with same tuple should now be rejected (conflict)
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
-    resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin.String(),
-        ContractAddress: contract.String(),
-        UserAddress:     user,
-        Method:          "increment",
-    })
-    require.Error(t, err)
-    require.Nil(t, resp2)
-    require.Contains(t, err.Error(), "active policy ticket already exists")
-    // Event captured
-    hasConflict := false
-    for _, ev := range ctx.EventManager().Events() {
-        if ev.Type == types.EventTypePolicyTicketIssueConflict { hasConflict = true; break }
-    }
-    require.True(t, hasConflict)
+	// Second issue with same tuple should now be rejected (conflict)
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user,
+		Method:          "increment",
+	})
+	require.Error(t, err)
+	require.Nil(t, resp2)
+	require.Contains(t, err.Error(), "active policy ticket already exists")
+	// Event captured
+	hasConflict := false
+	for _, ev := range ctx.EventManager().Events() {
+		if ev.Type == types.EventTypePolicyTicketIssueConflict {
+			hasConflict = true
+			break
+		}
+	}
+	require.True(t, hasConflict)
 }
 
 func TestIssuePolicyTicket_TtlUsesOverride(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Global default 3, cap 5
-    p := types.DefaultParams()
-    p.PolicyTicketTtlBlocks = 3
-    // removed ttl max param
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Global default 20
+	p := types.DefaultParams()
+	p.PolicyTicketTtlBlocks = 20
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_ttl_cap________")).String()
-    admin := sdk.AccAddress([]byte("admin_ttl_cap___________")).String()
-    user := sdk.AccAddress([]byte("user_ttl_cap____________")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_ttl_cap________")).String()
+	admin := sdk.AccAddress([]byte("admin_ttl_cap___________")).String()
+	user := sdk.AccAddress([]byte("user_ttl_cap____________")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    h := uint64(ctx.BlockHeight())
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "ping",
-        Uses:            1,
-        TtlBlocks:       10,
-    })
-    require.NoError(t, err)
-    // Expect TTL equals override (10)
-    require.Equal(t, h+10, resp.Ticket.ExpiryHeight)
+	h := uint64(ctx.BlockHeight())
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "ping",
+		Uses:            1,
+		TtlBlocks:       10,
+	})
+	require.NoError(t, err)
+	// Expect TTL equals override (10) when within param limit
+	require.Equal(t, h+10, resp.Ticket.ExpiryHeight)
 }
 
 func TestIssuePolicyTicket_TtlOverrideZeroUsesGlobal(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Global default 4, overrides disabled (cap=0)
-    p := types.DefaultParams()
-    p.PolicyTicketTtlBlocks = 4
-    // removed ttl max param
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Global default 4, overrides disabled (cap=0)
+	p := types.DefaultParams()
+	p.PolicyTicketTtlBlocks = 4
+	// removed ttl max param
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_ttl_disabled___")).String()
-    admin := sdk.AccAddress([]byte("admin_ttl_disabled_____ ")).String()
-    user := sdk.AccAddress([]byte("user_ttl_disabled______ ")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_ttl_disabled___")).String()
+	admin := sdk.AccAddress([]byte("admin_ttl_disabled_____ ")).String()
+	user := sdk.AccAddress([]byte("user_ttl_disabled______ ")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    h := uint64(ctx.BlockHeight())
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "ping",
-        Uses:            1,
-    })
-    require.NoError(t, err)
-    // Expect TTL = global default 4
-    require.Equal(t, h+4, resp.Ticket.ExpiryHeight)
+	h := uint64(ctx.BlockHeight())
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "ping",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+	// Expect TTL = global default 4
+	require.Equal(t, h+4, resp.Ticket.ExpiryHeight)
+}
+
+func TestIssuePolicyTicket_TtlOverrideClampedToParamLimit(t *testing.T) {
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.PolicyTicketTtlBlocks = 5
+	require.NoError(t, keeper.SetParams(ctx, p))
+
+	contract := sdk.AccAddress([]byte("contract_ttl_cap_clamp__")).String()
+	admin := sdk.AccAddress([]byte("admin_ttl_cap_clamp_____")).String()
+	user := sdk.AccAddress([]byte("user_ttl_cap_clamp______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+
+	h := uint64(ctx.BlockHeight())
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "ping",
+		Uses:            1,
+		TtlBlocks:       10, // above param cap
+	})
+	require.NoError(t, err)
+	// Expect TTL clamped to param cap (5)
+	require.Equal(t, h+5, resp.Ticket.ExpiryHeight)
 }
 
 func TestIssuePolicyTicket_DefaultUsesRemainingOne(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    require.NoError(t, keeper.SetParams(ctx, p))
-    contract := sdk.AccAddress([]byte("contract_issue_policy___")).String()
-    admin := sdk.AccAddress([]byte("admin_issue_policy______")).String()
-    user := sdk.AccAddress([]byte("user_issue_policy_______")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	require.NoError(t, keeper.SetParams(ctx, p))
+	contract := sdk.AccAddress([]byte("contract_issue_policy___")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_policy______")).String()
+	user := sdk.AccAddress([]byte("user_issue_policy_______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "noop",
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    require.NotNil(t, resp.Ticket)
-    require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "noop",
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	require.NotNil(t, resp.Ticket)
+	require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
 }
 
 // ProbeSponsorship tests removed
 
 func TestIssuePolicyTicket_AlreadyHaveTicketConsistent(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 5
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 5
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_already_method__")).String()
-    admin := sdk.AccAddress([]byte("admin_already_method____")).String()
-    user := sdk.AccAddress([]byte("user_already_method_____ ")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_already_method__")).String()
+	admin := sdk.AccAddress([]byte("admin_already_method____")).String()
+	user := sdk.AccAddress([]byte("user_already_method_____ ")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            3,
-    })
-    require.NoError(t, err)
-    require.True(t, r1.Created)
+	r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            3,
+	})
+	require.NoError(t, err)
+	require.True(t, r1.Created)
 
-    // Reset event manager to capture conflict event cleanly
-    ctx = ctx.WithEventManager(sdk.NewEventManager())
-    r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            4,
-    })
-    require.Error(t, err)
-    require.Nil(t, r2)
-    require.Contains(t, err.Error(), "active policy ticket already exists")
+	// Reset event manager to capture conflict event cleanly
+	ctx = ctx.WithEventManager(sdk.NewEventManager())
+	r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            4,
+	})
+	require.Error(t, err)
+	require.Nil(t, r2)
+	require.Contains(t, err.Error(), "active policy ticket already exists")
 
-    // Verify a conflict event was emitted with ticket info
-    evs := ctx.EventManager().Events()
-    found := false
-    for _, ev := range evs {
-        if ev.Type == types.EventTypePolicyTicketIssueConflict {
-            found = true
-            // Minimal attribute sanity checks
-            // contract_address, user, digest should be present
-            hasContract := false
-            hasUser := false
-            hasDigest := false
-            for _, a := range ev.Attributes {
-                switch string(a.Key) {
-                case types.AttributeKeyContractAddress:
-                    hasContract = true
-                case types.AttributeKeyUser:
-                    hasUser = true
-                case types.AttributeKeyDigest:
-                    hasDigest = true
-                }
-            }
-            require.True(t, hasContract)
-            require.True(t, hasUser)
-            require.True(t, hasDigest)
-            break
-        }
-    }
-    require.True(t, found, "expected policy_ticket_issue_conflict event")
+	// Verify a conflict event was emitted with ticket info
+	evs := ctx.EventManager().Events()
+	found := false
+	for _, ev := range evs {
+		if ev.Type == types.EventTypePolicyTicketIssueConflict {
+			found = true
+			// Minimal attribute sanity checks
+			// contract_address, user, digest should be present
+			hasContract := false
+			hasUser := false
+			hasDigest := false
+			for _, a := range ev.Attributes {
+				switch string(a.Key) {
+				case types.AttributeKeyContractAddress:
+					hasContract = true
+				case types.AttributeKeyUser:
+					hasUser = true
+				case types.AttributeKeyDigest:
+					hasDigest = true
+				}
+			}
+			require.True(t, hasContract)
+			require.True(t, hasUser)
+			require.True(t, hasDigest)
+			break
+		}
+	}
+	require.True(t, found, "expected policy_ticket_issue_conflict event")
 }
 
 // Negative probe cache should be cleared when sponsor settings change for the contract
@@ -1903,325 +1941,325 @@ func TestIssuePolicyTicket_AlreadyHaveTicketConsistent(t *testing.T) {
 
 // Disabling sponsorship retains stored max_grant_per_user but it becomes unusable (read path errors)
 func TestUpdateSponsor_DisableRetainsGrantButUnused(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // identities
-    admin := sdk.AccAddress([]byte("admin_disable_keep_____ ")).String()
-    contract := sdk.AccAddress([]byte("contract_disable_keep___")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// identities
+	admin := sdk.AccAddress([]byte("admin_disable_keep_____ ")).String()
+	contract := sdk.AccAddress([]byte("contract_disable_keep___")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
 
-    // initial enabled sponsor with grant
-    grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}}
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
+	// initial enabled sponsor with grant
+	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}}
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
 
-    // disable sponsorship without touching grant
-    _, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), &types.MsgUpdateSponsor{Creator: admin, ContractAddress: contract, IsSponsored: false})
-    require.NoError(t, err)
+	// disable sponsorship without touching grant
+	_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), &types.MsgUpdateSponsor{Creator: admin, ContractAddress: contract, IsSponsored: false})
+	require.NoError(t, err)
 
-    // state should still have grant stored
-    stored, ok := keeper.GetSponsor(ctx, contract)
-    require.True(t, ok)
-    require.Len(t, stored.MaxGrantPerUser, 1)
+	// state should still have grant stored
+	stored, ok := keeper.GetSponsor(ctx, contract)
+	require.True(t, ok)
+	require.Len(t, stored.MaxGrantPerUser, 1)
 
-    // GetMaxGrantPerUser should error because sponsorship is disabled
-    _, err = keeper.GetMaxGrantPerUser(ctx, contract)
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "sponsorship is disabled")
+	// GetMaxGrantPerUser should error because sponsorship is disabled
+	_, err = keeper.GetMaxGrantPerUser(ctx, contract)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sponsorship is disabled")
 }
 
 // Enabling sponsorship while omitting grant should reuse existing grant and succeed
 func TestUpdateSponsor_EnableUsesExistingGrantWhenOmitted(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    admin := sdk.AccAddress([]byte("admin_enable_reuse____ ")).String()
-    contract := sdk.AccAddress([]byte("contract_enable_reuse__")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress([]byte("admin_enable_reuse____ ")).String()
+	contract := sdk.AccAddress([]byte("contract_enable_reuse__")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
 
-    // initial enabled sponsor with grant
-    grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
+	// initial enabled sponsor with grant
+	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
 
-    // partial update: keep enabled and omit grant -> should preserve previous grant
-    _, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), &types.MsgUpdateSponsor{Creator: admin, ContractAddress: contract, IsSponsored: true})
-    require.NoError(t, err)
+	// partial update: keep enabled and omit grant -> should preserve previous grant
+	_, err := msgServer.UpdateSponsor(sdk.WrapSDKContext(ctx), &types.MsgUpdateSponsor{Creator: admin, ContractAddress: contract, IsSponsored: true})
+	require.NoError(t, err)
 
-    // Verify grant unchanged
-    max, err := keeper.GetMaxGrantPerUser(ctx, contract)
-    require.NoError(t, err)
-    require.Len(t, max, 1)
-    require.Equal(t, "peaka", max[0].Denom)
-    require.Equal(t, sdk.NewInt(200), max[0].Amount)
+	// Verify grant unchanged
+	max, err := keeper.GetMaxGrantPerUser(ctx, contract)
+	require.NoError(t, err)
+	require.Len(t, max, 1)
+	require.Equal(t, "peaka", max[0].Denom)
+	require.Equal(t, sdk.NewInt(200), max[0].Amount)
 }
 
 func TestGarbageCollect_ExpiredTicketReissue(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 3
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 3
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_gc_reissue_____ ")).String()
-    admin := sdk.AccAddress([]byte("admin_gc_reissue________ ")).String()
-    user := sdk.AccAddress([]byte("user_gc_reissue_________ ")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_gc_reissue_____ ")).String()
+	admin := sdk.AccAddress([]byte("admin_gc_reissue________ ")).String()
+	user := sdk.AccAddress([]byte("user_gc_reissue_________ ")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            2,
-        TtlBlocks:       1,
-    })
-    require.NoError(t, err)
-    digest := r1.Ticket.Digest
+	r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            2,
+		TtlBlocks:       1,
+	})
+	require.NoError(t, err)
+	digest := r1.Ticket.Digest
 
-    // Advance beyond TTL and GC
-    ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 2)
-    keeper.GarbageCollectByExpiry(ctx, 10)
-    _, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
-    require.False(t, found)
+	// Advance beyond TTL and GC
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 2)
+	keeper.GarbageCollectByExpiry(ctx, 10)
+	_, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
+	require.False(t, found)
 
-    // Reissue should be Created=true
-    r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, r2.Created)
-    require.Equal(t, uint32(2), r2.Ticket.UsesRemaining)
+	// Reissue should be Created=true
+	r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, r2.Created)
+	require.Equal(t, uint32(2), r2.Ticket.UsesRemaining)
 }
 
 func TestRevokePolicyTicket_ReissueCreatesNew(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 5
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 5
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_revoke_reissue__")).String()
-    admin := sdk.AccAddress([]byte("admin_revoke_reissue____")).String()
-    user := sdk.AccAddress([]byte("user_revoke_reissue_____ ")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_revoke_reissue__")).String()
+	admin := sdk.AccAddress([]byte("admin_revoke_reissue____")).String()
+	user := sdk.AccAddress([]byte("user_revoke_reissue_____ ")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            4,
-    })
-    require.NoError(t, err)
-    digest := r1.Ticket.Digest
+	r1, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            4,
+	})
+	require.NoError(t, err)
+	digest := r1.Ticket.Digest
 
-    // Revoke
-    _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-    })
-    require.NoError(t, err)
-    _, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
-    require.False(t, found)
+	// Revoke
+	_, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+	})
+	require.NoError(t, err)
+	_, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
+	require.False(t, found)
 
-    // Reissue -> Created=true and uses reset (clamped if needed)
-    r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, r2.Created)
-    require.Equal(t, uint32(2), r2.Ticket.UsesRemaining)
+	// Reissue -> Created=true and uses reset (clamped if needed)
+	r2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, r2.Created)
+	require.Equal(t, uint32(2), r2.Ticket.UsesRemaining)
 }
 
 func TestRevokePolicyTicket_PartiallyUsedMultiUse(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 5
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 5
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_revoke_multi____")).String()
-    admin := sdk.AccAddress([]byte("admin_revoke_multi______")).String()
-    user := sdk.AccAddress([]byte("user_revoke_multi_______")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_revoke_multi____")).String()
+	admin := sdk.AccAddress([]byte("admin_revoke_multi______")).String()
+	user := sdk.AccAddress([]byte("user_revoke_multi_______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // Issue method ticket with uses=3
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "run",
-        Uses:            3,
-    })
-    require.NoError(t, err)
-    digest := resp.Ticket.Digest
+	// Issue method ticket with uses=3
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "run",
+		Uses:            3,
+	})
+	require.NoError(t, err)
+	digest := resp.Ticket.Digest
 
-    // Consume once (remaining=2)
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
-    tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, digest)
-    require.True(t, ok)
-    require.False(t, tkt.Consumed)
-    require.Equal(t, uint32(2), tkt.UsesRemaining)
+	// Consume once (remaining=2)
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
+	tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, digest)
+	require.True(t, ok)
+	require.False(t, tkt.Consumed)
+	require.Equal(t, uint32(2), tkt.UsesRemaining)
 
-    // Revoke (should succeed because not consumed)
-    _, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "run",
-    })
-    require.NoError(t, err)
+	// Revoke (should succeed because not consumed)
+	_, err = msgServer.RevokePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgRevokePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "run",
+	})
+	require.NoError(t, err)
 
-    // Ticket removed
-    _, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
-    require.False(t, found)
+	// Ticket removed
+	_, found := keeper.GetPolicyTicket(ctx, contract, user, digest)
+	require.False(t, found)
 }
 
 func TestIssuePolicyTicket_ClampToParamUpperBound(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Cap at 100
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 100
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Cap at 100
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 100
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_issue_uppercap__")).String()
-    admin := sdk.AccAddress([]byte("admin_issue_uppercap____")).String()
-    user := sdk.AccAddress([]byte("user_issue_uppercap_____")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_issue_uppercap__")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_uppercap____")).String()
+	user := sdk.AccAddress([]byte("user_issue_uppercap_____")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "op",
-        Uses:            1000,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    require.Equal(t, uint32(100), resp.Ticket.UsesRemaining)
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "op",
+		Uses:            1000,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	require.Equal(t, uint32(100), resp.Ticket.UsesRemaining)
 }
 
 func TestIssuePolicyTicket_ParamZeroFallbackTreatsAsOne(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Force an invalid param using direct SetParams (bypassing governance validation)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 0
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Force an invalid param using direct SetParams (bypassing governance validation)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 0
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_issue_fallback__")).String()
-    admin := sdk.AccAddress([]byte("admin_issue_fallback____")).String()
-    user := sdk.AccAddress([]byte("user_issue_fallback_____")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_issue_fallback__")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_fallback____")).String()
+	user := sdk.AccAddress([]byte("user_issue_fallback_____")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "op",
-        Uses:            10,
-    })
-    require.NoError(t, err)
-    // Fallback path treats maxPerIssue==0 as 1
-    require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "op",
+		Uses:            10,
+	})
+	require.NoError(t, err)
+	// Fallback path treats maxPerIssue==0 as 1
+	require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
 }
 
 func TestIssuePolicyTicket_ConsumedThenReissueCreatesNew(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 2
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 2
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_issue_reissue___")).String()
-    admin := sdk.AccAddress([]byte("admin_issue_reissue_____")).String()
-    user := sdk.AccAddress([]byte("user_issue_reissue______")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_issue_reissue___")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_reissue_____")).String()
+	user := sdk.AccAddress([]byte("user_issue_reissue______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    // First issue uses=2
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    digest := resp.Ticket.Digest
+	// First issue uses=2
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	digest := resp.Ticket.Digest
 
-    // Consume twice to exhaust
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
-    tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, digest)
-    require.True(t, ok)
-    require.True(t, tkt.Consumed)
-    require.Equal(t, uint32(0), tkt.UsesRemaining)
+	// Consume twice to exhaust
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, digest))
+	tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, digest)
+	require.True(t, ok)
+	require.True(t, tkt.Consumed)
+	require.Equal(t, uint32(0), tkt.UsesRemaining)
 
-    // Re-issue with same tuple should create a fresh ticket
-    resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "go",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, resp2.Created)
-    // Same digest key overwritten with fresh ticket
-    require.Equal(t, digest, resp2.Ticket.Digest)
-    require.False(t, resp2.Ticket.Consumed)
-    require.Equal(t, uint32(2), resp2.Ticket.UsesRemaining)
+	// Re-issue with same tuple should create a fresh ticket
+	resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "go",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, resp2.Created)
+	// Same digest key overwritten with fresh ticket
+	require.Equal(t, digest, resp2.Ticket.Digest)
+	require.False(t, resp2.Ticket.Consumed)
+	require.Equal(t, uint32(2), resp2.Ticket.UsesRemaining)
 }
 
 func TestIssuePolicyTicket_ExpiredThenReissueCreatesNew(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 3
-    // Allow overrides: default cap 120 is fine
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 3
+	// Allow overrides: default cap 120 is fine
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_issue_expire____")).String()
-    admin := sdk.AccAddress([]byte("admin_issue_expire______")).String()
-    user := sdk.AccAddress([]byte("user_issue_expire_______")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    // Sponsor with TTL override = 1
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_issue_expire____")).String()
+	admin := sdk.AccAddress([]byte("admin_issue_expire______")).String()
+	user := sdk.AccAddress([]byte("user_issue_expire_______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	// Sponsor with TTL override = 1
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "ping",
-        Uses:            3,
-        TtlBlocks:       1,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    digest := resp.Ticket.Digest
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "ping",
+		Uses:            3,
+		TtlBlocks:       1,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	digest := resp.Ticket.Digest
 
-    // Advance height beyond TTL
-    ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 2)
+	// Advance height beyond TTL
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 2)
 
-    resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "ping",
-        Uses:            2,
-    })
-    require.NoError(t, err)
-    require.True(t, resp2.Created)
-    // Same digest reused; ticket refreshed
-    require.Equal(t, digest, resp2.Ticket.Digest)
-    require.False(t, resp2.Ticket.Consumed)
+	resp2, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "ping",
+		Uses:            2,
+	})
+	require.NoError(t, err)
+	require.True(t, resp2.Created)
+	// Same digest reused; ticket refreshed
+	require.Equal(t, digest, resp2.Ticket.Digest)
+	require.False(t, resp2.Ticket.Consumed)
 }
 
 // multi-method issuance no longer supported at proto level (single method only)
@@ -2229,41 +2267,41 @@ func TestIssuePolicyTicket_ExpiredThenReissueCreatesNew(t *testing.T) {
 // Capacity: max tickets per user per contract enforced
 // Capacity limits removed: whitelist-based issuance provides sufficient control.
 
-
 func TestConsumePolicyTicket_IdempotentAfterConsumed(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    _ = msgServer; _ = mockWasmKeeper
-    p := types.DefaultParams()
-    p.MaxMethodTicketUsesPerIssue = 1
-    require.NoError(t, keeper.SetParams(ctx, p))
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	_ = msgServer
+	_ = mockWasmKeeper
+	p := types.DefaultParams()
+	p.MaxMethodTicketUsesPerIssue = 1
+	require.NoError(t, keeper.SetParams(ctx, p))
 
-    contract := sdk.AccAddress([]byte("contract_consume_idem___")).String()
-    admin := sdk.AccAddress([]byte("admin_consume_idem______")).String()
-    user := sdk.AccAddress([]byte("user_consume_idem_______")).String()
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	contract := sdk.AccAddress([]byte("contract_consume_idem___")).String()
+	admin := sdk.AccAddress([]byte("admin_consume_idem______")).String()
+	user := sdk.AccAddress([]byte("user_consume_idem_______")).String()
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
 
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         admin,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "do",
-        Uses:            5, // clamped to 1 due to param
-    })
-    require.NoError(t, err)
-    require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "do",
+		Uses:            5, // clamped to 1 due to param
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp.Ticket.UsesRemaining)
 
-    // First consume -> consumed
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
-    tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
-    require.True(t, ok)
-    require.True(t, tkt.Consumed)
-    require.Equal(t, uint32(0), tkt.UsesRemaining)
+	// First consume -> consumed
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
+	tkt, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
+	require.True(t, ok)
+	require.True(t, tkt.Consumed)
+	require.Equal(t, uint32(0), tkt.UsesRemaining)
 
-    // Second consume -> no-op
-    require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
-    tkt2, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
-    require.True(t, ok)
-    require.True(t, tkt2.Consumed)
-    require.Equal(t, uint32(0), tkt2.UsesRemaining)
+	// Second consume -> no-op
+	require.NoError(t, keeper.ConsumePolicyTicket(ctx, contract, user, resp.Ticket.Digest))
+	tkt2, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
+	require.True(t, ok)
+	require.True(t, tkt2.Consumed)
+	require.Equal(t, uint32(0), tkt2.UsesRemaining)
 }
