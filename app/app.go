@@ -10,6 +10,7 @@ import (
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
+	v0_4_4 "github.com/DoraFactory/doravota/app/upgrades/v0_4_4"
 	dbm "github.com/cometbft/cometbft-db"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/libs/log"
@@ -52,6 +53,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/consensus"
 	consensusparamkeeper "github.com/cosmos/cosmos-sdk/x/consensus/keeper"
 	consensusparamtypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
+	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
@@ -72,7 +74,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/group"
 	groupkeeper "github.com/cosmos/cosmos-sdk/x/group/keeper"
 	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
-	crisistypes "github.com/cosmos/cosmos-sdk/x/crisis/types"
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
@@ -261,6 +262,8 @@ func init() {
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
 
 	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
+	// Ensure wasm limits are overridden for both daemon and CLI command paths.
+	overrideWasmVariables()
 }
 
 // Override Wasm size limitation from WASMD.
@@ -1118,18 +1121,18 @@ func (app *App) setupUpgradeHandlers() {
 	)
 
 	// v0.4.0 upgrade handler
-    app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_0.UpgradeName,
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v0_4_0.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_0.UpgradeName)
 			logger.Info("Running module migrations[Remove crisis module] ...")
 			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 		},
-    )
+	)
 
 	// v0.4.2 upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_2.UpgradeName,
+		v0_4_2.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_2.UpgradeName)
 			logger.Info("Upgrade cosmos sdk from v0.47.15 to 0.47.16...")
@@ -1139,15 +1142,15 @@ func (app *App) setupUpgradeHandlers() {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
 			}
-			
+
 			logger.Info("Upgrade completed successfully")
 			return vm, nil
 		},
-    )
+	)
 
-		// v0.4.2 upgrade handler
+	// v0.4.2 upgrade handler
 	app.UpgradeKeeper.SetUpgradeHandler(
-        v0_4_3.UpgradeName,
+		v0_4_3.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v0_4_3.UpgradeName)
 			logger.Info("Upgrade cosmos sdk from v0.47.16 to 0.47.17...")
@@ -1157,11 +1160,29 @@ func (app *App) setupUpgradeHandlers() {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
 			}
-			
+
 			logger.Info("Upgrade completed successfully")
 			return vm, nil
 		},
-    )
+	)
+
+	// v0.4.4 upgrade handler
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v0_4_4.UpgradeName,
+		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			logger := ctx.Logger().With("upgrade", v0_4_4.UpgradeName)
+			logger.Info("Enable wasm 3MB limit on CLI path and run migrations...")
+
+			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+			if err != nil {
+				logger.Error("failed to run migrations", "error", err)
+				return nil, err
+			}
+
+			logger.Info("Upgrade completed successfully")
+			return vm, nil
+		},
+	)
 
 	// setup store loader
 	// load the upgrade info from the disk
@@ -1177,20 +1198,22 @@ func (app *App) setupUpgradeHandlers() {
 	var storeUpgrades *storetypes.StoreUpgrades
 
 	switch upgradeInfo.Name {
-	case  v0_3_1.UpgradeName:
+	case v0_3_1.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
-	case  v0_4_0.UpgradeName:
+	case v0_4_0.UpgradeName:
 		// crisis module is deprecated in v0.4.0
 		storeUpgrades = &storetypes.StoreUpgrades{
 			Deleted: []string{crisistypes.ModuleName},
 		}
-	case  v0_4_2.UpgradeName:
+	case v0_4_2.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
-	case  v0_4_3.UpgradeName:
+	case v0_4_3.UpgradeName:
+		storeUpgrades = &storetypes.StoreUpgrades{}
+	case v0_4_4.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	}
 
-	if storeUpgrades != nil  {
+	if storeUpgrades != nil {
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, storeUpgrades))
 	}
 }

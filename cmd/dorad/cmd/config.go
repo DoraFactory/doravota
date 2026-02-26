@@ -44,11 +44,10 @@ func initSDKConfig() {
 	config.Seal()
 }
 
-
 const (
-	name = "doravota"
+	name     = "doravota"
 	app_name = "dorad"
-    Version  = "0.4.3"
+	Version  = "0.4.4"
 )
 
 func setVersionInfo() {
