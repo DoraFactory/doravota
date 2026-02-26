@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## [0.4.4] - 2026-02-26
+This is a non-consensus breaking patch to the 0.4.0 release line.
+### Update
+Align CLI wasm store validation with the chain's 3MB wasm code limit by initializing wasm size overrides on CLI paths as well.
+
 ## [0.4.3] - 2025-05-22
 This is a patch to the 0.4.0 release line.
 ### Update
