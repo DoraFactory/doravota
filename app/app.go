@@ -271,6 +271,8 @@ func init() {
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
 
 	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
+	// Ensure wasm limits are overridden for both daemon and CLI command paths.
+	overrideWasmVariables()
 }
 
 // Override Wasm size limitation from WASMD.
