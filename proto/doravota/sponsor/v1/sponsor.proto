@@ -65,7 +65,8 @@ message Params {
   // is min(requested_uses, max_method_ticket_uses_per_issue). Range: [1, 100] (suggested default: 3).
   uint32 max_method_ticket_uses_per_issue = 6;
 
-  // Maximum number of expired tickets to garbage-collect per block.
+  // Maximum number of expiry-index entries to inspect per block. Zero disables
+  // garbage collection. The application enforces a consensus-safe maximum of 1000.
   uint32 ticket_gc_per_block = 7;
 
   // Maximum allowed size (in bytes) for a single top‑level method name

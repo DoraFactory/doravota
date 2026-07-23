@@ -288,7 +288,8 @@ type Params struct {
 	// can have in a single issuance. The actual uses_remaining stored on the ticket
 	// is min(requested_uses, max_method_ticket_uses_per_issue). Range: [1, 100] (suggested default: 3).
 	MaxMethodTicketUsesPerIssue uint32 `protobuf:"varint,6,opt,name=max_method_ticket_uses_per_issue,json=maxMethodTicketUsesPerIssue,proto3" json:"max_method_ticket_uses_per_issue,omitempty"`
-	// Maximum number of expired tickets to garbage-collect per block.
+	// Maximum number of expiry-index entries to inspect per block. Zero disables
+	// garbage collection. The application enforces a consensus-safe maximum of 1000.
 	TicketGcPerBlock uint32 `protobuf:"varint,7,opt,name=ticket_gc_per_block,json=ticketGcPerBlock,proto3" json:"ticket_gc_per_block,omitempty"`
 	// Maximum allowed size (in bytes) for a single top‑level method name
 	// used in MsgExecuteContract (e.g., {"method":{...}}). This is enforced

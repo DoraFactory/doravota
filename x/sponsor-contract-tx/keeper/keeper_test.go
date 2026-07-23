@@ -69,7 +69,7 @@ func (m *MockWasmKeeper) SetCustomQueryHandler(handler func(ctx sdk.Context, con
 	m.customQueryHandler = handler
 }
 
-func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
+func setupKeeper(t testing.TB) (Keeper, sdk.Context, *MockWasmKeeper) {
 	// Create codec
 	registry := codectypes.NewInterfaceRegistry()
 	cdc := codec.NewProtoCodec(registry)
@@ -104,7 +104,7 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
 }
 
 // setupKeeperSimple provides backward compatibility for simple tests
-func setupKeeperSimple(t *testing.T) (Keeper, sdk.Context) {
+func setupKeeperSimple(t testing.TB) (Keeper, sdk.Context) {
     keeper, ctx, _ := setupKeeper(t)
     return keeper, ctx
 }

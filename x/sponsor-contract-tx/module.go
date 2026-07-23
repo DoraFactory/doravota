@@ -1,10 +1,10 @@
 package sponsor
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "math/rand"
+	"context"
+	"encoding/json"
+	"fmt"
+	"math/rand"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -156,17 +156,22 @@ func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // BeginBlock executes all ABCI BeginBlock logic respective to the sponsor module
 func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
-    // Opportunistic GC: delete a bounded number of expired tickets per block based on params
-    params := am.keeper.GetParams(ctx)
-    n := int(params.TicketGcPerBlock)
-    if n <= 0 {
-        return
-    }
-    am.keeper.GarbageCollectByExpiry(ctx, n)
+	// Opportunistic GC: inspect a bounded number of expiry-index entries per block.
+	params := am.keeper.GetParams(ctx)
+	n := params.TicketGcPerBlock
+	if n == 0 {
+		return
+	}
+	if n > types.MaxTicketGCPerBlock {
+		n = types.MaxTicketGCPerBlock
+	}
+	am.keeper.GarbageCollectByExpiry(ctx, int(n))
 }
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module
-func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate { return []abci.ValidatorUpdate{} }
+func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate {
+	return []abci.ValidatorUpdate{}
+}
 
 // GenerateGenesisState creates a randomized GenState of the sponsor module
 func (AppModule) GenerateGenesisState(simState *module.SimulationState) {}

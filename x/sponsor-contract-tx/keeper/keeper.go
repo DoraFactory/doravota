@@ -1,8 +1,8 @@
 package keeper
 
 import (
+	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 
@@ -117,6 +117,21 @@ func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 	bz, err := k.cdc.Marshal(&t)
 	if err != nil {
 		return err
+	}
+	// If a caller replaces a ticket with a different expiry height, remove the
+	// previous index first. This keeps the secondary index canonical and also
+	// prevents a stale expiry entry from targeting the renewed ticket.
+	if previousBz := store.Get(key); previousBz != nil {
+		var previous types.PolicyTicket
+		if err := k.cdc.Unmarshal(previousBz, &previous); err == nil && previous.ExpiryHeight != t.ExpiryHeight {
+			previousIndex := types.GetExpiryIndexKey(
+				previous.ExpiryHeight,
+				previous.ContractAddress,
+				previous.UserAddress,
+				previous.Digest,
+			)
+			store.Delete(previousIndex)
+		}
 	}
 	store.Set(key, bz)
 	// maintain expiry index for fast GC by expiry height
@@ -276,71 +291,118 @@ func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dige
 	return nil
 }
 
-// GC cursor helpers (height + in-bucket last key) – simple binary encoding
-func (k Keeper) getGcCursor(ctx sdk.Context) (uint64, []byte, bool) {
-	store := ctx.KVStore(k.storeKey)
-	bz := store.Get(types.GcCursorKey)
-	if bz == nil {
-		return 0, nil, false
-	}
-	if len(bz) < 8 {
-		return 0, nil, false
-	}
-	h := binary.BigEndian.Uint64(bz[:8])
-	tail := make([]byte, len(bz)-8)
-	copy(tail, bz[8:])
-	return h, tail, true
+type expiryIndexCandidate struct {
+	indexKey     []byte
+	ticketKey    []byte
+	expiryHeight uint64
+	malformed    bool
 }
 
-func (k Keeper) setGcCursor(ctx sdk.Context, height uint64, tail []byte) {
-	store := ctx.KVStore(k.storeKey)
-	out := append(types.EncodeUint64BigEndian(height), tail...)
-	store.Set(types.GcCursorKey, out)
+type garbageCollectionResult struct {
+	scanned        int
+	removed        int
+	invalidIndexes int
 }
 
-// GarbageCollectByExpiry removes up to maxTickets expired tickets using the expiry index and a persistent cursor
-func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxTickets int) {
-	if maxTickets <= 0 {
-		return
+// GarbageCollectByExpiry removes expired policy tickets through the globally
+// ordered expiry index. Both index inspection and deletion are bounded, so the
+// work performed in BeginBlock is independent of the current chain height.
+func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxEntries int) {
+	result := k.garbageCollectByExpiry(ctx, maxEntries)
+	if result.invalidIndexes > 0 {
+		k.Logger(ctx).Error(
+			"removed invalid policy ticket expiry indexes",
+			"count", result.invalidIndexes,
+		)
 	}
+}
+
+func (k Keeper) garbageCollectByExpiry(ctx sdk.Context, maxEntries int) garbageCollectionResult {
+	var result garbageCollectionResult
+	if maxEntries <= 0 || ctx.BlockHeight() <= 0 {
+		return result
+	}
+
+	limit := maxEntries
+	if limit > int(types.MaxTicketGCPerBlock) {
+		limit = int(types.MaxTicketGCPerBlock)
+	}
+
 	now := uint64(ctx.BlockHeight())
-	height, tail, ok := k.getGcCursor(ctx)
-	if !ok {
-		height = 0
-		tail = nil
+	store := ctx.KVStore(k.storeKey)
+	expiryStore := prefix.NewStore(store, types.ExpiryIndexKeyPrefix)
+	iterator := expiryStore.Iterator(nil, nil)
+	candidates := make([]expiryIndexCandidate, 0, limit)
+
+	for ; iterator.Valid() && result.scanned < limit; iterator.Next() {
+		indexKey := append([]byte(nil), iterator.Key()...)
+		result.scanned++
+
+		expiryHeight, ticketKey, ok := types.ParseExpiryIndexKey(indexKey)
+		if !ok {
+			candidates = append(candidates, expiryIndexCandidate{
+				indexKey:  indexKey,
+				malformed: true,
+			})
+			continue
+		}
+
+		// A ticket remains valid at its expiry height. Since the index is
+		// ordered by big-endian expiry height, all following entries are also
+		// unexpired and can be skipped for this block.
+		if expiryHeight >= now {
+			break
+		}
+
+		candidates = append(candidates, expiryIndexCandidate{
+			indexKey:     indexKey,
+			ticketKey:    append([]byte(nil), ticketKey...),
+			expiryHeight: expiryHeight,
+		})
 	}
-	removed := 0
-	for removed < maxTickets && height < now {
-		// build per-height prefix store: ExpiryIndexPrefix + BE8(height) + '/'
-		base := prefix.NewStore(ctx.KVStore(k.storeKey), types.ExpiryIndexKeyPrefix)
-		hStore := prefix.NewStore(base, append(types.EncodeUint64BigEndian(height), '/'))
-		var it storetypes.Iterator
-		if len(tail) > 0 {
-			start := append(append([]byte{}, tail...), 0x00)
-			it = hStore.Iterator(start, nil)
-		} else {
-			it = hStore.Iterator(nil, nil)
+	iterator.Close()
+
+	ticketStore := prefix.NewStore(store, types.PolicyTicketKeyPrefix)
+	for _, candidate := range candidates {
+		if candidate.malformed {
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		tStore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-		for ; it.Valid() && removed < maxTickets; it.Next() {
-			suffix := it.Key() // contract/user/digest
-			tStore.Delete(suffix)
-			hStore.Delete(suffix)
-			removed++
-			tail = make([]byte, len(suffix))
-			copy(tail, suffix)
+
+		bz := ticketStore.Get(candidate.ticketKey)
+		if bz == nil {
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		it.Close()
-		if removed >= maxTickets {
-			k.setGcCursor(ctx, height, tail)
-			return
+
+		var ticket types.PolicyTicket
+		if err := k.cdc.Unmarshal(bz, &ticket); err != nil {
+			// The index cannot be trusted to identify a corrupt primary value.
+			// Remove only the index so GC continues to make bounded progress.
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		// done with this height
-		height++
-		tail = nil
+
+		expectedKey := types.GetPolicyTicketKey(ticket.ContractAddress, ticket.UserAddress, ticket.Digest)
+		expectedTicketKey := expectedKey[len(types.PolicyTicketKeyPrefix):]
+		if ticket.ExpiryHeight != candidate.expiryHeight ||
+			!bytes.Equal(expectedTicketKey, candidate.ticketKey) {
+			// This is an obsolete or inconsistent index. Never use it to delete
+			// a ticket that may have been renewed under the same primary key.
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
+		}
+
+		ticketStore.Delete(candidate.ticketKey)
+		expiryStore.Delete(candidate.indexKey)
+		result.removed++
 	}
-	// finished for this block
-	k.setGcCursor(ctx, height, nil)
+
+	return result
 }
 
 // SetSponsor sets a sponsor in the store

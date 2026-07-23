@@ -85,7 +85,7 @@ Two‑phase, method‑ticket based sponsorship:
 - Events and housekeeping
   - `policy_ticket_issued`, `policy_ticket_revoked` (revoked includes `method`), `ticket_uses_clamped`, `policy_ticket_issue_conflict`.
   - `sponsored_transaction` summary event; and one `sponsored_tx_ticket` event per digest with pre/post uses and consumed counts (DeliverTx only).
-  - Per‑block GC removes expired tickets (`ticket_gc_per_block`). Genesis import/export supports tickets with duplicate detection.
+  - Per-block GC removes expired tickets through the ordered expiry index. `ticket_gc_per_block` bounds inspected index entries, is independent of chain height, and has a hard maximum of 1000. Genesis import/export supports tickets with duplicate detection.
 
 ## Spam Prevention
 
@@ -498,7 +498,7 @@ Governance‑controlled parameters:
 - `max_exec_msgs_per_tx_for_sponsor` (uint32, 0 disables cap)
 - `max_policy_exec_msg_bytes` (uint32, <= 1,048,576)
 - `max_method_ticket_uses_per_issue` (uint32, [1, 100])
-- `ticket_gc_per_block` (uint32)
+- `ticket_gc_per_block` (uint32, 0 disables GC; maximum 1000, default 200)
 - `max_method_name_bytes` (uint32, 0 = no cap; must be <= 256 when set)
 - `max_method_json_depth` (uint32, 0 = default 20; must be <= 64 when set)
 

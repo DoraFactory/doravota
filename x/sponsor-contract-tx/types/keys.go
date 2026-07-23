@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/binary"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -31,9 +32,6 @@ var (
 
 	// ExpiryIndexKeyPrefix defines the prefix for expiry-time ordered ticket index
 	ExpiryIndexKeyPrefix = []byte{0x11}
-
-	// GcCursorKey stores the GC cursor (height and optional in-bucket key)
-	GcCursorKey = []byte{0x12}
 )
 
 // GetSponsorKey returns the store key for a sponsor record
@@ -88,6 +86,19 @@ func GetExpiryIndexKey(expiryHeight uint64, contractAddr, userAddr, digest strin
 	key = append(key, '/')
 	key = append(key, []byte(digest)...)
 	return key
+}
+
+// ParseExpiryIndexKey parses a key relative to ExpiryIndexKeyPrefix.
+// It returns the expiry height and the corresponding policy-ticket key suffix.
+func ParseExpiryIndexKey(key []byte) (uint64, []byte, bool) {
+	const encodedHeightLength = 8
+	if len(key) <= encodedHeightLength+1 || key[encodedHeightLength] != '/' {
+		return 0, nil, false
+	}
+
+	expiryHeight := binary.BigEndian.Uint64(key[:encodedHeightLength])
+	ticketKey := key[encodedHeightLength+1:]
+	return expiryHeight, ticketKey, true
 }
 
 // ValidateContractAddress validates a contract address

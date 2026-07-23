@@ -690,7 +690,11 @@ func (p Params) Validate() error {
 	// Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
 	// Keep validation lenient to let governance choose appropriate values.
 
-	// GC per block may be zero to disable; no upper bound enforced here.
+	// GC per block may be zero to disable, but must remain bounded because it
+	// runs in BeginBlock on every validator.
+	if p.TicketGcPerBlock > MaxTicketGCPerBlock {
+		return errorsmod.Wrapf(ErrInvalidParams, "ticket_gc_per_block exceeds maximum (%d)", MaxTicketGCPerBlock)
+	}
 
 	// Max method name bytes bounds: 0 means no explicit cap; otherwise must be <= 256
 	if p.MaxMethodNameBytes > 256 {
