@@ -296,6 +296,13 @@ func SponsorTxFeeCheckerWithValidatorMinGasPrices(ctx sdk.Context, tx sdk.Tx) (s
 
 	feeCoins := feeTx.GetFee()
 	gas := feeTx.GetGas()
+	if gas == 0 || gas > uint64(math.MaxInt64) {
+		return nil, 0, errorsmod.Wrapf(
+			sdkerrors.ErrInvalidGasLimit,
+			"gas limit must be between 1 and %d",
+			int64(math.MaxInt64),
+		)
+	}
 
 	// Ensure that the provided fees meet a minimum threshold for the validator,
 	// if this is a CheckTx. This is only for local mempool purposes, and thus
@@ -328,6 +335,9 @@ func SponsorTxFeeCheckerWithValidatorMinGasPrices(ctx sdk.Context, tx sdk.Tx) (s
 // NOTE: This implementation should be used with a great consideration as it opens potential attack vectors
 // where txs with multiple coins could not be prioritize as expected.
 func getTxPriority(fee sdk.Coins, gas int64) int64 {
+	if gas <= 0 {
+		return 0
+	}
 	var priority int64
 	for _, c := range fee {
 		p := int64(math.MaxInt64)
