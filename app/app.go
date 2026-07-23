@@ -1240,9 +1240,8 @@ func (app *App) setupUpgradeHandlers() {
 	case v0_4_3.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v1_0_0.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{
-			Added: []string{sponsortypes.ModuleName},
-		}
+		upgrades := v1_0_0.StoreUpgrades()
+		storeUpgrades = &upgrades
 	}
 
 	if storeUpgrades != nil {

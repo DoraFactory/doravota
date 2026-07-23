@@ -90,6 +90,53 @@ func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *Moc
 	return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
 }
 
+func TestGlobalDisablePausesExecutionButAllowsLifecycleManagement(t *testing.T) {
+	k, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = false
+	require.NoError(t, k.SetParams(ctx, params))
+
+	admin := sdk.AccAddress([]byte("disabled_admin______"))
+	contract := sdk.AccAddress([]byte("disabled_contract___"))
+	user := sdk.AccAddress([]byte("disabled_user_______"))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     false,
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "prepare",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.DeleteSponsor(goCtx, &types.MsgDeleteSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+	})
+	require.NoError(t, err)
+	require.False(t, k.HasSponsor(ctx, contract.String()))
+}
+
 func TestIssuePolicyTicket_UsesClampAndDecrement(t *testing.T) {
 	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
 

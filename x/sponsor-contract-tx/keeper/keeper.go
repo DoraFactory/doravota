@@ -56,6 +56,9 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 // Cdc exposes the keeper codec for internal module usage (e.g., genesis export)
 func (k Keeper) Cdc() codec.BinaryCodec { return k.cdc }
 
+// WasmKeeper exposes the module dependency for simulation wiring.
+func (k Keeper) WasmKeeper() types.WasmKeeperInterface { return k.wasmKeeper }
+
 // GetAuthority returns the authority address for governance
 func (k Keeper) GetAuthority() string {
 	return k.authority

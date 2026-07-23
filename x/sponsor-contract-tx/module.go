@@ -19,6 +19,7 @@ import (
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/client/cli"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
+	sponsorsimulation "github.com/DoraFactory/doravota/x/sponsor-contract-tx/simulation"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
@@ -127,7 +128,9 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 }
 
 // RegisterInvariants registers the sponsor module's invariants
-func (am AppModule) RegisterInvariants(_ sdk.InvariantRegistry) {}
+func (am AppModule) RegisterInvariants(ir sdk.InvariantRegistry) {
+	keeper.RegisterInvariants(ir, am.keeper)
+}
 
 // InitGenesis performs the sponsor module's genesis initialization
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, gs json.RawMessage) []abci.ValidatorUpdate {
@@ -174,22 +177,38 @@ func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.V
 }
 
 // GenerateGenesisState creates a randomized GenState of the sponsor module
-func (AppModule) GenerateGenesisState(simState *module.SimulationState) {}
+func (AppModule) GenerateGenesisState(simState *module.SimulationState) {
+	sponsorsimulation.RandomizedGenState(simState)
+}
 
 // ProposalContents returns the sponsor module's proposal contents
-func (am AppModule) ProposalContents(_ module.SimulationState) []simtypes.WeightedProposalContent {
-	return []simtypes.WeightedProposalContent{}
+func (am AppModule) ProposalContents(simState module.SimulationState) []simtypes.WeightedProposalContent {
+	return sponsorsimulation.NewAppModuleSimulation(
+		am.keeper,
+		am.authKeeper,
+		am.bankKeeper,
+		am.keeper.WasmKeeper(),
+	).ProposalContents(simState)
 }
 
 // RandomizedParams creates randomized sponsor param changes for the simulator
-func (am AppModule) RandomizedParams(_ *rand.Rand) []simtypes.LegacyParamChange {
-	return []simtypes.LegacyParamChange{}
+func (am AppModule) RandomizedParams(r *rand.Rand) []simtypes.LegacyParamChange {
+	return sponsorsimulation.ParamChanges(r)
 }
 
 // RegisterStoreDecoder registers a decoder for sponsor module's types
-func (am AppModule) RegisterStoreDecoder(_ sdk.StoreDecoderRegistry) {}
+func (am AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
+	sdr[types.StoreKey] = sponsorsimulation.NewDecodeStore(am.keeper.Cdc())
+}
 
 // WeightedOperations returns the sponsor module's weighted operations
 func (am AppModule) WeightedOperations(simState module.SimulationState) []simtypes.WeightedOperation {
-	return []simtypes.WeightedOperation{}
+	return sponsorsimulation.WeightedOperations(
+		simState.AppParams,
+		simState.Cdc,
+		am.keeper,
+		am.authKeeper,
+		am.bankKeeper,
+		am.keeper.WasmKeeper(),
+	)
 }

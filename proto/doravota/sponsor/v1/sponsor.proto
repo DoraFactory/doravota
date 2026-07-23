@@ -57,13 +57,13 @@ message Params {
   uint32 policy_ticket_ttl_blocks = 3;
 
   // Max number of CosmWasm MsgExecuteContract messages allowed in a single
-  // sponsored transaction (must all target the same contract).
+  // sponsored transaction (must all target the same contract). Range: [1, 100].
   uint32 max_exec_msgs_per_tx_for_sponsor = 4;
 
   // Max raw JSON bytes allowed per MsgExecuteContract payload to be considered
   // for sponsorship policy checks. This is a pre-parse size guard executed
   // before any JSON (un)marshalling to prevent CPU/memory amplification.
-  // 0 disables this guard.
+  // Range: [1, 1048576].
   uint32 max_policy_exec_msg_bytes = 5;
 
   // MaxMethodTicketUsesPerIssue caps how many uses an admin-issued method ticket
@@ -78,7 +78,7 @@ message Params {
   // Maximum allowed size (in bytes) for a single top‑level method name
   // used in MsgExecuteContract (e.g., {"method":{...}}). This is enforced
   // when issuing method tickets and during ante parsing to avoid hashing
-  // arbitrarily large keys. Range suggestion: [1, 256].
+  // arbitrarily large keys. Range: [1, 256].
   uint32 max_method_name_bytes = 8;
 
   // Maximum JSON nesting depth allowed when scanning MsgExecuteContract payloads

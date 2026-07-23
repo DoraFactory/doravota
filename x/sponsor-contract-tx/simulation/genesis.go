@@ -1,20 +1,20 @@
 package simulation
 
 import (
-    "encoding/json"
-    "fmt"
-    "math/rand"
+	"encoding/json"
+	"fmt"
+	"math/rand"
 
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    "github.com/cosmos/cosmos-sdk/types/address"
-    "github.com/cosmos/cosmos-sdk/types/module"
-    simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
+	"github.com/cosmos/cosmos-sdk/types/module"
+	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
-    "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
+	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
 const (
-    SponsorshipEnabled   = "sponsorship_enabled"
+	SponsorshipEnabled = "sponsorship_enabled"
 )
 
 // RandomizedGenState generates a random GenesisState for the sponsor module
@@ -29,10 +29,9 @@ func RandomizedGenState(simState *module.SimulationState) {
 	// If needed, this can be reintroduced via a separate simulation parameter.
 	sponsors := generateRandomSponsors(simState.Rand, simState.Accounts, 0)
 
-	// Create genesis parameters
-    params := types.Params{
-        SponsorshipEnabled: sponsorshipEnabled,
-    }
+	// Start from complete safe defaults, then randomize selected fields.
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = sponsorshipEnabled
 
 	// Validate parameters
 	if err := params.Validate(); err != nil {
@@ -85,35 +84,35 @@ func generateRandomSponsors(r *rand.Rand, accounts []simtypes.Account, numSponso
 			}
 		}
 
-        // Select random creator (admin)
-        creator := accounts[r.Intn(len(accounts))]
+		// Select random creator (admin)
+		creator := accounts[r.Intn(len(accounts))]
 
-        // Random sponsorship settings
-        isSponsored := r.Intn(2) == 1
+		// Random sponsorship settings
+		isSponsored := r.Intn(2) == 1
 
 		var maxGrantPerUser []*sdk.Coin
 		if isSponsored || r.Intn(3) == 0 { // 1/3 chance for non-sponsored to have max grant
 			// Generate random grant amount in peaka
 			amount := sdk.NewInt(int64(r.Intn(10000000) + 1000)) // 1000 to 10,001,000
-            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
+			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
-        // Derive sponsor address from contract address for validity
-        ca, err := sdk.AccAddressFromBech32(contractAddr)
-        if err != nil {
-            // Should not happen as accounts are valid; skip entry if it does
-            continue
-        }
-        derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+		// Derive sponsor address from contract address for validity
+		ca, err := sdk.AccAddressFromBech32(contractAddr)
+		if err != nil {
+			// Should not happen as accounts are valid; skip entry if it does
+			continue
+		}
+		derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
 
-        sponsor := &types.ContractSponsor{
-            ContractAddress: contractAddr,
-            CreatorAddress:  creator.Address.String(),
-            SponsorAddress:  derivedSponsor,
-            IsSponsored:     isSponsored,
-            MaxGrantPerUser: maxGrantPerUser,
-        }
+		sponsor := &types.ContractSponsor{
+			ContractAddress: contractAddr,
+			CreatorAddress:  creator.Address.String(),
+			SponsorAddress:  derivedSponsor,
+			IsSponsored:     isSponsored,
+			MaxGrantPerUser: maxGrantPerUser,
+		}
 
 		sponsors = append(sponsors, sponsor)
 	}
@@ -124,10 +123,9 @@ done:
 
 // RandomParams returns random parameters for the sponsor module
 func RandomParams(r *rand.Rand) types.Params {
-    return types.Params{
-        SponsorshipEnabled:     r.Intn(2) == 1,
-        PolicyTicketTtlBlocks:  30,
-    }
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = r.Intn(2) == 1
+	return params
 }
 
 // RandomGenesisSponsors generates random sponsors for testing
@@ -147,38 +145,38 @@ func RandomGenesisSponsors(r *rand.Rand, accounts []simtypes.Account, numSponsor
 			contractIdx = (contractIdx + 1) % len(accounts)
 		}
 
-        creator := accounts[creatorIdx]
-        contractAddr := accounts[contractIdx].Address.String()
+		creator := accounts[creatorIdx]
+		contractAddr := accounts[contractIdx].Address.String()
 
-        isSponsored := r.Intn(2) == 1
-        var maxGrantPerUser []*sdk.Coin
+		isSponsored := r.Intn(2) == 1
+		var maxGrantPerUser []*sdk.Coin
 
 		if isSponsored {
 			amount := sdk.NewInt(int64(r.Intn(5000000) + 1000))
-            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
+			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		} else if r.Intn(4) == 0 { // 25% chance for non-sponsored to have max grant
 			amount := sdk.NewInt(int64(r.Intn(1000000) + 500))
-            coin := sdk.NewCoin(types.SponsorshipDenom, amount)
+			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
 
-        // Derive sponsor address from contract address for validity
-        ca, err := sdk.AccAddressFromBech32(contractAddr)
-        if err != nil {
-            // Should not happen; fallback to empty sponsor (will be filtered by validation later)
-            continue
-        }
-        derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
+		// Derive sponsor address from contract address for validity
+		ca, err := sdk.AccAddressFromBech32(contractAddr)
+		if err != nil {
+			// Should not happen; fallback to empty sponsor (will be filtered by validation later)
+			continue
+		}
+		derivedSponsor := sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
 
-        sponsors[i] = types.ContractSponsor{
-            ContractAddress: contractAddr,
-            CreatorAddress:  creator.Address.String(),
-            SponsorAddress:  derivedSponsor,
-            IsSponsored:     isSponsored,
-            MaxGrantPerUser: maxGrantPerUser,
-        }
-    }
+		sponsors[i] = types.ContractSponsor{
+			ContractAddress: contractAddr,
+			CreatorAddress:  creator.Address.String(),
+			SponsorAddress:  derivedSponsor,
+			IsSponsored:     isSponsored,
+			MaxGrantPerUser: maxGrantPerUser,
+		}
+	}
 
 	return sponsors
 }
@@ -214,7 +212,7 @@ func ValidateGenesisState(genesisState *types.GenesisState) error {
 	}
 
 	// Check for reasonable parameter values
-    // No additional param bounds here; Params.Validate covers the rest
+	// No additional param bounds here; Params.Validate covers the rest
 
 	// Validate sponsors
 	contractAddrs := make(map[string]bool)
@@ -248,7 +246,7 @@ func ValidateGenesisState(genesisState *types.GenesisState) error {
 				if coin == nil {
 					return fmt.Errorf("coin in MaxGrantPerUser cannot be nil for contract %s", sponsor.ContractAddress)
 				}
-                if coin.Denom != types.SponsorshipDenom {
+				if coin.Denom != types.SponsorshipDenom {
 					return fmt.Errorf("invalid denom in MaxGrantPerUser for contract %s: %s", sponsor.ContractAddress, coin.Denom)
 				}
 				if !coin.Amount.IsPositive() {

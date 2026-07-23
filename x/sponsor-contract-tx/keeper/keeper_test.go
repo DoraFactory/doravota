@@ -1204,14 +1204,13 @@ func TestUpdateParams(t *testing.T) {
 
 	// Test with valid authority
 	authority := keeper.GetAuthority()
-    msg := &types.MsgUpdateParams{
-        Authority: authority,
-        Params: types.Params{
-            SponsorshipEnabled:    false,
-            PolicyTicketTtlBlocks: 30,
-            MaxMethodTicketUsesPerIssue: 3,
-        },
-    }
+	paramsToSet := types.DefaultParams()
+	paramsToSet.SponsorshipEnabled = false
+	paramsToSet.MaxMethodTicketUsesPerIssue = 3
+	msg := &types.MsgUpdateParams{
+		Authority: authority,
+		Params:    paramsToSet,
+	}
 
     // Capture events
     evCtx := sdk.UnwrapSDKContext(ctx).WithEventManager(sdk.NewEventManager())

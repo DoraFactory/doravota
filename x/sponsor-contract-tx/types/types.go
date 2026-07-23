@@ -638,9 +638,9 @@ func ValidateGenesis(data GenesisState) error {
 
 	// Validate policy tickets: basic fields + duplicate detection on (contract,user,digest)
 	// Determine method length limit (use params if provided, else defaults)
-	methodLimit := DefaultParams().MaxMethodNameBytes
-	if data.Params != nil && data.Params.MaxMethodNameBytes != 0 {
-		methodLimit = data.Params.MaxMethodNameBytes
+	methodLimit := DefaultMaxMethodNameBytes
+	if data.Params != nil {
+		methodLimit = data.Params.EffectiveMaxMethodBytes()
 	}
 	seenTickets := make(map[string]struct{})
 	for _, t := range data.PolicyTickets {
@@ -705,11 +705,11 @@ func DefaultParams() Params {
 	return Params{
 		SponsorshipEnabled:          true,
 		PolicyTicketTtlBlocks:       30,
-		MaxExecMsgsPerTxForSponsor:  25,
-		MaxPolicyExecMsgBytes:       64 * 1024,
+		MaxExecMsgsPerTxForSponsor:  DefaultMaxExecMsgsPerTxForSponsor,
+		MaxPolicyExecMsgBytes:       DefaultMaxPolicyExecMsgBytes,
 		MaxMethodTicketUsesPerIssue: 50,
 		TicketGcPerBlock:            200,
-		MaxMethodNameBytes:          64,
+		MaxMethodNameBytes:          DefaultMaxMethodNameBytes,
 		MaxMethodJsonDepth:          20,
 	}
 }
@@ -722,17 +722,24 @@ func (p Params) Validate() error {
 	if p.PolicyTicketTtlBlocks > 1000 {
 		return errorsmod.Wrap(ErrInvalidParams, "policy ticket TTL exceeds maximum (1000)")
 	}
-	// MaxPolicyExecMsgBytes: upper bound to limit pre-parse payload size and reduce DoS risk (<= 1 MiB)
-	if p.MaxPolicyExecMsgBytes > 1024*1024 {
-		return errorsmod.Wrap(ErrInvalidParams, "max_policy_exec_msg_bytes exceeds maximum (1048576)")
+	if p.MaxExecMsgsPerTxForSponsor == 0 || p.MaxExecMsgsPerTxForSponsor > MaxExecMsgsPerTxForSponsor {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_exec_msgs_per_tx_for_sponsor must be within [1, %d]",
+			MaxExecMsgsPerTxForSponsor,
+		)
+	}
+	if p.MaxPolicyExecMsgBytes == 0 || p.MaxPolicyExecMsgBytes > MaxPolicyExecMsgBytes {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_policy_exec_msg_bytes must be within [1, %d]",
+			MaxPolicyExecMsgBytes,
+		)
 	}
 	// Method ticket uses per issue must be within [1, 100]
 	if p.MaxMethodTicketUsesPerIssue < 1 || p.MaxMethodTicketUsesPerIssue > 100 {
 		return errorsmod.Wrap(ErrInvalidParams, "max_method_ticket_uses_per_issue must be within [1, 100]")
 	}
-
-	// Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
-	// Keep validation lenient to let governance choose appropriate values.
 
 	// GC per block may be zero to disable, but must remain bounded because it
 	// runs in BeginBlock on every validator.
@@ -740,9 +747,12 @@ func (p Params) Validate() error {
 		return errorsmod.Wrapf(ErrInvalidParams, "ticket_gc_per_block exceeds maximum (%d)", MaxTicketGCPerBlock)
 	}
 
-	// Max method name bytes bounds: 0 means no explicit cap; otherwise must be <= 256
-	if p.MaxMethodNameBytes > 256 {
-		return errorsmod.Wrap(ErrInvalidParams, "max_method_name_bytes must be within [1, 256]")
+	if p.MaxMethodNameBytes == 0 || p.MaxMethodNameBytes > MaxMethodNameBytes {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_method_name_bytes must be within [1, %d]",
+			MaxMethodNameBytes,
+		)
 	}
 
 	// MaxMethodJsonDepth: 0 means use default; otherwise must be within [1, 64]

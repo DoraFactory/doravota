@@ -425,13 +425,51 @@ func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {
 }
 
 func TestParams_MaxPolicyExecMsgBytes_UpperBound(t *testing.T) {
-    p := DefaultParams()
-    // at bound ok
-    p.MaxPolicyExecMsgBytes = 1024 * 1024
-    require.NoError(t, p.Validate())
-    // above bound invalid
-    p.MaxPolicyExecMsgBytes = 1024*1024 + 1
-    require.Error(t, p.Validate())
+	p := DefaultParams()
+	p.MaxPolicyExecMsgBytes = 0
+	require.Error(t, p.Validate())
+	// at bound ok
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes
+	require.NoError(t, p.Validate())
+	// above bound invalid
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes + 1
+	require.Error(t, p.Validate())
+}
+
+func TestParams_ConsensusSafeResourceLimits(t *testing.T) {
+	p := DefaultParams()
+
+	p.MaxExecMsgsPerTxForSponsor = 0
+	require.Error(t, p.Validate())
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor
+	require.NoError(t, p.Validate())
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor + 1
+	require.Error(t, p.Validate())
+
+	p = DefaultParams()
+	p.MaxMethodNameBytes = 0
+	require.Error(t, p.Validate())
+	p.MaxMethodNameBytes = MaxMethodNameBytes
+	require.NoError(t, p.Validate())
+	p.MaxMethodNameBytes = MaxMethodNameBytes + 1
+	require.Error(t, p.Validate())
+}
+
+func TestParams_EffectiveResourceLimitsDefendInvalidState(t *testing.T) {
+	p := DefaultParams()
+	p.MaxExecMsgsPerTxForSponsor = 0
+	p.MaxPolicyExecMsgBytes = 0
+	p.MaxMethodNameBytes = 0
+	require.Equal(t, DefaultMaxExecMsgsPerTxForSponsor, p.EffectiveMaxExecMsgs())
+	require.Equal(t, DefaultMaxPolicyExecMsgBytes, p.EffectiveMaxPolicyExecBytes())
+	require.Equal(t, DefaultMaxMethodNameBytes, p.EffectiveMaxMethodBytes())
+
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor + 1
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes + 1
+	p.MaxMethodNameBytes = MaxMethodNameBytes + 1
+	require.Equal(t, MaxExecMsgsPerTxForSponsor, p.EffectiveMaxExecMsgs())
+	require.Equal(t, MaxPolicyExecMsgBytes, p.EffectiveMaxPolicyExecBytes())
+	require.Equal(t, MaxMethodNameBytes, p.EffectiveMaxMethodBytes())
 }
 
 func TestMsgIssuePolicyTicket_ValidateBasic_MethodOnly(t *testing.T) {

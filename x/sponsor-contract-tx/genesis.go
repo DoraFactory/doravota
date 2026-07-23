@@ -123,7 +123,7 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	// Set outstanding policy tickets (including near-expiry tickets). These may be
 	// garbage-collected later by the per-block GC routine.
 	// Enforce method length limit using current module params
-	mLimit := k.GetParams(ctx).MaxMethodNameBytes
+	mLimit := k.GetParams(ctx).EffectiveMaxMethodBytes()
 	for _, t := range genState.PolicyTickets {
 		if t == nil {
 			continue

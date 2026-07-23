@@ -187,7 +187,7 @@ func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sd
 // pre-filtered MsgExecuteContract list for the target contract to avoid re-scanning tx messages.
 func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPreselected(ctx sdk.Context, contractAddr, userAddr string, execMsgs []*wasmtypes.MsgExecuteContract) (bool, map[string]uint32, string) {
 	params := sctd.keeper.GetParams(ctx)
-	nameLimit := params.MaxMethodNameBytes
+	nameLimit := params.EffectiveMaxMethodBytes()
 	depthLimit := params.MaxMethodJsonDepth
 	now := uint64(ctx.BlockHeight())
 
@@ -442,10 +442,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
-		if params.MaxExecMsgsPerTxForSponsor > 0 {
+		maxExecMsgs := params.EffectiveMaxExecMsgs()
+		if maxExecMsgs > 0 {
 			execCount := len(execMsgs)
-			if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
-				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
+			if uint32(execCount) > maxExecMsgs {
+				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, maxExecMsgs)
 				// Emit skip event only in DeliverTx
 				if !ctx.IsCheckTx() {
 					ctx.EventManager().EmitEvent(
@@ -462,11 +463,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Enforce per-message raw JSON payload size (bytes) before any JSON parsing to prevent CPU amplification.
-		// 0 disables this guard.
-		if params.MaxPolicyExecMsgBytes > 0 {
+		maxExecBytes := params.EffectiveMaxPolicyExecBytes()
+		if maxExecBytes > 0 {
 			var tooLarge bool
 			for _, msg := range execMsgs {
-				if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
+				if uint32(len(msg.Msg)) > maxExecBytes {
 					tooLarge = true
 					break
 				}

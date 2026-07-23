@@ -73,6 +73,7 @@ Two‑phase, method‑ticket based sponsorship:
   - Admin can set/update/delete sponsorship, set optional `ticket_issuer_address`, withdraw funds, issue/revoke tickets.
   - When `ticket_issuer_address` is set, both admin and issuer can issue/revoke.
   - Issuing/revoking requires the sponsor to exist for the contract.
+  - The global toggle pauses fee sponsorship in Ante only; lifecycle management, ticket revocation/issuance, and withdrawals remain available for safe operations.
 
 - Lifecycle isolation
   - Tickets and user grant usage are bound to the Sponsor `generation`.
@@ -250,7 +251,7 @@ All sponsored transactions must pass structural checks **before** ticket/eligibi
 5. **Gas Limiting**: JSON scanning bounded by size and depth; no contract query gas
 6. **Transaction Structure Validation**: Only single-contract, multiple-message transactions allowed
 7. **Feegrant Priority**: Feegrant takes precedence over sponsorship to prevent conflicts
-8. **Global Toggle**: Sponsorship can be globally disabled via governance parameters
+8. **Global Toggle**: Governance can pause sponsored fee execution without blocking Sponsor administration or cleanup
 9. **Deterministic Method Extraction**: Enforce a single top‑level JSON field and extract method deterministically from raw tx JSON
 10. **Whitelist by Design (Recommended)**: The method‑ticket model is a whitelist. Only users who receive tickets from the contract admin or a delegated issuer can receive sponsorship. Admin/issuer can:
    - Maintain an off‑chain/on‑chain whitelist and issue tickets to listed users only
@@ -503,11 +504,11 @@ Governance‑controlled parameters:
 
 - `sponsorship_enabled` (bool)
 - `policy_ticket_ttl_blocks` (uint32, [1, 1000])
-- `max_exec_msgs_per_tx_for_sponsor` (uint32, 0 disables cap)
-- `max_policy_exec_msg_bytes` (uint32, <= 1,048,576)
+- `max_exec_msgs_per_tx_for_sponsor` (uint32, [1, 100], default 25)
+- `max_policy_exec_msg_bytes` (uint32, [1, 1,048,576], default 65,536)
 - `max_method_ticket_uses_per_issue` (uint32, [1, 100])
 - `ticket_gc_per_block` (uint32, 0 disables GC; maximum 1000, default 200)
-- `max_method_name_bytes` (uint32, 0 = no cap; must be <= 256 when set)
+- `max_method_name_bytes` (uint32, [1, 256], default 64)
 - `max_method_json_depth` (uint32, 0 = default 20; must be <= 64 when set)
 
 Denomination: `peaka` for all grants and fee accounting. Update via governance `MsgUpdateParams`.

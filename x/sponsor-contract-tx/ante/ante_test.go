@@ -3060,49 +3060,37 @@ func (suite *AnteTestSuite) TestContractQueryFailureRecovery() {
 // This ensures module parameters are properly validated
 func (suite *AnteTestSuite) TestParameterValidationBounds() {
 	// Test valid parameters
-    validParams := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      30,
-        MaxMethodTicketUsesPerIssue: 3,
-        MaxPolicyExecMsgBytes:      16 * 1024,
-    }
+	validParams := types.DefaultParams()
+	validParams.MaxMethodTicketUsesPerIssue = 3
+	validParams.MaxPolicyExecMsgBytes = 16 * 1024
 	err := validParams.Validate()
 	suite.Require().NoError(err)
 
-	// Test invalid parameters - zero gas
-    invalidParamsZero := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      0, // Invalid TTL
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	// Test invalid parameters - zero TTL
+	invalidParamsZero := validParams
+	invalidParamsZero.PolicyTicketTtlBlocks = 0
 	err = invalidParamsZero.Validate()
 	suite.Require().Error(err)
 	suite.Require().Contains(err.Error(), "must be greater than 0")
 
 	// Test invalid parameters - too high gas
-    invalidParamsHigh := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      2000, // Too high TTL (>1000)
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	invalidParamsHigh := validParams
+	invalidParamsHigh.PolicyTicketTtlBlocks = 2000
 	err = invalidParamsHigh.Validate()
     suite.Require().Error(err)
     suite.Require().Contains(err.Error(), "exceeds maximum")
 
 	// Test boundary values
-    boundaryParams := types.Params{
-        SponsorshipEnabled:         false,
-        PolicyTicketTtlBlocks:      30,
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	boundaryParams := validParams
+	boundaryParams.SponsorshipEnabled = false
     err = boundaryParams.Validate()
     suite.Require().NoError(err)
 
-    // Zero allowed: means no explicit cap
+    // Zero cannot disable the method-name guard.
     nameZero := validParams
     nameZero.MaxMethodNameBytes = 0
     err = nameZero.Validate()
-    suite.Require().NoError(err)
+    suite.Require().Error(err)
 
     invalidNameHigh := validParams
     invalidNameHigh.MaxMethodNameBytes = 300

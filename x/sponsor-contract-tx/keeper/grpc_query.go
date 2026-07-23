@@ -180,7 +180,7 @@ func (q QueryServer) PolicyTicketByMethod(goCtx context.Context, req *types.Quer
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method required")
 	}
 	// Enforce method name size limit similar to issuance path
-	if lim := q.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 && uint32(len(req.Method)) > lim {
+	if lim := q.Keeper.GetParams(ctx).EffectiveMaxMethodBytes(); uint32(len(req.Method)) > lim {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
 	}
 	digest := q.Keeper.ComputeMethodDigest(req.ContractAddress, []string{req.Method})

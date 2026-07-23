@@ -7,6 +7,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/kv"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
@@ -61,11 +62,11 @@ func (am AppModuleSimulation) WeightedOperations(appParams simtypes.AppParams, c
 }
 
 // NewDecodeStore returns a decoder function closure over the sponsor module's types
-func NewDecodeStore(cdc codec.BinaryCodec) func(kvA, kvB []byte) string {
-	return func(kvA, kvB []byte) string {
+func NewDecodeStore(cdc codec.BinaryCodec) func(kvA, kvB kv.Pair) string {
+	return func(kvA, kvB kv.Pair) string {
 		// Simplified decoder for simulation
 		return fmt.Sprintf("KeyA: %X\nValueA: %X\nKeyB: %X\nValueB: %X\n",
-			kvA, kvA, kvB, kvB)
+			kvA.Key, kvA.Value, kvB.Key, kvB.Value)
 	}
 }
 
@@ -216,7 +217,7 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 				ContractAddress: sponsor.ContractAddress,
 				TotalGrantUsed: []*sdk.Coin{
 					{
-                    Denom:  types.SponsorshipDenom,
+						Denom:  types.SponsorshipDenom,
 						Amount: sdk.NewInt(int64(r.Intn(100000) + 1000)),
 					},
 				},

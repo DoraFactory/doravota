@@ -297,12 +297,12 @@ type Params struct {
 	// Suggested: 20-30; Range: [1, 1000].
 	PolicyTicketTtlBlocks uint32 `protobuf:"varint,3,opt,name=policy_ticket_ttl_blocks,json=policyTicketTtlBlocks,proto3" json:"policy_ticket_ttl_blocks,omitempty"`
 	// Max number of CosmWasm MsgExecuteContract messages allowed in a single
-	// sponsored transaction (must all target the same contract).
+	// sponsored transaction (must all target the same contract). Range: [1, 100].
 	MaxExecMsgsPerTxForSponsor uint32 `protobuf:"varint,4,opt,name=max_exec_msgs_per_tx_for_sponsor,json=maxExecMsgsPerTxForSponsor,proto3" json:"max_exec_msgs_per_tx_for_sponsor,omitempty"`
 	// Max raw JSON bytes allowed per MsgExecuteContract payload to be considered
 	// for sponsorship policy checks. This is a pre-parse size guard executed
 	// before any JSON (un)marshalling to prevent CPU/memory amplification.
-	// 0 disables this guard.
+	// Range: [1, 1048576].
 	MaxPolicyExecMsgBytes uint32 `protobuf:"varint,5,opt,name=max_policy_exec_msg_bytes,json=maxPolicyExecMsgBytes,proto3" json:"max_policy_exec_msg_bytes,omitempty"`
 	// MaxMethodTicketUsesPerIssue caps how many uses an admin-issued method ticket
 	// can have in a single issuance. The actual uses_remaining stored on the ticket
@@ -314,7 +314,7 @@ type Params struct {
 	// Maximum allowed size (in bytes) for a single top‑level method name
 	// used in MsgExecuteContract (e.g., {"method":{...}}). This is enforced
 	// when issuing method tickets and during ante parsing to avoid hashing
-	// arbitrarily large keys. Range suggestion: [1, 256].
+	// arbitrarily large keys. Range: [1, 256].
 	MaxMethodNameBytes uint32 `protobuf:"varint,8,opt,name=max_method_name_bytes,json=maxMethodNameBytes,proto3" json:"max_method_name_bytes,omitempty"`
 	// Maximum JSON nesting depth allowed when scanning MsgExecuteContract payloads
 	// to extract the top-level method key. This acts as a defensive bound against

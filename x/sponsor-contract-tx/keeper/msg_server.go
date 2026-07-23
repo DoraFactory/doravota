@@ -32,12 +32,6 @@ var _ types.MsgServer = msgServer{}
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
-
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
 		return nil, err
@@ -118,12 +112,6 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 // UpdateSponsor handles MsgUpdateSponsor
 func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSponsor) (*types.MsgUpdateSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
-
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -232,12 +220,6 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 // DeleteSponsor handles MsgDeleteSponsor
 func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSponsor) (*types.MsgDeleteSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
-
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -485,7 +467,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method is required")
 	}
 	// Enforce method name size limit from params
-	if lim := k.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 && uint32(len(msg.Method)) > lim {
+	if lim := k.Keeper.GetParams(ctx).EffectiveMaxMethodBytes(); uint32(len(msg.Method)) > lim {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
 	}
 	digest := k.Keeper.ComputeMethodDigest(msg.ContractAddress, []string{msg.Method})
@@ -536,10 +518,8 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	// Enforce method name length bound from params to avoid storing oversized strings
 	// and emitting large event attributes. 0 means use default behavior, but
 	// DefaultParams() already sets a sane default (64).
-	if lim := k.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 {
-		if uint32(len(msg.Method)) > lim {
-			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
-		}
+	if lim := k.Keeper.GetParams(ctx).EffectiveMaxMethodBytes(); uint32(len(msg.Method)) > lim {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
 	}
 
 	params := k.Keeper.GetParams(ctx)
