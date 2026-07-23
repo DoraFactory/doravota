@@ -20,6 +20,10 @@ message ContractSponsor {
   int64 created_at = 6;
   int64 updated_at = 7;
   repeated cosmos.base.v1beta1.Coin max_grant_per_user = 8;
+  // Generation identifies this sponsor lifecycle. Deleting a sponsor rotates
+  // the generation, permanently invalidating tickets and usage from the
+  // deleted lifecycle.
+  uint64 generation = 9;
 }
 
 // GenesisState defines the sponsor module's genesis state
@@ -39,6 +43,8 @@ message UserGrantUsage {
   string contract_address = 2;
   repeated cosmos.base.v1beta1.Coin total_grant_used = 3;
   int64 last_used_time = 4;
+  // Generation binds this usage to one sponsor lifecycle.
+  uint64 generation = 5;
 }
 
 // Params defines the parameters for the sponsor module
@@ -101,4 +107,7 @@ message PolicyTicket {
   // (the key remains the digest above) and may be empty when issued for
   // multiple methods.
   string method = 8;
+  // Generation binds this ticket to one sponsor lifecycle. Tickets from a
+  // deleted lifecycle can never become valid after the sponsor is recreated.
+  uint64 generation = 9;
 }

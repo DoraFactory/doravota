@@ -98,6 +98,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
 		return nil, errorsmod.Wrap(err, "failed to set sponsor")
 	}
+	sponsor, _ = k.Keeper.GetSponsor(ctx, msg.ContractAddress)
 
 	// Emit event using constants
 	ctx.EventManager().EmitEvent(
@@ -106,6 +107,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -205,6 +207,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		CreatedAt:           existingSponsor.CreatedAt,
 		UpdatedAt:           ctx.BlockTime().Unix(),
 		MaxGrantPerUser:     effectiveMaxGrant,
+		Generation:          existingSponsor.Generation,
 	}
 
 	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
@@ -218,6 +221,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -286,6 +290,7 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsor.SponsorAddress),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 		),
 	)
 
@@ -438,7 +443,8 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, err
 	}
 	// Require sponsor exists for this contract (both for manager and issuer flows)
-	if _, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress); !found {
+	sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
+	if !found {
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 	// Verify authorization: contract admin or ticket_issuer_address
@@ -451,10 +457,6 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, err
 	}
 	if !isManager {
-		sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
-		if !found {
-			return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
-		}
 		if sponsor.TicketIssuerAddress == "" || sponsor.TicketIssuerAddress != creator.String() {
 			return nil, errorsmod.Wrap(types.ErrUnauthorized, "not authorized to issue tickets")
 		}
@@ -491,7 +493,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	// Conflict: if an active, unconsumed ticket already exists for this digest, reject re-issue.
 	// Tickets expiring strictly after the current height are considered active for issuance purposes
 	// (tickets at the current height are treated as stale and can be replaced).
-	if t, found := k.Keeper.GetPolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); found {
+	if t, found := k.Keeper.GetActivePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); found {
 		now := uint64(ctx.BlockHeight())
 		if !t.Consumed && now < t.ExpiryHeight {
 			// Enrich method for display if missing
@@ -562,6 +564,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		ExpiryHeight:    uint64(ctx.BlockHeight()) + uint64(ttl),
 		Consumed:        false,
 		IssuedHeight:    uint64(ctx.BlockHeight()),
+		Generation:      sponsor.Generation,
 	}
 	// Set method for display when issuing a single-method ticket
 	ticket.Method = msg.Method
@@ -602,6 +605,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 			sdk.NewAttribute(types.AttributeKeyDigest, ticket.Digest),
 			sdk.NewAttribute(types.AttributeKeyExpiryHeight, fmt.Sprintf("%d", ticket.ExpiryHeight)),
 			sdk.NewAttribute(types.AttributeKeyMethod, ticket.Method),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", ticket.Generation)),
 		),
 	)
 	return &types.MsgIssuePolicyTicketResponse{Created: true, Ticket: &ticket}, nil

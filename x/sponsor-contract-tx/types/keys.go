@@ -32,11 +32,20 @@ var (
 
 	// ExpiryIndexKeyPrefix defines the prefix for expiry-time ordered ticket index
 	ExpiryIndexKeyPrefix = []byte{0x11}
+
+	// SponsorGenerationKeyPrefix stores the current lifecycle generation for a
+	// contract. It intentionally survives Sponsor deletion.
+	SponsorGenerationKeyPrefix = []byte{0x12}
 )
 
 // GetSponsorKey returns the store key for a sponsor record
 func GetSponsorKey(contractAddr string) []byte {
 	return append(SponsorKeyPrefix, []byte(contractAddr)...)
+}
+
+// GetSponsorGenerationKey returns the persistent generation key for a contract.
+func GetSponsorGenerationKey(contractAddr string) []byte {
+	return append(SponsorGenerationKeyPrefix, []byte(contractAddr)...)
 }
 
 // GetUserGrantUsageKey returns the store key for a user grant usage record

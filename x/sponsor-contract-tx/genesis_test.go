@@ -1015,3 +1015,46 @@ func (suite *GenesisTestSuite) TestParamsRoundTrip_IncludesNewField() {
     suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
     suite.Require().Equal(params.MaxMethodTicketUsesPerIssue, exported.Params.MaxMethodTicketUsesPerIssue)
 }
+
+func TestDeletedSponsorLifecycleSurvivesGenesis(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("deleted_contract____")).String()
+	user := sdk.AccAddress([]byte("deleted_user________")).String()
+	params := types.DefaultParams()
+	genesis := types.GenesisState{
+		Params: &params,
+		UserGrantUsages: []*types.UserGrantUsage{{
+			UserAddress:     user,
+			ContractAddress: contract,
+			TotalGrantUsed: []*sdk.Coin{{
+				Denom:  types.SponsorshipDenom,
+				Amount: sdk.NewInt(25),
+			}},
+			Generation: 4,
+		}},
+		PolicyTickets: []*types.PolicyTicket{{
+			ContractAddress: contract,
+			UserAddress:     user,
+			Digest:          "digest",
+			ExpiryHeight:    100,
+			UsesRemaining:   1,
+			Generation:      4,
+		}},
+	}
+
+	require.NoError(t, types.ValidateGenesis(genesis))
+	sponsor.InitGenesis(ctx, k, genesis)
+	require.Equal(t, uint64(5), k.GetSponsorGeneration(ctx, contract))
+
+	// Recreating the same contract after import must use the post-deletion
+	// generation and must not reactivate historical state.
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract}))
+	currentSponsor, found := k.GetSponsor(ctx, contract)
+	require.True(t, found)
+	require.Equal(t, uint64(5), currentSponsor.Generation)
+	_, found = k.GetActivePolicyTicket(ctx, contract, user, "digest")
+	require.False(t, found)
+	usage := k.GetUserGrantUsage(ctx, user, contract)
+	require.Equal(t, uint64(5), usage.Generation)
+	require.Empty(t, usage.TotalGrantUsed)
+}

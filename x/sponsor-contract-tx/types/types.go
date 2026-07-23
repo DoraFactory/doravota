@@ -586,10 +586,35 @@ func ValidateGenesis(data GenesisState) error {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid user grant usage coins")
 		}
 
-		// Ensure referenced sponsor exists and usage does not exceed its max grant if configured
+		// Current-generation usage must respect the active Sponsor limit.
+		// Historical usage with a non-zero generation may outlive a deleted
+		// Sponsor and is retained only for lifecycle isolation/genesis replay.
 		sponsor, ok := sponsorsByContract[usage.ContractAddress]
 		if !ok {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
+			if usage.Generation == 0 {
+				return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
+			}
+			continue
+		}
+		sponsorGeneration := sponsor.Generation
+		if sponsorGeneration == 0 {
+			sponsorGeneration = 1
+		}
+		usageGeneration := usage.Generation
+		if usageGeneration == 0 {
+			usageGeneration = sponsorGeneration
+		}
+		if usageGeneration > sponsorGeneration {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"user grant usage generation %d exceeds sponsor generation %d for contract %s",
+				usageGeneration,
+				sponsorGeneration,
+				usage.ContractAddress,
+			)
+		}
+		if usageGeneration < sponsorGeneration {
+			continue
 		}
 		limit := sdk.Coins{}
 		for _, c := range sponsor.MaxGrantPerUser {
@@ -635,6 +660,25 @@ func ValidateGenesis(data GenesisState) error {
 		// Optional method display length check
 		if t.Method != "" && uint32(len(t.Method)) > methodLimit {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket method too long")
+		}
+		if sponsor, found := sponsorsByContract[t.ContractAddress]; found {
+			sponsorGeneration := sponsor.Generation
+			if sponsorGeneration == 0 {
+				sponsorGeneration = 1
+			}
+			ticketGeneration := t.Generation
+			if ticketGeneration == 0 {
+				ticketGeneration = sponsorGeneration
+			}
+			if ticketGeneration > sponsorGeneration {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"policy ticket generation %d exceeds sponsor generation %d for contract %s",
+					ticketGeneration,
+					sponsorGeneration,
+					t.ContractAddress,
+				)
+			}
 		}
 		// Duplicate detection
 		key := t.ContractAddress + "/" + t.UserAddress + "/" + t.Digest

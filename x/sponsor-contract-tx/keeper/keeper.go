@@ -111,8 +111,37 @@ func (k Keeper) GetPolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest 
 	return t, true
 }
 
+// GetActivePolicyTicket returns a ticket only when it belongs to the current
+// Sponsor lifecycle. Historical tickets remain in storage for bounded GC, but
+// can never authorize a transaction after Sponsor deletion.
+func (k Keeper) GetActivePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) (types.PolicyTicket, bool) {
+	ticket, found := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	if !found {
+		return types.PolicyTicket{}, false
+	}
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		// Preserve low-level legacy/test behavior only when this contract has
+		// never had a lifecycle. Deleted Sponsors always retain a non-zero
+		// generation tombstone and therefore cannot take this path.
+		if k.GetSponsorGeneration(ctx, contractAddr) == 0 && ticket.Generation == 0 {
+			return ticket, true
+		}
+		return types.PolicyTicket{}, false
+	}
+	if sponsor.Generation == 0 || ticket.Generation != sponsor.Generation {
+		return types.PolicyTicket{}, false
+	}
+	return ticket, true
+}
+
 func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 	store := ctx.KVStore(k.storeKey)
+	if t.Generation == 0 {
+		if sponsor, found := k.GetSponsor(ctx, t.ContractAddress); found {
+			t.Generation = sponsor.Generation
+		}
+	}
 	key := types.GetPolicyTicketKey(t.ContractAddress, t.UserAddress, t.Digest)
 	bz, err := k.cdc.Marshal(&t)
 	if err != nil {
@@ -179,14 +208,24 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 	}
 	sub := prefix.NewStore(pstore, p)
 	var out []*types.PolicyTicket
-	pageRes, err := query.Paginate(sub, pageReq, func(key, value []byte) error {
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	currentGeneration := uint64(0)
+	if found {
+		currentGeneration = sponsor.Generation
+	} else if k.GetSponsorGeneration(ctx, contractAddr) != 0 {
+		return []*types.PolicyTicket{}, &query.PageResponse{}, nil
+	}
+	pageRes, err := query.FilteredPaginate(sub, pageReq, func(key, value []byte, accumulate bool) (bool, error) {
 		var t types.PolicyTicket
 		if err := k.cdc.Unmarshal(value, &t); err != nil {
-			return err
+			return false, err
 		}
-		tt := t
-		out = append(out, &tt)
-		return nil
+		matchesCurrentGeneration := t.Generation == currentGeneration
+		if matchesCurrentGeneration && accumulate {
+			tt := t
+			out = append(out, &tt)
+		}
+		return matchesCurrentGeneration, nil
 	})
 	if err != nil {
 		return nil, nil, err
@@ -202,7 +241,7 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 
 // ConsumePolicyTicket marks a policy ticket as consumed if present and valid
 func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
-	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 	if !ok {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
 	}
@@ -235,7 +274,7 @@ func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr
 	updated := make(map[string]types.PolicyTicket, len(counts))
 	// Validate and compute updated state in-memory
 	for md, cnt := range counts {
-		t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+		t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, md)
 		if !ok {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
 		}
@@ -280,7 +319,7 @@ func (k Keeper) DeletePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dige
 // RevokePolicyTicket removes a policy ticket for (contract,user,digest) if it exists and is not consumed.
 // If the ticket is already consumed or does not exist, it returns an error to signal no-op.
 func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
-	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 	if !ok {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
 	}
@@ -414,6 +453,10 @@ func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error
 	}
 	sponsor.MaxGrantPerUser = normalized
 
+	if err := k.bindSponsorGeneration(ctx, &sponsor); err != nil {
+		return errorsmod.Wrap(err, "failed to bind sponsor generation")
+	}
+
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(sponsor.ContractAddress)
 
@@ -456,6 +499,13 @@ func (k Keeper) HasSponsor(ctx sdk.Context, contractAddr string) bool {
 
 // DeleteSponsor removes a sponsor from the store
 func (k Keeper) DeleteSponsor(ctx sdk.Context, contractAddr string) error {
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		return nil
+	}
+	if err := k.rotateSponsorGeneration(ctx, sponsor); err != nil {
+		return errorsmod.Wrap(err, "failed to rotate sponsor generation")
+	}
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
 	store.Delete(key)
@@ -667,7 +717,11 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 
 	if bz == nil {
 		// Return new usage record if not found
-		return types.NewUserGrantUsage(userAddr, contractAddr)
+		usage := types.NewUserGrantUsage(userAddr, contractAddr)
+		if sponsor, found := k.GetSponsor(ctx, contractAddr); found {
+			usage.Generation = sponsor.Generation
+		}
+		return usage
 	}
 
 	var usage types.UserGrantUsage
@@ -675,7 +729,24 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 	if err != nil {
 		// Log error and return new usage record
 		k.Logger(ctx).Error("failed to unmarshal user grant usage", "user", userAddr, "contract", contractAddr, "error", err)
+		usage := types.NewUserGrantUsage(userAddr, contractAddr)
+		if sponsor, found := k.GetSponsor(ctx, contractAddr); found {
+			usage.Generation = sponsor.Generation
+		}
+		return usage
+	}
+
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		if k.GetSponsorGeneration(ctx, contractAddr) == 0 && usage.Generation == 0 {
+			return usage
+		}
 		return types.NewUserGrantUsage(userAddr, contractAddr)
+	}
+	if sponsor.Generation == 0 || usage.Generation != sponsor.Generation {
+		current := types.NewUserGrantUsage(userAddr, contractAddr)
+		current.Generation = sponsor.Generation
+		return current
 	}
 
 	return usage
@@ -684,6 +755,11 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 // SetUserGrantUsage sets the grant usage for a specific user and contract
 func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) error {
 	store := ctx.KVStore(k.storeKey)
+	if usage.Generation == 0 {
+		if sponsor, found := k.GetSponsor(ctx, usage.ContractAddress); found {
+			usage.Generation = sponsor.Generation
+		}
+	}
 	key := types.GetUserGrantUsageKey(usage.UserAddress, usage.ContractAddress)
 
 	bz, err := k.cdc.Marshal(&usage)
@@ -697,6 +773,17 @@ func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) e
 // UpdateUserGrantUsage updates the user's grant usage by adding the consumed amount
 func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error {
 	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		if k.GetSponsorGeneration(ctx, contractAddr) != 0 {
+			return errorsmod.Wrap(types.ErrSponsorNotFound, "cannot update usage without an active sponsor lifecycle")
+		}
+	} else {
+		if sponsor.Generation == 0 {
+			return errorsmod.Wrap(types.ErrSponsorNotFound, "cannot update usage without an active sponsor lifecycle")
+		}
+		usage.Generation = sponsor.Generation
+	}
 
 	// Convert []*sdk.Coin to sdk.Coins for calculation
 	currentUsed := sdk.Coins{}

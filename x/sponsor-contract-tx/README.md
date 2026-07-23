@@ -57,6 +57,7 @@ message ContractSponsor {
   int64 created_at = 6;
   int64 updated_at = 7;
   repeated cosmos.base.v1beta1.Coin max_grant_per_user = 8;
+  uint64 generation = 9;        // Persistent Sponsor lifecycle generation
 }
 ```
 
@@ -72,6 +73,12 @@ Two‑phase, method‑ticket based sponsorship:
   - Admin can set/update/delete sponsorship, set optional `ticket_issuer_address`, withdraw funds, issue/revoke tickets.
   - When `ticket_issuer_address` is set, both admin and issuer can issue/revoke.
   - Issuing/revoking requires the sponsor to exist for the contract.
+
+- Lifecycle isolation
+  - Tickets and user grant usage are bound to the Sponsor `generation`.
+  - Deleting a Sponsor rotates its persistent generation without scanning related state.
+  - Recreating a Sponsor for the same contract cannot reactivate old tickets or inherit old user grant usage.
+  - Historical tickets remain eligible for bounded expiry-index GC, while Ante and public queries expose only the current generation.
 
 - Deterministic, efficient parsing
   - Enforce exactly one top‑level key for sponsored messages; scan via streaming JSON decoder.
@@ -126,6 +133,7 @@ message UserGrantUsage {
   string contract_address = 2;
   repeated cosmos.base.v1beta1.Coin total_grant_used = 3;
   int64 last_used_time = 4;
+  uint64 generation = 5;
 }
 ```
 

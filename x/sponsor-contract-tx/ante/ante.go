@@ -218,7 +218,7 @@ func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPresele
 			md = sctd.keeper.ComputeMethodDigestSingle(contractAddr, key)
 			methodDigestCache[key] = md
 			// On first time seeing this method, load available uses for its digest
-			t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+			t, ok := sctd.keeper.GetActivePolicyTicket(ctx, contractAddr, userAddr, md)
 			if !ok {
 				return false, nil, "ticket_not_found"
 			}
@@ -682,7 +682,7 @@ func preScanTxForSponsorship(tx sdk.Tx) (*TransactionValidationResult, string, [
 	}
 
 	// All messages are contract execs to the same contract
-	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: "",}, firstContractMsg, execMsgs
+	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: ""}, firstContractMsg, execMsgs
 }
 
 // validateSponsoredTransaction validates tx shape for sponsorship. It delegates to preScanTxForSponsorship
