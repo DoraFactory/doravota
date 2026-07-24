@@ -66,7 +66,14 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 
 		// Accumulate amounts for same denomination
 		if existing, found := denominationTotals[coin.Denom]; found {
-			denominationTotals[coin.Denom] = existing.Add(coin.Amount)
+			total, err := existing.SafeAdd(coin.Amount)
+			if err != nil {
+				return nil, errorsmod.Wrap(
+					sdkerrors.ErrInvalidCoins,
+					"max_grant_per_user amount overflow",
+				)
+			}
+			denominationTotals[coin.Denom] = total
 		} else {
 			denominationTotals[coin.Denom] = coin.Amount
 		}
@@ -585,7 +592,17 @@ func ValidateGenesis(data GenesisState) error {
 			if c.Amount.IsNegative() {
 				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
 			}
-			used = used.Add(*c)
+			if len(used) == 0 {
+				if !c.IsZero() {
+					used = sdk.NewCoins(*c)
+				}
+				continue
+			}
+			total, err := used[0].Amount.SafeAdd(c.Amount)
+			if err != nil {
+				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+			}
+			used[0] = sdk.NewCoin(SponsorshipDenom, total)
 		}
 		if !used.IsValid() {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid user grant usage coins")
@@ -851,16 +868,8 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 	}
 
 	if len(msg.Amount) > 0 {
-		for _, c := range msg.Amount {
-			if c == nil {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
-			}
-			if c.Denom != SponsorshipDenom {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
-			}
-			if !c.Amount.IsPositive() {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
-			}
+		if _, err := msg.NormalizedAmount(); err != nil {
+			return err
 		}
 	} else {
 		// Len==0 is allowed: means withdraw entire balance, handled server-side
@@ -874,20 +883,28 @@ func (msg *MsgWithdrawSponsorFunds) XXX_MessageName() string {
 	return "doravota.sponsor.v1.MsgWithdrawSponsorFunds"
 }
 
-// NormalizedAmount returns sdk.Coins representation even when Amount is empty
-func (msg MsgWithdrawSponsorFunds) NormalizedAmount() sdk.Coins {
-	coins := sdk.Coins{}
+// NormalizedAmount returns a canonical sdk.Coins representation even when
+// Amount is empty. Duplicate entries are merged with checked arithmetic.
+func (msg MsgWithdrawSponsorFunds) NormalizedAmount() (sdk.Coins, error) {
+	total := sdk.ZeroInt()
 	for _, c := range msg.Amount {
 		if c == nil {
-			continue
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
 		}
-		if c.Denom != "peaka" {
-			continue
+		if c.Denom != SponsorshipDenom {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
 		}
 		if !c.Amount.IsPositive() {
-			continue
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
 		}
-		coins = coins.Add(*c)
+		next, err := total.SafeAdd(c.Amount)
+		if err != nil {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "withdraw amount overflow")
+		}
+		total = next
 	}
-	return coins
+	if total.IsZero() {
+		return sdk.Coins{}, nil
+	}
+	return sdk.NewCoins(sdk.NewCoin(SponsorshipDenom, total)), nil
 }

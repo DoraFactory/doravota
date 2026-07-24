@@ -85,15 +85,16 @@ Two‑phase, method‑ticket based sponsorship:
   - Enforce exactly one top‑level key for sponsored messages; scan via streaming JSON decoder.
   - Guards: per‑message bytes cap, method name length cap, and JSON depth cap when skipping nested values.
 
-- Mempool/runtme behavior
+- Mempool/runtime behavior
   - Self‑pay priority in both CheckTx and DeliverTx when user can afford declared fee.
-  - With a valid ticket and user cannot self‑pay: CheckTx marks a gate after prechecks; DeliverTx injects sponsor payment and consumes tickets.
+  - With a valid ticket and user cannot self‑pay: CheckTx reserves sponsor funds, quota, and ticket uses in isolated check-state; DeliverTx independently commits the same transitions.
   - Feegrant precedence over sponsorship.
 
 - Events and housekeeping
   - `policy_ticket_issued`, `policy_ticket_revoked` (revoked includes `method`), `ticket_uses_clamped`, `policy_ticket_issue_conflict`.
   - `sponsored_transaction` summary event; and one `sponsored_tx_ticket` event per digest with pre/post uses and consumed counts (DeliverTx only).
   - Per-block GC removes expired tickets through the ordered expiry index. `ticket_gc_per_block` bounds inspected index entries, is independent of chain height, and has a hard maximum of 1000. Genesis import/export supports tickets with duplicate detection.
+  - A ticket remains valid at its `expiry_height` and expires starting at the next block; replacement follows the same boundary.
 
 ## Spam Prevention
 
@@ -110,7 +111,7 @@ Layered defenses to reduce spam/DoS:
 
 - Early short‑circuits
   - Self‑pay in both CheckTx/DeliverTx when user can afford the declared fee.
-  - With a valid ticket and user cannot self‑pay, CheckTx validates user grant limit and sponsor balance against the declared fee to avoid mempool pollution.
+  - With a valid ticket and user cannot self‑pay, CheckTx validates and reserves user grant, sponsor balance, and ticket uses to avoid mempool over-admission.
 
 - Accounting and visibility
   - Per‑user grant usage accounting; clamp events and skip reasons emit for observability.
@@ -168,11 +169,11 @@ flowchart TD
     M -- No --> P[Fallback: user pays or insufficient funds error]
     M -- Yes --> N[Precheck: sponsor account exists and balance >= fee]
     N -- No --> Q[Error: sponsor insufficient]
-    N -- Yes --> R{CheckTx or DeliverTx?}
-    R -- CheckTx --> S[Mark ticket gate; pass to next]
-    R -- DeliverTx --> T[Inject SponsorPaymentInfo; pass to next]
+    N -- Yes --> T[Inject SponsorPaymentInfo; pass to next]
     T --> U[SponsorAwareDeductFeeDecorator]
-    U --> W[Deduct sponsor fee; update usage; consume tickets; emit events]
+    U --> R{CheckTx or DeliverTx?}
+    R -- CheckTx --> S[Reserve fee, usage and ticket uses in check-state]
+    R -- DeliverTx --> W[Deduct fee; update usage; consume tickets; emit events]
     Z --> V
     S --> V
     W --> V
@@ -570,9 +571,8 @@ dorad tx sponsor revoke-ticket [contract-address] [user-address] [method]   --fr
 
 ### 5. Gas Considerations
 
-- Policy queries consume gas during transaction validation
-- Set appropriate gas limits for contract queries
-  Keep contract logic efficient; avoid heavy on-chain work regardless of sponsorship
+- Sponsored Ante validation performs bounded JSON scanning and exact ticket KV lookups.
+- Set appropriate transaction gas limits and keep contract execution efficient regardless of sponsorship.
 
 ### Operational Best Practices
 

@@ -1019,12 +1019,22 @@ func TestIssuePolicyTicket_ReplaceExpiredOrConsumed(t *testing.T) {
 	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
 	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
 
-	// Insert an expired ticket for method "inc"
+	// A ticket remains active at its expiry height and cannot be replaced yet.
 	md := keeper.ComputeMethodDigest(contract.String(), []string{"inc"})
-	expired := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
-	require.NoError(t, keeper.SetPolicyTicket(ctx, expired))
+	boundary := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, boundary))
 
-	// Issue again -> should create a new one
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            2,
+	})
+	require.ErrorIs(t, err, types.ErrPolicyTicketAlreadyExists)
+
+	// One block later the ticket is expired and can be replaced.
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
 		Creator:         admin.String(),
 		ContractAddress: contract.String(),

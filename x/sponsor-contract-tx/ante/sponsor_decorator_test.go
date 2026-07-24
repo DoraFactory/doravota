@@ -761,29 +761,6 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 	}
 }
 
-// CheckTx: When ExecTicketGate info is present (set by ante), the decorator should skip
-// standard fee checks and proceed to next. This allows sponsored txs into mempool.
-func (suite *SponsorDecoratorTestSuite) TestCheckTx_ExecGate_SkipsSponsorDecorator() {
-	// Build a tx with fee below mock min to ensure skipping actually matters
-	lowFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
-	tx := suite.createContractExecuteTx(suite.contract, suite.user, lowFee)
-
-	// Inject gate info (simulating ante marking auth via ticket)
-	gate := ExecTicketGateInfo{ContractAddr: suite.contract.String(), UserAddr: suite.user.String()}
-	ctx := suite.ctx.WithIsCheckTx(true).WithValue(execTicketGateKey{}, gate)
-
-	nextCalled := false
-	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
-		nextCalled = true
-		return ctx, nil
-	}
-
-	// In unified path without gate short-circuit, decorator should enforce fee checker in CheckTx
-	_, err := suite.sponsorDecorator.AnteHandle(ctx, tx, false, next)
-	suite.Require().Error(err)
-	suite.Require().False(nextCalled)
-}
-
 // DeliverTx: When digest is present, SponsoredTx event should include digest_type=method
 // and reflect uses_remaining and expiry from the ticket state before consumption.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_EventIncludesDigestType() {

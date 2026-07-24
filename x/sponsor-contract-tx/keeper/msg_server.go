@@ -313,7 +313,10 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
 	}
 
-	amt := msg.NormalizedAmount()
+	amt, err := msg.NormalizedAmount()
+	if err != nil {
+		return nil, err
+	}
 
 	// Ensure bank keeper is available
 	if k.bankKeeper == nil {
@@ -479,12 +482,12 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	}
 	digest := k.Keeper.ComputeMethodDigest(msg.ContractAddress, []string{msg.Method})
 
-	// Conflict: if an active, unconsumed ticket already exists for this digest, reject re-issue.
-	// Tickets expiring strictly after the current height are considered active for issuance purposes
-	// (tickets at the current height are treated as stale and can be replaced).
+	// Conflict: if an active, unconsumed ticket already exists for this digest,
+	// reject re-issue. Tickets remain valid through their expiry height, matching
+	// Ante eligibility, queries, and expiry-index GC.
 	if t, found := k.Keeper.GetActivePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); found {
 		now := uint64(ctx.BlockHeight())
-		if !t.Consumed && now < t.ExpiryHeight {
+		if !t.Consumed && now <= t.ExpiryHeight {
 			// Enrich method for display if missing
 			method := t.Method
 			if method == "" && msg.Method != "" {
@@ -517,7 +520,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 				msg.UserAddress, msg.ContractAddress, t.Digest, method, t.ExpiryHeight, t.UsesRemaining,
 			)
 		}
-		// If consumed or at/after expiry, replace by deleting stale ticket first
+		// If consumed or strictly past expiry, replace the stale ticket first.
 		k.Keeper.DeletePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest)
 	}
 

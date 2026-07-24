@@ -424,7 +424,7 @@ func SimulateSponsoredTransaction(ak types.AccountKeeper, bk types.BankKeeper, k
 		candidates := make([]candidate, 0)
 		k.IteratePolicyTickets(ctx, func(_ []byte, ticket types.PolicyTicket) bool {
 			if ticket.Method != simulationMethod || ticket.Consumed ||
-				ticket.ExpiryHeight <= uint64(ctx.BlockHeight()) {
+				uint64(ctx.BlockHeight()) > ticket.ExpiryHeight {
 				return false
 			}
 			sponsor, found := k.GetSponsor(ctx, ticket.ContractAddress)

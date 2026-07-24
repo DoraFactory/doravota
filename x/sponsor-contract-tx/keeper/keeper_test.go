@@ -769,6 +769,45 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	})
 }
 
+func TestGrantArithmeticRejectsOverflowWithoutPanic(t *testing.T) {
+	k, ctx := setupKeeperSimple(t)
+	userAddr := sdk.AccAddress([]byte("overflow_user_______")).String()
+	contractAddr := sdk.AccAddress([]byte("overflow_contract___")).String()
+	maxInt, ok := sdk.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
+	require.True(t, ok)
+
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
+		ContractAddress: contractAddr,
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: maxInt,
+		}},
+	}))
+	require.NoError(t, k.UpdateUserGrantUsage(
+		ctx,
+		userAddr,
+		contractAddr,
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.OneInt())),
+	))
+
+	requested := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, maxInt))
+	require.NotPanics(t, func() {
+		err := k.CheckUserGrantLimit(ctx, userAddr, contractAddr, requested)
+		require.ErrorIs(t, err, types.ErrUserGrantLimitExceeded)
+	})
+
+	require.NotPanics(t, func() {
+		err := k.UpdateUserGrantUsage(ctx, userAddr, contractAddr, requested)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "overflow")
+	})
+
+	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
+	require.Len(t, usage.TotalGrantUsed, 1)
+	require.Equal(t, sdk.OneInt(), usage.TotalGrantUsed[0].Amount)
+}
+
 // TestLogger tests the Logger function
 func TestLogger(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
@@ -1136,15 +1175,17 @@ func TestUserGrantUsageErrorHandling(t *testing.T) {
 	err = keeper.SetUserGrantUsage(ctx, usage)
 	require.NoError(t, err)
 
-	// Update should still work
+	// Runtime updates must fail closed when a legacy/raw fixture contains
+	// invalid negative accounting state.
 	consumedAmount := sdk.NewCoins(sdk.NewInt64Coin("peaka", 500))
 	err = keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid existing user grant usage")
 
-	// Verify the final result
+	// Verify the invalid legacy value was not silently rewritten.
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(400), finalUsage.TotalGrantUsed[0].Amount) // -100 + 500 = 400
+	require.Equal(t, sdk.NewInt(-100), finalUsage.TotalGrantUsed[0].Amount)
 }
 
 // TestParamsErrorHandling tests error handling in params functions

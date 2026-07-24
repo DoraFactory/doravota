@@ -10,6 +10,11 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/wasmguard"
 )
 
+// sponsorAwareWasmMirroredConsensusVersion is the wasmd consensus version whose
+// RegisterServices migrations are mirrored below. A parity test intentionally
+// fails when wasmd is upgraded so the wrapper cannot silently omit migrations.
+const sponsorAwareWasmMirroredConsensusVersion uint64 = 4
+
 // sponsorAwareWasmAppModule preserves the upstream Wasm AppModule behavior
 // while registering a guarded MsgServer for the contract-admin lifecycle.
 type sponsorAwareWasmAppModule struct {

@@ -281,6 +281,10 @@ func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dig
 // uses remaining and tickets are unconsumed and unexpired, and then consumes them. Either
 // all tickets are consumed or the operation fails without partial consumption.
 func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr string, counts map[string]uint32) error {
+	if len(counts) == 0 {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket consumption counts cannot be empty")
+	}
+
 	now := uint64(ctx.BlockHeight())
 	digests := make([]string, 0, len(counts))
 	for digest := range counts {
@@ -292,6 +296,16 @@ func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr
 	// Validate and compute updated state in-memory
 	for _, digest := range digests {
 		count := counts[digest]
+		if digest == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket digest cannot be empty")
+		}
+		if count == 0 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"ticket %s consumption count must be positive",
+				digest,
+			)
+		}
 		t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 		if !ok {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s not found", digest)
@@ -804,22 +818,24 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 		usage.Generation = sponsor.Generation
 	}
 
-	// Convert []*sdk.Coin to sdk.Coins for calculation
-	currentUsed := sdk.Coins{}
-	for _, coin := range usage.TotalGrantUsed {
-		if coin != nil {
-			currentUsed = currentUsed.Add(*coin)
-		}
+	currentUsed, err := grantUsageAmount(usage.TotalGrantUsed)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid existing user grant usage")
+	}
+	consumed, err := sponsorshipCoinAmount(consumedAmount)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid consumed amount")
+	}
+	newTotal, err := currentUsed.SafeAdd(consumed)
+	if err != nil {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
 	}
 
-	// Add consumed amount
-	newTotal := currentUsed.Add(consumedAmount...)
-
 	// Convert back to []*sdk.Coin
-	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
-	for i, coin := range newTotal {
-		coinCopy := coin
-		usage.TotalGrantUsed[i] = &coinCopy
+	usage.TotalGrantUsed = []*sdk.Coin{}
+	if !newTotal.IsZero() {
+		coin := sdk.NewCoin(types.SponsorshipDenom, newTotal)
+		usage.TotalGrantUsed = []*sdk.Coin{&coin}
 	}
 
 	usage.LastUsedTime = stateUnixTime(ctx)
@@ -886,19 +902,23 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 		return errorsmod.Wrap(err, "failed to get max grant per user")
 	}
 
-	// Convert []*sdk.Coin to sdk.Coins for calculation
-	currentUsed := sdk.Coins{}
-	for _, coin := range usage.TotalGrantUsed {
-		if coin != nil {
-			currentUsed = currentUsed.Add(*coin)
-		}
+	currentUsed, err := grantUsageAmount(usage.TotalGrantUsed)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid existing user grant usage")
+	}
+	requested, err := sponsorshipCoinAmount(requestedAmount)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid requested grant amount")
+	}
+	maxAmount, err := sponsorshipCoinAmount(maxLimit)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid max grant per user")
 	}
 
-	// Calculate total after this transaction
-	totalAfterTx := currentUsed.Add(requestedAmount...)
-
-	// Check if it exceeds the limit
-	if !maxLimit.IsAllGTE(totalAfterTx) {
+	// Compare against the remaining allowance without adding first. This avoids
+	// sdk.Int overflow when a caller supplies a near-maximum requested amount.
+	remaining, err := maxAmount.SafeSub(currentUsed)
+	if err != nil || remaining.IsNegative() || requested.GT(remaining) {
 		return types.ErrUserGrantLimitExceeded.Wrapf(
 			"user %s grant limit exceeded for contract %s: used %s + requested %s > limit %s",
 			userAddr,
@@ -910,4 +930,51 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 	}
 
 	return nil
+}
+
+func sponsorshipCoinAmount(coins sdk.Coins) (sdk.Int, error) {
+	if !coins.IsValid() {
+		return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coins must be valid and sorted")
+	}
+	if coins.Empty() {
+		return sdk.ZeroInt(), nil
+	}
+	if len(coins) != 1 || coins[0].Denom != types.SponsorshipDenom {
+		return sdk.Int{}, errorsmod.Wrapf(
+			sdkerrors.ErrInvalidCoins,
+			"only %q denomination is supported",
+			types.SponsorshipDenom,
+		)
+	}
+	return coins[0].Amount, nil
+}
+
+func grantUsageAmount(coins []*sdk.Coin) (sdk.Int, error) {
+	total := sdk.ZeroInt()
+	seen := false
+	for _, coin := range coins {
+		if coin == nil {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
+		}
+		if coin.Denom != types.SponsorshipDenom {
+			return sdk.Int{}, errorsmod.Wrapf(
+				sdkerrors.ErrInvalidCoins,
+				"only %q denomination is supported",
+				types.SponsorshipDenom,
+			)
+		}
+		if seen {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "duplicate user grant usage denomination")
+		}
+		if coin.Amount.IsNegative() {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
+		}
+		next, err := total.SafeAdd(coin.Amount)
+		if err != nil {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+		}
+		total = next
+		seen = true
+	}
+	return total, nil
 }

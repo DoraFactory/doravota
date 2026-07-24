@@ -89,7 +89,8 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 //     consistent with fee calculation.
 //
 // handleSponsorFeePayment processes sponsor fee payment using two-phase context.
-// It relies on DigestCounts carried in SponsorPaymentInfo for ticket consumption in DeliverTx.
+// It relies on DigestCounts carried in SponsorPaymentInfo for ticket reservation
+// in CheckTx and committed consumption in DeliverTx.
 func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -204,14 +205,13 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		}
 	}
 
-	// Step 4: Consume ticket(s) in DeliverTx upon success. When multiple
-	// method digests are required in this tx, consume each digest as many
-	// times as needed. Fall back to single digest when no counts provided.
-	if !ctx.IsCheckTx() {
-		if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-			if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
-				return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
-			}
+	// Step 4: Reserve ticket use(s) in CheckTx and consume them in DeliverTx.
+	// CheckTx writes live only in BaseApp's check-state and are rebuilt from the
+	// latest committed state before ReCheckTx. Any later Ante failure rolls back
+	// these writes with the surrounding transaction cache.
+	if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+		if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
+			return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
 		}
 	}
 

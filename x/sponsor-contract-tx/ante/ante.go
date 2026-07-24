@@ -31,23 +31,6 @@ type SponsorPaymentInfo struct {
 	DigestCounts map[string]uint32
 }
 
-// ExecTicketGateInfo marks that a transaction has a valid policy ticket in CheckTx.
-// Presence of this value in context indicates authorization to bypass standard fee checks in CheckTx.
-type execTicketGateKey struct{}
-
-type ExecTicketGateInfo struct {
-	ContractAddr string
-	UserAddr     string
-}
-
-// computeMethodDigestTx extracts method names (top-level keys) from each MsgExecuteContract
-// for the target contract. It enforces exactly one top-level key per message without fully
-// unmarshalling nested JSON (only scans top-level structure) and returns the method digest.
-// extractMethodKeysTx returns the ordered list of top-level method names for all
-// MsgExecuteContract targeting the given contract in this tx. Returns ok=false
-// when no such messages exist or any message does not have exactly one top-level key.
-// (extractMethodKeysTx removed; replaced by validateMethodTicketsStreaming)
-
 // firstTopLevelKey scans only the top-level JSON object and returns the sole key
 // when exactly one top-level key is present; otherwise returns ok=false. It does
 // not unmarshal nested structures to avoid unnecessary CPU/memory overhead.

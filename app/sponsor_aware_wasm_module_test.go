@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	wasm "github.com/CosmWasm/wasmd/x/wasm"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	dbm "github.com/cometbft/cometbft-db"
 	"github.com/cometbft/cometbft/libs/log"
@@ -17,6 +18,15 @@ import (
 type emptyAppOptions struct{}
 
 func (emptyAppOptions) Get(string) interface{} { return nil }
+
+func TestSponsorAwareWasmMigrationMirrorVersion(t *testing.T) {
+	require.Equal(
+		t,
+		sponsorAwareWasmMirroredConsensusVersion,
+		(wasm.AppModule{}).ConsensusVersion(),
+		"wasmd consensus version changed; synchronize sponsor-aware RegisterServices migrations",
+	)
+}
 
 func TestRegisteredWasmMsgServerRejectsClearAdminWithSponsor(t *testing.T) {
 	db := dbm.NewMemDB()

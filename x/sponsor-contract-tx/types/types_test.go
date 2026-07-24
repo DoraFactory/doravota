@@ -76,6 +76,37 @@ func TestMsgUpdateSponsor(t *testing.T) {
 	require.Equal(t, RouterKey, msg.Route())
 }
 
+func TestNormalizeSponsorshipAmountsRejectOverflow(t *testing.T) {
+	maxInt, ok := sdk.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
+	require.True(t, ok)
+
+	t.Run("max grant", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			_, err := NormalizeMaxGrantPerUser([]*sdk.Coin{
+				{Denom: SponsorshipDenom, Amount: maxInt},
+				{Denom: SponsorshipDenom, Amount: sdk.OneInt()},
+			})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "overflow")
+		})
+	})
+
+	t.Run("withdraw amount", func(t *testing.T) {
+		msg := MsgWithdrawSponsorFunds{
+			Amount: []*sdk.Coin{
+				{Denom: SponsorshipDenom, Amount: maxInt},
+				{Denom: SponsorshipDenom, Amount: sdk.OneInt()},
+			},
+		}
+		require.NotPanics(t, func() {
+			_, err := msg.NormalizedAmount()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "overflow")
+		})
+		require.Error(t, msg.ValidateBasic())
+	})
+}
+
 func TestMsgDeleteSponsor(t *testing.T) {
 	// Test MsgDeleteSponsor creation
 	msg := NewMsgDeleteSponsor("cosmos1signer", "cosmos1contract")

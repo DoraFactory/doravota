@@ -20,6 +20,26 @@ func TestConsumePolicyTicketsBulk_ValidationOrderIsDeterministic(t *testing.T) {
 	require.ErrorContains(t, err, "a-missing")
 }
 
+func TestConsumePolicyTicketsBulk_RejectsNoOpInputs(t *testing.T) {
+	k, ctx := setupKeeperSimple(t)
+
+	err := k.ConsumePolicyTicketsBulk(ctx, "contract", "user", nil)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot be empty")
+
+	err = k.ConsumePolicyTicketsBulk(ctx, "contract", "user", map[string]uint32{
+		"digest": 0,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "must be positive")
+
+	err = k.ConsumePolicyTicketsBulk(ctx, "contract", "user", map[string]uint32{
+		"": 1,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "digest cannot be empty")
+}
+
 func TestConsumePolicyTicketsBulk_ApplyFailureIsAtomic(t *testing.T) {
 	k, ctx, wasmKeeper := setupKeeper(t)
 	contract := sdk.AccAddress([]byte("bulk_contract_______")).String()
