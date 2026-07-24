@@ -472,6 +472,30 @@ func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	suite.Require().True(nextCalled)
 }
 
+func (suite *AnteTestSuite) TestAdminClearedStateCannotSponsorTransactions() {
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	maxGrant := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(10000)))
+	sponsorFunds := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(20000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFunds)
+
+	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
+	suite.wasmKeeper.SetContractInfo(suite.contract, "")
+
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000)))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "contract_admin_cleared")
+	suite.Require().False(nextCalled)
+}
+
 // Test case: User ineligible according to contract policy
 func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 	// Set up contract and sponsorship

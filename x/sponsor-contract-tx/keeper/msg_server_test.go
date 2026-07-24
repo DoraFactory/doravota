@@ -1,6 +1,8 @@
 package keeper
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -88,6 +90,118 @@ func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *Moc
 	keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
 	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 	return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
+}
+
+func TestMsgServerRejectsNonCanonicalStateAddresses(t *testing.T) {
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x11}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x12}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x13}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	require.Equal(
+		t,
+		keeper.ComputeMethodDigestSingle(contract.String(), "execute"),
+		keeper.ComputeMethodDigestSingle(strings.ToUpper(contract.String()), "execute"),
+	)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: strings.ToUpper(contract.String()),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.Error(t, err)
+	require.False(t, keeper.HasSponsor(ctx, contract.String()))
+
+	_, err = msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         strings.ToUpper(admin.String()),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.Error(t, err)
+	require.False(t, keeper.HasSponsor(ctx, contract.String()))
+
+	_, err = msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     strings.ToUpper(user.String()),
+		Method:          "execute",
+		Uses:            1,
+	})
+	require.Error(t, err)
+}
+
+func TestAdminClearedDisablesManagerAndTicketIssuer(t *testing.T) {
+	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x21}, 20))
+	issuer := sdk.AccAddress(bytes.Repeat([]byte{0x22}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x23}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x24}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		TicketIssuerAddress: issuer.String(),
+		IsSponsored:         true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "existing",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+
+	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
+	wasmKeeper.SetContractInfo(contract.String(), "")
+
+	for _, caller := range []sdk.AccAddress{admin, issuer} {
+		_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+			Creator:         caller.String(),
+			ContractAddress: contract.String(),
+			UserAddress:     user.String(),
+			Method:          "new",
+			Uses:            1,
+		})
+		require.ErrorIs(t, err, types.ErrContractNotAdmin)
+
+		_, err = msgServer.RevokePolicyTicket(goCtx, &types.MsgRevokePolicyTicket{
+			Creator:         caller.String(),
+			ContractAddress: contract.String(),
+			UserAddress:     user.String(),
+			Method:          "existing",
+		})
+		require.ErrorIs(t, err, types.ErrContractNotAdmin)
+	}
 }
 
 func TestGlobalDisablePausesExecutionButAllowsLifecycleManagement(t *testing.T) {

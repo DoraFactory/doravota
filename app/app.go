@@ -735,6 +735,22 @@ func New(
 	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
 	app.setupUpgradeHandlers()
 
+	wasmAppModule := wasm.NewAppModule(
+		appCodec,
+		&app.WasmKeeper,
+		app.StakingKeeper,
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.MsgServiceRouter(),
+		app.GetSubspace(wasmtypes.ModuleName),
+	)
+	sponsorAwareWasmModule := newSponsorAwareWasmAppModule(
+		wasmAppModule,
+		&app.WasmKeeper,
+		app.GetSubspace(wasmtypes.ModuleName),
+		app.SponsorKeeper,
+	)
+
 	app.mm = module.NewManager(
 		genutil.NewAppModule(
 			app.AccountKeeper,
@@ -762,7 +778,7 @@ func New(
 		transferModule,
 		ibcfee.NewAppModule(app.IBCFeeKeeper),
 		icaModule,
-		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
+		sponsorAwareWasmModule,
 		// sponsor module
         sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper, app.AccountKeeper),
 	)

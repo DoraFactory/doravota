@@ -240,6 +240,8 @@ All sponsored transactions must pass structural checks **before** ticket/eligibi
 
 - Only contract admins can register/modify sponsorship settings
 - Admin verification through wasm keeper queries
+- `creator_address` is audit metadata only and never regains authority after an admin transfer or clear
+- `MsgClearAdmin` is rejected while Sponsor state exists. The current admin must withdraw all Sponsor funds and delete the Sponsor before permanently clearing the Wasm admin
 - Immutable sponsorship settings by unauthorized parties
 
 ### Anti-Abuse Mechanisms
@@ -544,6 +546,8 @@ dorad tx sponsor revoke-ticket [contract-address] [user-address] [method]   --fr
 
 - Critical for preventing unauthorized sponsorship registration
 - Verified through wasm keeper queries to ensure only actual contract admins can register
+- The current Wasm admin is the only Sponsor manager; there is no fallback to the original Sponsor creator
+- Admin-clear workflow: withdraw Sponsor funds, delete the Sponsor (which invalidates its ticket generation), then clear the Wasm admin
 
 ### 2. Policy Implementation
 

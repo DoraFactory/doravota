@@ -66,6 +66,7 @@ func (k Keeper) GetAuthority() string {
 
 // ComputeMethodDigest computes sha256(contract_address || "method:" || method_names_in_order)
 func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) string {
+	contractAddr = types.CanonicalAddressOrOriginal(contractAddr)
 	h := sha256.New()
 	h.Write([]byte(contractAddr))
 	h.Write([]byte("method:"))
@@ -81,6 +82,7 @@ func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) s
 // ComputeMethodDigestSingle computes sha256(contract_address || "method:" || method_name) for a single method.
 // This avoids temporary slice allocation when only one method name is involved.
 func (k Keeper) ComputeMethodDigestSingle(contractAddr, methodName string) string {
+	contractAddr = types.CanonicalAddressOrOriginal(contractAddr)
 	h := sha256.New()
 	h.Write([]byte(contractAddr))
 	h.Write([]byte("method:"))
@@ -197,7 +199,7 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 		return nil, nil, err
 	}
 	if userAddr != "" {
-		if _, err := sdk.AccAddressFromBech32(userAddr); err != nil {
+		if err := types.ValidateCanonicalAddress(userAddr); err != nil {
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 		}
 	}
@@ -523,11 +525,10 @@ func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 
 // ValidateContractExists checks if a contract exists and is valid
 func (k Keeper) ValidateContractExists(ctx sdk.Context, contractAddr string) error {
-	// Convert contract address string to AccAddress
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+	if err := types.ValidateContractAddress(contractAddr); err != nil {
+		return err
 	}
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
 
 	// Get contract info from wasm keeper
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
@@ -546,10 +547,7 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	}
 
 	// Convert contract address string to AccAddress
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
-	}
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
 
 	// Get contract info from wasm keeper (we know it exists from validation above)
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
@@ -558,40 +556,26 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	return contractInfo.Admin == userAddr.String(), nil
 }
 
-// IsSponsorManager checks whether the caller is authorized to manage sponsorship
-// for the given contract. Authorization rule:
-// - If contract Admin exists: only current Admin is authorized
-// - If Admin is cleared: the original Sponsor.CreatorAddress is authorized (fallback)
-func (k Keeper) IsSponsorManager(ctx sdk.Context, contractAddr string, caller sdk.AccAddress) (bool, error) {
-	// Validate contract exists
+// HasContractAdmin reports whether the contract still has a current Wasm
+// admin. Active Sponsor state is not valid after the contract permanently
+// clears its admin.
+func (k Keeper) HasContractAdmin(ctx sdk.Context, contractAddr string) (bool, error) {
 	if err := k.ValidateContractExists(ctx, contractAddr); err != nil {
 		return false, err
 	}
-	// Current admin wins
-	if ok, err := k.IsContractAdmin(ctx, contractAddr, caller); err != nil {
-		return false, err
-	} else if ok {
-		return true, nil
-	}
-	// Check if admin cleared, then fallback to sponsor creator
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
-	}
-	cinfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
-	if cinfo == nil {
-		return false, types.ErrContractNotFound.Wrapf("contract not found: %s", contractAddr)
-	}
-	if cinfo.Admin == "" {
-		sponsor, found := k.GetSponsor(ctx, contractAddr)
-		if !found {
-			return false, nil
-		}
-		if sponsor.CreatorAddress == caller.String() {
-			return true, nil
-		}
-	}
-	return false, nil
+
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
+	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
+	return contractInfo.Admin != "", nil
+}
+
+// IsSponsorManager checks whether the caller is authorized to manage sponsorship
+// for the given contract. Authorization rule:
+//   - Only the current Wasm contract Admin is authorized.
+//   - Clearing the contract Admin never revives authority for the original
+//     Sponsor creator.
+func (k Keeper) IsSponsorManager(ctx sdk.Context, contractAddr string, caller sdk.AccAddress) (bool, error) {
+	return k.IsContractAdmin(ctx, contractAddr, caller)
 }
 
 // GetAllSponsors returns all sponsors in the store

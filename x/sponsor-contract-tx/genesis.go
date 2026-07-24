@@ -92,7 +92,16 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		if err := k.ValidateContractExists(ctx, sponsor.ContractAddress); err != nil {
 			panic(fmt.Errorf("invalid sponsor contract in genesis: %w", err))
 		}
-		// 2) Ensure sponsor address is the expected derived address
+		// 2) Active Sponsor state requires a live Wasm admin. A contract with
+		// cleared admin cannot be recovered or safely manage Sponsor funds.
+		hasAdmin, err := k.HasContractAdmin(ctx, sponsor.ContractAddress)
+		if err != nil {
+			panic(fmt.Errorf("failed to inspect sponsor contract admin in genesis: %w", err))
+		}
+		if !hasAdmin {
+			panic(fmt.Errorf("active sponsor contract %s has no wasm admin", sponsor.ContractAddress))
+		}
+		// 3) Ensure sponsor address is the expected derived address
 		contractAccAddr, err := sdk.AccAddressFromBech32(sponsor.ContractAddress)
 		if err != nil {
 			panic(fmt.Errorf("invalid sponsor contract address in genesis: %w", err))

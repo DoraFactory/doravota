@@ -23,19 +23,24 @@ import (
 
 // mockWasmKeeper is a simple WasmKeeperInterface mock for genesis tests
 type mockWasmKeeper struct {
-    allowAll bool
-    exists   map[string]bool
+    allowAll     bool
+    exists       map[string]bool
+    adminCleared bool
 }
 
 func (m *mockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
     if m == nil {
         return nil
     }
+    info := &wasmtypes.ContractInfo{Creator: "creator"}
+    if !m.adminCleared {
+        info.Admin = "admin"
+    }
     if m.allowAll {
-        return &wasmtypes.ContractInfo{Creator: "creator"}
+        return info
     }
     if m.exists != nil && m.exists[contractAddress.String()] {
-        return &wasmtypes.ContractInfo{Creator: "creator"}
+        return info
     }
     return nil
 }
@@ -46,6 +51,10 @@ func (m *mockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress
 
 // setupKeeper creates a test keeper for genesis tests
 func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
+	return setupKeeperWithWasm(t, &mockWasmKeeper{allowAll: true})
+}
+
+func setupKeeperWithWasm(t *testing.T, mw *mockWasmKeeper) (keeper.Keeper, sdk.Context) {
 	// Create codec
 	registry := codectypes.NewInterfaceRegistry()
 	cdc := codec.NewProtoCodec(registry)
@@ -64,8 +73,7 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		t.Fatalf("Failed to load store: %v", err)
 	}
 
-    // Create keeper with mock wasm keeper (allow all contracts)
-    mw := &mockWasmKeeper{allowAll: true}
+    // Create keeper with the selected mock wasm keeper.
     k := keeper.NewKeeper(cdc, storeKey, mw, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
 
 	// Create context
@@ -77,6 +85,36 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 	)
 
 	return *k, ctx
+}
+
+func TestInitGenesisRejectsSponsorWithoutWasmAdmin(t *testing.T) {
+	k, ctx := setupKeeperWithWasm(t, &mockWasmKeeper{
+		allowAll:     true,
+		adminCleared: true,
+	})
+	contract := sdk.AccAddress([]byte("genesis_no_admin____")).String()
+	creator := sdk.AccAddress([]byte("genesis_creator_____")).String()
+	contractAddr, err := sdk.AccAddressFromBech32(contract)
+	require.NoError(t, err)
+	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
+	params := types.DefaultParams()
+	genesis := types.GenesisState{
+		Params: &params,
+		Sponsors: []*types.ContractSponsor{{
+			ContractAddress: contract,
+			CreatorAddress:  creator,
+			SponsorAddress:  sponsorAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: []*sdk.Coin{{
+				Denom:  types.SponsorshipDenom,
+				Amount: sdk.NewInt(1),
+			}},
+		}},
+	}
+
+	require.Panics(t, func() {
+		sponsor.InitGenesis(ctx, k, genesis)
+	})
 }
 
 // GenesisTestSuite tests genesis import/export functionality

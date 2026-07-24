@@ -430,6 +430,26 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+		// Fail closed if legacy, genesis, or direct keeper state contains an
+		// active Sponsor after the Wasm admin was cleared. Normal message
+		// execution prevents this state by rejecting MsgClearAdmin while a
+		// Sponsor record exists.
+		hasAdmin, err := sctd.keeper.HasContractAdmin(ctx, contractAddr)
+		if err != nil {
+			return ctx, err
+		}
+		if !hasAdmin {
+			return sctd.handleSponsorshipFallback(
+				ctx,
+				tx,
+				simulate,
+				next,
+				contractAddr,
+				userAddr,
+				"contract_admin_cleared",
+			)
+		}
+
 		// CheckTx: enforce min gas price as early as possible before any method parsing/digest lookups
 		if ctx.IsCheckTx() && !simulate {
 			checker := sctd.txFeeChecker

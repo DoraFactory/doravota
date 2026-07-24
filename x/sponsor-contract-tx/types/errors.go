@@ -25,4 +25,6 @@ var (
 	ErrSponsorBalanceEmpty    = sdkerrors.Register(ModuleName, 17, "sponsor address balance is zero")
 	// Ticket issuance conflicts
 	ErrPolicyTicketAlreadyExists = sdkerrors.Register(ModuleName, 18, "active policy ticket already exists")
+	// Contract admin lifecycle conflicts
+	ErrSponsorMustBeRemoved = sdkerrors.Register(ModuleName, 19, "sponsor must be removed before clearing contract admin")
 )

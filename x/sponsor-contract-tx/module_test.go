@@ -46,7 +46,7 @@ func (minimalAuthKeeper) GetModuleAccount(ctx sdk.Context, moduleName string) au
 // minimalWasmKeeper always reports contract exists (for this module-level GC test)
 type minimalWasmKeeper struct{}
 func (minimalWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
-    return &wasmtypes.ContractInfo{Creator: "creator"}
+    return &wasmtypes.ContractInfo{Creator: "creator", Admin: "admin"}
 }
 func (minimalWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
     return nil, nil

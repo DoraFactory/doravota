@@ -50,6 +50,7 @@ type SponsorKeeperInterface interface {
 	IsSponsored(ctx sdk.Context, contractAddr string) bool
 	GetSponsor(ctx sdk.Context, contractAddr string) (ContractSponsor, bool)
 	ValidateContractExists(ctx sdk.Context, contractAddr string) error
+	HasContractAdmin(ctx sdk.Context, contractAddr string) (bool, error)
 	CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr string, requestedAmount sdk.Coins) error
 	UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error
 	Logger(ctx sdk.Context) log.Logger
