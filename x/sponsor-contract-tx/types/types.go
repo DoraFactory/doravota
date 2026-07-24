@@ -25,8 +25,7 @@ type BaseSponsorMsg struct {
 // ValidateBasicFields performs common validation for sponsor messages
 func (b BaseSponsorMsg) ValidateBasicFields() error {
 	// Validate creator address
-	_, err := sdk.AccAddressFromBech32(b.Creator)
-	if err != nil {
+	if err := ValidateCanonicalAddress(b.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", b.Creator)
 	}
 
@@ -189,13 +188,13 @@ func (msg MsgIssuePolicyTicket) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgIssuePolicyTicket) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
+	if err := ValidateCanonicalAddress(msg.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
 	}
 	if err := ValidateContractAddress(msg.ContractAddress); err != nil {
 		return err
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	if err := ValidateCanonicalAddress(msg.UserAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", msg.UserAddress)
 	}
 	if msg.Method == "" {
@@ -229,13 +228,13 @@ func (msg MsgRevokePolicyTicket) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgRevokePolicyTicket) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
+	if err := ValidateCanonicalAddress(msg.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
 	}
 	if err := ValidateContractAddress(msg.ContractAddress); err != nil {
 		return err
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	if err := ValidateCanonicalAddress(msg.UserAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", msg.UserAddress)
 	}
 	if msg.Method == "" {
@@ -308,7 +307,7 @@ func (msg MsgSetSponsor) ValidateBasic() error {
 
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", msg.TicketIssuerAddress)
 		}
 	}
@@ -382,7 +381,7 @@ func (msg MsgUpdateSponsor) ValidateBasic() error {
 
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", msg.TicketIssuerAddress)
 		}
 	}
@@ -489,7 +488,7 @@ func ValidateGenesis(data GenesisState) error {
 		if sponsor.CreatorAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor creator address cannot be empty")
 		}
-		if _, err := sdk.AccAddressFromBech32(sponsor.CreatorAddress); err != nil {
+		if err := ValidateCanonicalAddress(sponsor.CreatorAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor creator address: %s", sponsor.CreatorAddress)
 		}
 
@@ -497,10 +496,10 @@ func ValidateGenesis(data GenesisState) error {
 		if sponsor.SponsorAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor address cannot be empty")
 		}
-		sponsorAcc, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-		if err != nil {
+		if err := ValidateCanonicalAddress(sponsor.SponsorAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor address: %s", sponsor.SponsorAddress)
 		}
+		sponsorAcc, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 		contractAcc, err := sdk.AccAddressFromBech32(sponsor.ContractAddress)
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", sponsor.ContractAddress)
@@ -516,7 +515,7 @@ func ValidateGenesis(data GenesisState) error {
 
 		// Optional ticket issuer address validation when provided
 		if sponsor.TicketIssuerAddress != "" {
-			if _, err := sdk.AccAddressFromBech32(sponsor.TicketIssuerAddress); err != nil {
+			if err := ValidateCanonicalAddress(sponsor.TicketIssuerAddress); err != nil {
 				return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", sponsor.TicketIssuerAddress)
 			}
 		}
@@ -548,7 +547,7 @@ func ValidateGenesis(data GenesisState) error {
 		if usage.UserAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
 		}
-		if _, err := sdk.AccAddressFromBech32(usage.UserAddress); err != nil {
+		if err := ValidateCanonicalAddress(usage.UserAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user grant usage user address: %s", usage.UserAddress)
 		}
 		if err := ValidateContractAddress(usage.ContractAddress); err != nil {
@@ -651,7 +650,7 @@ func ValidateGenesis(data GenesisState) error {
 		if err := ValidateContractAddress(t.ContractAddress); err != nil {
 			return err
 		}
-		if _, err := sdk.AccAddressFromBech32(t.UserAddress); err != nil {
+		if err := ValidateCanonicalAddress(t.UserAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid policy ticket user address: %s", t.UserAddress)
 		}
 		if t.Digest == "" {
@@ -793,8 +792,7 @@ func (msg MsgUpdateParams) GetSignBytes() []byte {
 // ValidateBasic performs basic validation
 func (msg MsgUpdateParams) ValidateBasic() error {
 	// Validate authority address
-	_, err := sdk.AccAddressFromBech32(msg.Authority)
-	if err != nil {
+	if err := ValidateCanonicalAddress(msg.Authority); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid authority address: %s", msg.Authority)
 	}
 
@@ -855,7 +853,7 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 	}
 
 	// Validate recipient
-	if _, err := sdk.AccAddressFromBech32(msg.Recipient); err != nil {
+	if err := ValidateCanonicalAddress(msg.Recipient); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid recipient address: %s", msg.Recipient)
 	}
 

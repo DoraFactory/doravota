@@ -44,9 +44,8 @@ func (q QueryServer) Sponsor(goCtx context.Context, req *types.QuerySponsorReque
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
 	}
 
-	_, err := sdk.AccAddressFromBech32(req.ContractAddress)
-	if err != nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
+	if err := types.ValidateContractAddress(req.ContractAddress); err != nil {
+		return nil, err
 	}
 
 	// Get sponsor details
@@ -113,8 +112,7 @@ func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserG
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "user address cannot be empty")
 	}
 
-	_, err := sdk.AccAddressFromBech32(req.UserAddress)
-	if err != nil {
+	if err := types.ValidateCanonicalAddress(req.UserAddress); err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 
@@ -123,9 +121,8 @@ func (q QueryServer) UserGrantUsage(goCtx context.Context, req *types.QueryUserG
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "contract address cannot be empty")
 	}
 
-	_, err = sdk.AccAddressFromBech32(req.ContractAddress)
-	if err != nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid contract address")
+	if err := types.ValidateContractAddress(req.ContractAddress); err != nil {
+		return nil, err
 	}
 
 	// Get user grant usage
@@ -145,7 +142,7 @@ func (q QueryServer) PolicyTicket(goCtx context.Context, req *types.QueryPolicyT
 	if err := types.ValidateContractAddress(req.ContractAddress); err != nil {
 		return nil, err
 	}
-	if _, err := sdk.AccAddressFromBech32(req.UserAddress); err != nil {
+	if err := types.ValidateCanonicalAddress(req.UserAddress); err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 	if req.Digest == "" {
@@ -173,7 +170,7 @@ func (q QueryServer) PolicyTicketByMethod(goCtx context.Context, req *types.Quer
 	if err := types.ValidateContractAddress(req.ContractAddress); err != nil {
 		return nil, err
 	}
-	if _, err := sdk.AccAddressFromBech32(req.UserAddress); err != nil {
+	if err := types.ValidateCanonicalAddress(req.UserAddress); err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 	if req.Method == "" {
@@ -207,7 +204,7 @@ func (q QueryServer) PolicyTickets(goCtx context.Context, req *types.QueryPolicy
 		return nil, err
 	}
 	if req.UserAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(req.UserAddress); err != nil {
+		if err := types.ValidateCanonicalAddress(req.UserAddress); err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 		}
 	}
@@ -232,7 +229,7 @@ func (q QueryServer) SponsorBalance(goCtx context.Context, req *types.QuerySpons
 	if s, found := q.Keeper.GetSponsor(ctx, req.ContractAddress); found && s.SponsorAddress != "" {
 		sponsorAddrStr = s.SponsorAddress
 	} else {
-		ca, _ := sdk.AccAddressFromBech32(req.ContractAddress)
+		ca, _ := types.AccAddressFromCanonicalBech32(req.ContractAddress)
 		sponsorAddrStr = sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
 	}
 	// If bankKeeper not wired, return zero balance gracefully
