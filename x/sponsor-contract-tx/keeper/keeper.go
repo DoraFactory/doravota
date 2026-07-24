@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 
 	errorsmod "cosmossdk.io/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -281,36 +282,46 @@ func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dig
 // all tickets are consumed or the operation fails without partial consumption.
 func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr string, counts map[string]uint32) error {
 	now := uint64(ctx.BlockHeight())
-	updated := make(map[string]types.PolicyTicket, len(counts))
+	digests := make([]string, 0, len(counts))
+	for digest := range counts {
+		digests = append(digests, digest)
+	}
+	sort.Strings(digests)
+
+	updated := make([]types.PolicyTicket, 0, len(digests))
 	// Validate and compute updated state in-memory
-	for md, cnt := range counts {
-		t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, md)
+	for _, digest := range digests {
+		count := counts[digest]
+		t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 		if !ok {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s not found", digest)
 		}
 		if t.Consumed {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket already consumed")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s already consumed", digest)
 		}
 		if now > t.ExpiryHeight {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket expired")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s expired", digest)
 		}
-		if t.UsesRemaining < cnt {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "insufficient ticket uses")
+		if t.UsesRemaining < count {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s has insufficient uses", digest)
 		}
 		// apply in-memory
-		t.UsesRemaining -= cnt
+		t.UsesRemaining -= count
 		if t.UsesRemaining == 0 {
 			t.Consumed = true
 		}
-		updated[md] = t
+		updated = append(updated, t)
 	}
-	// Apply updates to store
-	for md, t := range updated {
-		if err := k.setCurrentOrLegacyPolicyTicket(ctx, t); err != nil {
+
+	// Apply updates through a nested cache so direct Keeper callers receive
+	// the same all-or-nothing guarantee as callers running inside an Ante cache.
+	cacheCtx, write := ctx.CacheContext()
+	for _, t := range updated {
+		if err := k.setCurrentOrLegacyPolicyTicket(cacheCtx, t); err != nil {
 			return err
 		}
-		_ = md
 	}
+	write()
 	return nil
 }
 

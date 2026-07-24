@@ -3,6 +3,7 @@ package sponsor
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -12,6 +13,10 @@ import (
 
 // InitGenesis initializes the capability module's state from a provided genesis state
 func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) {
+	if err := types.ValidateGenesis(genState); err != nil {
+		panic(fmt.Errorf("invalid sponsor genesis state: %w", err))
+	}
+
 	// Set module parameters
 	if genState.Params != nil {
 		if err := k.SetParams(ctx, *genState.Params); err != nil {
@@ -24,44 +29,51 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	// ticket/usage, so deleting a Sponsor remains irreversible across exports.
 	activeGenerations := make(map[string]uint64, len(genState.Sponsors))
 	maxHistoricalGeneration := make(map[string]uint64)
-	for _, sponsor := range genState.Sponsors {
-		if sponsor == nil {
-			continue
+	normalizedSponsors := make([]*types.ContractSponsor, len(genState.Sponsors))
+	for i, sponsor := range genState.Sponsors {
+		normalizedSponsor := *sponsor
+		if normalizedSponsor.Generation == 0 {
+			normalizedSponsor.Generation = 1
 		}
-		if sponsor.Generation == 0 {
-			sponsor.Generation = 1
-		}
-		activeGenerations[sponsor.ContractAddress] = sponsor.Generation
+		normalizedSponsors[i] = &normalizedSponsor
+		activeGenerations[normalizedSponsor.ContractAddress] = normalizedSponsor.Generation
 	}
-	for _, usage := range genState.UserGrantUsages {
-		if usage == nil {
-			continue
-		}
-		if usage.Generation == 0 {
-			usage.Generation = activeGenerations[usage.ContractAddress]
-			if usage.Generation == 0 {
-				usage.Generation = 1
+	genState.Sponsors = normalizedSponsors
+
+	normalizedUsages := make([]*types.UserGrantUsage, len(genState.UserGrantUsages))
+	for i, usage := range genState.UserGrantUsages {
+		normalizedUsage := *usage
+		if normalizedUsage.Generation == 0 {
+			normalizedUsage.Generation = activeGenerations[normalizedUsage.ContractAddress]
+			if normalizedUsage.Generation == 0 {
+				normalizedUsage.Generation = 1
 			}
 		}
-		if usage.Generation > maxHistoricalGeneration[usage.ContractAddress] {
-			maxHistoricalGeneration[usage.ContractAddress] = usage.Generation
+		normalizedUsages[i] = &normalizedUsage
+		if normalizedUsage.Generation > maxHistoricalGeneration[normalizedUsage.ContractAddress] {
+			maxHistoricalGeneration[normalizedUsage.ContractAddress] = normalizedUsage.Generation
 		}
 	}
-	for _, ticket := range genState.PolicyTickets {
-		if ticket == nil {
-			continue
-		}
-		if ticket.Generation == 0 {
-			ticket.Generation = activeGenerations[ticket.ContractAddress]
-			if ticket.Generation == 0 {
-				ticket.Generation = 1
+	genState.UserGrantUsages = normalizedUsages
+
+	normalizedTickets := make([]*types.PolicyTicket, len(genState.PolicyTickets))
+	for i, ticket := range genState.PolicyTickets {
+		normalizedTicket := *ticket
+		if normalizedTicket.Generation == 0 {
+			normalizedTicket.Generation = activeGenerations[normalizedTicket.ContractAddress]
+			if normalizedTicket.Generation == 0 {
+				normalizedTicket.Generation = 1
 			}
 		}
-		if ticket.Generation > maxHistoricalGeneration[ticket.ContractAddress] {
-			maxHistoricalGeneration[ticket.ContractAddress] = ticket.Generation
+		normalizedTickets[i] = &normalizedTicket
+		if normalizedTicket.Generation > maxHistoricalGeneration[normalizedTicket.ContractAddress] {
+			maxHistoricalGeneration[normalizedTicket.ContractAddress] = normalizedTicket.Generation
 		}
 	}
-	for contractAddr, generation := range activeGenerations {
+	genState.PolicyTickets = normalizedTickets
+
+	for _, contractAddr := range sortedGenerationContracts(activeGenerations) {
+		generation := activeGenerations[contractAddr]
 		if historical := maxHistoricalGeneration[contractAddr]; historical > generation {
 			panic(fmt.Errorf(
 				"historical generation %d exceeds active sponsor generation %d for contract %s",
@@ -74,7 +86,8 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 			panic(fmt.Errorf("failed to restore sponsor generation: %w", err))
 		}
 	}
-	for contractAddr, historical := range maxHistoricalGeneration {
+	for _, contractAddr := range sortedGenerationContracts(maxHistoricalGeneration) {
+		historical := maxHistoricalGeneration[contractAddr]
 		if _, active := activeGenerations[contractAddr]; active {
 			continue
 		}
@@ -157,6 +170,15 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		}
 	}
 
+}
+
+func sortedGenerationContracts(generations map[string]uint64) []string {
+	contracts := make([]string, 0, len(generations))
+	for contract := range generations {
+		contracts = append(contracts, contract)
+	}
+	sort.Strings(contracts)
+	return contracts
 }
 
 // ExportGenesis returns the capability module's exported genesis
