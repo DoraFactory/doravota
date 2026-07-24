@@ -271,6 +271,9 @@ func init() {
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
 
 	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
+	// Keep direct App construction (tests, simulations, and embedding) aligned
+	// with the daemon configuration. Sponsor funding and fees use peaka.
+	sdk.DefaultBondDenom = sponsortypes.SponsorshipDenom
 	// Ensure wasm limits are overridden for both daemon and CLI command paths.
 	overrideWasmVariables()
 }

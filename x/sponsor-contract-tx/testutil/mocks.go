@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"fmt"
+	"sort"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -26,6 +27,25 @@ func NewMockWasmKeeper() *MockWasmKeeper {
 // GetContractInfo returns contract info for the given address
 func (m *MockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
 	return m.contracts[contractAddress.String()]
+}
+
+// IterateContractInfo exposes deterministic contract iteration for module
+// simulation tests, matching the production Wasm keeper's ordering contract.
+func (m *MockWasmKeeper) IterateContractInfo(ctx sdk.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool) {
+	keys := make([]string, 0, len(m.contracts))
+	for contractAddress := range m.contracts {
+		keys = append(keys, contractAddress)
+	}
+	sort.Strings(keys)
+	for _, contractAddress := range keys {
+		address, err := sdk.AccAddressFromBech32(contractAddress)
+		if err != nil {
+			continue
+		}
+		if cb(address, *m.contracts[contractAddress]) {
+			return
+		}
+	}
 }
 
 // QuerySmart executes a smart contract query

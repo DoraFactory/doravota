@@ -5,25 +5,16 @@ import (
 	"math/rand"
 
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
-	"github.com/cosmos/cosmos-sdk/x/simulation"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
-const (
-	keyEnableSponsor = "EnableSponsor"
-)
-
-// ParamChanges defines the parameters that can be modified by governance proposals
-// during the simulation
-func ParamChanges(r *rand.Rand) []simtypes.LegacyParamChange {
-	return []simtypes.LegacyParamChange{
-		simulation.NewSimLegacyParamChange(types.ModuleName, keyEnableSponsor,
-			func(r *rand.Rand) string {
-				return fmt.Sprintf(`%t`, GenEnableSponsor(r))
-			},
-		),
-	}
+// ParamChanges is intentionally empty. Sponsor params are stored by the module
+// keeper and updated through MsgUpdateParams; they are not backed by an x/params
+// Subspace, so generating legacy parameter-change proposals would only exercise
+// an invalid route.
+func ParamChanges(_ *rand.Rand) []simtypes.LegacyParamChange {
+	return nil
 }
 
 // GenEnableSponsor returns a randomized EnableSponsor parameter for simulation
@@ -81,17 +72,20 @@ func RandomParamsWithConstraints(r *rand.Rand, enabledWeight int, maxGasMin uint
 	// enabledWeight: higher number means more likely to be enabled (0-100)
 	enabled := r.Intn(100) < enabledWeight
 
-	return types.Params{
-		SponsorshipEnabled: enabled,
-	}
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = enabled
+	return params
 }
 
 // TestScenarioParams generates parameters for specific test scenarios
 func TestScenarioParams() []types.Params {
+	disabled := types.DefaultParams()
+	disabled.SponsorshipEnabled = false
+	enabled := types.DefaultParams()
+	enabled.SponsorshipEnabled = true
 	return []types.Params{
-		// Scenario 1: Disabled sponsorship
-		{SponsorshipEnabled: false},
-		{SponsorshipEnabled: true},
+		disabled,
+		enabled,
 	}
 }
 

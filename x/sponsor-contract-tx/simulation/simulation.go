@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 
@@ -52,8 +53,7 @@ func (AppModuleSimulation) RandomizedParams(r *rand.Rand) []simtypes.LegacyParam
 
 // RegisterStoreDecoder registers a decoder for sponsor module's types
 func (am AppModuleSimulation) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
-	// Note: Would need access to keeper's codec for full implementation
-	// sdr[types.StoreKey] = NewDecodeStore(cdc)
+	sdr[types.StoreKey] = NewDecodeStore(am.keeper.Cdc())
 }
 
 // WeightedOperations returns the all the sponsor module operations with their respective weights
@@ -64,9 +64,66 @@ func (am AppModuleSimulation) WeightedOperations(appParams simtypes.AppParams, c
 // NewDecodeStore returns a decoder function closure over the sponsor module's types
 func NewDecodeStore(cdc codec.BinaryCodec) func(kvA, kvB kv.Pair) string {
 	return func(kvA, kvB kv.Pair) string {
-		// Simplified decoder for simulation
-		return fmt.Sprintf("KeyA: %X\nValueA: %X\nKeyB: %X\nValueB: %X\n",
-			kvA.Key, kvA.Value, kvB.Key, kvB.Value)
+		return fmt.Sprintf(
+			"A: %s\nB: %s\n",
+			decodeStorePair(cdc, kvA),
+			decodeStorePair(cdc, kvB),
+		)
+	}
+}
+
+func decodeStorePair(cdc codec.BinaryCodec, pair kv.Pair) string {
+	if len(pair.Key) == 0 {
+		return fmt.Sprintf("empty-key value=%X", pair.Value)
+	}
+
+	switch pair.Key[0] {
+	case types.SponsorKeyPrefix[0]:
+		var sponsor types.ContractSponsor
+		if err := cdc.Unmarshal(pair.Value, &sponsor); err != nil {
+			return fmt.Sprintf("sponsor key=%X invalid=%v value=%X", pair.Key, err, pair.Value)
+		}
+		return fmt.Sprintf("sponsor key=%X value=%+v", pair.Key, sponsor)
+
+	case types.ParamsKey[0]:
+		var params types.Params
+		if err := cdc.Unmarshal(pair.Value, &params); err != nil {
+			return fmt.Sprintf("params invalid=%v value=%X", err, pair.Value)
+		}
+		return fmt.Sprintf("params value=%+v", params)
+
+	case types.UserGrantUsageKeyPrefix[0]:
+		var usage types.UserGrantUsage
+		if err := cdc.Unmarshal(pair.Value, &usage); err != nil {
+			return fmt.Sprintf("usage key=%X invalid=%v value=%X", pair.Key, err, pair.Value)
+		}
+		return fmt.Sprintf("usage key=%X value=%+v", pair.Key, usage)
+
+	case types.PolicyTicketKeyPrefix[0]:
+		var ticket types.PolicyTicket
+		if err := cdc.Unmarshal(pair.Value, &ticket); err != nil {
+			return fmt.Sprintf("ticket key=%X invalid=%v value=%X", pair.Key, err, pair.Value)
+		}
+		return fmt.Sprintf("ticket key=%X value=%+v", pair.Key, ticket)
+
+	case types.ExpiryIndexKeyPrefix[0]:
+		height, ticketKey, ok := types.ParseExpiryIndexKey(pair.Key[1:])
+		if !ok {
+			return fmt.Sprintf("expiry-index invalid-key=%X", pair.Key)
+		}
+		return fmt.Sprintf("expiry-index height=%d ticket=%q", height, ticketKey)
+
+	case types.SponsorGenerationKeyPrefix[0]:
+		if len(pair.Value) != 8 {
+			return fmt.Sprintf("generation key=%X invalid-value=%X", pair.Key, pair.Value)
+		}
+		return fmt.Sprintf(
+			"generation contract=%q value=%d",
+			pair.Key[1:],
+			binary.BigEndian.Uint64(pair.Value),
+		)
+	default:
+		return fmt.Sprintf("unknown key=%X value=%X", pair.Key, pair.Value)
 	}
 }
 
@@ -105,7 +162,9 @@ func (sm *SimulationManager) RunSimulation(
 	}
 
 	// Initialize module state
-	sm.keeper.SetParams(ctx, *genesisState.Params)
+	if err := sm.keeper.SetParams(ctx, *genesisState.Params); err != nil {
+		return fmt.Errorf("failed to set sponsor params: %w", err)
+	}
 	for _, sponsor := range genesisState.Sponsors {
 		if sponsor != nil {
 			if err := sm.keeper.SetSponsor(ctx, *sponsor); err != nil {
@@ -191,7 +250,9 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 		// For now, we'll work with existing state
 
 		// Set new state
-		sm.keeper.SetParams(ctx, *genesisState.Params)
+		if err := sm.keeper.SetParams(ctx, *genesisState.Params); err != nil {
+			return fmt.Errorf("failed to set sponsor params in iteration %d: %w", i, err)
+		}
 		for _, sponsor := range genesisState.Sponsors {
 			if sponsor != nil {
 				if err := sm.keeper.SetSponsor(ctx, *sponsor); err != nil {

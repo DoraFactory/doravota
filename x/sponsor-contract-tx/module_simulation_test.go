@@ -7,6 +7,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/kv"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,13 @@ func TestAppModuleProductionWiring(t *testing.T) {
 	storeDecoders := make(sdk.StoreDecoderRegistry)
 	am.RegisterStoreDecoder(storeDecoders)
 	require.Contains(t, storeDecoders, types.StoreKey)
+	params := types.DefaultParams()
+	paramsBz := k.Cdc().MustMarshal(&params)
+	decoded := storeDecoders[types.StoreKey](
+		kv.Pair{Key: types.ParamsKey, Value: paramsBz},
+		kv.Pair{Key: types.ParamsKey, Value: paramsBz},
+	)
+	require.Contains(t, decoded, "PolicyTicketTtlBlocks:30")
 
 	simState := module.SimulationState{
 		AppParams: make(simtypes.AppParams),
@@ -51,5 +59,5 @@ func TestAppModuleProductionWiring(t *testing.T) {
 	am.GenerateGenesisState(&simState)
 	require.Contains(t, simState.GenState, types.ModuleName)
 	require.Len(t, am.WeightedOperations(simState), 6)
-	require.NotEmpty(t, am.RandomizedParams(rand.New(rand.NewSource(1))))
+	require.Empty(t, am.RandomizedParams(rand.New(rand.NewSource(1))))
 }

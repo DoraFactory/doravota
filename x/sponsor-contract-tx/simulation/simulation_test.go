@@ -12,6 +12,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 
 	sponsorsim "github.com/DoraFactory/doravota/x/sponsor-contract-tx/simulation"
@@ -30,7 +31,6 @@ const (
 
 // TestFullAppSimulation tests basic simulation functionality
 func TestFullAppSimulation(t *testing.T) {
-    t.Skip("skip simulation: parameter generation/invariants under revision for two-phase design")
 	// Simple test to verify simulation components work
 	r := rand.New(rand.NewSource(SimulationSeed))
 	accounts := simtypes.RandomAccounts(r, 10)
@@ -67,91 +67,55 @@ func TestAppStateDeterminism(t *testing.T) {
 
 // TestSponsorModuleSimulation tests sponsor module specific simulation
 func TestSponsorModuleSimulation(t *testing.T) {
-    t.Skip("skip simulation: parameter generation/invariants under revision for two-phase design")
-	// Create test keeper setup
 	k, ctx, mockWasm := testutil.SetupBasicKeeper(t)
-
-	// Create mock accounts
 	accounts := simtypes.RandomAccounts(rand.New(rand.NewSource(SimulationSeed)), 20)
+	contract := accounts[0].Address
+	admin := accounts[10].Address
+	mockWasm.SetContractInfo(contract, admin.String())
+	require.NoError(t, k.SetParams(ctx, types.DefaultParams()))
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
+		ContractAddress: contract.String(),
+		CreatorAddress:  admin.String(),
+		SponsorAddress: sdk.AccAddress(
+			address.Derive(contract, []byte("sponsor")),
+		).String(),
+		IsSponsored: true,
+		MaxGrantPerUser: testutil.CoinsToProtoCoins(
+			sdk.NewCoins(sdk.NewInt64Coin(types.SponsorshipDenom, 1_000_000)),
+		),
+	}))
 
-	// Set up mock wasm contracts for sponsored contracts
-	for i := 0; i < 5; i++ {
-		contractAddr := accounts[i].Address
-		adminAddr := accounts[i+10].Address.String()
-		mockWasm.SetContractInfo(contractAddr, adminAddr)
-		mockWasm.SetQueryResultEligible(contractAddr, true)
-	}
-	_ = mockWasm // Mark as used
-
-	// Initialize with random genesis
-	genesisState := sponsorsim.RandomGenesisState(
-		rand.New(rand.NewSource(SimulationSeed)),
-		accounts,
-	)
-	err := sponsorsim.ValidateGenesisState(genesisState)
-	require.NoError(t, err)
-
-	// Set parameters
-	k.SetParams(ctx, *genesisState.Params)
-
-	// Set sponsors
-	for _, sponsor := range genesisState.Sponsors {
-		if sponsor != nil {
-			err := k.SetSponsor(ctx, *sponsor)
-			require.NoError(t, err)
+	r := rand.New(rand.NewSource(SimulationSeed))
+	operation := sponsorsim.SimulateUserGrantUsage(nil, nil, k, mockWasm)
+	successes := 0
+	for i := 0; i < 10; i++ {
+		operationMsg, futureOps, err := operation(r, nil, ctx, accounts, "test-chain")
+		require.NoError(t, err)
+		require.Empty(t, futureOps)
+		if operationMsg.OK {
+			successes++
 		}
 	}
+	require.Positive(t, successes)
 
-	// Run invariants before simulation
+	var totalUsed sdk.Int = sdk.ZeroInt()
+	k.IterateUserGrantUsages(ctx, func(usage types.UserGrantUsage) bool {
+		for _, coin := range usage.TotalGrantUsed {
+			if coin != nil && coin.Denom == types.SponsorshipDenom {
+				totalUsed = totalUsed.Add(coin.Amount)
+			}
+		}
+		return false
+	})
+	require.True(t, totalUsed.IsPositive(), "simulation must mutate grant usage state")
+
 	msg, broken := sponsorsim.AllInvariants(k, nil, nil)(ctx)
 	require.False(t, broken, msg)
-
-	// Run simulation operations
-	r := rand.New(rand.NewSource(SimulationSeed))
-	app := baseapp.NewBaseApp("test", log.NewNopLogger(), dbm.NewMemDB(), nil)
-
-	// Mock account and bank keepers for operations
-	operations := sponsorsim.WeightedOperations(
-		make(simtypes.AppParams),
-		nil, // codec
-		k,
-		nil, // Mock account keeper would go here
-		nil, // Mock bank keeper would go here
-		mockWasm,
-	)
-
-	// Execute some operations
-	for i := 0; i < 100; i++ {
-		// Select random operation
-		if len(operations) == 0 {
-			continue
-		}
-
-		op := operations[r.Intn(len(operations))]
-		operationMsg, futureOps, err := op.Op()(r, app, ctx, accounts, "test-chain")
-
-		// Log operation results
-		if err != nil {
-			t.Logf("Operation %d failed: %v", i, err)
-		} else {
-			t.Logf("Operation %d: %s - %s", i, operationMsg.Route, operationMsg.Comment)
-		}
-
-		// Process future operations (if any)
-		for _, futureOp := range futureOps {
-			t.Logf("Future operation scheduled at block: %d", futureOp.BlockHeight)
-		}
-
-		// Run invariants after each operation
-		msg, broken := sponsorsim.AllInvariants(k, nil, nil)(ctx)
-		require.False(t, broken, fmt.Sprintf("Invariant broken after operation %d: %s", i, msg))
-	}
 }
 
 // TestInvariants tests all module invariants
 func TestInvariants(t *testing.T) {
 	k, ctx, mockWasm := testutil.SetupBasicKeeper(t)
-	_ = mockWasm // Mark as used
 
 	// Test invariants with empty state
 	msg, broken := sponsorsim.AllInvariants(k, nil, nil)(ctx)
@@ -166,6 +130,9 @@ func TestInvariants(t *testing.T) {
 		{
 			ContractAddress: accounts[0].Address.String(),
 			CreatorAddress:  accounts[1].Address.String(),
+			SponsorAddress: sdk.AccAddress(
+				address.Derive(accounts[0].Address, []byte("sponsor")),
+			).String(),
 			IsSponsored:     true,
 			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
 		},
@@ -173,6 +140,9 @@ func TestInvariants(t *testing.T) {
 		{
 			ContractAddress: accounts[2].Address.String(),
 			CreatorAddress:  accounts[3].Address.String(),
+			SponsorAddress: sdk.AccAddress(
+				address.Derive(accounts[2].Address, []byte("sponsor")),
+			).String(),
 			IsSponsored:     false,
 			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500000)))),
 		},
@@ -180,12 +150,18 @@ func TestInvariants(t *testing.T) {
 		{
 			ContractAddress: accounts[4].Address.String(),
 			CreatorAddress:  accounts[5].Address.String(),
+			SponsorAddress: sdk.AccAddress(
+				address.Derive(accounts[4].Address, []byte("sponsor")),
+			).String(),
 			IsSponsored:     false,
 			MaxGrantPerUser: nil,
 		},
 	}
 
 	for _, sponsor := range testSponsors {
+		contract, parseErr := sdk.AccAddressFromBech32(sponsor.ContractAddress)
+		require.NoError(t, parseErr)
+		mockWasm.SetContractInfo(contract, sponsor.CreatorAddress)
 		err := k.SetSponsor(ctx, sponsor)
 		require.NoError(t, err)
 	}
@@ -202,7 +178,7 @@ func TestInvariants(t *testing.T) {
 				UserAddress:     userAddr,
 				ContractAddress: sponsor.ContractAddress,
 				TotalGrantUsed:  testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))),
-				LastUsedTime:    ctx.BlockTime().Unix(),
+				LastUsedTime:    0,
 			}
 			k.SetUserGrantUsage(ctx, usage)
 		}
@@ -238,7 +214,6 @@ func TestSponsorInvariantsBroken(t *testing.T) {
 
 // TestGenesisSimulation tests genesis state generation and validation
 func TestGenesisSimulation(t *testing.T) {
-    t.Skip("skip simulation: parameter generation/invariants under revision for two-phase design")
 	r := rand.New(rand.NewSource(SimulationSeed))
 
 	// Generate random accounts
@@ -252,8 +227,8 @@ func TestGenesisSimulation(t *testing.T) {
 		err := sponsorsim.ValidateGenesisState(genesisState)
 		require.NoError(t, err, fmt.Sprintf("Genesis validation failed on iteration %d", i))
 
-        // Basic param sanity
-        require.NotNil(t, genesisState.Params)
+		// Basic param sanity
+		require.NotNil(t, genesisState.Params)
 
 		// Test sponsor consistency
 		contractAddrs := make(map[string]bool)
@@ -278,22 +253,20 @@ func TestGenesisSimulation(t *testing.T) {
 
 // TestParameterChanges tests parameter change simulation
 func TestParameterChanges(t *testing.T) {
-    t.Skip("skip simulation: parameter generation/invariants under revision for two-phase design")
 	r := rand.New(rand.NewSource(SimulationSeed))
 
 	// Test parameter generation
 	for i := 0; i < 20; i++ {
 		params := sponsorsim.RandomizedParams(r)
 
-        // Validate generated parameters
-        err := sponsorsim.ValidateParams(params)
-        require.NoError(t, err, fmt.Sprintf("Parameter validation failed on iteration %d: %+v", i, params))
+		// Validate generated parameters
+		err := sponsorsim.ValidateParams(params)
+		require.NoError(t, err, fmt.Sprintf("Parameter validation failed on iteration %d: %+v", i, params))
 	}
 }
 
 // TestEdgeCaseScenarios tests specific edge case scenarios
 func TestEdgeCaseScenarios(t *testing.T) {
-    t.Skip("skip simulation: parameter generation/invariants under revision for two-phase design")
 	scenarios := sponsorsim.TestScenarioParams()
 
 	for i, params := range scenarios {
@@ -303,9 +276,9 @@ func TestEdgeCaseScenarios(t *testing.T) {
 			// Set the scenario parameters
 			k.SetParams(ctx, params)
 
-            // Verify parameters were set correctly
-            storedParams := k.GetParams(ctx)
-            require.Equal(t, params.SponsorshipEnabled, storedParams.SponsorshipEnabled)
+			// Verify parameters were set correctly
+			storedParams := k.GetParams(ctx)
+			require.Equal(t, params.SponsorshipEnabled, storedParams.SponsorshipEnabled)
 
 			// Test invariants with edge case parameters
 			msg, broken := sponsorsim.ParamsConsistencyInvariant(k)(ctx)
@@ -328,6 +301,9 @@ func BenchmarkSimulationOperations(b *testing.B) {
 		sponsor := types.ContractSponsor{
 			ContractAddress: accounts[i].Address.String(),
 			CreatorAddress:  accounts[i+10].Address.String(),
+			SponsorAddress: sdk.AccAddress(
+				address.Derive(accounts[i].Address, []byte("sponsor")),
+			).String(),
 			IsSponsored:     true,
 			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
 		}

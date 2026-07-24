@@ -7,8 +7,11 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -31,6 +34,166 @@ const (
 	DefaultWeightPolicyCheck      = 80
 	DefaultWeightUserGrantUsage   = 60
 )
+
+const (
+	simulationMethod = "reflect"
+	fundSponsorType  = "fund_sponsor"
+)
+
+// contractInfoIterator is implemented by the production Wasm keeper. Keeping
+// it local avoids expanding the Sponsor keeper's runtime dependency solely for
+// simulations.
+type contractInfoIterator interface {
+	IterateContractInfo(ctx sdk.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool)
+}
+
+type managedContract struct {
+	address sdk.AccAddress
+	admin   simtypes.Account
+}
+
+// simulationMsg is the common shape of all messages delivered by this module's
+// randomized operations.
+type simulationMsg interface {
+	sdk.Msg
+	Type() string
+}
+
+func deliverSimulationMsg(
+	r *rand.Rand,
+	app *baseapp.BaseApp,
+	ctx sdk.Context,
+	msg simulationMsg,
+	simAccount simtypes.Account,
+	ak types.AccountKeeper,
+	bk types.BankKeeper,
+	coinsSpent sdk.Coins,
+) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+	if app == nil || ak == nil || bk == nil {
+		return simtypes.NoOpMsg(types.ModuleName, msg.Type(), "simulation dependencies are not configured"), nil, nil
+	}
+
+	registry := codectypes.NewInterfaceRegistry()
+	types.RegisterInterfaces(registry)
+	wasmtypes.RegisterInterfaces(registry)
+	banktypes.RegisterInterfaces(registry)
+	protoCodec := codec.NewProtoCodec(registry)
+
+	return simulation.GenAndDeliverTxWithRandFees(simulation.OperationInput{
+		R:               r,
+		App:             app,
+		TxGen:           authtx.NewTxConfig(protoCodec, authtx.DefaultSignModes),
+		Cdc:             protoCodec,
+		Msg:             msg,
+		MsgType:         msg.Type(),
+		CoinsSpentInMsg: coinsSpent,
+		Context:         ctx,
+		SimAccount:      simAccount,
+		AccountKeeper:   ak,
+		Bankkeeper:      bk,
+		ModuleName:      types.ModuleName,
+	})
+}
+
+func findSimulationAccount(accs []simtypes.Account, address string) (simtypes.Account, bool) {
+	admin, err := types.AccAddressFromCanonicalBech32(address)
+	if err != nil {
+		return simtypes.Account{}, false
+	}
+	return simtypes.FindAccount(accs, admin)
+}
+
+func currentManager(
+	ctx sdk.Context,
+	wk types.WasmKeeperInterface,
+	contractAddress string,
+	accs []simtypes.Account,
+) (simtypes.Account, bool) {
+	if wk == nil {
+		return simtypes.Account{}, false
+	}
+	contract, err := types.AccAddressFromCanonicalBech32(contractAddress)
+	if err != nil {
+		return simtypes.Account{}, false
+	}
+	info := wk.GetContractInfo(ctx, contract)
+	if info == nil || info.Admin == "" {
+		return simtypes.Account{}, false
+	}
+	return findSimulationAccount(accs, info.Admin)
+}
+
+func availableManagedContracts(
+	ctx sdk.Context,
+	k keeper.Keeper,
+	wk types.WasmKeeperInterface,
+	accs []simtypes.Account,
+) []managedContract {
+	if wk == nil {
+		return nil
+	}
+
+	candidates := make([]managedContract, 0)
+	addCandidate := func(contract sdk.AccAddress, info *wasmtypes.ContractInfo) {
+		if info == nil || info.Admin == "" {
+			return
+		}
+		if _, found := k.GetSponsor(ctx, contract.String()); found {
+			return
+		}
+		admin, found := findSimulationAccount(accs, info.Admin)
+		if !found {
+			return
+		}
+		candidates = append(candidates, managedContract{address: contract, admin: admin})
+	}
+
+	if iterator, ok := wk.(contractInfoIterator); ok {
+		iterator.IterateContractInfo(ctx, func(contract sdk.AccAddress, info wasmtypes.ContractInfo) bool {
+			infoCopy := info
+			addCandidate(contract, &infoCopy)
+			return false
+		})
+		return candidates
+	}
+
+	// Test doubles may not expose iteration. Looking up simulation-account
+	// addresses preserves useful unit coverage without weakening production
+	// contract selection.
+	for _, account := range accs {
+		addCandidate(account.Address, wk.GetContractInfo(ctx, account.Address))
+	}
+	return candidates
+}
+
+func randomGrant(r *rand.Rand, max int64) sdk.Coins {
+	return sdk.NewCoins(sdk.NewCoin(
+		types.SponsorshipDenom,
+		sdk.NewInt(r.Int63n(max)+1),
+	))
+}
+
+func reflectOwner(
+	ctx sdk.Context,
+	wk types.WasmKeeperInterface,
+	contract sdk.AccAddress,
+	accs []simtypes.Account,
+) (simtypes.Account, bool) {
+	if wk == nil {
+		return simtypes.Account{}, false
+	}
+	response, err := wk.QuerySmart(ctx, contract, []byte(`{"owner":{}}`))
+	if err != nil {
+		return simtypes.Account{}, false
+	}
+	var owner struct {
+		Owner string `json:"owner"`
+	}
+	if err := json.Unmarshal(response, &owner); err != nil || owner.Owner == "" {
+		return simtypes.Account{}, false
+	}
+	return findSimulationAccount(accs, owner.Owner)
+}
 
 // WeightedOperations returns all the operations from the module with their respective weights
 func WeightedOperations(appParams simtypes.AppParams, cdc codec.JSONCodec, k keeper.Keeper, ak types.AccountKeeper, bk types.BankKeeper, wk types.WasmKeeperInterface) simulation.WeightedOperations {
@@ -110,316 +273,421 @@ func WeightedOperations(appParams simtypes.AppParams, cdc codec.JSONCodec, k kee
 // SimulateMsgSetSponsor generates a MsgSetSponsor operation
 func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// Select random creator (admin)
-		creator, _ := simtypes.RandomAcc(r, accs)
-
-		// Skip account keeper check if not available (for testing)
-		if ak != nil {
-			creatorAcc := ak.GetAccount(ctx, creator.Address)
-			if creatorAcc == nil {
-				return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgSetSponsor, "creator account not found"), nil, nil
-			}
+		candidates := availableManagedContracts(ctx, k, wk, accs)
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgSetSponsor, "no unmanaged contract with a simulation admin"), nil, nil
 		}
+		selected := candidates[r.Intn(len(candidates))]
 
-		// Generate random contract address
-		contractAddr := simtypes.RandomAccounts(r, 1)[0].Address
-
-		// Random sponsorship settings
-		isSponsored := r.Intn(2) == 0
-
-		var maxGrantPerUser sdk.Coins
-		if isSponsored {
-			// When sponsored, require max grant per user (only peaka)
-			amount := sdk.NewInt(int64(r.Intn(1000000) + 1000)) // 1000-1001000
-            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
-		} else {
-			// When not sponsored, max grant can be empty or have peaka
-			if r.Intn(2) == 0 {
-				amount := sdk.NewInt(int64(r.Intn(1000000) + 1000))
-                maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
-			}
+		isSponsored := r.Intn(4) != 0
+		maxGrantPerUser := randomGrant(r, 1_000_000)
+		if !isSponsored && r.Intn(2) == 0 {
+			maxGrantPerUser = nil
 		}
-
-		// Convert to proto coins
-		protoCoins := make([]*sdk.Coin, len(maxGrantPerUser))
-		for i, coin := range maxGrantPerUser {
-			coinCopy := coin
-			protoCoins[i] = &coinCopy
-		}
-
-		msg := &types.MsgSetSponsor{
-			Creator:         creator.Address.String(),
-			ContractAddress: contractAddr.String(),
-			IsSponsored:     isSponsored,
-			MaxGrantPerUser: protoCoins,
-		}
-
-		// Check if sponsor already exists (should update instead)
-		if _, found := k.GetSponsor(ctx, contractAddr.String()); found {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgSetSponsor, "sponsor already exists"), nil, nil
-		}
-
-		// Validate message
+		msg := types.NewMsgSetSponsor(
+			selected.admin.Address.String(),
+			selected.address.String(),
+			isSponsored,
+			maxGrantPerUser,
+		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgSetSponsor, "invalid message"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
 		}
 
-		// For simulation, we return a no-op message since we can't easily construct full transactions
-		return simtypes.NewOperationMsgBasic(types.ModuleName, types.TypeMsgSetSponsor, "set sponsor simulation", true, nil), nil, nil
+		operationMsg, _, err := deliverSimulationMsg(
+			r, app, ctx, msg, selected.admin, ak, bk, nil,
+		)
+		if err != nil || !operationMsg.OK {
+			return operationMsg, nil, err
+		}
+
+		// A deterministic sponsor account is not part of the simulator account
+		// set, so generic bank operations will almost never fund it. Schedule a
+		// real MsgSend after creation to make sponsored execution reachable.
+		future := simtypes.FutureOperation{
+			BlockHeight: int(ctx.BlockHeight()) + 1,
+			Op: fundSpecificSponsor(
+				selected.address.String(),
+				selected.admin,
+				ak,
+				bk,
+				k,
+			),
+		}
+		return operationMsg, []simtypes.FutureOperation{future}, nil
 	}
 }
 
 // SimulateMsgUpdateSponsor generates a MsgUpdateSponsor operation
 func SimulateMsgUpdateSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// Get all existing sponsors
 		sponsors := k.GetAllSponsors(ctx)
-		if len(sponsors) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgUpdateSponsor, "no sponsors exist"), nil, nil
+		type candidate struct {
+			sponsor types.ContractSponsor
+			manager simtypes.Account
 		}
-
-		// Select random sponsor to update
-		sponsor := sponsors[r.Intn(len(sponsors))]
-
-		// Find creator account
-		creatorAddr, err := sdk.AccAddressFromBech32(sponsor.CreatorAddress)
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgUpdateSponsor, "invalid creator address"), nil, nil
+		candidates := make([]candidate, 0, len(sponsors))
+		for _, sponsor := range sponsors {
+			manager, found := currentManager(ctx, wk, sponsor.ContractAddress, accs)
+			if found {
+				candidates = append(candidates, candidate{sponsor: sponsor, manager: manager})
+			}
 		}
-
-		_, found := simtypes.FindAccount(accs, creatorAddr)
-		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgUpdateSponsor, "creator account not found"), nil, nil
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgUpdateSponsor, "no sponsor controlled by a simulation account"), nil, nil
 		}
+		selected := candidates[r.Intn(len(candidates))]
 
-		// Generate new random settings
 		isSponsored := r.Intn(2) == 0
-
-		var maxGrantPerUser sdk.Coins
-		if isSponsored {
-			amount := sdk.NewInt(int64(r.Intn(2000000) + 1000)) // Different range for update
-            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
-		} else if r.Intn(2) == 0 {
-			amount := sdk.NewInt(int64(r.Intn(2000000) + 1000))
-            maxGrantPerUser = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
-		}
-
-		// Convert to proto coins
-		protoCoins := make([]*sdk.Coin, len(maxGrantPerUser))
-		for i, coin := range maxGrantPerUser {
-			coinCopy := coin
-			protoCoins[i] = &coinCopy
-		}
-
-		msg := &types.MsgUpdateSponsor{
-			Creator:         sponsor.CreatorAddress,
-			ContractAddress: sponsor.ContractAddress,
-			IsSponsored:     isSponsored,
-			MaxGrantPerUser: protoCoins,
-		}
-
-		// Validate message
+		maxGrantPerUser := randomGrant(r, 2_000_000)
+		msg := types.NewMsgUpdateSponsor(
+			selected.manager.Address.String(),
+			selected.sponsor.ContractAddress,
+			isSponsored,
+			maxGrantPerUser,
+		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgUpdateSponsor, "invalid message"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
 		}
 
-		return simtypes.NewOperationMsgBasic(types.ModuleName, types.TypeMsgUpdateSponsor, "update sponsor simulation", true, nil), nil, nil
+		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
 	}
 }
 
 // SimulateMsgDeleteSponsor generates a MsgDeleteSponsor operation
 func SimulateMsgDeleteSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// Get all existing sponsors
 		sponsors := k.GetAllSponsors(ctx)
-		if len(sponsors) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "no sponsors exist"), nil, nil
+		type candidate struct {
+			sponsor types.ContractSponsor
+			manager simtypes.Account
 		}
+		candidates := make([]candidate, 0, len(sponsors))
+		for _, sponsor := range sponsors {
+			manager, found := currentManager(ctx, wk, sponsor.ContractAddress, accs)
+			if found {
+				candidates = append(candidates, candidate{sponsor: sponsor, manager: manager})
+			}
+		}
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "no sponsor controlled by a simulation account"), nil, nil
+		}
+		selected := candidates[r.Intn(len(candidates))]
 
-		// Select random sponsor to delete
-		sponsor := sponsors[r.Intn(len(sponsors))]
-
-		// Find creator account
-		creatorAddr, err := sdk.AccAddressFromBech32(sponsor.CreatorAddress)
+		sponsorAddress, err := types.AccAddressFromCanonicalBech32(selected.sponsor.SponsorAddress)
 		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "invalid creator address"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "invalid sponsor address"), nil, nil
+		}
+		if bk != nil && !bk.SpendableCoins(ctx, sponsorAddress).Empty() {
+			withdraw := &types.MsgWithdrawSponsorFunds{
+				Creator:         selected.manager.Address.String(),
+				ContractAddress: selected.sponsor.ContractAddress,
+				Recipient:       selected.manager.Address.String(),
+			}
+			operationMsg, _, deliverErr := deliverSimulationMsg(
+				r, app, ctx, withdraw, selected.manager, ak, bk, nil,
+			)
+			if deliverErr != nil || !operationMsg.OK {
+				return operationMsg, nil, deliverErr
+			}
+			return operationMsg, []simtypes.FutureOperation{{
+				BlockHeight: int(ctx.BlockHeight()) + 1,
+				Op: deleteSpecificSponsor(
+					selected.sponsor.ContractAddress,
+					ak,
+					bk,
+					k,
+					wk,
+				),
+			}}, nil
 		}
 
-		_, found := simtypes.FindAccount(accs, creatorAddr)
-		if !found {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "creator account not found"), nil, nil
-		}
-
-		msg := &types.MsgDeleteSponsor{
-			Creator:         sponsor.CreatorAddress,
-			ContractAddress: sponsor.ContractAddress,
-		}
-
-		// Validate message
+		msg := types.NewMsgDeleteSponsor(
+			selected.manager.Address.String(),
+			selected.sponsor.ContractAddress,
+		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "invalid message"), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
 		}
-
-		return simtypes.NewOperationMsgBasic(types.ModuleName, types.TypeMsgDeleteSponsor, "delete sponsor simulation", true, nil), nil, nil
+		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
 	}
 }
 
 // SimulateSponsoredTransaction simulates a sponsored contract execution transaction
 func SimulateSponsoredTransaction(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// Get all sponsored contracts (is_sponsored = true)
-		allSponsors := k.GetAllSponsors(ctx)
-		var sponsoredContracts []types.ContractSponsor
-		for _, sponsor := range allSponsors {
-			if sponsor.IsSponsored {
-				sponsoredContracts = append(sponsoredContracts, sponsor)
+		type candidate struct {
+			ticket   types.PolicyTicket
+			sender   simtypes.Account
+			contract sdk.AccAddress
+		}
+		candidates := make([]candidate, 0)
+		k.IteratePolicyTickets(ctx, func(_ []byte, ticket types.PolicyTicket) bool {
+			if ticket.Method != simulationMethod || ticket.Consumed ||
+				ticket.ExpiryHeight <= uint64(ctx.BlockHeight()) {
+				return false
 			}
-		}
-
-		if len(sponsoredContracts) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, "sponsored_tx", "no sponsored contracts"), nil, nil
-		}
-
-		// Select random sponsored contract
-		contract := sponsoredContracts[r.Intn(len(sponsoredContracts))]
-
-		// Select random user (sender)
-		sender, _ := simtypes.RandomAcc(r, accs)
-
-		// Generate random contract execution message
-		msgTypes := []string{"increment", "decrement", "reset", "set_value"}
-		msgType := msgTypes[r.Intn(len(msgTypes))]
-
-		var executeMsg map[string]interface{}
-		switch msgType {
-		case "increment":
-			executeMsg = map[string]interface{}{"increment": map[string]interface{}{}}
-		case "decrement":
-			executeMsg = map[string]interface{}{"decrement": map[string]interface{}{}}
-		case "reset":
-			executeMsg = map[string]interface{}{"reset": map[string]interface{}{}}
-		case "set_value":
-			executeMsg = map[string]interface{}{
-				"set_value": map[string]interface{}{
-					"value": r.Intn(1000),
-				},
+			sponsor, found := k.GetSponsor(ctx, ticket.ContractAddress)
+			if !found || !sponsor.IsSponsored || sponsor.Generation != ticket.Generation {
+				return false
 			}
+			sponsorAddress, err := types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+			if err != nil || bk == nil || bk.SpendableCoins(ctx, sponsorAddress).Empty() {
+				return false
+			}
+			sender, found := findSimulationAccount(accs, ticket.UserAddress)
+			if !found {
+				return false
+			}
+			contract, err := types.AccAddressFromCanonicalBech32(ticket.ContractAddress)
+			if err != nil {
+				return false
+			}
+			owner, found := reflectOwner(ctx, wk, contract, accs)
+			if !found || !owner.Address.Equals(sender.Address) {
+				return false
+			}
+			candidates = append(candidates, candidate{
+				ticket: ticket, sender: sender, contract: contract,
+			})
+			return false
+		})
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, "sponsored_tx", "no funded sponsor with an active reflect ticket"), nil, nil
 		}
+		selected := candidates[r.Intn(len(candidates))]
 
-		msgBytes, _ := json.Marshal(executeMsg)
-
-		// Create contract execute message (for validation)
-		_ = &wasmtypes.MsgExecuteContract{
-			Sender:   sender.Address.String(),
-			Contract: contract.ContractAddress,
+		msgBytes, err := json.Marshal(map[string]interface{}{
+			simulationMethod: map[string]interface{}{
+				"msgs": []interface{}{},
+			},
+		})
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, "sponsored_tx", "failed to build reflect payload"), nil, err
+		}
+		msg := &wasmtypes.MsgExecuteContract{
+			Sender:   selected.sender.Address.String(),
+			Contract: selected.contract.String(),
 			Msg:      msgBytes,
-			Funds:    nil, // No funds for sponsored tx
 		}
-
-		return simtypes.NewOperationMsgBasic(types.ModuleName, "sponsored_tx", "sponsored transaction simulation", true, nil), nil, nil
+		return deliverSimulationMsg(r, app, ctx, msg, selected.sender, ak, bk, nil)
 	}
 }
 
-// SimulatePolicyCheck simulates policy validation scenarios
+// SimulatePolicyCheck prepares the two-phase sponsorship path by issuing a
+// real policy ticket for a reflect-contract owner.
 func SimulatePolicyCheck(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// This operation tests policy checking without sending actual transactions
-		// It helps test edge cases in policy validation
-
-		// Get all sponsored contracts
-		allSponsors := k.GetAllSponsors(ctx)
-		var sponsoredContracts []types.ContractSponsor
-		for _, sponsor := range allSponsors {
-			if sponsor.IsSponsored {
-				sponsoredContracts = append(sponsoredContracts, sponsor)
+		type candidate struct {
+			sponsor types.ContractSponsor
+			manager simtypes.Account
+			owner   simtypes.Account
+		}
+		candidates := make([]candidate, 0)
+		for _, sponsor := range k.GetAllSponsors(ctx) {
+			if !sponsor.IsSponsored {
+				continue
 			}
+			manager, found := currentManager(ctx, wk, sponsor.ContractAddress, accs)
+			if !found {
+				continue
+			}
+			contract, err := types.AccAddressFromCanonicalBech32(sponsor.ContractAddress)
+			if err != nil {
+				continue
+			}
+			owner, found := reflectOwner(ctx, wk, contract, accs)
+			if !found {
+				continue
+			}
+			digest := k.ComputeMethodDigestSingle(sponsor.ContractAddress, simulationMethod)
+			if _, found := k.GetActivePolicyTicket(
+				ctx,
+				sponsor.ContractAddress,
+				owner.Address.String(),
+				digest,
+			); found {
+				continue
+			}
+			candidates = append(candidates, candidate{
+				sponsor: sponsor,
+				manager: manager,
+				owner:   owner,
+			})
 		}
-
-		if len(sponsoredContracts) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, "policy_check", "no sponsored contracts"), nil, nil
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, "policy_check", "no sponsored reflect contract needs a ticket"), nil, nil
 		}
+		selected := candidates[r.Intn(len(candidates))]
 
-		// Select random contract and test different policy scenarios
-		contract := sponsoredContracts[r.Intn(len(sponsoredContracts))]
-
-		// Test different message types and edge cases
-		testScenarios := []struct {
-			msgType string
-			msgData interface{}
-		}{
-			{"increment", map[string]interface{}{}},
-			{"decrement", map[string]interface{}{}},
-			{"malformed", "invalid_json"},
-			{"empty", nil},
-			{"large_data", map[string]interface{}{"data": generateLargeString(r, 1000)}},
+		msg := &types.MsgIssuePolicyTicket{
+			Creator:         selected.manager.Address.String(),
+			ContractAddress: selected.sponsor.ContractAddress,
+			UserAddress:     selected.owner.Address.String(),
+			Method:          simulationMethod,
+			Uses:            uint32(r.Intn(3) + 1),
 		}
-
-		scenario := testScenarios[r.Intn(len(testScenarios))]
-
-		// This is a read-only operation that tests policy checking
-		// We don't actually send a transaction, just test the policy logic
-		ctx.Logger().Info("Simulating policy check",
-			"contract", contract.ContractAddress,
-			"msg_type", scenario.msgType,
-		)
-
-		return simtypes.NoOpMsg(types.ModuleName, "policy_check", "policy check completed"), nil, nil
+		if err := msg.ValidateBasic(); err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
+		}
+		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
 	}
 }
 
 // SimulateUserGrantUsage simulates user grant usage scenarios
 func SimulateUserGrantUsage(ak types.AccountKeeper, bk types.BankKeeper, k keeper.Keeper, wk types.WasmKeeperInterface) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-		// Test user grant usage edge cases and limits
-
-		// Get all sponsored contracts
-		allSponsors := k.GetAllSponsors(ctx)
-		var sponsoredContracts []types.ContractSponsor
-		for _, sponsor := range allSponsors {
-			if sponsor.IsSponsored {
-				sponsoredContracts = append(sponsoredContracts, sponsor)
+		type candidate struct {
+			sponsor   types.ContractSponsor
+			user      simtypes.Account
+			remaining sdk.Int
+		}
+		candidates := make([]candidate, 0)
+		for _, sponsor := range k.GetAllSponsors(ctx) {
+			if !sponsor.IsSponsored {
+				continue
+			}
+			maxGrant, err := k.GetMaxGrantPerUser(ctx, sponsor.ContractAddress)
+			if err != nil {
+				continue
+			}
+			for _, user := range accs {
+				usage := k.GetUserGrantUsage(ctx, user.Address.String(), sponsor.ContractAddress)
+				used := sdk.Coins{}
+				for _, coin := range usage.TotalGrantUsed {
+					if coin != nil {
+						used = used.Add(*coin)
+					}
+				}
+				remaining := maxGrant.AmountOf(types.SponsorshipDenom).
+					Sub(used.AmountOf(types.SponsorshipDenom))
+				if remaining.IsPositive() {
+					candidates = append(candidates, candidate{
+						sponsor:   sponsor,
+						user:      user,
+						remaining: remaining,
+					})
+				}
 			}
 		}
-
-		if len(sponsoredContracts) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", "no sponsored contracts"), nil, nil
+		if len(candidates) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", "no user has remaining sponsor grant"), nil, nil
 		}
-
-		// Select random contract and user
-		contract := sponsoredContracts[r.Intn(len(sponsoredContracts))]
-		user, _ := simtypes.RandomAcc(r, accs)
-
-		// Test various grant usage scenarios
-		usage := k.GetUserGrantUsage(ctx, user.Address.String(), contract.ContractAddress)
-
-		// Simulate different usage patterns
-		scenarios := []string{
-			"normal_usage",
-			"near_limit",
-			"at_limit",
-			"over_limit",
-			"multiple_requests",
+		selected := candidates[r.Intn(len(candidates))]
+		upper := selected.remaining
+		if upper.GT(sdk.NewInt(100_000)) {
+			upper = sdk.NewInt(100_000)
 		}
-
-		scenario := scenarios[r.Intn(len(scenarios))]
-
-		ctx.Logger().Info("Simulating user grant usage",
-			"user", user.Address.String(),
-			"contract", contract.ContractAddress,
-			"scenario", scenario,
-			"current_usage", usage.TotalGrantUsed,
-		)
-
-		return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", "grant usage check completed"), nil, nil
+		amount := sdk.NewInt(r.Int63n(upper.Int64()) + 1)
+		consumed := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
+		if err := k.CheckUserGrantLimit(
+			ctx,
+			selected.user.Address.String(),
+			selected.sponsor.ContractAddress,
+			consumed,
+		); err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", err.Error()), nil, nil
+		}
+		if err := k.UpdateUserGrantUsage(
+			ctx,
+			selected.user.Address.String(),
+			selected.sponsor.ContractAddress,
+			consumed,
+		); err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", err.Error()), nil, err
+		}
+		msg, err := json.Marshal(map[string]string{
+			"contract": selected.sponsor.ContractAddress,
+			"user":     selected.user.Address.String(),
+			"amount":   consumed.String(),
+		})
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, "user_grant_usage", "failed to encode transition"), nil, err
+		}
+		return simtypes.NewOperationMsgBasic(
+			types.ModuleName,
+			"user_grant_usage",
+			"updated sponsor grant usage",
+			true,
+			msg,
+		), nil, nil
 	}
 }
 
-// Helper function to generate large test strings
-func generateLargeString(r *rand.Rand, size int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, size)
-	for i := range b {
-		b[i] = charset[r.Intn(len(charset))]
+func fundSpecificSponsor(
+	contractAddress string,
+	funder simtypes.Account,
+	ak types.AccountKeeper,
+	bk types.BankKeeper,
+	k keeper.Keeper,
+) simtypes.Operation {
+	return func(
+		r *rand.Rand,
+		app *baseapp.BaseApp,
+		ctx sdk.Context,
+		_ []simtypes.Account,
+		_ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		sponsor, found := k.GetSponsor(ctx, contractAddress)
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "sponsor was removed before funding"), nil, nil
+		}
+		sponsorAddress, err := types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "invalid sponsor address"), nil, nil
+		}
+		if bk == nil {
+			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "bank keeper is not configured"), nil, nil
+		}
+		available := bk.SpendableCoins(ctx, funder.Address).AmountOf(types.SponsorshipDenom)
+		if available.LTE(sdk.OneInt()) {
+			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "admin has no funds available for sponsor"), nil, nil
+		}
+
+		upper := available.QuoRaw(4)
+		if upper.IsZero() {
+			upper = sdk.OneInt()
+		}
+		if upper.GT(sdk.NewInt(1_000_000)) {
+			upper = sdk.NewInt(1_000_000)
+		}
+		amount := sdk.NewInt(r.Int63n(upper.Int64()) + 1)
+		funds := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
+		msg := banktypes.NewMsgSend(funder.Address, sponsorAddress, funds)
+		return deliverSimulationMsg(r, app, ctx, msg, funder, ak, bk, funds)
 	}
-	return string(b)
+}
+
+func deleteSpecificSponsor(
+	contractAddress string,
+	ak types.AccountKeeper,
+	bk types.BankKeeper,
+	k keeper.Keeper,
+	wk types.WasmKeeperInterface,
+) simtypes.Operation {
+	return func(
+		r *rand.Rand,
+		app *baseapp.BaseApp,
+		ctx sdk.Context,
+		accs []simtypes.Account,
+		_ string,
+	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
+		sponsor, found := k.GetSponsor(ctx, contractAddress)
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "sponsor already removed"), nil, nil
+		}
+		manager, found := currentManager(ctx, wk, contractAddress, accs)
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "current admin is not a simulation account"), nil, nil
+		}
+		sponsorAddress, err := types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "invalid sponsor address"), nil, nil
+		}
+		if bk != nil && !bk.SpendableCoins(ctx, sponsorAddress).Empty() {
+			return simtypes.NoOpMsg(types.ModuleName, types.TypeMsgDeleteSponsor, "sponsor still has funds"), nil, nil
+		}
+		msg := types.NewMsgDeleteSponsor(manager.Address.String(), contractAddress)
+		return deliverSimulationMsg(r, app, ctx, msg, manager, ak, bk, nil)
+	}
 }
