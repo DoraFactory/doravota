@@ -373,8 +373,9 @@ func TestValidateGenesis_UserGrant_InvalidCoins(t *testing.T) {
     require.Contains(t, err.Error(), "cannot be negative")
 }
 
-func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
-    // sponsor with limit 100
+func TestValidateGenesis_UserGrant_MayExceedCurrentLimit(t *testing.T) {
+    // Historical usage may exceed a limit that was lowered after the usage
+    // was incurred. New sponsorship attempts enforce the lower limit.
     contract := mkAddr(25)
     creator := mkAddr(26)
     caAcc, _ := sdk.AccAddressFromBech32(contract)
@@ -393,8 +394,7 @@ func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
     }}
     gen := NewGenesisState(sponsors, usages)
     err := ValidateGenesis(*gen)
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "exceeds max_grant_per_user")
+    require.NoError(t, err)
 }
 
 func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {

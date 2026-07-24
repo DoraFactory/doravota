@@ -585,9 +585,11 @@ func ValidateGenesis(data GenesisState) error {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid user grant usage coins")
 		}
 
-		// Current-generation usage must respect the active Sponsor limit.
-		// Historical usage with a non-zero generation may outlive a deleted
-		// Sponsor and is retained only for lifecycle isolation/genesis replay.
+		// Usage is cumulative accounting for one Sponsor generation. It may be
+		// greater than the Sponsor's current max_grant_per_user when an admin
+		// lowers the limit after fees have already been sponsored. New charges
+		// enforce the current limit; genesis validation must preserve the
+		// historical total so exported state can always be imported again.
 		sponsor, ok := sponsorsByContract[usage.ContractAddress]
 		if !ok {
 			if usage.Generation == 0 {
@@ -614,24 +616,6 @@ func ValidateGenesis(data GenesisState) error {
 		}
 		if usageGeneration < sponsorGeneration {
 			continue
-		}
-		limit := sdk.Coins{}
-		for _, c := range sponsor.MaxGrantPerUser {
-			if c != nil {
-				limit = limit.Add(*c)
-			}
-		}
-		if !limit.IsZero() {
-			if !limit.IsValid() {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid sponsor max_grant_per_user coins")
-			}
-			if !limit.IsAllGTE(used) {
-				return errorsmod.Wrapf(
-					ErrUserGrantLimitExceeded,
-					"user %s usage %s exceeds max_grant_per_user %s for contract %s",
-					usage.UserAddress, used.String(), limit.String(), usage.ContractAddress,
-				)
-			}
 		}
 	}
 

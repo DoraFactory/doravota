@@ -421,7 +421,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
             expectErr: true,
         },
         {
-            name: "user grant usage exceeds sponsor limit",
+            name: "historical user grant usage may exceed current sponsor limit",
             genesis: func() *types.GenesisState {
                 params := types.DefaultParams()
                 ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
@@ -442,7 +442,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
                     }},
                 }
             }(),
-            expectErr: true,
+            expectErr: false,
         },
         {
             name: "sponsor timestamps invalid (created_at > updated_at)",
@@ -1095,4 +1095,65 @@ func TestDeletedSponsorLifecycleSurvivesGenesis(t *testing.T) {
 	usage := k.GetUserGrantUsage(ctx, user, contract)
 	require.Equal(t, uint64(5), usage.Generation)
 	require.Empty(t, usage.TotalGrantUsed)
+}
+
+func TestGenesisRoundTripAfterGrantLimitReduction(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("lowered_limit_contract")).String()
+	creator := sdk.AccAddress([]byte("lowered_limit_creator_")).String()
+	user := sdk.AccAddress([]byte("lowered_limit_user____")).String()
+	contractAddr, err := sdk.AccAddressFromBech32(contract)
+	require.NoError(t, err)
+	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
+
+	require.NoError(t, k.SetParams(ctx, types.DefaultParams()))
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
+		ContractAddress: contract,
+		CreatorAddress:  creator,
+		SponsorAddress:  sponsorAddr,
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	}))
+	activeSponsor, found := k.GetSponsor(ctx, contract)
+	require.True(t, found)
+	require.NoError(t, k.SetUserGrantUsage(ctx, types.UserGrantUsage{
+		UserAddress:     user,
+		ContractAddress: contract,
+		TotalGrantUsed: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(80),
+		}},
+		Generation: activeSponsor.Generation,
+	}))
+
+	// Lowering a limit does not rewrite historical usage. It only prevents new
+	// charges that would exceed the new limit.
+	activeSponsor.MaxGrantPerUser = []*sdk.Coin{{
+		Denom:  types.SponsorshipDenom,
+		Amount: sdk.NewInt(50),
+	}}
+	require.NoError(t, k.SetSponsor(ctx, activeSponsor))
+	require.Error(t, k.CheckUserGrantLimit(
+		ctx,
+		user,
+		contract,
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1))),
+	))
+
+	exported := sponsor.ExportGenesis(ctx, k)
+	require.NoError(t, types.ValidateGenesis(*exported))
+
+	k2, ctx2 := setupKeeper(t)
+	sponsor.InitGenesis(ctx2, k2, *exported)
+	reexported := sponsor.ExportGenesis(ctx2, k2)
+	require.NoError(t, types.ValidateGenesis(*reexported))
+
+	require.Len(t, reexported.Sponsors, 1)
+	require.Equal(t, sdk.NewInt(50), reexported.Sponsors[0].MaxGrantPerUser[0].Amount)
+	require.Len(t, reexported.UserGrantUsages, 1)
+	require.Equal(t, sdk.NewInt(80), reexported.UserGrantUsages[0].TotalGrantUsed[0].Amount)
+	require.Equal(t, activeSponsor.Generation, reexported.UserGrantUsages[0].Generation)
 }
