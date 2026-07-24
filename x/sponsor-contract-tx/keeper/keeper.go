@@ -140,8 +140,13 @@ func (k Keeper) GetActivePolicyTicket(ctx sdk.Context, contractAddr, userAddr, d
 	return ticket, true
 }
 
+// SetPolicyTicket is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActivePolicyTicket; genesis import must
+// use SetPolicyTicketForGenesis.
 func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 	store := ctx.KVStore(k.storeKey)
+	t.ContractAddress = types.CanonicalAddressOrOriginal(t.ContractAddress)
+	t.UserAddress = types.CanonicalAddressOrOriginal(t.UserAddress)
 	if t.Generation == 0 {
 		if sponsor, found := k.GetSponsor(ctx, t.ContractAddress); found {
 			t.Generation = sponsor.Generation
@@ -268,7 +273,7 @@ func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dig
 		t.UsesRemaining = 0
 		t.Consumed = true
 	}
-	return k.SetPolicyTicket(ctx, t)
+	return k.setCurrentOrLegacyPolicyTicket(ctx, t)
 }
 
 // ConsumePolicyTicketsBulk validates that for each digest there are at least the required
@@ -301,7 +306,7 @@ func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr
 	}
 	// Apply updates to store
 	for md, t := range updated {
-		if err := k.SetPolicyTicket(ctx, t); err != nil {
+		if err := k.setCurrentOrLegacyPolicyTicket(ctx, t); err != nil {
 			return err
 		}
 		_ = md
@@ -449,8 +454,17 @@ func (k Keeper) garbageCollectByExpiry(ctx sdk.Context, maxEntries int) garbageC
 	return result
 }
 
-// SetSponsor sets a sponsor in the store
+// SetSponsor is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActiveSponsor; genesis import must use
+// SetSponsorForGenesis.
 func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error {
+	sponsor.ContractAddress = types.CanonicalAddressOrOriginal(sponsor.ContractAddress)
+	sponsor.CreatorAddress = types.CanonicalAddressOrOriginal(sponsor.CreatorAddress)
+	sponsor.SponsorAddress = types.CanonicalAddressOrOriginal(sponsor.SponsorAddress)
+	if sponsor.TicketIssuerAddress != "" {
+		sponsor.TicketIssuerAddress = types.CanonicalAddressOrOriginal(sponsor.TicketIssuerAddress)
+	}
+
 	// Normalize MaxGrantPerUser before storing to merge duplicates
 	normalized, err := types.NormalizeMaxGrantPerUser(sponsor.MaxGrantPerUser)
 	if err != nil {
@@ -685,6 +699,9 @@ func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 
 // SetParams sets the module parameters
 func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
+	if err := params.Validate(); err != nil {
+		return errorsmod.Wrap(err, "invalid sponsor params")
+	}
 	store := ctx.KVStore(k.storeKey)
 	bz, err := k.cdc.Marshal(&params)
 	if err != nil {
@@ -739,9 +756,13 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 	return usage
 }
 
-// SetUserGrantUsage sets the grant usage for a specific user and contract
+// SetUserGrantUsage is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActiveUserGrantUsage; genesis import must
+// use SetUserGrantUsageForGenesis.
 func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) error {
 	store := ctx.KVStore(k.storeKey)
+	usage.UserAddress = types.CanonicalAddressOrOriginal(usage.UserAddress)
+	usage.ContractAddress = types.CanonicalAddressOrOriginal(usage.ContractAddress)
 	if usage.Generation == 0 {
 		if sponsor, found := k.GetSponsor(ctx, usage.ContractAddress); found {
 			usage.Generation = sponsor.Generation
@@ -790,9 +811,18 @@ func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr str
 		usage.TotalGrantUsed[i] = &coinCopy
 	}
 
-	usage.LastUsedTime = ctx.BlockTime().Unix()
-	if err := k.SetUserGrantUsage(ctx, usage); err != nil {
-		return errorsmod.Wrap(err, "failed to set user grant usage")
+	usage.LastUsedTime = stateUnixTime(ctx)
+	if found {
+		if err := k.SetActiveUserGrantUsage(ctx, usage); err != nil {
+			return errorsmod.Wrap(err, "failed to set user grant usage")
+		}
+	} else {
+		// Compatibility for contracts that have never entered a Sponsor
+		// lifecycle. Deleted Sponsors have a non-zero tombstone and are rejected
+		// above, so their usage can never be revived through this path.
+		if err := k.SetUserGrantUsage(ctx, usage); err != nil {
+			return errorsmod.Wrap(err, "failed to set legacy user grant usage")
+		}
 	}
 
 	// Emit sponsor usage updated event

@@ -656,8 +656,8 @@ func TestMaxGrantPerUser(t *testing.T) {
 func TestUserGrantUsage(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
-	userAddr := "dora1user123"
-	contractAddr := "dora1contract456"
+	userAddr := sdk.AccAddress([]byte("usage_test_user_____")).String()
+	contractAddr := sdk.AccAddress([]byte("usage_test_contract_")).String()
 
 	t.Run("new user has no usage", func(t *testing.T) {
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
@@ -706,8 +706,8 @@ func TestUserGrantUsage(t *testing.T) {
 func TestCheckUserGrantLimit(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
-	userAddr := "dora1user123"
-	contractAddr := "dora1contract456"
+	userAddr := sdk.AccAddress([]byte("limit_test_user_____")).String()
+	contractAddr := sdk.AccAddress([]byte("limit_test_contract_")).String()
 
 	// Set up sponsor with custom limit (using peaka denomination)
 	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
@@ -756,7 +756,7 @@ func TestCheckUserGrantLimit(t *testing.T) {
 
 	t.Run("within remaining limit after previous usage", func(t *testing.T) {
 		// Clear previous usage for this test
-		newUserAddr := "dora1user789"
+		newUserAddr := sdk.AccAddress([]byte("limit_test_user_two_")).String()
 
 		// Simulate some usage
 		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
@@ -949,7 +949,8 @@ func TestGetSetParams(t *testing.T) {
     require.True(t, params.SponsorshipEnabled)
 
 	// Set custom params
-    customParams := types.Params{SponsorshipEnabled: false}
+	customParams := types.DefaultParams()
+	customParams.SponsorshipEnabled = false
 	err := keeper.SetParams(ctx, customParams)
 	require.NoError(t, err)
 
@@ -1152,7 +1153,7 @@ func TestParamsErrorHandling(t *testing.T) {
 
 	// Test setting params with marshal error is unlikely in real scenarios
 	// but we can test the success path thoroughly
-    params := types.Params{SponsorshipEnabled: true}
+	params := types.DefaultParams()
 
 	err := keeper.SetParams(ctx, params)
 	require.NoError(t, err)
@@ -1757,7 +1758,7 @@ func TestErrorPathsInKeeper(t *testing.T) {
 	require.NotNil(t, pageRes)
 
 	// Test SetParams with marshal error (hard to trigger, but test success path)
-    params := types.Params{SponsorshipEnabled: true}
+	params := types.DefaultParams()
 	err = keeper.SetParams(ctx, params)
 	require.NoError(t, err)
 

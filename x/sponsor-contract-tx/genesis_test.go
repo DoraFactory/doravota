@@ -536,10 +536,10 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
     ca2, _ := sdk.AccAddressFromBech32(suite.contractAddr2)
     sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
     sp2 := sdk.AccAddress(address.Derive(ca2, []byte("sponsor"))).String()
+    genesisParams := types.DefaultParams()
+    genesisParams.SponsorshipEnabled = true
     originalGenesis := &types.GenesisState{
-        Params: &types.Params{
-            SponsorshipEnabled:   true,
-        },
+        Params: &genesisParams,
         Sponsors: []*types.ContractSponsor{
             {
                 ContractAddress: suite.contractAddr1,
@@ -691,7 +691,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
             Digest:          md,
             ExpiryHeight:    uint64(suite.ctx.BlockHeight()), // expired when now > expiry
             UsesRemaining:   1,
-            IssuedHeight:    1,
+            IssuedHeight:    0,
             Method:          "inc",
         }},
     }
@@ -713,10 +713,10 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
     // derive sponsor address
     ca1, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
     sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
+    genesisParams := types.DefaultParams()
+    genesisParams.SponsorshipEnabled = false
     originalGenesis := &types.GenesisState{
-        Params: &types.Params{
-            SponsorshipEnabled:   false,
-        },
+        Params: &genesisParams,
         Sponsors: []*types.ContractSponsor{
             {
                 ContractAddress: suite.contractAddr1,
@@ -788,7 +788,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRe
             ExpiryHeight:    uint64(suite.ctx.BlockHeight()),
             UsesRemaining:   0,
             Consumed:        true,
-            IssuedHeight:    1,
+            IssuedHeight:    0,
             Method:          "inc",
         }},
     }
@@ -842,8 +842,8 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Pr
     suite.Require().True(found)
 }
 
-// UsesRemaining=0 and not consumed is allowed to import; if not expired, it should be preserved and exported back.
-func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
+// A zero-use ticket must be marked consumed and is preserved until expiry.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ZeroUsesConsumed() {
     md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"ping"})
     p := types.DefaultParams()
     gen := &types.GenesisState{
@@ -854,7 +854,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
             Digest:          md,
             ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 5),
             UsesRemaining:   0,
-            Consumed:        false,
+            Consumed:        true,
             IssuedHeight:    1,
             Method:          "ping",
         }},

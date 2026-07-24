@@ -2309,10 +2309,14 @@ func TestIssuePolicyTicket_ClampToParamUpperBound(t *testing.T) {
 
 func TestIssuePolicyTicket_ParamZeroFallbackTreatsAsOne(t *testing.T) {
 	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-	// Force an invalid param using direct SetParams (bypassing governance validation)
+	// Inject invalid legacy/corrupt state directly to verify the defensive
+	// effective-value fallback. SetParams itself rejects this value.
 	p := types.DefaultParams()
 	p.MaxMethodTicketUsesPerIssue = 0
-	require.NoError(t, keeper.SetParams(ctx, p))
+	require.Error(t, keeper.SetParams(ctx, p))
+	bz, err := keeper.cdc.Marshal(&p)
+	require.NoError(t, err)
+	ctx.KVStore(keeper.storeKey).Set(types.ParamsKey, bz)
 
 	contract := sdk.AccAddress([]byte("contract_issue_fallback__")).String()
 	admin := sdk.AccAddress([]byte("admin_issue_fallback____")).String()

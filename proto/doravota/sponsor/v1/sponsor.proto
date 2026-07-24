@@ -97,7 +97,8 @@ message PolicyTicket {
   // Digest is computed from method names in order (method-level binding).
   string digest = 3;
   uint64 expiry_height = 4;
-  // Remaining uses for this ticket (0 or 1 implies single-use semantics).
+  // Remaining uses for this ticket. 0 means no authorization remains; 1 is
+  // the final usable authorization.
   uint32 uses_remaining = 5;
   bool consumed = 6;
   // Block height when this ticket was issued.

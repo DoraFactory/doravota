@@ -27,8 +27,17 @@ func LifecycleInvariant(k Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
 		var violations strings.Builder
 		store := ctx.KVStore(k.storeKey)
+		maxMethodBytes := k.GetParams(ctx).EffectiveMaxMethodBytes()
 
 		k.IterateSponsors(ctx, func(sponsor types.ContractSponsor) bool {
+			if err := types.ValidateContractSponsorState(sponsor, true); err != nil {
+				fmt.Fprintf(
+					&violations,
+					"sponsor %s has invalid state: %v\n",
+					sponsor.ContractAddress,
+					err,
+				)
+			}
 			current := k.GetSponsorGeneration(ctx, sponsor.ContractAddress)
 			if sponsor.Generation == 0 || current != sponsor.Generation {
 				fmt.Fprintf(
@@ -39,10 +48,38 @@ func LifecycleInvariant(k Keeper) sdk.Invariant {
 					current,
 				)
 			}
+			hasAdmin, err := k.HasContractAdmin(ctx, sponsor.ContractAddress)
+			switch {
+			case err != nil:
+				fmt.Fprintf(
+					&violations,
+					"sponsor %s contract admin lookup failed: %v\n",
+					sponsor.ContractAddress,
+					err,
+				)
+			case !hasAdmin:
+				fmt.Fprintf(
+					&violations,
+					"sponsor %s has no wasm contract admin\n",
+					sponsor.ContractAddress,
+				)
+			}
 			return false
 		})
 
 		k.IteratePolicyTickets(ctx, func(_ []byte, ticket types.PolicyTicket) bool {
+			if err := types.ValidatePolicyTicketState(
+				ticket,
+				maxMethodBytes,
+				true,
+			); err != nil {
+				fmt.Fprintf(
+					&violations,
+					"ticket %s has invalid state: %v\n",
+					ticket.Digest,
+					err,
+				)
+			}
 			current := k.GetSponsorGeneration(ctx, ticket.ContractAddress)
 			sponsor, active := k.GetSponsor(ctx, ticket.ContractAddress)
 			switch {
@@ -79,6 +116,15 @@ func LifecycleInvariant(k Keeper) sdk.Invariant {
 		})
 
 		k.IterateUserGrantUsages(ctx, func(usage types.UserGrantUsage) bool {
+			if err := types.ValidateUserGrantUsageState(usage, true); err != nil {
+				fmt.Fprintf(
+					&violations,
+					"usage for %s/%s has invalid state: %v\n",
+					usage.ContractAddress,
+					usage.UserAddress,
+					err,
+				)
+			}
 			current := k.GetSponsorGeneration(ctx, usage.ContractAddress)
 			sponsor, active := k.GetSponsor(ctx, usage.ContractAddress)
 			switch {

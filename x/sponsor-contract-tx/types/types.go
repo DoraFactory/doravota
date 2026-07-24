@@ -474,6 +474,9 @@ func ValidateGenesis(data GenesisState) error {
 		if sponsor == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor cannot be nil")
 		}
+		if err := ValidateContractSponsorState(*sponsor, false); err != nil {
+			return err
+		}
 
 		// Contract address validation (non-empty + bech32)
 		if err := ValidateContractAddress(sponsor.ContractAddress); err != nil {
@@ -543,6 +546,9 @@ func ValidateGenesis(data GenesisState) error {
 	for _, usage := range data.UserGrantUsages {
 		if usage == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
+		}
+		if err := ValidateUserGrantUsageState(*usage, false); err != nil {
+			return err
 		}
 		if usage.UserAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
@@ -629,6 +635,9 @@ func ValidateGenesis(data GenesisState) error {
 	for _, t := range data.PolicyTickets {
 		if t == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket cannot be nil")
+		}
+		if err := ValidatePolicyTicketState(*t, methodLimit, false); err != nil {
+			return err
 		}
 		// Basic field checks (keep in sync with InitGenesis defensive checks)
 		if err := ValidateContractAddress(t.ContractAddress); err != nil {

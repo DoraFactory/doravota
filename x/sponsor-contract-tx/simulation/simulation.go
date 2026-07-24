@@ -273,6 +273,10 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 			}
 
 			user := accounts[r.Intn(len(accounts))]
+			lastUsedTime := ctx.BlockTime().Unix()
+			if lastUsedTime < 0 {
+				lastUsedTime = 0
+			}
 			usage := types.UserGrantUsage{
 				UserAddress:     user.Address.String(),
 				ContractAddress: sponsor.ContractAddress,
@@ -282,9 +286,11 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 						Amount: sdk.NewInt(int64(r.Intn(100000) + 1000)),
 					},
 				},
-				LastUsedTime: ctx.BlockTime().Unix(),
+				LastUsedTime: lastUsedTime,
 			}
-			sm.keeper.SetUserGrantUsage(ctx, usage)
+			if err := sm.keeper.SetActiveUserGrantUsage(ctx, usage); err != nil {
+				return fmt.Errorf("failed to set user grant usage in iteration %d: %w", i, err)
+			}
 		}
 
 		// Test all invariants

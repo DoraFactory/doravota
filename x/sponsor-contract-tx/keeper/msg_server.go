@@ -77,7 +77,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	}
 
 	// Create and set the sponsor
-	now := ctx.BlockTime().Unix()
+	now := stateUnixTime(ctx)
 	sponsor := types.ContractSponsor{
 		ContractAddress:     msg.ContractAddress,
 		CreatorAddress:      msg.Creator,          // The address that created this sponsor configuration
@@ -89,7 +89,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		MaxGrantPerUser:     msg.MaxGrantPerUser,
 	}
 
-	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+	if err := k.Keeper.SetActiveSponsor(ctx, sponsor); err != nil {
 		return nil, errorsmod.Wrap(err, "failed to set sponsor")
 	}
 	sponsor, _ = k.Keeper.GetSponsor(ctx, msg.ContractAddress)
@@ -193,12 +193,12 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		TicketIssuerAddress: issuer,
 		IsSponsored:         msg.IsSponsored,
 		CreatedAt:           existingSponsor.CreatedAt,
-		UpdatedAt:           ctx.BlockTime().Unix(),
+		UpdatedAt:           stateUnixTime(ctx),
 		MaxGrantPerUser:     effectiveMaxGrant,
 		Generation:          existingSponsor.Generation,
 	}
 
-	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+	if err := k.Keeper.SetActiveSponsor(ctx, sponsor); err != nil {
 		return nil, errorsmod.Wrap(err, "failed to update sponsor")
 	}
 
@@ -580,7 +580,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	} else {
 		ticket.UsesRemaining = requested
 	}
-	if err := k.Keeper.SetPolicyTicket(ctx, ticket); err != nil {
+	if err := k.Keeper.SetActivePolicyTicket(ctx, ticket); err != nil {
 		return nil, errorsmod.Wrap(err, "store ticket failed")
 	}
 	// Emit issue event for observability (DeliverTx and CheckTx both emit; lightweight attributes only)

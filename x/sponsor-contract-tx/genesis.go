@@ -14,7 +14,9 @@ import (
 func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) {
 	// Set module parameters
 	if genState.Params != nil {
-		k.SetParams(ctx, *genState.Params)
+		if err := k.SetParams(ctx, *genState.Params); err != nil {
+			panic(fmt.Errorf("failed to set sponsor params during genesis initialization: %w", err))
+		}
 	}
 
 	// Restore lifecycle generations before importing state. A contract without
@@ -114,7 +116,7 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		if !expectedSponsor.Equals(sponsorAccAddr) {
 			panic(fmt.Errorf("sponsor address mismatch in genesis: expected %s, got %s for contract %s", expectedSponsor.String(), sponsor.SponsorAddress, sponsor.ContractAddress))
 		}
-		if err := k.SetSponsor(ctx, *sponsor); err != nil {
+		if err := k.SetSponsorForGenesis(ctx, *sponsor); err != nil {
 			panic(fmt.Errorf("failed to set sponsor during genesis initialization: %w", err))
 		}
 	}
@@ -124,7 +126,7 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		if usage == nil {
 			continue
 		}
-		if err := k.SetUserGrantUsage(ctx, *usage); err != nil {
+		if err := k.SetUserGrantUsageForGenesis(ctx, *usage); err != nil {
 			panic(fmt.Errorf("failed to set user grant usage during genesis initialization: %w", err))
 		}
 	}
@@ -150,7 +152,7 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 		if t.Method != "" && mLimit != 0 && uint32(len(t.Method)) > mLimit {
 			panic(fmt.Errorf("invalid policy ticket method in genesis: too long"))
 		}
-		if err := k.SetPolicyTicket(ctx, *t); err != nil {
+		if err := k.SetPolicyTicketForGenesis(ctx, *t); err != nil {
 			panic(fmt.Errorf("failed to set policy ticket during genesis initialization: %w", err))
 		}
 	}

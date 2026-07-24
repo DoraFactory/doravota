@@ -421,7 +421,8 @@ type PolicyTicket struct {
 	// Digest is computed from method names in order (method-level binding).
 	Digest       string `protobuf:"bytes,3,opt,name=digest,proto3" json:"digest,omitempty"`
 	ExpiryHeight uint64 `protobuf:"varint,4,opt,name=expiry_height,json=expiryHeight,proto3" json:"expiry_height,omitempty"`
-	// Remaining uses for this ticket (0 or 1 implies single-use semantics).
+	// Remaining uses for this ticket. 0 means no authorization remains; 1 is
+	// the final usable authorization.
 	UsesRemaining uint32 `protobuf:"varint,5,opt,name=uses_remaining,json=usesRemaining,proto3" json:"uses_remaining,omitempty"`
 	Consumed      bool   `protobuf:"varint,6,opt,name=consumed,proto3" json:"consumed,omitempty"`
 	// Block height when this ticket was issued.

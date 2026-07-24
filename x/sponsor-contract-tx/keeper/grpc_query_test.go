@@ -526,11 +526,10 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 			request: &types.QueryParamsRequest{},
             preRun: func() {
                 // Set custom params
-                params := types.Params{
-                    SponsorshipEnabled:    false,
-                    PolicyTicketTtlBlocks: 42,
-                }
-                keeper.SetParams(freshCtx, params)
+                params := types.DefaultParams()
+                params.SponsorshipEnabled = false
+                params.PolicyTicketTtlBlocks = 42
+                suite.Require().NoError(keeper.SetParams(freshCtx, params))
             },
 			expectError: false,
             postCheck: func(resp *types.QueryParamsResponse) {
