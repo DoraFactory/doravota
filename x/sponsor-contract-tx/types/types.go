@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -25,8 +26,7 @@ type BaseSponsorMsg struct {
 // ValidateBasicFields performs common validation for sponsor messages
 func (b BaseSponsorMsg) ValidateBasicFields() error {
 	// Validate creator address
-	_, err := sdk.AccAddressFromBech32(b.Creator)
-	if err != nil {
+	if err := ValidateCanonicalAddress(b.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", b.Creator)
 	}
 
@@ -67,7 +67,14 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 
 		// Accumulate amounts for same denomination
 		if existing, found := denominationTotals[coin.Denom]; found {
-			denominationTotals[coin.Denom] = existing.Add(coin.Amount)
+			total, err := existing.SafeAdd(coin.Amount)
+			if err != nil {
+				return nil, errorsmod.Wrap(
+					sdkerrors.ErrInvalidCoins,
+					"max_grant_per_user amount overflow",
+				)
+			}
+			denominationTotals[coin.Denom] = total
 		} else {
 			denominationTotals[coin.Denom] = coin.Amount
 		}
@@ -189,13 +196,13 @@ func (msg MsgIssuePolicyTicket) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgIssuePolicyTicket) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
+	if err := ValidateCanonicalAddress(msg.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
 	}
 	if err := ValidateContractAddress(msg.ContractAddress); err != nil {
 		return err
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	if err := ValidateCanonicalAddress(msg.UserAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", msg.UserAddress)
 	}
 	if msg.Method == "" {
@@ -229,13 +236,13 @@ func (msg MsgRevokePolicyTicket) GetSignBytes() []byte {
 
 // ValidateBasic performs basic validation
 func (msg MsgRevokePolicyTicket) ValidateBasic() error {
-	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
+	if err := ValidateCanonicalAddress(msg.Creator); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address: %s", msg.Creator)
 	}
 	if err := ValidateContractAddress(msg.ContractAddress); err != nil {
 		return err
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	if err := ValidateCanonicalAddress(msg.UserAddress); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user address: %s", msg.UserAddress)
 	}
 	if msg.Method == "" {
@@ -308,7 +315,7 @@ func (msg MsgSetSponsor) ValidateBasic() error {
 
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", msg.TicketIssuerAddress)
 		}
 	}
@@ -380,9 +387,15 @@ func (msg MsgUpdateSponsor) ValidateBasic() error {
 		return err
 	}
 
+	if msg.ClearTicketIssuer && msg.TicketIssuerAddress != "" {
+		return errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"ticket issuer address cannot be set and cleared in the same update",
+		)
+	}
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", msg.TicketIssuerAddress)
 		}
 	}
@@ -460,20 +473,50 @@ func NewGenesisState(sponsors []*ContractSponsor, userGrantUsages []*UserGrantUs
 func DefaultGenesisState() *GenesisState {
 	params := DefaultParams()
 	return &GenesisState{
-		Sponsors:        []*ContractSponsor{},
-		Params:          &params,
-		UserGrantUsages: []*UserGrantUsage{},
-		PolicyTickets:   []*PolicyTicket{},
+		Sponsors:            []*ContractSponsor{},
+		Params:              &params,
+		UserGrantUsages:     []*UserGrantUsage{},
+		PolicyTickets:       []*PolicyTicket{},
+		ContractGenerations: []*ContractGeneration{},
 	}
 }
 
 // ValidateGenesis validates the genesis state
 func ValidateGenesis(data GenesisState) error {
+	generationsByContract := make(map[string]uint64, len(data.ContractGenerations))
+	for _, contractGeneration := range data.ContractGenerations {
+		if contractGeneration == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "contract generation cannot be nil")
+		}
+		if err := ValidateContractAddress(contractGeneration.ContractAddress); err != nil {
+			return err
+		}
+		if contractGeneration.Generation == 0 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"contract generation must be positive for contract %s",
+				contractGeneration.ContractAddress,
+			)
+		}
+		if _, exists := generationsByContract[contractGeneration.ContractAddress]; exists {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"duplicate contract generation for contract %s",
+				contractGeneration.ContractAddress,
+			)
+		}
+		generationsByContract[contractGeneration.ContractAddress] = contractGeneration.Generation
+	}
+
 	// Validate sponsors: duplicates + deep validation
 	sponsorsByContract := make(map[string]*ContractSponsor)
+	activeGenerations := make(map[string]uint64)
 	for _, sponsor := range data.Sponsors {
 		if sponsor == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor cannot be nil")
+		}
+		if err := ValidateContractSponsorState(*sponsor, false); err != nil {
+			return err
 		}
 
 		// Contract address validation (non-empty + bech32)
@@ -484,12 +527,29 @@ func ValidateGenesis(data GenesisState) error {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate sponsor contract address: %s", sponsor.ContractAddress)
 		}
 		sponsorsByContract[sponsor.ContractAddress] = sponsor
+		activeGeneration := sponsor.Generation
+		if activeGeneration == 0 {
+			activeGeneration = generationsByContract[sponsor.ContractAddress]
+			if activeGeneration == 0 {
+				activeGeneration = 1
+			}
+		}
+		if declared := generationsByContract[sponsor.ContractAddress]; declared != 0 && declared != activeGeneration {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"active sponsor generation %d does not match contract generation %d for contract %s",
+				activeGeneration,
+				declared,
+				sponsor.ContractAddress,
+			)
+		}
+		activeGenerations[sponsor.ContractAddress] = activeGeneration
 
 		// Creator address validation
 		if sponsor.CreatorAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor creator address cannot be empty")
 		}
-		if _, err := sdk.AccAddressFromBech32(sponsor.CreatorAddress); err != nil {
+		if err := ValidateCanonicalAddress(sponsor.CreatorAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor creator address: %s", sponsor.CreatorAddress)
 		}
 
@@ -497,10 +557,10 @@ func ValidateGenesis(data GenesisState) error {
 		if sponsor.SponsorAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "sponsor address cannot be empty")
 		}
-		sponsorAcc, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
-		if err != nil {
+		if err := ValidateCanonicalAddress(sponsor.SponsorAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid sponsor address: %s", sponsor.SponsorAddress)
 		}
+		sponsorAcc, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 		contractAcc, err := sdk.AccAddressFromBech32(sponsor.ContractAddress)
 		if err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid contract address: %s", sponsor.ContractAddress)
@@ -516,7 +576,7 @@ func ValidateGenesis(data GenesisState) error {
 
 		// Optional ticket issuer address validation when provided
 		if sponsor.TicketIssuerAddress != "" {
-			if _, err := sdk.AccAddressFromBech32(sponsor.TicketIssuerAddress); err != nil {
+			if err := ValidateCanonicalAddress(sponsor.TicketIssuerAddress); err != nil {
 				return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address: %s", sponsor.TicketIssuerAddress)
 			}
 		}
@@ -545,10 +605,13 @@ func ValidateGenesis(data GenesisState) error {
 		if usage == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage cannot be nil")
 		}
+		if err := ValidateUserGrantUsageState(*usage, false); err != nil {
+			return err
+		}
 		if usage.UserAddress == "" {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "user grant usage user address cannot be empty")
 		}
-		if _, err := sdk.AccAddressFromBech32(usage.UserAddress); err != nil {
+		if err := ValidateCanonicalAddress(usage.UserAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid user grant usage user address: %s", usage.UserAddress)
 		}
 		if err := ValidateContractAddress(usage.ContractAddress); err != nil {
@@ -580,53 +643,89 @@ func ValidateGenesis(data GenesisState) error {
 			if c.Amount.IsNegative() {
 				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
 			}
-			used = used.Add(*c)
+			if len(used) == 0 {
+				if !c.IsZero() {
+					used = sdk.NewCoins(*c)
+				}
+				continue
+			}
+			total, err := used[0].Amount.SafeAdd(c.Amount)
+			if err != nil {
+				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+			}
+			used[0] = sdk.NewCoin(SponsorshipDenom, total)
 		}
 		if !used.IsValid() {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid user grant usage coins")
 		}
 
-		// Ensure referenced sponsor exists and usage does not exceed its max grant if configured
+		// Usage is cumulative accounting for one Sponsor generation. It may be
+		// greater than the Sponsor's current max_grant_per_user when an admin
+		// lowers the limit after fees have already been sponsored. New charges
+		// enforce the current limit; genesis validation must preserve the
+		// historical total so exported state can always be imported again.
 		sponsor, ok := sponsorsByContract[usage.ContractAddress]
 		if !ok {
-			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
-		}
-		limit := sdk.Coins{}
-		for _, c := range sponsor.MaxGrantPerUser {
-			if c != nil {
-				limit = limit.Add(*c)
+			if usage.Generation == 0 {
+				return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
 			}
-		}
-		if !limit.IsZero() {
-			if !limit.IsValid() {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid sponsor max_grant_per_user coins")
-			}
-			if !limit.IsAllGTE(used) {
+			if declared := generationsByContract[usage.ContractAddress]; declared != 0 {
+				if usage.Generation >= declared {
+					return errorsmod.Wrapf(
+						sdkerrors.ErrInvalidRequest,
+						"historical usage generation %d is not older than contract generation %d for contract %s",
+						usage.Generation,
+						declared,
+						usage.ContractAddress,
+					)
+				}
+			} else if usage.Generation == math.MaxUint64 {
 				return errorsmod.Wrapf(
-					ErrUserGrantLimitExceeded,
-					"user %s usage %s exceeds max_grant_per_user %s for contract %s",
-					usage.UserAddress, used.String(), limit.String(), usage.ContractAddress,
+					sdkerrors.ErrInvalidRequest,
+					"cannot derive deleted sponsor generation after MaxUint64 for contract %s",
+					usage.ContractAddress,
 				)
 			}
+			continue
+		}
+		sponsorGeneration := activeGenerations[sponsor.ContractAddress]
+		usageGeneration := usage.Generation
+		if usageGeneration == 0 {
+			usageGeneration = sponsorGeneration
+		}
+		if usageGeneration > sponsorGeneration {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"user grant usage generation %d exceeds sponsor generation %d for contract %s",
+				usageGeneration,
+				sponsorGeneration,
+				usage.ContractAddress,
+			)
+		}
+		if usageGeneration < sponsorGeneration {
+			continue
 		}
 	}
 
 	// Validate policy tickets: basic fields + duplicate detection on (contract,user,digest)
 	// Determine method length limit (use params if provided, else defaults)
-	methodLimit := DefaultParams().MaxMethodNameBytes
-	if data.Params != nil && data.Params.MaxMethodNameBytes != 0 {
-		methodLimit = data.Params.MaxMethodNameBytes
+	methodLimit := DefaultMaxMethodNameBytes
+	if data.Params != nil {
+		methodLimit = data.Params.EffectiveMaxMethodBytes()
 	}
 	seenTickets := make(map[string]struct{})
 	for _, t := range data.PolicyTickets {
 		if t == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket cannot be nil")
 		}
+		if err := ValidatePolicyTicketState(*t, methodLimit, false); err != nil {
+			return err
+		}
 		// Basic field checks (keep in sync with InitGenesis defensive checks)
 		if err := ValidateContractAddress(t.ContractAddress); err != nil {
 			return err
 		}
-		if _, err := sdk.AccAddressFromBech32(t.UserAddress); err != nil {
+		if err := ValidateCanonicalAddress(t.UserAddress); err != nil {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid policy ticket user address: %s", t.UserAddress)
 		}
 		if t.Digest == "" {
@@ -635,6 +734,47 @@ func ValidateGenesis(data GenesisState) error {
 		// Optional method display length check
 		if t.Method != "" && uint32(len(t.Method)) > methodLimit {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket method too long")
+		}
+		if sponsor, found := sponsorsByContract[t.ContractAddress]; found {
+			sponsorGeneration := activeGenerations[sponsor.ContractAddress]
+			ticketGeneration := t.Generation
+			if ticketGeneration == 0 {
+				ticketGeneration = sponsorGeneration
+			}
+			if ticketGeneration > sponsorGeneration {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"policy ticket generation %d exceeds sponsor generation %d for contract %s",
+					ticketGeneration,
+					sponsorGeneration,
+					t.ContractAddress,
+				)
+			}
+		} else {
+			if t.Generation == 0 {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"policy ticket references unknown sponsor contract without a generation: %s",
+					t.ContractAddress,
+				)
+			}
+			if declared := generationsByContract[t.ContractAddress]; declared != 0 {
+				if t.Generation >= declared {
+					return errorsmod.Wrapf(
+						sdkerrors.ErrInvalidRequest,
+						"historical ticket generation %d is not older than contract generation %d for contract %s",
+						t.Generation,
+						declared,
+						t.ContractAddress,
+					)
+				}
+			} else if t.Generation == math.MaxUint64 {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"cannot derive deleted sponsor generation after MaxUint64 for contract %s",
+					t.ContractAddress,
+				)
+			}
 		}
 		// Duplicate detection
 		key := t.ContractAddress + "/" + t.UserAddress + "/" + t.Digest
@@ -661,11 +801,11 @@ func DefaultParams() Params {
 	return Params{
 		SponsorshipEnabled:          true,
 		PolicyTicketTtlBlocks:       30,
-		MaxExecMsgsPerTxForSponsor:  25,
-		MaxPolicyExecMsgBytes:       64 * 1024,
+		MaxExecMsgsPerTxForSponsor:  DefaultMaxExecMsgsPerTxForSponsor,
+		MaxPolicyExecMsgBytes:       DefaultMaxPolicyExecMsgBytes,
 		MaxMethodTicketUsesPerIssue: 50,
 		TicketGcPerBlock:            200,
-		MaxMethodNameBytes:          64,
+		MaxMethodNameBytes:          DefaultMaxMethodNameBytes,
 		MaxMethodJsonDepth:          20,
 	}
 }
@@ -678,23 +818,37 @@ func (p Params) Validate() error {
 	if p.PolicyTicketTtlBlocks > 1000 {
 		return errorsmod.Wrap(ErrInvalidParams, "policy ticket TTL exceeds maximum (1000)")
 	}
-	// MaxPolicyExecMsgBytes: upper bound to limit pre-parse payload size and reduce DoS risk (<= 1 MiB)
-	if p.MaxPolicyExecMsgBytes > 1024*1024 {
-		return errorsmod.Wrap(ErrInvalidParams, "max_policy_exec_msg_bytes exceeds maximum (1048576)")
+	if p.MaxExecMsgsPerTxForSponsor == 0 || p.MaxExecMsgsPerTxForSponsor > MaxExecMsgsPerTxForSponsor {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_exec_msgs_per_tx_for_sponsor must be within [1, %d]",
+			MaxExecMsgsPerTxForSponsor,
+		)
+	}
+	if p.MaxPolicyExecMsgBytes == 0 || p.MaxPolicyExecMsgBytes > MaxPolicyExecMsgBytes {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_policy_exec_msg_bytes must be within [1, %d]",
+			MaxPolicyExecMsgBytes,
+		)
 	}
 	// Method ticket uses per issue must be within [1, 100]
 	if p.MaxMethodTicketUsesPerIssue < 1 || p.MaxMethodTicketUsesPerIssue > 100 {
 		return errorsmod.Wrap(ErrInvalidParams, "max_method_ticket_uses_per_issue must be within [1, 100]")
 	}
 
-	// Sponsored tx messages cap: 0 means no cap; otherwise allow any positive value
-	// Keep validation lenient to let governance choose appropriate values.
+	// GC per block may be zero to disable, but must remain bounded because it
+	// runs in BeginBlock on every validator.
+	if p.TicketGcPerBlock > MaxTicketGCPerBlock {
+		return errorsmod.Wrapf(ErrInvalidParams, "ticket_gc_per_block exceeds maximum (%d)", MaxTicketGCPerBlock)
+	}
 
-	// GC per block may be zero to disable; no upper bound enforced here.
-
-	// Max method name bytes bounds: 0 means no explicit cap; otherwise must be <= 256
-	if p.MaxMethodNameBytes > 256 {
-		return errorsmod.Wrap(ErrInvalidParams, "max_method_name_bytes must be within [1, 256]")
+	if p.MaxMethodNameBytes == 0 || p.MaxMethodNameBytes > MaxMethodNameBytes {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"max_method_name_bytes must be within [1, %d]",
+			MaxMethodNameBytes,
+		)
 	}
 
 	// MaxMethodJsonDepth: 0 means use default; otherwise must be within [1, 64]
@@ -735,8 +889,7 @@ func (msg MsgUpdateParams) GetSignBytes() []byte {
 // ValidateBasic performs basic validation
 func (msg MsgUpdateParams) ValidateBasic() error {
 	// Validate authority address
-	_, err := sdk.AccAddressFromBech32(msg.Authority)
-	if err != nil {
+	if err := ValidateCanonicalAddress(msg.Authority); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid authority address: %s", msg.Authority)
 	}
 
@@ -797,21 +950,13 @@ func (msg MsgWithdrawSponsorFunds) ValidateBasic() error {
 	}
 
 	// Validate recipient
-	if _, err := sdk.AccAddressFromBech32(msg.Recipient); err != nil {
+	if err := ValidateCanonicalAddress(msg.Recipient); err != nil {
 		return errorsmod.Wrapf(sdkerrors.ErrInvalidAddress, "invalid recipient address: %s", msg.Recipient)
 	}
 
 	if len(msg.Amount) > 0 {
-		for _, c := range msg.Amount {
-			if c == nil {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
-			}
-			if c.Denom != SponsorshipDenom {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
-			}
-			if !c.Amount.IsPositive() {
-				return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
-			}
+		if _, err := msg.NormalizedAmount(); err != nil {
+			return err
 		}
 	} else {
 		// Len==0 is allowed: means withdraw entire balance, handled server-side
@@ -825,20 +970,28 @@ func (msg *MsgWithdrawSponsorFunds) XXX_MessageName() string {
 	return "doravota.sponsor.v1.MsgWithdrawSponsorFunds"
 }
 
-// NormalizedAmount returns sdk.Coins representation even when Amount is empty
-func (msg MsgWithdrawSponsorFunds) NormalizedAmount() sdk.Coins {
-	coins := sdk.Coins{}
+// NormalizedAmount returns a canonical sdk.Coins representation even when
+// Amount is empty. Duplicate entries are merged with checked arithmetic.
+func (msg MsgWithdrawSponsorFunds) NormalizedAmount() (sdk.Coins, error) {
+	total := sdk.ZeroInt()
 	for _, c := range msg.Amount {
 		if c == nil {
-			continue
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")
 		}
-		if c.Denom != "peaka" {
-			continue
+		if c.Denom != SponsorshipDenom {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "only 'peaka' denomination is supported")
 		}
 		if !c.Amount.IsPositive() {
-			continue
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "amount must be positive")
 		}
-		coins = coins.Add(*c)
+		next, err := total.SafeAdd(c.Amount)
+		if err != nil {
+			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "withdraw amount overflow")
+		}
+		total = next
 	}
-	return coins
+	if total.IsZero() {
+		return sdk.Coins{}, nil
+	}
+	return sdk.NewCoins(sdk.NewCoin(SponsorshipDenom, total)), nil
 }

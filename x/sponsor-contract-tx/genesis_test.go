@@ -23,19 +23,24 @@ import (
 
 // mockWasmKeeper is a simple WasmKeeperInterface mock for genesis tests
 type mockWasmKeeper struct {
-    allowAll bool
-    exists   map[string]bool
+    allowAll     bool
+    exists       map[string]bool
+    adminCleared bool
 }
 
 func (m *mockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
     if m == nil {
         return nil
     }
+    info := &wasmtypes.ContractInfo{Creator: "creator"}
+    if !m.adminCleared {
+        info.Admin = "admin"
+    }
     if m.allowAll {
-        return &wasmtypes.ContractInfo{Creator: "creator"}
+        return info
     }
     if m.exists != nil && m.exists[contractAddress.String()] {
-        return &wasmtypes.ContractInfo{Creator: "creator"}
+        return info
     }
     return nil
 }
@@ -46,6 +51,10 @@ func (m *mockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress
 
 // setupKeeper creates a test keeper for genesis tests
 func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
+	return setupKeeperWithWasm(t, &mockWasmKeeper{allowAll: true})
+}
+
+func setupKeeperWithWasm(t *testing.T, mw *mockWasmKeeper) (keeper.Keeper, sdk.Context) {
 	// Create codec
 	registry := codectypes.NewInterfaceRegistry()
 	cdc := codec.NewProtoCodec(registry)
@@ -64,8 +73,7 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 		t.Fatalf("Failed to load store: %v", err)
 	}
 
-    // Create keeper with mock wasm keeper (allow all contracts)
-    mw := &mockWasmKeeper{allowAll: true}
+    // Create keeper with the selected mock wasm keeper.
     k := keeper.NewKeeper(cdc, storeKey, mw, "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn")
 
 	// Create context
@@ -77,6 +85,36 @@ func setupKeeper(t *testing.T) (keeper.Keeper, sdk.Context) {
 	)
 
 	return *k, ctx
+}
+
+func TestInitGenesisRejectsSponsorWithoutWasmAdmin(t *testing.T) {
+	k, ctx := setupKeeperWithWasm(t, &mockWasmKeeper{
+		allowAll:     true,
+		adminCleared: true,
+	})
+	contract := sdk.AccAddress([]byte("genesis_no_admin____")).String()
+	creator := sdk.AccAddress([]byte("genesis_creator_____")).String()
+	contractAddr, err := sdk.AccAddressFromBech32(contract)
+	require.NoError(t, err)
+	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
+	params := types.DefaultParams()
+	genesis := types.GenesisState{
+		Params: &params,
+		Sponsors: []*types.ContractSponsor{{
+			ContractAddress: contract,
+			CreatorAddress:  creator,
+			SponsorAddress:  sponsorAddr,
+			IsSponsored:     true,
+			MaxGrantPerUser: []*sdk.Coin{{
+				Denom:  types.SponsorshipDenom,
+				Amount: sdk.NewInt(1),
+			}},
+		}},
+	}
+
+	require.Panics(t, func() {
+		sponsor.InitGenesis(ctx, k, genesis)
+	})
 }
 
 // GenesisTestSuite tests genesis import/export functionality
@@ -383,7 +421,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
             expectErr: true,
         },
         {
-            name: "user grant usage exceeds sponsor limit",
+            name: "historical user grant usage may exceed current sponsor limit",
             genesis: func() *types.GenesisState {
                 params := types.DefaultParams()
                 ca, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
@@ -404,7 +442,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis() {
                     }},
                 }
             }(),
-            expectErr: true,
+            expectErr: false,
         },
         {
             name: "sponsor timestamps invalid (created_at > updated_at)",
@@ -498,10 +536,10 @@ func (suite *GenesisTestSuite) TestInitExportGenesis() {
     ca2, _ := sdk.AccAddressFromBech32(suite.contractAddr2)
     sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
     sp2 := sdk.AccAddress(address.Derive(ca2, []byte("sponsor"))).String()
+    genesisParams := types.DefaultParams()
+    genesisParams.SponsorshipEnabled = true
     originalGenesis := &types.GenesisState{
-        Params: &types.Params{
-            SponsorshipEnabled:   true,
-        },
+        Params: &genesisParams,
         Sponsors: []*types.ContractSponsor{
             {
                 ContractAddress: suite.contractAddr1,
@@ -617,6 +655,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_InitExport() {
             UsesRemaining:   2,
             IssuedHeight:    uint64(suite.ctx.BlockHeight()),
             Method:          "inc",
+            Generation:      1,
         }},
     }
 
@@ -653,8 +692,9 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
             Digest:          md,
             ExpiryHeight:    uint64(suite.ctx.BlockHeight()), // expired when now > expiry
             UsesRemaining:   1,
-            IssuedHeight:    1,
+            IssuedHeight:    0,
             Method:          "inc",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -675,10 +715,10 @@ func (suite *GenesisTestSuite) TestGenesisRoundTrip() {
     // derive sponsor address
     ca1, _ := sdk.AccAddressFromBech32(suite.contractAddr1)
     sp1 := sdk.AccAddress(address.Derive(ca1, []byte("sponsor"))).String()
+    genesisParams := types.DefaultParams()
+    genesisParams.SponsorshipEnabled = false
     originalGenesis := &types.GenesisState{
-        Params: &types.Params{
-            SponsorshipEnabled:   false,
-        },
+        Params: &genesisParams,
         Sponsors: []*types.ContractSponsor{
             {
                 ContractAddress: suite.contractAddr1,
@@ -750,8 +790,9 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRe
             ExpiryHeight:    uint64(suite.ctx.BlockHeight()),
             UsesRemaining:   0,
             Consumed:        true,
-            IssuedHeight:    1,
+            IssuedHeight:    0,
             Method:          "inc",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -781,6 +822,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Pr
             Consumed:        true,
             IssuedHeight:    1,
             Method:          "dec",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -804,8 +846,8 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Pr
     suite.Require().True(found)
 }
 
-// UsesRemaining=0 and not consumed is allowed to import; if not expired, it should be preserved and exported back.
-func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
+// A zero-use ticket must be marked consumed and is preserved until expiry.
+func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ZeroUsesConsumed() {
     md := suite.keeper.ComputeMethodDigest(suite.contractAddr1, []string{"ping"})
     p := types.DefaultParams()
     gen := &types.GenesisState{
@@ -816,9 +858,10 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_UsesZero_Semantics() {
             Digest:          md,
             ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 5),
             UsesRemaining:   0,
-            Consumed:        false,
+            Consumed:        true,
             IssuedHeight:    1,
             Method:          "ping",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -850,6 +893,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis_PolicyTicket_MethodOptional()
             UsesRemaining:   1,
             IssuedHeight:    1,
             Method:          "",
+            Generation:      1,
         }},
     }
     err := types.ValidateGenesis(*g)
@@ -1014,4 +1058,129 @@ func (suite *GenesisTestSuite) TestParamsRoundTrip_IncludesNewField() {
     // Removed: PolicyProbeGasPrice
     suite.Require().Equal(params.PolicyTicketTtlBlocks, exported.Params.PolicyTicketTtlBlocks)
     suite.Require().Equal(params.MaxMethodTicketUsesPerIssue, exported.Params.MaxMethodTicketUsesPerIssue)
+}
+
+func TestDeletedSponsorLifecycleSurvivesGenesis(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("deleted_contract____")).String()
+	user := sdk.AccAddress([]byte("deleted_user________")).String()
+	params := types.DefaultParams()
+	genesis := types.GenesisState{
+		Params: &params,
+		UserGrantUsages: []*types.UserGrantUsage{{
+			UserAddress:     user,
+			ContractAddress: contract,
+			TotalGrantUsed: []*sdk.Coin{{
+				Denom:  types.SponsorshipDenom,
+				Amount: sdk.NewInt(25),
+			}},
+			Generation: 4,
+		}},
+		PolicyTickets: []*types.PolicyTicket{{
+			ContractAddress: contract,
+			UserAddress:     user,
+			Digest:          "digest",
+			ExpiryHeight:    100,
+			UsesRemaining:   1,
+			Generation:      4,
+		}},
+	}
+
+	require.NoError(t, types.ValidateGenesis(genesis))
+	sponsor.InitGenesis(ctx, k, genesis)
+	require.Equal(t, uint64(5), k.GetSponsorGeneration(ctx, contract))
+
+	// Recreating the same contract after import must use the post-deletion
+	// generation and must not reactivate historical state.
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract}))
+	currentSponsor, found := k.GetSponsor(ctx, contract)
+	require.True(t, found)
+	require.Equal(t, uint64(5), currentSponsor.Generation)
+	_, found = k.GetActivePolicyTicket(ctx, contract, user, "digest")
+	require.False(t, found)
+	usage := k.GetUserGrantUsage(ctx, user, contract)
+	require.Equal(t, uint64(5), usage.Generation)
+	require.Empty(t, usage.TotalGrantUsed)
+}
+
+func TestPureSponsorGenerationTombstoneSurvivesGenesisRoundTrip(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("tombstone_contract__")).String()
+
+	require.NoError(t, k.SetSponsorGenerationForGenesis(ctx, contract, 7))
+	exported := sponsor.ExportGenesis(ctx, k)
+	require.NoError(t, types.ValidateGenesis(*exported))
+	require.Len(t, exported.ContractGenerations, 1)
+	require.Equal(t, contract, exported.ContractGenerations[0].ContractAddress)
+	require.Equal(t, uint64(7), exported.ContractGenerations[0].Generation)
+
+	k2, ctx2 := setupKeeper(t)
+	sponsor.InitGenesis(ctx2, k2, *exported)
+	require.Equal(t, uint64(7), k2.GetSponsorGeneration(ctx2, contract))
+
+	require.NoError(t, k2.SetSponsor(ctx2, types.ContractSponsor{ContractAddress: contract}))
+	recreated, found := k2.GetSponsor(ctx2, contract)
+	require.True(t, found)
+	require.Equal(t, uint64(7), recreated.Generation)
+}
+
+func TestGenesisRoundTripAfterGrantLimitReduction(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("lowered_limit_contract")).String()
+	creator := sdk.AccAddress([]byte("lowered_limit_creator_")).String()
+	user := sdk.AccAddress([]byte("lowered_limit_user____")).String()
+	contractAddr, err := sdk.AccAddressFromBech32(contract)
+	require.NoError(t, err)
+	sponsorAddr := sdk.AccAddress(address.Derive(contractAddr, []byte("sponsor"))).String()
+
+	require.NoError(t, k.SetParams(ctx, types.DefaultParams()))
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
+		ContractAddress: contract,
+		CreatorAddress:  creator,
+		SponsorAddress:  sponsorAddr,
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	}))
+	activeSponsor, found := k.GetSponsor(ctx, contract)
+	require.True(t, found)
+	require.NoError(t, k.SetUserGrantUsage(ctx, types.UserGrantUsage{
+		UserAddress:     user,
+		ContractAddress: contract,
+		TotalGrantUsed: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(80),
+		}},
+		Generation: activeSponsor.Generation,
+	}))
+
+	// Lowering a limit does not rewrite historical usage. It only prevents new
+	// charges that would exceed the new limit.
+	activeSponsor.MaxGrantPerUser = []*sdk.Coin{{
+		Denom:  types.SponsorshipDenom,
+		Amount: sdk.NewInt(50),
+	}}
+	require.NoError(t, k.SetSponsor(ctx, activeSponsor))
+	require.Error(t, k.CheckUserGrantLimit(
+		ctx,
+		user,
+		contract,
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1))),
+	))
+
+	exported := sponsor.ExportGenesis(ctx, k)
+	require.NoError(t, types.ValidateGenesis(*exported))
+
+	k2, ctx2 := setupKeeper(t)
+	sponsor.InitGenesis(ctx2, k2, *exported)
+	reexported := sponsor.ExportGenesis(ctx2, k2)
+	require.NoError(t, types.ValidateGenesis(*reexported))
+
+	require.Len(t, reexported.Sponsors, 1)
+	require.Equal(t, sdk.NewInt(50), reexported.Sponsors[0].MaxGrantPerUser[0].Amount)
+	require.Len(t, reexported.UserGrantUsages, 1)
+	require.Equal(t, sdk.NewInt(80), reexported.UserGrantUsages[0].TotalGrantUsed[0].Amount)
+	require.Equal(t, activeSponsor.Generation, reexported.UserGrantUsages[0].Generation)
 }

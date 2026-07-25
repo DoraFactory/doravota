@@ -164,6 +164,22 @@ func (s *TxTestSuite) TestUpdateSponsorCmd() {
 	}
 }
 
+func (s *TxTestSuite) TestSponsorIssuerFlags() {
+	setCmd := GetCmdSetSponsor()
+	setFlag := setCmd.Flags().Lookup(flagTicketIssuer)
+	s.Require().NotNil(setFlag)
+	s.Require().Equal("", setFlag.DefValue)
+
+	updateCmd := GetCmdUpdateSponsor()
+	issuerFlag := updateCmd.Flags().Lookup(flagTicketIssuer)
+	s.Require().NotNil(issuerFlag)
+	s.Require().Equal("", issuerFlag.DefValue)
+
+	clearFlag := updateCmd.Flags().Lookup(flagClearTicketIssuer)
+	s.Require().NotNil(clearFlag)
+	s.Require().Equal("false", clearFlag.DefValue)
+}
+
 // TestDeleteSponsorCmd tests the delete-sponsor command
 func (s *TxTestSuite) TestDeleteSponsorCmd() {
 	testCases := []struct {

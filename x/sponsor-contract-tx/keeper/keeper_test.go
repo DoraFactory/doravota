@@ -69,7 +69,7 @@ func (m *MockWasmKeeper) SetCustomQueryHandler(handler func(ctx sdk.Context, con
 	m.customQueryHandler = handler
 }
 
-func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
+func setupKeeper(t testing.TB) (Keeper, sdk.Context, *MockWasmKeeper) {
 	// Create codec
 	registry := codectypes.NewInterfaceRegistry()
 	cdc := codec.NewProtoCodec(registry)
@@ -104,7 +104,7 @@ func setupKeeper(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper) {
 }
 
 // setupKeeperSimple provides backward compatibility for simple tests
-func setupKeeperSimple(t *testing.T) (Keeper, sdk.Context) {
+func setupKeeperSimple(t testing.TB) (Keeper, sdk.Context) {
     keeper, ctx, _ := setupKeeper(t)
     return keeper, ctx
 }
@@ -656,8 +656,8 @@ func TestMaxGrantPerUser(t *testing.T) {
 func TestUserGrantUsage(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
-	userAddr := "dora1user123"
-	contractAddr := "dora1contract456"
+	userAddr := sdk.AccAddress([]byte("usage_test_user_____")).String()
+	contractAddr := sdk.AccAddress([]byte("usage_test_contract_")).String()
 
 	t.Run("new user has no usage", func(t *testing.T) {
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
@@ -706,8 +706,8 @@ func TestUserGrantUsage(t *testing.T) {
 func TestCheckUserGrantLimit(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
-	userAddr := "dora1user123"
-	contractAddr := "dora1contract456"
+	userAddr := sdk.AccAddress([]byte("limit_test_user_____")).String()
+	contractAddr := sdk.AccAddress([]byte("limit_test_contract_")).String()
 
 	// Set up sponsor with custom limit (using peaka denomination)
 	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
@@ -756,7 +756,7 @@ func TestCheckUserGrantLimit(t *testing.T) {
 
 	t.Run("within remaining limit after previous usage", func(t *testing.T) {
 		// Clear previous usage for this test
-		newUserAddr := "dora1user789"
+		newUserAddr := sdk.AccAddress([]byte("limit_test_user_two_")).String()
 
 		// Simulate some usage
 		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
@@ -767,6 +767,45 @@ func TestCheckUserGrantLimit(t *testing.T) {
 		err := keeper.CheckUserGrantLimit(ctx, newUserAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
+}
+
+func TestGrantArithmeticRejectsOverflowWithoutPanic(t *testing.T) {
+	k, ctx := setupKeeperSimple(t)
+	userAddr := sdk.AccAddress([]byte("overflow_user_______")).String()
+	contractAddr := sdk.AccAddress([]byte("overflow_contract___")).String()
+	maxInt, ok := sdk.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
+	require.True(t, ok)
+
+	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
+		ContractAddress: contractAddr,
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: maxInt,
+		}},
+	}))
+	require.NoError(t, k.UpdateUserGrantUsage(
+		ctx,
+		userAddr,
+		contractAddr,
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.OneInt())),
+	))
+
+	requested := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, maxInt))
+	require.NotPanics(t, func() {
+		err := k.CheckUserGrantLimit(ctx, userAddr, contractAddr, requested)
+		require.ErrorIs(t, err, types.ErrUserGrantLimitExceeded)
+	})
+
+	require.NotPanics(t, func() {
+		err := k.UpdateUserGrantUsage(ctx, userAddr, contractAddr, requested)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "overflow")
+	})
+
+	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
+	require.Len(t, usage.TotalGrantUsed, 1)
+	require.Equal(t, sdk.OneInt(), usage.TotalGrantUsed[0].Amount)
 }
 
 // TestLogger tests the Logger function
@@ -949,7 +988,8 @@ func TestGetSetParams(t *testing.T) {
     require.True(t, params.SponsorshipEnabled)
 
 	// Set custom params
-    customParams := types.Params{SponsorshipEnabled: false}
+	customParams := types.DefaultParams()
+	customParams.SponsorshipEnabled = false
 	err := keeper.SetParams(ctx, customParams)
 	require.NoError(t, err)
 
@@ -1135,15 +1175,17 @@ func TestUserGrantUsageErrorHandling(t *testing.T) {
 	err = keeper.SetUserGrantUsage(ctx, usage)
 	require.NoError(t, err)
 
-	// Update should still work
+	// Runtime updates must fail closed when a legacy/raw fixture contains
+	// invalid negative accounting state.
 	consumedAmount := sdk.NewCoins(sdk.NewInt64Coin("peaka", 500))
 	err = keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid existing user grant usage")
 
-	// Verify the final result
+	// Verify the invalid legacy value was not silently rewritten.
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(400), finalUsage.TotalGrantUsed[0].Amount) // -100 + 500 = 400
+	require.Equal(t, sdk.NewInt(-100), finalUsage.TotalGrantUsed[0].Amount)
 }
 
 // TestParamsErrorHandling tests error handling in params functions
@@ -1152,7 +1194,7 @@ func TestParamsErrorHandling(t *testing.T) {
 
 	// Test setting params with marshal error is unlikely in real scenarios
 	// but we can test the success path thoroughly
-    params := types.Params{SponsorshipEnabled: true}
+	params := types.DefaultParams()
 
 	err := keeper.SetParams(ctx, params)
 	require.NoError(t, err)
@@ -1204,14 +1246,13 @@ func TestUpdateParams(t *testing.T) {
 
 	// Test with valid authority
 	authority := keeper.GetAuthority()
-    msg := &types.MsgUpdateParams{
-        Authority: authority,
-        Params: types.Params{
-            SponsorshipEnabled:    false,
-            PolicyTicketTtlBlocks: 30,
-            MaxMethodTicketUsesPerIssue: 3,
-        },
-    }
+	paramsToSet := types.DefaultParams()
+	paramsToSet.SponsorshipEnabled = false
+	paramsToSet.MaxMethodTicketUsesPerIssue = 3
+	msg := &types.MsgUpdateParams{
+		Authority: authority,
+		Params:    paramsToSet,
+	}
 
     // Capture events
     evCtx := sdk.UnwrapSDKContext(ctx).WithEventManager(sdk.NewEventManager())
@@ -1536,65 +1577,57 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 	require.False(t, found)
 }
 
-// Admin cleared: original creator should be able to manage sponsor (update/delete/withdraw)
-func TestMsgServer_AdminCleared_CreatorFallback(t *testing.T) {
-    keeper, ctx, msgServer, wasmKeeper, bankKeeper := setupMsgServerEnv(t)
+// Clearing the Wasm admin never revives Sponsor authority for the original
+// creator.
+func TestMsgServer_AdminCleared_OriginalCreatorUnauthorized(t *testing.T) {
+	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
     contractAddr := sdk.AccAddress([]byte("contractadminclear____")).String()
     adminAddr := sdk.AccAddress("admin_______________")
-    creator := adminAddr // creator equals initial admin at set time
 
-    // Set up contract and initial sponsor via SetSponsor
     wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-    setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))))
+	setMsg := types.NewMsgSetSponsor(
+		adminAddr.String(),
+		contractAddr,
+		true,
+		sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+	)
     _, err := msgServer.SetSponsor(ctx, setMsg)
     require.NoError(t, err)
 
-    // Clear admin on wasm contract
+	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
     wasmKeeper.SetContractInfo(contractAddr, "")
 
-    // 1) UpdateSponsor should be allowed by original creator when admin is cleared
-    upd := &types.MsgUpdateSponsor{
-        Creator:         creator.String(),
+	_, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{
+		Creator:         adminAddr.String(),
         ContractAddress: contractAddr,
         IsSponsored:     false,
-        MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(2000)}},
-    }
-    _, err = msgServer.UpdateSponsor(ctx, upd)
-    require.NoError(t, err)
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  "peaka",
+			Amount: sdk.NewInt(2000),
+		}},
+	})
+	require.ErrorIs(t, err, types.ErrContractNotAdmin)
 
-    // 2) DeleteSponsor should be allowed by original creator when balance is zero
-    // First ensure zero balance (should be zero by default)
-    del := &types.MsgDeleteSponsor{Creator: creator.String(), ContractAddress: contractAddr}
-    _, err = msgServer.DeleteSponsor(ctx, del)
-    require.NoError(t, err)
+	_, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{
+		Creator:         adminAddr.String(),
+		ContractAddress: contractAddr,
+	})
+	require.ErrorIs(t, err, types.ErrContractNotAdmin)
 
-    // Recreate sponsor and fund sponsor address to test Withdraw fallback
-    // Restore admin first so SetSponsor passes admin validation
-    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-    _, _ = msgServer.SetSponsor(ctx, setMsg)
-    // fund sponsor address
-    sp, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
-    require.True(t, found)
-    sponsorAddr, e := sdk.AccAddressFromBech32(sp.SponsorAddress)
-    require.NoError(t, e)
-    // mint and send funds to sponsor address
-    amt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
-    // use bankKeeper from env to mint via module then send
-    // Note: setupMsgServerEnv created bankKeeper with module account; mint to module then send
-    require.NoError(t, bankKeeper.MintCoins(sdk.UnwrapSDKContext(ctx), types.ModuleName, amt))
-    require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(sdk.UnwrapSDKContext(ctx), types.ModuleName, sponsorAddr, amt))
-
-    // Clear admin again
-    wasmKeeper.SetContractInfo(contractAddr, "")
-
-    // 3) Withdraw by creator when admin cleared
-    w := &types.MsgWithdrawSponsorFunds{Creator: creator.String(), ContractAddress: contractAddr, Recipient: creator.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}}
-    _, err = msgServer.WithdrawSponsorFunds(ctx, w)
-    require.NoError(t, err)
+	_, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{
+		Creator:         adminAddr.String(),
+		ContractAddress: contractAddr,
+		Recipient:       adminAddr.String(),
+		Amount: []*sdk.Coin{{
+			Denom:  "peaka",
+			Amount: sdk.NewInt(1),
+		}},
+	})
+	require.ErrorIs(t, err, types.ErrContractNotAdmin)
 }
 
-// Admin cleared but caller is not original creator -> unauthorized
+// Admin cleared: unrelated callers are also unauthorized.
 func TestMsgServer_AdminCleared_CreatorMismatch_Unauthorized(t *testing.T) {
     _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
     contractAddr := sdk.AccAddress([]byte("contractadminclear_mis__")).String()
@@ -1766,7 +1799,7 @@ func TestErrorPathsInKeeper(t *testing.T) {
 	require.NotNil(t, pageRes)
 
 	// Test SetParams with marshal error (hard to trigger, but test success path)
-    params := types.Params{SponsorshipEnabled: true}
+	params := types.DefaultParams()
 	err = keeper.SetParams(ctx, params)
 	require.NoError(t, err)
 
@@ -1875,9 +1908,9 @@ func TestAdvancedEdgeCases(t *testing.T) {
 	wasmKeeper2.SetContractInfo(contractAddr2, "admin")
 	userAddr2 := sdk.AccAddress("user________________")
 
-	// This should work normally
+	// Malformed stored admin data must fail closed.
 	isAdmin, err := keeper2.IsContractAdmin(ctx2, contractAddr2, userAddr2)
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.False(t, isAdmin)
 
 	// Test AllSponsors GRPC query pagination error paths

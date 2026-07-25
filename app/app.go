@@ -271,6 +271,11 @@ func init() {
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
 
 	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
+	// Keep direct App construction (tests, simulations, and embedding) aligned
+	// with the daemon configuration. Sponsor funding and fees use peaka.
+	sdk.DefaultBondDenom = sponsortypes.SponsorshipDenom
+	// Ensure wasm limits are overridden for both daemon and CLI command paths.
+	overrideWasmVariables()
 }
 
 // Override Wasm size limitation from WASMD.
@@ -733,6 +738,22 @@ func New(
 	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
 	app.setupUpgradeHandlers()
 
+	wasmAppModule := wasm.NewAppModule(
+		appCodec,
+		&app.WasmKeeper,
+		app.StakingKeeper,
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.MsgServiceRouter(),
+		app.GetSubspace(wasmtypes.ModuleName),
+	)
+	sponsorAwareWasmModule := newSponsorAwareWasmAppModule(
+		wasmAppModule,
+		&app.WasmKeeper,
+		app.GetSubspace(wasmtypes.ModuleName),
+		app.SponsorKeeper,
+	)
+
 	app.mm = module.NewManager(
 		genutil.NewAppModule(
 			app.AccountKeeper,
@@ -760,7 +781,7 @@ func New(
 		transferModule,
 		ibcfee.NewAppModule(app.IBCFeeKeeper),
 		icaModule,
-		wasm.NewAppModule(appCodec, &app.WasmKeeper, app.StakingKeeper, app.AccountKeeper, app.BankKeeper, app.MsgServiceRouter(), app.GetSubspace(wasmtypes.ModuleName)),
+		sponsorAwareWasmModule,
 		// sponsor module
         sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper, app.AccountKeeper),
 	)
@@ -1238,9 +1259,8 @@ func (app *App) setupUpgradeHandlers() {
 	case v0_4_3.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v1_0_0.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{
-			Added: []string{sponsortypes.ModuleName},
-		}
+		upgrades := v1_0_0.StoreUpgrades()
+		storeUpgrades = &upgrades
 	}
 
 	if storeUpgrades != nil {

@@ -76,6 +76,37 @@ func TestMsgUpdateSponsor(t *testing.T) {
 	require.Equal(t, RouterKey, msg.Route())
 }
 
+func TestNormalizeSponsorshipAmountsRejectOverflow(t *testing.T) {
+	maxInt, ok := sdk.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
+	require.True(t, ok)
+
+	t.Run("max grant", func(t *testing.T) {
+		require.NotPanics(t, func() {
+			_, err := NormalizeMaxGrantPerUser([]*sdk.Coin{
+				{Denom: SponsorshipDenom, Amount: maxInt},
+				{Denom: SponsorshipDenom, Amount: sdk.OneInt()},
+			})
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "overflow")
+		})
+	})
+
+	t.Run("withdraw amount", func(t *testing.T) {
+		msg := MsgWithdrawSponsorFunds{
+			Amount: []*sdk.Coin{
+				{Denom: SponsorshipDenom, Amount: maxInt},
+				{Denom: SponsorshipDenom, Amount: sdk.OneInt()},
+			},
+		}
+		require.NotPanics(t, func() {
+			_, err := msg.NormalizedAmount()
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "overflow")
+		})
+		require.Error(t, msg.ValidateBasic())
+	})
+}
+
 func TestMsgDeleteSponsor(t *testing.T) {
 	// Test MsgDeleteSponsor creation
 	msg := NewMsgDeleteSponsor("cosmos1signer", "cosmos1contract")
@@ -373,8 +404,9 @@ func TestValidateGenesis_UserGrant_InvalidCoins(t *testing.T) {
     require.Contains(t, err.Error(), "cannot be negative")
 }
 
-func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
-    // sponsor with limit 100
+func TestValidateGenesis_UserGrant_MayExceedCurrentLimit(t *testing.T) {
+    // Historical usage may exceed a limit that was lowered after the usage
+    // was incurred. New sponsorship attempts enforce the lower limit.
     contract := mkAddr(25)
     creator := mkAddr(26)
     caAcc, _ := sdk.AccAddressFromBech32(contract)
@@ -393,8 +425,7 @@ func TestValidateGenesis_UserGrant_ExceedsLimit(t *testing.T) {
     }}
     gen := NewGenesisState(sponsors, usages)
     err := ValidateGenesis(*gen)
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "exceeds max_grant_per_user")
+    require.NoError(t, err)
 }
 
 func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {
@@ -425,13 +456,51 @@ func TestParams_MaxMethodTicketUsesPerIssue_Validate(t *testing.T) {
 }
 
 func TestParams_MaxPolicyExecMsgBytes_UpperBound(t *testing.T) {
-    p := DefaultParams()
-    // at bound ok
-    p.MaxPolicyExecMsgBytes = 1024 * 1024
-    require.NoError(t, p.Validate())
-    // above bound invalid
-    p.MaxPolicyExecMsgBytes = 1024*1024 + 1
-    require.Error(t, p.Validate())
+	p := DefaultParams()
+	p.MaxPolicyExecMsgBytes = 0
+	require.Error(t, p.Validate())
+	// at bound ok
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes
+	require.NoError(t, p.Validate())
+	// above bound invalid
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes + 1
+	require.Error(t, p.Validate())
+}
+
+func TestParams_ConsensusSafeResourceLimits(t *testing.T) {
+	p := DefaultParams()
+
+	p.MaxExecMsgsPerTxForSponsor = 0
+	require.Error(t, p.Validate())
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor
+	require.NoError(t, p.Validate())
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor + 1
+	require.Error(t, p.Validate())
+
+	p = DefaultParams()
+	p.MaxMethodNameBytes = 0
+	require.Error(t, p.Validate())
+	p.MaxMethodNameBytes = MaxMethodNameBytes
+	require.NoError(t, p.Validate())
+	p.MaxMethodNameBytes = MaxMethodNameBytes + 1
+	require.Error(t, p.Validate())
+}
+
+func TestParams_EffectiveResourceLimitsDefendInvalidState(t *testing.T) {
+	p := DefaultParams()
+	p.MaxExecMsgsPerTxForSponsor = 0
+	p.MaxPolicyExecMsgBytes = 0
+	p.MaxMethodNameBytes = 0
+	require.Equal(t, DefaultMaxExecMsgsPerTxForSponsor, p.EffectiveMaxExecMsgs())
+	require.Equal(t, DefaultMaxPolicyExecMsgBytes, p.EffectiveMaxPolicyExecBytes())
+	require.Equal(t, DefaultMaxMethodNameBytes, p.EffectiveMaxMethodBytes())
+
+	p.MaxExecMsgsPerTxForSponsor = MaxExecMsgsPerTxForSponsor + 1
+	p.MaxPolicyExecMsgBytes = MaxPolicyExecMsgBytes + 1
+	p.MaxMethodNameBytes = MaxMethodNameBytes + 1
+	require.Equal(t, MaxExecMsgsPerTxForSponsor, p.EffectiveMaxExecMsgs())
+	require.Equal(t, MaxPolicyExecMsgBytes, p.EffectiveMaxPolicyExecBytes())
+	require.Equal(t, MaxMethodNameBytes, p.EffectiveMaxMethodBytes())
 }
 
 func TestMsgIssuePolicyTicket_ValidateBasic_MethodOnly(t *testing.T) {

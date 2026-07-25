@@ -1,10 +1,11 @@
 package keeper
 
 import (
+	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"sort"
 
 	errorsmod "cosmossdk.io/errors"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -56,6 +57,9 @@ func (k Keeper) Logger(ctx sdk.Context) log.Logger {
 // Cdc exposes the keeper codec for internal module usage (e.g., genesis export)
 func (k Keeper) Cdc() codec.BinaryCodec { return k.cdc }
 
+// WasmKeeper exposes the module dependency for simulation wiring.
+func (k Keeper) WasmKeeper() types.WasmKeeperInterface { return k.wasmKeeper }
+
 // GetAuthority returns the authority address for governance
 func (k Keeper) GetAuthority() string {
 	return k.authority
@@ -63,6 +67,7 @@ func (k Keeper) GetAuthority() string {
 
 // ComputeMethodDigest computes sha256(contract_address || "method:" || method_names_in_order)
 func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) string {
+	contractAddr = types.CanonicalAddressOrOriginal(contractAddr)
 	h := sha256.New()
 	h.Write([]byte(contractAddr))
 	h.Write([]byte("method:"))
@@ -78,6 +83,7 @@ func (k Keeper) ComputeMethodDigest(contractAddr string, methodNames []string) s
 // ComputeMethodDigestSingle computes sha256(contract_address || "method:" || method_name) for a single method.
 // This avoids temporary slice allocation when only one method name is involved.
 func (k Keeper) ComputeMethodDigestSingle(contractAddr, methodName string) string {
+	contractAddr = types.CanonicalAddressOrOriginal(contractAddr)
 	h := sha256.New()
 	h.Write([]byte(contractAddr))
 	h.Write([]byte("method:"))
@@ -111,12 +117,61 @@ func (k Keeper) GetPolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest 
 	return t, true
 }
 
+// GetActivePolicyTicket returns a ticket only when it belongs to the current
+// Sponsor lifecycle. Historical tickets remain in storage for bounded GC, but
+// can never authorize a transaction after Sponsor deletion.
+func (k Keeper) GetActivePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) (types.PolicyTicket, bool) {
+	ticket, found := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	if !found {
+		return types.PolicyTicket{}, false
+	}
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		// Preserve low-level legacy/test behavior only when this contract has
+		// never had a lifecycle. Deleted Sponsors always retain a non-zero
+		// generation tombstone and therefore cannot take this path.
+		if k.GetSponsorGeneration(ctx, contractAddr) == 0 && ticket.Generation == 0 {
+			return ticket, true
+		}
+		return types.PolicyTicket{}, false
+	}
+	if sponsor.Generation == 0 || ticket.Generation != sponsor.Generation {
+		return types.PolicyTicket{}, false
+	}
+	return ticket, true
+}
+
+// SetPolicyTicket is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActivePolicyTicket; genesis import must
+// use SetPolicyTicketForGenesis.
 func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 	store := ctx.KVStore(k.storeKey)
+	t.ContractAddress = types.CanonicalAddressOrOriginal(t.ContractAddress)
+	t.UserAddress = types.CanonicalAddressOrOriginal(t.UserAddress)
+	if t.Generation == 0 {
+		if sponsor, found := k.GetSponsor(ctx, t.ContractAddress); found {
+			t.Generation = sponsor.Generation
+		}
+	}
 	key := types.GetPolicyTicketKey(t.ContractAddress, t.UserAddress, t.Digest)
 	bz, err := k.cdc.Marshal(&t)
 	if err != nil {
 		return err
+	}
+	// If a caller replaces a ticket with a different expiry height, remove the
+	// previous index first. This keeps the secondary index canonical and also
+	// prevents a stale expiry entry from targeting the renewed ticket.
+	if previousBz := store.Get(key); previousBz != nil {
+		var previous types.PolicyTicket
+		if err := k.cdc.Unmarshal(previousBz, &previous); err == nil && previous.ExpiryHeight != t.ExpiryHeight {
+			previousIndex := types.GetExpiryIndexKey(
+				previous.ExpiryHeight,
+				previous.ContractAddress,
+				previous.UserAddress,
+				previous.Digest,
+			)
+			store.Delete(previousIndex)
+		}
 	}
 	store.Set(key, bz)
 	// maintain expiry index for fast GC by expiry height
@@ -150,7 +205,7 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 		return nil, nil, err
 	}
 	if userAddr != "" {
-		if _, err := sdk.AccAddressFromBech32(userAddr); err != nil {
+		if err := types.ValidateCanonicalAddress(userAddr); err != nil {
 			return nil, nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 		}
 	}
@@ -164,14 +219,24 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 	}
 	sub := prefix.NewStore(pstore, p)
 	var out []*types.PolicyTicket
-	pageRes, err := query.Paginate(sub, pageReq, func(key, value []byte) error {
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	currentGeneration := uint64(0)
+	if found {
+		currentGeneration = sponsor.Generation
+	} else if k.GetSponsorGeneration(ctx, contractAddr) != 0 {
+		return []*types.PolicyTicket{}, &query.PageResponse{}, nil
+	}
+	pageRes, err := query.FilteredPaginate(sub, pageReq, func(key, value []byte, accumulate bool) (bool, error) {
 		var t types.PolicyTicket
 		if err := k.cdc.Unmarshal(value, &t); err != nil {
-			return err
+			return false, err
 		}
-		tt := t
-		out = append(out, &tt)
-		return nil
+		matchesCurrentGeneration := t.Generation == currentGeneration
+		if matchesCurrentGeneration && accumulate {
+			tt := t
+			out = append(out, &tt)
+		}
+		return matchesCurrentGeneration, nil
 	})
 	if err != nil {
 		return nil, nil, err
@@ -187,7 +252,7 @@ func (k Keeper) GetPolicyTicketsPaginated(ctx sdk.Context, contractAddr, userAdd
 
 // ConsumePolicyTicket marks a policy ticket as consumed if present and valid
 func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
-	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 	if !ok {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
 	}
@@ -209,44 +274,68 @@ func (k Keeper) ConsumePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dig
 		t.UsesRemaining = 0
 		t.Consumed = true
 	}
-	return k.SetPolicyTicket(ctx, t)
+	return k.setCurrentOrLegacyPolicyTicket(ctx, t)
 }
 
 // ConsumePolicyTicketsBulk validates that for each digest there are at least the required
 // uses remaining and tickets are unconsumed and unexpired, and then consumes them. Either
 // all tickets are consumed or the operation fails without partial consumption.
 func (k Keeper) ConsumePolicyTicketsBulk(ctx sdk.Context, contractAddr, userAddr string, counts map[string]uint32) error {
+	if len(counts) == 0 {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket consumption counts cannot be empty")
+	}
+
 	now := uint64(ctx.BlockHeight())
-	updated := make(map[string]types.PolicyTicket, len(counts))
+	digests := make([]string, 0, len(counts))
+	for digest := range counts {
+		digests = append(digests, digest)
+	}
+	sort.Strings(digests)
+
+	updated := make([]types.PolicyTicket, 0, len(digests))
 	// Validate and compute updated state in-memory
-	for md, cnt := range counts {
-		t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+	for _, digest := range digests {
+		count := counts[digest]
+		if digest == "" {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket digest cannot be empty")
+		}
+		if count == 0 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"ticket %s consumption count must be positive",
+				digest,
+			)
+		}
+		t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 		if !ok {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s not found", digest)
 		}
 		if t.Consumed {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket already consumed")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s already consumed", digest)
 		}
 		if now > t.ExpiryHeight {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket expired")
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s expired", digest)
 		}
-		if t.UsesRemaining < cnt {
-			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "insufficient ticket uses")
+		if t.UsesRemaining < count {
+			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "ticket %s has insufficient uses", digest)
 		}
 		// apply in-memory
-		t.UsesRemaining -= cnt
+		t.UsesRemaining -= count
 		if t.UsesRemaining == 0 {
 			t.Consumed = true
 		}
-		updated[md] = t
+		updated = append(updated, t)
 	}
-	// Apply updates to store
-	for md, t := range updated {
-		if err := k.SetPolicyTicket(ctx, t); err != nil {
+
+	// Apply updates through a nested cache so direct Keeper callers receive
+	// the same all-or-nothing guarantee as callers running inside an Ante cache.
+	cacheCtx, write := ctx.CacheContext()
+	for _, t := range updated {
+		if err := k.setCurrentOrLegacyPolicyTicket(cacheCtx, t); err != nil {
 			return err
 		}
-		_ = md
 	}
+	write()
 	return nil
 }
 
@@ -265,7 +354,7 @@ func (k Keeper) DeletePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dige
 // RevokePolicyTicket removes a policy ticket for (contract,user,digest) if it exists and is not consumed.
 // If the ticket is already consumed or does not exist, it returns an error to signal no-op.
 func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, digest string) error {
-	t, ok := k.GetPolicyTicket(ctx, contractAddr, userAddr, digest)
+	t, ok := k.GetActivePolicyTicket(ctx, contractAddr, userAddr, digest)
 	if !ok {
 		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "ticket not found")
 	}
@@ -276,81 +365,141 @@ func (k Keeper) RevokePolicyTicket(ctx sdk.Context, contractAddr, userAddr, dige
 	return nil
 }
 
-// GC cursor helpers (height + in-bucket last key) – simple binary encoding
-func (k Keeper) getGcCursor(ctx sdk.Context) (uint64, []byte, bool) {
-	store := ctx.KVStore(k.storeKey)
-	bz := store.Get(types.GcCursorKey)
-	if bz == nil {
-		return 0, nil, false
-	}
-	if len(bz) < 8 {
-		return 0, nil, false
-	}
-	h := binary.BigEndian.Uint64(bz[:8])
-	tail := make([]byte, len(bz)-8)
-	copy(tail, bz[8:])
-	return h, tail, true
+type expiryIndexCandidate struct {
+	indexKey     []byte
+	ticketKey    []byte
+	expiryHeight uint64
+	malformed    bool
 }
 
-func (k Keeper) setGcCursor(ctx sdk.Context, height uint64, tail []byte) {
-	store := ctx.KVStore(k.storeKey)
-	out := append(types.EncodeUint64BigEndian(height), tail...)
-	store.Set(types.GcCursorKey, out)
+type garbageCollectionResult struct {
+	scanned        int
+	removed        int
+	invalidIndexes int
 }
 
-// GarbageCollectByExpiry removes up to maxTickets expired tickets using the expiry index and a persistent cursor
-func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxTickets int) {
-	if maxTickets <= 0 {
-		return
+// GarbageCollectByExpiry removes expired policy tickets through the globally
+// ordered expiry index. Both index inspection and deletion are bounded, so the
+// work performed in BeginBlock is independent of the current chain height.
+func (k Keeper) GarbageCollectByExpiry(ctx sdk.Context, maxEntries int) {
+	result := k.garbageCollectByExpiry(ctx, maxEntries)
+	if result.invalidIndexes > 0 {
+		k.Logger(ctx).Error(
+			"removed invalid policy ticket expiry indexes",
+			"count", result.invalidIndexes,
+		)
 	}
+}
+
+func (k Keeper) garbageCollectByExpiry(ctx sdk.Context, maxEntries int) garbageCollectionResult {
+	var result garbageCollectionResult
+	if maxEntries <= 0 || ctx.BlockHeight() <= 0 {
+		return result
+	}
+
+	limit := maxEntries
+	if limit > int(types.MaxTicketGCPerBlock) {
+		limit = int(types.MaxTicketGCPerBlock)
+	}
+
 	now := uint64(ctx.BlockHeight())
-	height, tail, ok := k.getGcCursor(ctx)
-	if !ok {
-		height = 0
-		tail = nil
+	store := ctx.KVStore(k.storeKey)
+	expiryStore := prefix.NewStore(store, types.ExpiryIndexKeyPrefix)
+	iterator := expiryStore.Iterator(nil, nil)
+	candidates := make([]expiryIndexCandidate, 0, limit)
+
+	for ; iterator.Valid() && result.scanned < limit; iterator.Next() {
+		indexKey := append([]byte(nil), iterator.Key()...)
+		result.scanned++
+
+		expiryHeight, ticketKey, ok := types.ParseExpiryIndexKey(indexKey)
+		if !ok {
+			candidates = append(candidates, expiryIndexCandidate{
+				indexKey:  indexKey,
+				malformed: true,
+			})
+			continue
+		}
+
+		// A ticket remains valid at its expiry height. Since the index is
+		// ordered by big-endian expiry height, all following entries are also
+		// unexpired and can be skipped for this block.
+		if expiryHeight >= now {
+			break
+		}
+
+		candidates = append(candidates, expiryIndexCandidate{
+			indexKey:     indexKey,
+			ticketKey:    append([]byte(nil), ticketKey...),
+			expiryHeight: expiryHeight,
+		})
 	}
-	removed := 0
-	for removed < maxTickets && height < now {
-		// build per-height prefix store: ExpiryIndexPrefix + BE8(height) + '/'
-		base := prefix.NewStore(ctx.KVStore(k.storeKey), types.ExpiryIndexKeyPrefix)
-		hStore := prefix.NewStore(base, append(types.EncodeUint64BigEndian(height), '/'))
-		var it storetypes.Iterator
-		if len(tail) > 0 {
-			start := append(append([]byte{}, tail...), 0x00)
-			it = hStore.Iterator(start, nil)
-		} else {
-			it = hStore.Iterator(nil, nil)
+	iterator.Close()
+
+	ticketStore := prefix.NewStore(store, types.PolicyTicketKeyPrefix)
+	for _, candidate := range candidates {
+		if candidate.malformed {
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		tStore := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-		for ; it.Valid() && removed < maxTickets; it.Next() {
-			suffix := it.Key() // contract/user/digest
-			tStore.Delete(suffix)
-			hStore.Delete(suffix)
-			removed++
-			tail = make([]byte, len(suffix))
-			copy(tail, suffix)
+
+		bz := ticketStore.Get(candidate.ticketKey)
+		if bz == nil {
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		it.Close()
-		if removed >= maxTickets {
-			k.setGcCursor(ctx, height, tail)
-			return
+
+		var ticket types.PolicyTicket
+		if err := k.cdc.Unmarshal(bz, &ticket); err != nil {
+			// The index cannot be trusted to identify a corrupt primary value.
+			// Remove only the index so GC continues to make bounded progress.
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
 		}
-		// done with this height
-		height++
-		tail = nil
+
+		expectedKey := types.GetPolicyTicketKey(ticket.ContractAddress, ticket.UserAddress, ticket.Digest)
+		expectedTicketKey := expectedKey[len(types.PolicyTicketKeyPrefix):]
+		if ticket.ExpiryHeight != candidate.expiryHeight ||
+			!bytes.Equal(expectedTicketKey, candidate.ticketKey) {
+			// This is an obsolete or inconsistent index. Never use it to delete
+			// a ticket that may have been renewed under the same primary key.
+			expiryStore.Delete(candidate.indexKey)
+			result.invalidIndexes++
+			continue
+		}
+
+		ticketStore.Delete(candidate.ticketKey)
+		expiryStore.Delete(candidate.indexKey)
+		result.removed++
 	}
-	// finished for this block
-	k.setGcCursor(ctx, height, nil)
+
+	return result
 }
 
-// SetSponsor sets a sponsor in the store
+// SetSponsor is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActiveSponsor; genesis import must use
+// SetSponsorForGenesis.
 func (k Keeper) SetSponsor(ctx sdk.Context, sponsor types.ContractSponsor) error {
+	sponsor.ContractAddress = types.CanonicalAddressOrOriginal(sponsor.ContractAddress)
+	sponsor.CreatorAddress = types.CanonicalAddressOrOriginal(sponsor.CreatorAddress)
+	sponsor.SponsorAddress = types.CanonicalAddressOrOriginal(sponsor.SponsorAddress)
+	if sponsor.TicketIssuerAddress != "" {
+		sponsor.TicketIssuerAddress = types.CanonicalAddressOrOriginal(sponsor.TicketIssuerAddress)
+	}
+
 	// Normalize MaxGrantPerUser before storing to merge duplicates
 	normalized, err := types.NormalizeMaxGrantPerUser(sponsor.MaxGrantPerUser)
 	if err != nil {
 		return errorsmod.Wrap(err, "failed to normalize max grant per user")
 	}
 	sponsor.MaxGrantPerUser = normalized
+
+	if err := k.bindSponsorGeneration(ctx, &sponsor); err != nil {
+		return errorsmod.Wrap(err, "failed to bind sponsor generation")
+	}
 
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(sponsor.ContractAddress)
@@ -394,6 +543,13 @@ func (k Keeper) HasSponsor(ctx sdk.Context, contractAddr string) bool {
 
 // DeleteSponsor removes a sponsor from the store
 func (k Keeper) DeleteSponsor(ctx sdk.Context, contractAddr string) error {
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		return nil
+	}
+	if err := k.rotateSponsorGeneration(ctx, sponsor); err != nil {
+		return errorsmod.Wrap(err, "failed to rotate sponsor generation")
+	}
 	store := ctx.KVStore(k.storeKey)
 	key := types.GetSponsorKey(contractAddr)
 	store.Delete(key)
@@ -408,11 +564,10 @@ func (k Keeper) IsSponsored(ctx sdk.Context, contractAddr string) bool {
 
 // ValidateContractExists checks if a contract exists and is valid
 func (k Keeper) ValidateContractExists(ctx sdk.Context, contractAddr string) error {
-	// Convert contract address string to AccAddress
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
+	if err := types.ValidateContractAddress(contractAddr); err != nil {
+		return err
 	}
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
 
 	// Get contract info from wasm keeper
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
@@ -431,52 +586,44 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	}
 
 	// Convert contract address string to AccAddress
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
-	}
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
 
 	// Get contract info from wasm keeper (we know it exists from validation above)
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
 
-	// Check if the user is the admin
-	return contractInfo.Admin == userAddr.String(), nil
+	if contractInfo.Admin == "" {
+		return false, nil
+	}
+	adminAddr, err := sdk.AccAddressFromBech32(contractInfo.Admin)
+	if err != nil {
+		return false, errorsmod.Wrap(
+			sdkerrors.ErrInvalidAddress,
+			"contract stores an invalid admin address",
+		)
+	}
+	return adminAddr.Equals(userAddr), nil
+}
+
+// HasContractAdmin reports whether the contract still has a current Wasm
+// admin. Active Sponsor state is not valid after the contract permanently
+// clears its admin.
+func (k Keeper) HasContractAdmin(ctx sdk.Context, contractAddr string) (bool, error) {
+	if err := k.ValidateContractExists(ctx, contractAddr); err != nil {
+		return false, err
+	}
+
+	contractAccAddr, _ := types.AccAddressFromCanonicalBech32(contractAddr)
+	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
+	return contractInfo.Admin != "", nil
 }
 
 // IsSponsorManager checks whether the caller is authorized to manage sponsorship
 // for the given contract. Authorization rule:
-// - If contract Admin exists: only current Admin is authorized
-// - If Admin is cleared: the original Sponsor.CreatorAddress is authorized (fallback)
+//   - Only the current Wasm contract Admin is authorized.
+//   - Clearing the contract Admin never revives authority for the original
+//     Sponsor creator.
 func (k Keeper) IsSponsorManager(ctx sdk.Context, contractAddr string, caller sdk.AccAddress) (bool, error) {
-	// Validate contract exists
-	if err := k.ValidateContractExists(ctx, contractAddr); err != nil {
-		return false, err
-	}
-	// Current admin wins
-	if ok, err := k.IsContractAdmin(ctx, contractAddr, caller); err != nil {
-		return false, err
-	} else if ok {
-		return true, nil
-	}
-	// Check if admin cleared, then fallback to sponsor creator
-	contractAccAddr, err := sdk.AccAddressFromBech32(contractAddr)
-	if err != nil {
-		return false, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, fmt.Sprintf("invalid contract address: %s", err.Error()))
-	}
-	cinfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
-	if cinfo == nil {
-		return false, types.ErrContractNotFound.Wrapf("contract not found: %s", contractAddr)
-	}
-	if cinfo.Admin == "" {
-		sponsor, found := k.GetSponsor(ctx, contractAddr)
-		if !found {
-			return false, nil
-		}
-		if sponsor.CreatorAddress == caller.String() {
-			return true, nil
-		}
-	}
-	return false, nil
+	return k.IsContractAdmin(ctx, contractAddr, caller)
 }
 
 // GetAllSponsors returns all sponsors in the store
@@ -586,6 +733,9 @@ func (k Keeper) GetParams(ctx sdk.Context) types.Params {
 
 // SetParams sets the module parameters
 func (k Keeper) SetParams(ctx sdk.Context, params types.Params) error {
+	if err := params.Validate(); err != nil {
+		return errorsmod.Wrap(err, "invalid sponsor params")
+	}
 	store := ctx.KVStore(k.storeKey)
 	bz, err := k.cdc.Marshal(&params)
 	if err != nil {
@@ -605,7 +755,11 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 
 	if bz == nil {
 		// Return new usage record if not found
-		return types.NewUserGrantUsage(userAddr, contractAddr)
+		usage := types.NewUserGrantUsage(userAddr, contractAddr)
+		if sponsor, found := k.GetSponsor(ctx, contractAddr); found {
+			usage.Generation = sponsor.Generation
+		}
+		return usage
 	}
 
 	var usage types.UserGrantUsage
@@ -613,15 +767,41 @@ func (k Keeper) GetUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string
 	if err != nil {
 		// Log error and return new usage record
 		k.Logger(ctx).Error("failed to unmarshal user grant usage", "user", userAddr, "contract", contractAddr, "error", err)
+		usage := types.NewUserGrantUsage(userAddr, contractAddr)
+		if sponsor, found := k.GetSponsor(ctx, contractAddr); found {
+			usage.Generation = sponsor.Generation
+		}
+		return usage
+	}
+
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		if k.GetSponsorGeneration(ctx, contractAddr) == 0 && usage.Generation == 0 {
+			return usage
+		}
 		return types.NewUserGrantUsage(userAddr, contractAddr)
+	}
+	if sponsor.Generation == 0 || usage.Generation != sponsor.Generation {
+		current := types.NewUserGrantUsage(userAddr, contractAddr)
+		current.Generation = sponsor.Generation
+		return current
 	}
 
 	return usage
 }
 
-// SetUserGrantUsage sets the grant usage for a specific user and contract
+// SetUserGrantUsage is the low-level storage primitive retained for legacy test
+// fixtures. Runtime code must use SetActiveUserGrantUsage; genesis import must
+// use SetUserGrantUsageForGenesis.
 func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) error {
 	store := ctx.KVStore(k.storeKey)
+	usage.UserAddress = types.CanonicalAddressOrOriginal(usage.UserAddress)
+	usage.ContractAddress = types.CanonicalAddressOrOriginal(usage.ContractAddress)
+	if usage.Generation == 0 {
+		if sponsor, found := k.GetSponsor(ctx, usage.ContractAddress); found {
+			usage.Generation = sponsor.Generation
+		}
+	}
 	key := types.GetUserGrantUsageKey(usage.UserAddress, usage.ContractAddress)
 
 	bz, err := k.cdc.Marshal(&usage)
@@ -635,28 +815,50 @@ func (k Keeper) SetUserGrantUsage(ctx sdk.Context, usage types.UserGrantUsage) e
 // UpdateUserGrantUsage updates the user's grant usage by adding the consumed amount
 func (k Keeper) UpdateUserGrantUsage(ctx sdk.Context, userAddr, contractAddr string, consumedAmount sdk.Coins) error {
 	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
-
-	// Convert []*sdk.Coin to sdk.Coins for calculation
-	currentUsed := sdk.Coins{}
-	for _, coin := range usage.TotalGrantUsed {
-		if coin != nil {
-			currentUsed = currentUsed.Add(*coin)
+	sponsor, found := k.GetSponsor(ctx, contractAddr)
+	if !found {
+		if k.GetSponsorGeneration(ctx, contractAddr) != 0 {
+			return errorsmod.Wrap(types.ErrSponsorNotFound, "cannot update usage without an active sponsor lifecycle")
 		}
+	} else {
+		if sponsor.Generation == 0 {
+			return errorsmod.Wrap(types.ErrSponsorNotFound, "cannot update usage without an active sponsor lifecycle")
+		}
+		usage.Generation = sponsor.Generation
 	}
 
-	// Add consumed amount
-	newTotal := currentUsed.Add(consumedAmount...)
+	currentUsed, err := grantUsageAmount(usage.TotalGrantUsed)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid existing user grant usage")
+	}
+	consumed, err := sponsorshipCoinAmount(consumedAmount)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid consumed amount")
+	}
+	newTotal, err := currentUsed.SafeAdd(consumed)
+	if err != nil {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+	}
 
 	// Convert back to []*sdk.Coin
-	usage.TotalGrantUsed = make([]*sdk.Coin, len(newTotal))
-	for i, coin := range newTotal {
-		coinCopy := coin
-		usage.TotalGrantUsed[i] = &coinCopy
+	usage.TotalGrantUsed = []*sdk.Coin{}
+	if !newTotal.IsZero() {
+		coin := sdk.NewCoin(types.SponsorshipDenom, newTotal)
+		usage.TotalGrantUsed = []*sdk.Coin{&coin}
 	}
 
-	usage.LastUsedTime = ctx.BlockTime().Unix()
-	if err := k.SetUserGrantUsage(ctx, usage); err != nil {
-		return errorsmod.Wrap(err, "failed to set user grant usage")
+	usage.LastUsedTime = stateUnixTime(ctx)
+	if found {
+		if err := k.SetActiveUserGrantUsage(ctx, usage); err != nil {
+			return errorsmod.Wrap(err, "failed to set user grant usage")
+		}
+	} else {
+		// Compatibility for contracts that have never entered a Sponsor
+		// lifecycle. Deleted Sponsors have a non-zero tombstone and are rejected
+		// above, so their usage can never be revived through this path.
+		if err := k.SetUserGrantUsage(ctx, usage); err != nil {
+			return errorsmod.Wrap(err, "failed to set legacy user grant usage")
+		}
 	}
 
 	// Emit sponsor usage updated event
@@ -709,19 +911,23 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 		return errorsmod.Wrap(err, "failed to get max grant per user")
 	}
 
-	// Convert []*sdk.Coin to sdk.Coins for calculation
-	currentUsed := sdk.Coins{}
-	for _, coin := range usage.TotalGrantUsed {
-		if coin != nil {
-			currentUsed = currentUsed.Add(*coin)
-		}
+	currentUsed, err := grantUsageAmount(usage.TotalGrantUsed)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid existing user grant usage")
+	}
+	requested, err := sponsorshipCoinAmount(requestedAmount)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid requested grant amount")
+	}
+	maxAmount, err := sponsorshipCoinAmount(maxLimit)
+	if err != nil {
+		return errorsmod.Wrap(err, "invalid max grant per user")
 	}
 
-	// Calculate total after this transaction
-	totalAfterTx := currentUsed.Add(requestedAmount...)
-
-	// Check if it exceeds the limit
-	if !maxLimit.IsAllGTE(totalAfterTx) {
+	// Compare against the remaining allowance without adding first. This avoids
+	// sdk.Int overflow when a caller supplies a near-maximum requested amount.
+	remaining, err := maxAmount.SafeSub(currentUsed)
+	if err != nil || remaining.IsNegative() || requested.GT(remaining) {
 		return types.ErrUserGrantLimitExceeded.Wrapf(
 			"user %s grant limit exceeded for contract %s: used %s + requested %s > limit %s",
 			userAddr,
@@ -733,4 +939,51 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 	}
 
 	return nil
+}
+
+func sponsorshipCoinAmount(coins sdk.Coins) (sdk.Int, error) {
+	if !coins.IsValid() {
+		return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coins must be valid and sorted")
+	}
+	if coins.Empty() {
+		return sdk.ZeroInt(), nil
+	}
+	if len(coins) != 1 || coins[0].Denom != types.SponsorshipDenom {
+		return sdk.Int{}, errorsmod.Wrapf(
+			sdkerrors.ErrInvalidCoins,
+			"only %q denomination is supported",
+			types.SponsorshipDenom,
+		)
+	}
+	return coins[0].Amount, nil
+}
+
+func grantUsageAmount(coins []*sdk.Coin) (sdk.Int, error) {
+	total := sdk.ZeroInt()
+	seen := false
+	for _, coin := range coins {
+		if coin == nil {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
+		}
+		if coin.Denom != types.SponsorshipDenom {
+			return sdk.Int{}, errorsmod.Wrapf(
+				sdkerrors.ErrInvalidCoins,
+				"only %q denomination is supported",
+				types.SponsorshipDenom,
+			)
+		}
+		if seen {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "duplicate user grant usage denomination")
+		}
+		if coin.Amount.IsNegative() {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
+		}
+		next, err := total.SafeAdd(coin.Amount)
+		if err != nil {
+			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+		}
+		total = next
+		seen = true
+	}
+	return total, nil
 }

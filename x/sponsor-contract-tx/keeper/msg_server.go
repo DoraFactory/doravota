@@ -28,15 +28,17 @@ func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper, ak types.AuthK
 
 var _ types.MsgServer = msgServer{}
 
+func matchesTicketIssuer(sponsor types.ContractSponsor, creator sdk.AccAddress) bool {
+	if sponsor.TicketIssuerAddress == "" {
+		return false
+	}
+	issuer, err := types.AccAddressFromCanonicalBech32(sponsor.TicketIssuerAddress)
+	return err == nil && issuer.Equals(creator)
+}
+
 // SetSponsor handles MsgSetSponsor
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
-
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
 
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
@@ -49,7 +51,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	}
 
 	// Verify that the creator is the admin of the contract
-	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	creatorAddr, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
@@ -69,7 +71,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 	}
 
 	// Generate sponsor address from contract address
-	contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
+	contractAddr, err := types.AccAddressFromCanonicalBech32(msg.ContractAddress)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
 	}
@@ -77,13 +79,13 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := types.ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address")
 		}
 	}
 
 	// Create and set the sponsor
-	now := ctx.BlockTime().Unix()
+	now := stateUnixTime(ctx)
 	sponsor := types.ContractSponsor{
 		ContractAddress:     msg.ContractAddress,
 		CreatorAddress:      msg.Creator,          // The address that created this sponsor configuration
@@ -95,9 +97,10 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 		MaxGrantPerUser:     msg.MaxGrantPerUser,
 	}
 
-	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+	if err := k.Keeper.SetActiveSponsor(ctx, sponsor); err != nil {
 		return nil, errorsmod.Wrap(err, "failed to set sponsor")
 	}
+	sponsor, _ = k.Keeper.GetSponsor(ctx, msg.ContractAddress)
 
 	// Emit event using constants
 	ctx.EventManager().EmitEvent(
@@ -106,6 +109,7 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -117,12 +121,6 @@ func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (
 func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSponsor) (*types.MsgUpdateSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
-
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
 		return nil, err
@@ -133,8 +131,8 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify authorization: current admin OR (admin cleared AND creator matches original sponsor creator)
-	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	// Only the current Wasm contract admin may update Sponsor state.
+	creatorAddr, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
@@ -144,7 +142,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		return nil, err
 	}
 	if !ok {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not contract admin: only contract admin (or original creator when admin is cleared) can update sponsor")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only the current contract admin can update sponsor")
 	}
 
 	// Get existing sponsor to preserve CreatedAt timestamp
@@ -168,7 +166,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 		sponsorAddr = existingSponsor.SponsorAddress // Preserve existing sponsor address
 	} else {
 		// Generate new sponsor address for backward compatibility
-		contractAddr, err := sdk.AccAddressFromBech32(msg.ContractAddress)
+		contractAddr, err := types.AccAddressFromCanonicalBech32(msg.ContractAddress)
 		if err != nil {
 			return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid contract address")
 		}
@@ -189,25 +187,34 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	// Update the sponsor
 	// Determine ticket issuer address
 	issuer := existingSponsor.TicketIssuerAddress
-	if msg.TicketIssuerAddress != "" {
+	switch {
+	case msg.ClearTicketIssuer && msg.TicketIssuerAddress != "":
+		return nil, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"ticket issuer address cannot be set and cleared in the same update",
+		)
+	case msg.ClearTicketIssuer:
+		issuer = ""
+	case msg.TicketIssuerAddress != "":
 		// Validate provided issuer address
-		if _, err := sdk.AccAddressFromBech32(msg.TicketIssuerAddress); err != nil {
+		if err := types.ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address")
 		}
 		issuer = msg.TicketIssuerAddress
 	}
 	sponsor := types.ContractSponsor{
 		ContractAddress:     msg.ContractAddress,
-		CreatorAddress:      existingSponsor.CreatorAddress, // Preserve original creator address
+		CreatorAddress:      existingSponsor.CreatorAddress, // Preserve creator as audit metadata only
 		SponsorAddress:      sponsorAddr,                    // Preserve or generate sponsor address
 		TicketIssuerAddress: issuer,
 		IsSponsored:         msg.IsSponsored,
 		CreatedAt:           existingSponsor.CreatedAt,
-		UpdatedAt:           ctx.BlockTime().Unix(),
+		UpdatedAt:           stateUnixTime(ctx),
 		MaxGrantPerUser:     effectiveMaxGrant,
+		Generation:          existingSponsor.Generation,
 	}
 
-	if err := k.Keeper.SetSponsor(ctx, sponsor); err != nil {
+	if err := k.Keeper.SetActiveSponsor(ctx, sponsor); err != nil {
 		return nil, errorsmod.Wrap(err, "failed to update sponsor")
 	}
 
@@ -218,6 +225,7 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 			sdk.NewAttribute(types.AttributeKeyIsSponsored, fmt.Sprintf("%t", msg.IsSponsored)),
 		),
 	)
@@ -229,12 +237,6 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSponsor) (*types.MsgDeleteSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Check if sponsorship is globally enabled
-	params := k.Keeper.GetParams(ctx)
-	if !params.SponsorshipEnabled {
-		return nil, errorsmod.Wrap(types.ErrSponsorshipDisabled, "sponsorship is globally disabled")
-	}
-
 	// Validate that the contract exists and is valid
 	if err := k.Keeper.ValidateContractExists(ctx, msg.ContractAddress); err != nil {
 		return nil, err
@@ -245,8 +247,8 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify that the caller is authorized: current admin OR (admin cleared AND creator is original)
-	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	// Only the current Wasm contract admin may delete Sponsor state.
+	creatorAddr, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
@@ -255,7 +257,7 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 		return nil, err
 	}
 	if !ok {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only contract admin (or original creator when admin is cleared) can delete sponsor")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only the current contract admin can delete sponsor")
 	}
 
 	// Get sponsor info before deletion for event
@@ -286,6 +288,7 @@ func (k msgServer) DeleteSponsor(goCtx context.Context, msg *types.MsgDeleteSpon
 			sdk.NewAttribute(types.AttributeKeyCreator, msg.Creator),
 			sdk.NewAttribute(types.AttributeKeyContractAddress, msg.ContractAddress),
 			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsor.SponsorAddress),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", sponsor.Generation)),
 		),
 	)
 
@@ -307,8 +310,8 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 
-	// Verify authorization: current admin OR (admin cleared AND creator equals sponsor creator)
-	creatorAddr, err := sdk.AccAddressFromBech32(msg.Creator)
+	// Only the current Wasm contract admin may withdraw Sponsor funds.
+	creatorAddr, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(types.ErrInvalidCreator, "invalid creator address")
 	}
@@ -317,7 +320,7 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, err
 	}
 	if !ok {
-		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not contract admin: only contract admin (or original creator when admin is cleared) can withdraw sponsor funds")
+		return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "only the current contract admin can withdraw sponsor funds")
 	}
 
 	// Parse sponsor address first (required to check balances)
@@ -326,7 +329,10 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 		return nil, errorsmod.Wrap(types.ErrInvalidContractAddress, "invalid sponsor address")
 	}
 
-	amt := msg.NormalizedAmount()
+	amt, err := msg.NormalizedAmount()
+	if err != nil {
+		return nil, err
+	}
 
 	// Ensure bank keeper is available
 	if k.bankKeeper == nil {
@@ -343,7 +349,7 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 			return nil, errorsmod.Wrap(types.ErrSponsorBalanceEmpty, "no funds available to withdraw")
 		}
 		// Validate recipient now that we know there are funds
-		recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+		recipientAddr, err := types.AccAddressFromCanonicalBech32(msg.Recipient)
 		if err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
 		}
@@ -360,7 +366,7 @@ func (k msgServer) WithdrawSponsorFunds(goCtx context.Context, msg *types.MsgWit
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "invalid withdraw amount")
 		}
 		// Validate recipient before checking balances (tests expect address validation first)
-		recipientAddr, err := sdk.AccAddressFromBech32(msg.Recipient)
+		recipientAddr, err := types.AccAddressFromCanonicalBech32(msg.Recipient)
 		if err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid recipient address")
 		}
@@ -427,7 +433,7 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdateParam
 	return &types.MsgUpdateParamsResponse{}, nil
 }
 
-// IssuePolicyTicket allows sponsor manager (admin/creator fallback) or ticket issuer
+// IssuePolicyTicket allows the current contract admin or ticket issuer
 // to proactively issue a ticket for whitelist
 func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssuePolicyTicket) (*types.MsgIssuePolicyTicketResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
@@ -438,11 +444,12 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, err
 	}
 	// Require sponsor exists for this contract (both for manager and issuer flows)
-	if _, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress); !found {
+	sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
+	if !found {
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
 	// Verify authorization: contract admin or ticket_issuer_address
-	creator, err := sdk.AccAddressFromBech32(msg.Creator)
+	creator, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator")
 	}
@@ -451,11 +458,14 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, err
 	}
 	if !isManager {
-		sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
-		if !found {
-			return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
+		hasAdmin, err := k.Keeper.HasContractAdmin(ctx, msg.ContractAddress)
+		if err != nil {
+			return nil, err
 		}
-		if sponsor.TicketIssuerAddress == "" || sponsor.TicketIssuerAddress != creator.String() {
+		if !hasAdmin {
+			return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "contract admin is cleared; ticket issuance is disabled")
+		}
+		if !matchesTicketIssuer(sponsor, creator) {
 			return nil, errorsmod.Wrap(types.ErrUnauthorized, "not authorized to issue tickets")
 		}
 	}
@@ -463,7 +473,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	if msg.UserAddress == "" {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "user address required")
 	}
-	userAddr, err := sdk.AccAddressFromBech32(msg.UserAddress)
+	userAddr, err := types.AccAddressFromCanonicalBech32(msg.UserAddress)
 	if err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
@@ -483,17 +493,17 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method is required")
 	}
 	// Enforce method name size limit from params
-	if lim := k.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 && uint32(len(msg.Method)) > lim {
+	if lim := k.Keeper.GetParams(ctx).EffectiveMaxMethodBytes(); uint32(len(msg.Method)) > lim {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
 	}
 	digest := k.Keeper.ComputeMethodDigest(msg.ContractAddress, []string{msg.Method})
 
-	// Conflict: if an active, unconsumed ticket already exists for this digest, reject re-issue.
-	// Tickets expiring strictly after the current height are considered active for issuance purposes
-	// (tickets at the current height are treated as stale and can be replaced).
-	if t, found := k.Keeper.GetPolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); found {
+	// Conflict: if an active, unconsumed ticket already exists for this digest,
+	// reject re-issue. Tickets remain valid through their expiry height, matching
+	// Ante eligibility, queries, and expiry-index GC.
+	if t, found := k.Keeper.GetActivePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest); found {
 		now := uint64(ctx.BlockHeight())
-		if !t.Consumed && now < t.ExpiryHeight {
+		if !t.Consumed && now <= t.ExpiryHeight {
 			// Enrich method for display if missing
 			method := t.Method
 			if method == "" && msg.Method != "" {
@@ -526,18 +536,8 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 				msg.UserAddress, msg.ContractAddress, t.Digest, method, t.ExpiryHeight, t.UsesRemaining,
 			)
 		}
-		// If consumed or at/after expiry, replace by deleting stale ticket first
+		// If consumed or strictly past expiry, replace the stale ticket first.
 		k.Keeper.DeletePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest)
-	}
-
-	// No capacity limits enforced (whitelist controls issuance)
-	// Enforce method name length bound from params to avoid storing oversized strings
-	// and emitting large event attributes. 0 means use default behavior, but
-	// DefaultParams() already sets a sane default (64).
-	if lim := k.Keeper.GetParams(ctx).MaxMethodNameBytes; lim != 0 {
-		if uint32(len(msg.Method)) > lim {
-			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
-		}
 	}
 
 	params := k.Keeper.GetParams(ctx)
@@ -562,6 +562,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		ExpiryHeight:    uint64(ctx.BlockHeight()) + uint64(ttl),
 		Consumed:        false,
 		IssuedHeight:    uint64(ctx.BlockHeight()),
+		Generation:      sponsor.Generation,
 	}
 	// Set method for display when issuing a single-method ticket
 	ticket.Method = msg.Method
@@ -590,7 +591,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 	} else {
 		ticket.UsesRemaining = requested
 	}
-	if err := k.Keeper.SetPolicyTicket(ctx, ticket); err != nil {
+	if err := k.Keeper.SetActivePolicyTicket(ctx, ticket); err != nil {
 		return nil, errorsmod.Wrap(err, "store ticket failed")
 	}
 	// Emit issue event for observability (DeliverTx and CheckTx both emit; lightweight attributes only)
@@ -602,6 +603,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 			sdk.NewAttribute(types.AttributeKeyDigest, ticket.Digest),
 			sdk.NewAttribute(types.AttributeKeyExpiryHeight, fmt.Sprintf("%d", ticket.ExpiryHeight)),
 			sdk.NewAttribute(types.AttributeKeyMethod, ticket.Method),
+			sdk.NewAttribute(types.AttributeKeyGeneration, fmt.Sprintf("%d", ticket.Generation)),
 		),
 	)
 	return &types.MsgIssuePolicyTicketResponse{Created: true, Ticket: &ticket}, nil
@@ -617,7 +619,7 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
 	if err := types.ValidateContractAddress(msg.ContractAddress); err != nil {
 		return nil, err
 	}
-	if _, err := sdk.AccAddressFromBech32(msg.UserAddress); err != nil {
+	if err := types.ValidateCanonicalAddress(msg.UserAddress); err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid user address")
 	}
 	// Validate method
@@ -628,8 +630,8 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
 	if _, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress); !found {
 		return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 	}
-	// Auth: contract manager (admin or creator fallback when admin cleared) OR ticket_issuer_address
-	creator, err := sdk.AccAddressFromBech32(msg.Creator)
+	// Auth: current contract admin or ticket_issuer_address while an admin exists.
+	creator, err := types.AccAddressFromCanonicalBech32(msg.Creator)
 	if err != nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid creator")
 	}
@@ -638,11 +640,18 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
 		return nil, err
 	}
 	if !ok {
+		hasAdmin, err := k.Keeper.HasContractAdmin(ctx, msg.ContractAddress)
+		if err != nil {
+			return nil, err
+		}
+		if !hasAdmin {
+			return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "contract admin is cleared; ticket revocation is disabled")
+		}
 		sponsor, found := k.Keeper.GetSponsor(ctx, msg.ContractAddress)
 		if !found {
 			return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 		}
-		if sponsor.TicketIssuerAddress == "" || sponsor.TicketIssuerAddress != creator.String() {
+		if !matchesTicketIssuer(sponsor, creator) {
 			return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not authorized to revoke tickets")
 		}
 	}

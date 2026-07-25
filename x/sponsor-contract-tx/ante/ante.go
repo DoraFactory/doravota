@@ -31,23 +31,6 @@ type SponsorPaymentInfo struct {
 	DigestCounts map[string]uint32
 }
 
-// ExecTicketGateInfo marks that a transaction has a valid policy ticket in CheckTx.
-// Presence of this value in context indicates authorization to bypass standard fee checks in CheckTx.
-type execTicketGateKey struct{}
-
-type ExecTicketGateInfo struct {
-	ContractAddr string
-	UserAddr     string
-}
-
-// computeMethodDigestTx extracts method names (top-level keys) from each MsgExecuteContract
-// for the target contract. It enforces exactly one top-level key per message without fully
-// unmarshalling nested JSON (only scans top-level structure) and returns the method digest.
-// extractMethodKeysTx returns the ordered list of top-level method names for all
-// MsgExecuteContract targeting the given contract in this tx. Returns ok=false
-// when no such messages exist or any message does not have exactly one top-level key.
-// (extractMethodKeysTx removed; replaced by validateMethodTicketsStreaming)
-
 // firstTopLevelKey scans only the top-level JSON object and returns the sole key
 // when exactly one top-level key is present; otherwise returns ok=false. It does
 // not unmarshal nested structures to avoid unnecessary CPU/memory overhead.
@@ -163,9 +146,6 @@ func skipPairDepth(dec *json.Decoder, depth int, limit uint32) error {
 // validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
 // It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
 // Returns (haveValidTicket, requiredCounts, reason).
-// validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
-// It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
-// Returns (haveValidTicket, requiredCounts, reason).
 // When haveValidTicket=false, reason provides a user-friendly failure code that can be surfaced to fallback.
 func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, map[string]uint32, string) {
 	// Collect target exec messages in tx order and delegate to preselected variant
@@ -187,7 +167,7 @@ func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sd
 // pre-filtered MsgExecuteContract list for the target contract to avoid re-scanning tx messages.
 func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPreselected(ctx sdk.Context, contractAddr, userAddr string, execMsgs []*wasmtypes.MsgExecuteContract) (bool, map[string]uint32, string) {
 	params := sctd.keeper.GetParams(ctx)
-	nameLimit := params.MaxMethodNameBytes
+	nameLimit := params.EffectiveMaxMethodBytes()
 	depthLimit := params.MaxMethodJsonDepth
 	now := uint64(ctx.BlockHeight())
 
@@ -218,7 +198,7 @@ func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreamingPresele
 			md = sctd.keeper.ComputeMethodDigestSingle(contractAddr, key)
 			methodDigestCache[key] = md
 			// On first time seeing this method, load available uses for its digest
-			t, ok := sctd.keeper.GetPolicyTicket(ctx, contractAddr, userAddr, md)
+			t, ok := sctd.keeper.GetActivePolicyTicket(ctx, contractAddr, userAddr, md)
 			if !ok {
 				return false, nil, "ticket_not_found"
 			}
@@ -297,9 +277,8 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 // - Global toggle: respects module params; when disabled, sponsorship is skipped with informative events/errors.
 // - Signer model: single-signer only; FeePayer must match the validated signer to prevent spoofing.
 // - Self-pay preference: if user has sufficient balance for the declared fee, sponsorship is skipped (see note below).
-// - Two-phase rule: does NOT run policy checks here. ExecuteTx requires a valid ticket; policy checks run only in MsgProbeSponsorship (DeliverTx).
+// - Ticket authorization: validates every target execute method against current-generation policy tickets in both CheckTx and DeliverTx.
 // - Success path: verify grant limit and sponsor balance, then inject SponsorPaymentInfo for the sponsor-aware fee decorator to deduct/reimburse.
-// - Self-pay preference: if the user balance covers fees, skip sponsorship and let the user pay.
 func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -430,6 +409,26 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return ctx, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "no signers found in transaction")
 		}
 
+		// Fail closed if legacy, genesis, or direct keeper state contains an
+		// active Sponsor after the Wasm admin was cleared. Normal message
+		// execution prevents this state by rejecting MsgClearAdmin while a
+		// Sponsor record exists.
+		hasAdmin, err := sctd.keeper.HasContractAdmin(ctx, contractAddr)
+		if err != nil {
+			return ctx, err
+		}
+		if !hasAdmin {
+			return sctd.handleSponsorshipFallback(
+				ctx,
+				tx,
+				simulate,
+				next,
+				contractAddr,
+				userAddr,
+				"contract_admin_cleared",
+			)
+		}
+
 		// CheckTx: enforce min gas price as early as possible before any method parsing/digest lookups
 		if ctx.IsCheckTx() && !simulate {
 			checker := sctd.txFeeChecker
@@ -442,10 +441,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Enforce per-tx cap on MsgExecuteContract count for sponsored transactions (same contract)
-		if params.MaxExecMsgsPerTxForSponsor > 0 {
+		maxExecMsgs := params.EffectiveMaxExecMsgs()
+		if maxExecMsgs > 0 {
 			execCount := len(execMsgs)
-			if uint32(execCount) > params.MaxExecMsgsPerTxForSponsor {
-				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, params.MaxExecMsgsPerTxForSponsor)
+			if uint32(execCount) > maxExecMsgs {
+				reason := fmt.Sprintf("too_many_exec_messages:%d>%d", execCount, maxExecMsgs)
 				// Emit skip event only in DeliverTx
 				if !ctx.IsCheckTx() {
 					ctx.EventManager().EmitEvent(
@@ -462,11 +462,11 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 		}
 
 		// Enforce per-message raw JSON payload size (bytes) before any JSON parsing to prevent CPU amplification.
-		// 0 disables this guard.
-		if params.MaxPolicyExecMsgBytes > 0 {
+		maxExecBytes := params.EffectiveMaxPolicyExecBytes()
+		if maxExecBytes > 0 {
 			var tooLarge bool
 			for _, msg := range execMsgs {
-				if uint32(len(msg.Msg)) > params.MaxPolicyExecMsgBytes {
+				if uint32(len(msg.Msg)) > maxExecBytes {
 					tooLarge = true
 					break
 				}
@@ -539,28 +539,42 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
 		}
 
+		var contractAccAddr sdk.AccAddress
+		var sponsorAccAddr sdk.AccAddress
+		if haveValidTicket {
+			contractAccAddr, err = types.AccAddressFromCanonicalBech32(contractAddr)
+			if err != nil {
+				return ctx, errorsmod.Wrap(
+					sdkerrors.ErrInvalidAddress,
+					"invalid sponsored contract address in state",
+				)
+			}
+			sponsorAccAddr, err = types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+			if err != nil {
+				return ctx, errorsmod.Wrap(
+					sdkerrors.ErrInvalidAddress,
+					"invalid sponsor payment address in state",
+				)
+			}
+		}
+
 		// Sponsor balance pre-check (only when we already have a valid ticket)
 		if haveValidTicket {
 			if feeTx, ok := tx.(sdk.FeeTx); ok {
 				declaredFee := feeTx.GetFee()
-				if sponsor.SponsorAddress != "" {
-					if sAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress); err == nil {
-						if sctd.accountKeeper.GetAccount(ctx, sAddr) == nil {
-							return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sAddr.String())
-						}
-						if spendable := sctd.bankKeeper.SpendableCoins(ctx, sAddr); !spendable.IsAllGTE(declaredFee) {
-							return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor insufficient funds: need %s, have %s", declaredFee.String(), spendable.String())
-						}
-					}
+				if sctd.accountKeeper.GetAccount(ctx, sponsorAccAddr) == nil {
+					return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sponsorAccAddr.String())
+				}
+				if spendable := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr); !spendable.IsAllGTE(declaredFee) {
+					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor insufficient funds: need %s, have %s", declaredFee.String(), spendable.String())
 				}
 			}
 		}
 
 		// (sponsor-specific pre-checks executed earlier inside fee block when haveValidTicket)
-		// Two-phase flow: inject sponsor info only in DeliverTx; in CheckTx, mark authorization when a valid ticket exists.
+		// Both CheckTx and DeliverTx carry the same SponsorPaymentInfo. The
+		// fee decorator reserves check-state and commits deliver-state.
 		if haveValidTicket {
-			contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
-			sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 			fee := sdk.NewCoins()
 			if feeTx, ok := tx.(sdk.FeeTx); ok {
 				fee = feeTx.GetFee()
@@ -682,7 +696,7 @@ func preScanTxForSponsorship(tx sdk.Tx) (*TransactionValidationResult, string, [
 	}
 
 	// All messages are contract execs to the same contract
-	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: "",}, firstContractMsg, execMsgs
+	return &TransactionValidationResult{ContractAddress: sponsoredContract, SuggestSponsor: true, SkipReason: ""}, firstContractMsg, execMsgs
 }
 
 // validateSponsoredTransaction validates tx shape for sponsorship. It delegates to preScanTxForSponsorship

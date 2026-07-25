@@ -472,6 +472,66 @@ func (suite *AnteTestSuite) TestContractNotSponsoredPassThrough() {
 	suite.Require().True(nextCalled)
 }
 
+func (suite *AnteTestSuite) TestAdminClearedStateCannotSponsorTransactions() {
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	maxGrant := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(10000)))
+	sponsorFunds := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(20000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFunds)
+
+	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
+	suite.wasmKeeper.SetContractInfo(suite.contract, "")
+
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000)))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "contract_admin_cleared")
+	suite.Require().False(nextCalled)
+}
+
+func (suite *AnteTestSuite) TestMalformedSponsorAddressFailsBeforePaymentInjection() {
+	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
+	maxGrant := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(10000)))
+	sponsorFunds := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(20000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sponsorFunds)
+
+	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
+	suite.Require().True(found)
+	sponsor.SponsorAddress = "invalid-sponsor-address"
+	suite.Require().NoError(suite.keeper.SetSponsor(suite.ctx, sponsor))
+
+	digest := suite.keeper.ComputeMethodDigest(suite.contract.String(), []string{"increment"})
+	suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, types.PolicyTicket{
+		ContractAddress: suite.contract.String(),
+		UserAddress:     suite.user.String(),
+		Digest:          digest,
+		ExpiryHeight:    uint64(suite.ctx.BlockHeight() + 50),
+		UsesRemaining:   1,
+		Generation:      sponsor.Generation,
+	}))
+
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000)))
+	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	nextCalled := false
+	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		nextCalled = true
+		return ctx, nil
+	}
+
+	_, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, next)
+
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "invalid sponsor payment address in state")
+	suite.Require().False(nextCalled)
+}
+
 // Test case: User ineligible according to contract policy
 func (suite *AnteTestSuite) TestUserIneligibleForSponsorship() {
 	// Set up contract and sponsorship
@@ -990,10 +1050,10 @@ func (suite *AnteTestSuite) TestJSONDepth_ExceedLimit_Fallback() {
     suite.Require().Contains(err.Error(), "invalid_json")
 }
 
-// ---- CheckTx + JSON depth gate tests ----
+// ---- CheckTx + JSON depth sponsorship-context tests ----
 
-// In CheckTx, when JSON depth is within limit and a valid ticket exists, ante should mark gate.
-func (suite *AnteTestSuite) TestCheckTx_JSONDepth_WithinLimit_SetsGate() {
+// In CheckTx, valid JSON depth and ticket coverage should inject sponsor payment context.
+func (suite *AnteTestSuite) TestCheckTx_JSONDepth_WithinLimit_InjectsSponsorPayment() {
     // Ante with ok checker
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
@@ -1030,8 +1090,8 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_WithinLimit_SetsGate() {
     suite.Require().True(ok)
 }
 
-// At depth limit, gate should also be set.
-func (suite *AnteTestSuite) TestCheckTx_JSONDepth_AtLimit_SetsGate() {
+// JSON exactly at the depth limit should also inject sponsor payment context.
+func (suite *AnteTestSuite) TestCheckTx_JSONDepth_AtLimit_InjectsSponsorPayment() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
         return nil, 0, nil
@@ -1062,8 +1122,8 @@ func (suite *AnteTestSuite) TestCheckTx_JSONDepth_AtLimit_SetsGate() {
     suite.Require().True(ok)
 }
 
-// Exceeding depth limit should not set gate in CheckTx.
-func (suite *AnteTestSuite) TestCheckTx_JSONDepth_ExceedLimit_NoGate() {
+// Exceeding the depth limit must not inject sponsor payment context in CheckTx.
+func (suite *AnteTestSuite) TestCheckTx_JSONDepth_ExceedLimit_NoSponsorPayment() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
         return nil, 0, nil
@@ -1236,8 +1296,8 @@ func (suite *AnteTestSuite) TestTwoPhase_MethodTicketOnly_Used() {
     suite.Require().Equal("method", dtVal)
 }
 
-// CheckTx: if a valid ticket exists and fee checker would normally reject, gate should allow tx to pass to next.
-func (suite *AnteTestSuite) TestCheckTx_Gate_AllowsTicketNoFunds() {
+// CheckTx: a valid ticket and funded Sponsor should authorize sponsor payment.
+func (suite *AnteTestSuite) TestCheckTx_ValidTicket_InjectsSponsorPayment() {
     // Custom ante with a fee checker that passes (min gas price satisfied)
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if feeTx, ok := tx.(sdk.FeeTx); ok {
@@ -1264,7 +1324,7 @@ func (suite *AnteTestSuite) TestCheckTx_Gate_AllowsTicketNoFunds() {
     t := types.PolicyTicket{ContractAddress: suite.contract.String(), UserAddress: suite.user.String(), Digest: digest, ExpiryHeight: uint64(suite.ctx.BlockHeight()) + 50, UsesRemaining: 1}
     suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, t))
 
-    // Build tx with any fee (fee checker will fail if gate not applied)
+    // Build a transaction whose fee is covered by the Sponsor.
     fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1)))
     tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
@@ -1277,8 +1337,8 @@ func (suite *AnteTestSuite) TestCheckTx_Gate_AllowsTicketNoFunds() {
     suite.Require().True(nextCalled)
 }
 
-// CheckTx: if no valid ticket exists, fee checker failure should reject the tx (gate not applied).
-func (suite *AnteTestSuite) TestCheckTx_Gate_NoTicket_EnforcesFeeChecker() {
+// CheckTx: without a valid ticket, the standard fee checker must reject.
+func (suite *AnteTestSuite) TestCheckTx_NoTicket_EnforcesFeeChecker() {
     // Custom ante with a fee checker that always fails
     failChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         return nil, 0, sdkerrors.ErrInsufficientFee
@@ -1300,7 +1360,7 @@ func (suite *AnteTestSuite) TestCheckTx_Gate_NoTicket_EnforcesFeeChecker() {
     suite.Require().Error(err)
 }
 
-// CheckTx: with a valid ticket but sponsor has insufficient funds for (fee + reimburse), gate should reject.
+// CheckTx: a valid ticket cannot authorize payment when the Sponsor has insufficient funds.
 func (suite *AnteTestSuite) TestCheckTx_TicketSponsorInsufficientFunds_Reject() {
     // Ante chain pieces
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
@@ -1338,7 +1398,7 @@ func (suite *AnteTestSuite) TestCheckTx_TicketSponsorInsufficientFunds_Reject() 
     suite.Require().Contains(err.Error(), "sponsor insufficient funds")
 }
 
-// CheckTx: with a valid ticket but user grant limit would be exceeded by this fee, gate should reject.
+// CheckTx: a valid ticket cannot authorize payment that exceeds the user's grant limit.
 func (suite *AnteTestSuite) TestCheckTx_TicketGrantLimitExceeded_Reject() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
@@ -3060,49 +3120,37 @@ func (suite *AnteTestSuite) TestContractQueryFailureRecovery() {
 // This ensures module parameters are properly validated
 func (suite *AnteTestSuite) TestParameterValidationBounds() {
 	// Test valid parameters
-    validParams := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      30,
-        MaxMethodTicketUsesPerIssue: 3,
-        MaxPolicyExecMsgBytes:      16 * 1024,
-    }
+	validParams := types.DefaultParams()
+	validParams.MaxMethodTicketUsesPerIssue = 3
+	validParams.MaxPolicyExecMsgBytes = 16 * 1024
 	err := validParams.Validate()
 	suite.Require().NoError(err)
 
-	// Test invalid parameters - zero gas
-    invalidParamsZero := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      0, // Invalid TTL
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	// Test invalid parameters - zero TTL
+	invalidParamsZero := validParams
+	invalidParamsZero.PolicyTicketTtlBlocks = 0
 	err = invalidParamsZero.Validate()
 	suite.Require().Error(err)
 	suite.Require().Contains(err.Error(), "must be greater than 0")
 
 	// Test invalid parameters - too high gas
-    invalidParamsHigh := types.Params{
-        SponsorshipEnabled:         true,
-        PolicyTicketTtlBlocks:      2000, // Too high TTL (>1000)
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	invalidParamsHigh := validParams
+	invalidParamsHigh.PolicyTicketTtlBlocks = 2000
 	err = invalidParamsHigh.Validate()
     suite.Require().Error(err)
     suite.Require().Contains(err.Error(), "exceeds maximum")
 
 	// Test boundary values
-    boundaryParams := types.Params{
-        SponsorshipEnabled:         false,
-        PolicyTicketTtlBlocks:      30,
-        MaxMethodTicketUsesPerIssue: 3,
-    }
+	boundaryParams := validParams
+	boundaryParams.SponsorshipEnabled = false
     err = boundaryParams.Validate()
     suite.Require().NoError(err)
 
-    // Zero allowed: means no explicit cap
+    // Zero cannot disable the method-name guard.
     nameZero := validParams
     nameZero.MaxMethodNameBytes = 0
     err = nameZero.Validate()
-    suite.Require().NoError(err)
+    suite.Require().Error(err)
 
     invalidNameHigh := validParams
     invalidNameHigh.MaxMethodNameBytes = 300
@@ -3441,7 +3489,7 @@ func (suite *AnteTestSuite) TestTwoPhase_MethodTicket_MultiMessageMatch() {
     fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
     tx := suite.createContractExecuteTxTwoMsgs(suite.contract, suite.user, fee)
 
-    // Run ante -> should inject sponsorship gate
+    // Run ante -> should inject sponsor payment context.
     ctxAfter, err := suite.anteDecorator.AnteHandle(suite.ctx, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
     suite.Require().NoError(err)
 
@@ -3825,8 +3873,8 @@ func (suite *AnteTestSuite) TestValidateMethodTicketsStreaming_JsonDepth_Exceed_
     suite.Require().Equal(uint32(1), t2.UsesRemaining)
 }
 
-// CheckTx: method name exactly at limit should set gate.
-func (suite *AnteTestSuite) TestCheckTx_MethodName_AtLimit_SetsGate() {
+// CheckTx: a method name exactly at the limit should authorize sponsor payment.
+func (suite *AnteTestSuite) TestCheckTx_MethodName_AtLimit_InjectsSponsorPayment() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
         return nil, 0, nil
@@ -3838,7 +3886,7 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_AtLimit_SetsGate() {
     suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
 
     suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-    // Ensure sponsor exists and is funded to satisfy pre-checks when gate is set
+    // Ensure the Sponsor exists and is funded to satisfy payment pre-checks.
     suite.createAndFundSponsor(
         suite.contract,
         true,
@@ -3862,8 +3910,8 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_AtLimit_SetsGate() {
     suite.Require().True(ok)
 }
 
-// CheckTx: method name exceeding limit should not set gate.
-func (suite *AnteTestSuite) TestCheckTx_MethodName_ExceedLimit_NoGate() {
+// CheckTx: a method name exceeding the limit must not authorize sponsor payment.
+func (suite *AnteTestSuite) TestCheckTx_MethodName_ExceedLimit_NoSponsorPayment() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
         return nil, 0, nil
@@ -3875,7 +3923,7 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_ExceedLimit_NoGate() {
     suite.Require().NoError(suite.keeper.SetParams(suite.ctx, params))
 
     suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-    // Sponsor present but not required to fund here because gate should not be set
+    // Sponsor funding is unnecessary because authorization must fail first.
     suite.createAndFundSponsor(
         suite.contract,
         true,
@@ -3896,8 +3944,8 @@ func (suite *AnteTestSuite) TestCheckTx_MethodName_ExceedLimit_NoGate() {
     suite.Require().False(ok)
 }
 
-// CheckTx: method name at limit and JSON depth at limit together should set gate.
-func (suite *AnteTestSuite) TestCheckTx_NameAndDepth_AtLimits_SetsGate() {
+// CheckTx: method name and JSON depth exactly at their limits should authorize sponsor payment.
+func (suite *AnteTestSuite) TestCheckTx_NameAndDepth_AtLimits_InjectsSponsorPayment() {
     okChecker := func(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
         if ft, ok := tx.(sdk.FeeTx); ok { return ft.GetFee(), 0, nil }
         return nil, 0, nil
@@ -4207,7 +4255,7 @@ func (suite *AnteTestSuite) TestCheckTx_TTLBoundary_MethodTicketValidThenExpired
     _, ok := ctxOut.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
     suite.Require().True(ok, "ticket should authorize at expiry height")
 
-    // At height == expiry+1: gate should not be present (expired). Fund user for fallback self-pay.
+    // At height == expiry+1, sponsor payment context must be absent. Fund the user for fallback self-pay.
     checkCtx2 := suite.ctx.WithIsCheckTx(true).WithBlockHeight(int64(expiry + 1))
     suite.Require().NoError(suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee))
     suite.Require().NoError(suite.bankKeeper.SendCoinsFromModuleToAccount(suite.ctx, types.ModuleName, suite.user, fee))
@@ -5089,7 +5137,7 @@ func (suite *AnteTestSuite) TestInvalidSignerCountTransaction() {
 
 // Test case: Panic recovery during policy check (OutOfGas scenario)
 func (suite *AnteTestSuite) TestPolicyCheckOutOfGasPanicRecovery() {
-    suite.T().Skip("two-phase design: policy checks run in MsgProbeSponsorship; ante no longer runs policy")
+    suite.T().Skip("legacy contract-query policy path was removed; ante validates stored tickets directly")
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
@@ -5122,7 +5170,7 @@ func (suite *AnteTestSuite) TestPolicyCheckOutOfGasPanicRecovery() {
 
 // Test case: General panic recovery during policy check
 func (suite *AnteTestSuite) TestPolicyCheckGeneralPanicRecovery() {
-    suite.T().Skip("two-phase design: policy checks run in MsgProbeSponsorship; ante no longer runs policy")
+    suite.T().Skip("legacy contract-query policy path was removed; ante validates stored tickets directly")
 	// Set up contract and sponsorship
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 

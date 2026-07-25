@@ -61,15 +61,13 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
-	// In CheckTx, if ExecuteTicketGate marked this tx as authorized via a valid ticket,
-	// skip standard fee checks and proceed. This enables sponsored txs to enter the mempool
-	// without requiring the user to prepay fees.
-	// Check if this transaction has sponsor payment information in context using type-safe key
+	// Check if this transaction has sponsor payment information in context using
+	// the package-private, type-safe key.
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
 		if sponsorPayment.IsSponsored {
 			// Handle sponsor fee payment directly (two-phase aware; digestion is driven by DigestCounts on context)
-            return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
-                    sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
+			return safd.handleSponsorFeePayment(ctx, tx, simulate, next, sponsorPayment.ContractAddr,
+				sponsorPayment.SponsorAddr, sponsorPayment.UserAddr, sponsorPayment.Fee)
 		}
 	}
 
@@ -87,17 +85,19 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 //     grant usage; emits events only in DeliverTx.
 //   - Returns a context with priority set so downstream mempool prioritization is
 //     consistent with fee calculation.
+//
 // handleSponsorFeePayment processes sponsor fee payment using two-phase context.
-// It relies on DigestCounts carried in SponsorPaymentInfo for ticket consumption in DeliverTx.
+// It relies on DigestCounts carried in SponsorPaymentInfo for ticket reservation
+// in CheckTx and committed consumption in DeliverTx.
 func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
-    ctx sdk.Context,
-    tx sdk.Tx,
-    simulate bool,
-    next sdk.AnteHandler,
-    contractAddr sdk.AccAddress,
-    sponsorAddr sdk.AccAddress,
-    userAddr sdk.AccAddress,
-    fee sdk.Coins,
+	ctx sdk.Context,
+	tx sdk.Tx,
+	simulate bool,
+	next sdk.AnteHandler,
+	contractAddr sdk.AccAddress,
+	sponsorAddr sdk.AccAddress,
+	userAddr sdk.AccAddress,
+	fee sdk.Coins,
 ) (newCtx sdk.Context, err error) {
 	// Check for feegrant first - if present, delegate to standard decorator
 	feeTx, ok := tx.(sdk.FeeTx)
@@ -114,6 +114,14 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	if feeGranter != nil && !feeGranter.Empty() {
 		// Delegate to standard fee decorator to handle feegrant properly
 		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
+	}
+
+	sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
+	if !ok || !sponsorPayment.IsSponsored || len(sponsorPayment.DigestCounts) == 0 {
+		return ctx, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"sponsored fee payment requires policy ticket digests",
+		)
 	}
 
 	var priority int64
@@ -158,113 +166,120 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 		return ctx, errorsmod.Wrapf(err, "failed to update user grant usage - sponsor fee deduction will be rolled back")
 	}
 
-    // Best-effort: fetch uses_remaining and expiry before consuming (for summary event)
-    usesRem := ""
-    expiry := ""
-    // For per-digest ticket events, take a pre-consumption snapshot for all digests
-    type ticketSnap struct { uses uint32; expiry uint64; method string }
-    pre := make(map[string]ticketSnap)
-    if !ctx.IsCheckTx() {
-        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-            if len(sp.DigestCounts) == 1 {
-                for dg := range sp.DigestCounts {
-                    if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
-                        pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
-                        usesRem = fmt.Sprintf("%d", t.UsesRemaining)
-                        expiry = fmt.Sprintf("%d", t.ExpiryHeight)
-                    }
-                }
-            } else {
-                // Multi-digest: show the most constrained ticket state (min uses_remaining and min expiry)
-                minRemaining := uint32(math.MaxUint32)
-                minExpiry := uint64(math.MaxUint64)
-                for dg := range sp.DigestCounts {
-                    if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
-                        pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
-                        if t.UsesRemaining < minRemaining {
-                            minRemaining = t.UsesRemaining
-                        }
-                        if t.ExpiryHeight < minExpiry {
-                            minExpiry = t.ExpiryHeight
-                        }
-                    }
-                }
-                if minRemaining != math.MaxUint32 {
-                    usesRem = fmt.Sprintf("%d", minRemaining)
-                }
-                if minExpiry != math.MaxUint64 {
-                    expiry = fmt.Sprintf("%d", minExpiry)
-                }
-            }
-        }
-    }
+	// Best-effort: fetch uses_remaining and expiry before consuming (for summary event)
+	usesRem := ""
+	expiry := ""
+	// For per-digest ticket events, take a pre-consumption snapshot for all digests
+	type ticketSnap struct {
+		uses   uint32
+		expiry uint64
+		method string
+	}
+	pre := make(map[string]ticketSnap)
+	if !ctx.IsCheckTx() {
+		if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+			if len(sp.DigestCounts) == 1 {
+				for dg := range sp.DigestCounts {
+					if t, ok := safd.sponsorKeeper.GetActivePolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+						pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
+						usesRem = fmt.Sprintf("%d", t.UsesRemaining)
+						expiry = fmt.Sprintf("%d", t.ExpiryHeight)
+					}
+				}
+			} else {
+				// Multi-digest: show the most constrained ticket state (min uses_remaining and min expiry)
+				minRemaining := uint32(math.MaxUint32)
+				minExpiry := uint64(math.MaxUint64)
+				for dg := range sp.DigestCounts {
+					if t, ok := safd.sponsorKeeper.GetActivePolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+						pre[dg] = ticketSnap{uses: t.UsesRemaining, expiry: t.ExpiryHeight, method: t.Method}
+						if t.UsesRemaining < minRemaining {
+							minRemaining = t.UsesRemaining
+						}
+						if t.ExpiryHeight < minExpiry {
+							minExpiry = t.ExpiryHeight
+						}
+					}
+				}
+				if minRemaining != math.MaxUint32 {
+					usesRem = fmt.Sprintf("%d", minRemaining)
+				}
+				if minExpiry != math.MaxUint64 {
+					expiry = fmt.Sprintf("%d", minExpiry)
+				}
+			}
+		}
+	}
 
-	// Step 4: Consume ticket(s) in DeliverTx upon success. When multiple
-	// method digests are required in this tx, consume each digest as many
-	// times as needed. Fall back to single digest when no counts provided.
-    if !ctx.IsCheckTx() {
-        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-            if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
-                return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
-            }
-        }
-    }
+	// Step 4: Reserve ticket use(s) in CheckTx and consume them in DeliverTx.
+	// CheckTx writes live only in BaseApp's check-state and are rebuilt from the
+	// latest committed state before ReCheckTx. Any later Ante failure rolls back
+	// these writes with the surrounding transaction cache.
+	if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+		if err := safd.sponsorKeeper.ConsumePolicyTicketsBulk(ctx, contractAddr.String(), userAddr.String(), sp.DigestCounts); err != nil {
+			return ctx, errorsmod.Wrapf(err, "failed to consume policy tickets")
+		}
+	}
 
-    // Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
-    if !ctx.IsCheckTx() {
-        dType := "method" // only method tickets are supported
-        ev := sdk.NewEvent(
-            types.EventTypeSponsoredTx,
-            sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-            sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
-            sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-            sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
-            sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
-        )
-        if usesRem != "" {
-            ev = ev.AppendAttributes(sdk.NewAttribute("uses_remaining", usesRem))
-        }
-        if expiry != "" {
-            ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry))
-        }
-        ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
-        ctx.EventManager().EmitEvent(ev)
+	// Step 5: Emit success event only in DeliverTx (avoid events in CheckTx).
+	if !ctx.IsCheckTx() {
+		dType := "method" // only method tickets are supported
+		ev := sdk.NewEvent(
+			types.EventTypeSponsoredTx,
+			sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySponsorAddress, sponsorAddr.String()),
+			sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+			sdk.NewAttribute(types.AttributeKeySponsorAmount, effectiveFee.String()),
+			sdk.NewAttribute(types.AttributeKeyIsSponsored, types.AttributeValueTrue),
+		)
+		if usesRem != "" {
+			ev = ev.AppendAttributes(sdk.NewAttribute("uses_remaining", usesRem))
+		}
+		if expiry != "" {
+			ev = ev.AppendAttributes(sdk.NewAttribute(types.AttributeKeyExpiryHeight, expiry))
+		}
+		ev = ev.AppendAttributes(sdk.NewAttribute("digest_type", dType))
+		ctx.EventManager().EmitEvent(ev)
 
-        // Emit per-digest ticket detail events (one per digest). Use deterministic order.
-        if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
-            keys := sortedDigestKeys(sp.DigestCounts)
-            for _, dg := range keys {
-                consumed := sp.DigestCounts[dg]
-                // Fetch post state
-                postUses := uint32(0)
-                method := ""
-                exp := uint64(0)
-                if t, ok := safd.sponsorKeeper.GetPolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
-                    postUses = t.UsesRemaining
-                    method = t.Method
-                    exp = t.ExpiryHeight
-                }
-                // Fall back to pre snapshot for method/expiry if post not found
-                if snap, ok := pre[dg]; ok {
-                    if method == "" { method = snap.method }
-                    if exp == 0 { exp = snap.expiry }
-                }
-                ctx.EventManager().EmitEvent(
-                    sdk.NewEvent(
-                        types.EventTypeSponsoredTxTicket,
-                        sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
-                        sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
-                        sdk.NewAttribute(types.AttributeKeyDigest, dg),
-                        sdk.NewAttribute(types.AttributeKeyMethod, method),
-                        sdk.NewAttribute(types.AttributeKeyUsesConsumed, fmt.Sprintf("%d", consumed)),
-                        sdk.NewAttribute(types.AttributeKeyUsesRemainingPre, fmt.Sprintf("%d", pre[dg].uses)),
-                        sdk.NewAttribute(types.AttributeKeyUsesRemainingPost, fmt.Sprintf("%d", postUses)),
-                        sdk.NewAttribute(types.AttributeKeyExpiryHeight, fmt.Sprintf("%d", exp)),
-                    ),
-                )
-            }
-        }
-    }
+		// Emit per-digest ticket detail events (one per digest). Use deterministic order.
+		if sp, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok && len(sp.DigestCounts) > 0 {
+			keys := sortedDigestKeys(sp.DigestCounts)
+			for _, dg := range keys {
+				consumed := sp.DigestCounts[dg]
+				// Fetch post state
+				postUses := uint32(0)
+				method := ""
+				exp := uint64(0)
+				if t, ok := safd.sponsorKeeper.GetActivePolicyTicket(ctx, contractAddr.String(), userAddr.String(), dg); ok {
+					postUses = t.UsesRemaining
+					method = t.Method
+					exp = t.ExpiryHeight
+				}
+				// Fall back to pre snapshot for method/expiry if post not found
+				if snap, ok := pre[dg]; ok {
+					if method == "" {
+						method = snap.method
+					}
+					if exp == 0 {
+						exp = snap.expiry
+					}
+				}
+				ctx.EventManager().EmitEvent(
+					sdk.NewEvent(
+						types.EventTypeSponsoredTxTicket,
+						sdk.NewAttribute(types.AttributeKeyContractAddress, contractAddr.String()),
+						sdk.NewAttribute(types.AttributeKeyUser, userAddr.String()),
+						sdk.NewAttribute(types.AttributeKeyDigest, dg),
+						sdk.NewAttribute(types.AttributeKeyMethod, method),
+						sdk.NewAttribute(types.AttributeKeyUsesConsumed, fmt.Sprintf("%d", consumed)),
+						sdk.NewAttribute(types.AttributeKeyUsesRemainingPre, fmt.Sprintf("%d", pre[dg].uses)),
+						sdk.NewAttribute(types.AttributeKeyUsesRemainingPost, fmt.Sprintf("%d", postUses)),
+						sdk.NewAttribute(types.AttributeKeyExpiryHeight, fmt.Sprintf("%d", exp)),
+					),
+				)
+			}
+		}
+	}
 
 	ctx.Logger().With("module", "sponsor-contract-tx").Info(
 		"sponsor fee deducted and user quota updated",
@@ -287,6 +302,13 @@ func SponsorTxFeeCheckerWithValidatorMinGasPrices(ctx sdk.Context, tx sdk.Tx) (s
 
 	feeCoins := feeTx.GetFee()
 	gas := feeTx.GetGas()
+	if gas == 0 || gas > uint64(math.MaxInt64) {
+		return nil, 0, errorsmod.Wrapf(
+			sdkerrors.ErrInvalidGasLimit,
+			"gas limit must be between 1 and %d",
+			int64(math.MaxInt64),
+		)
+	}
 
 	// Ensure that the provided fees meet a minimum threshold for the validator,
 	// if this is a CheckTx. This is only for local mempool purposes, and thus
@@ -319,6 +341,9 @@ func SponsorTxFeeCheckerWithValidatorMinGasPrices(ctx sdk.Context, tx sdk.Tx) (s
 // NOTE: This implementation should be used with a great consideration as it opens potential attack vectors
 // where txs with multiple coins could not be prioritize as expected.
 func getTxPriority(fee sdk.Coins, gas int64) int64 {
+	if gas <= 0 {
+		return 0
+	}
 	var priority int64
 	for _, c := range fee {
 		p := int64(math.MaxInt64)
@@ -338,10 +363,10 @@ func getTxPriority(fee sdk.Coins, gas int64) int64 {
 // This is used solely for emitting per-digest events to make their order stable
 // for off-chain consumers (indexers, explorers, etc.).
 func sortedDigestKeys(counts map[string]uint32) []string {
-    keys := make([]string, 0, len(counts))
-    for k := range counts {
-        keys = append(keys, k)
-    }
-    sort.Strings(keys)
-    return keys
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

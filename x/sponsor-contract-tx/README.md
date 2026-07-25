@@ -57,6 +57,7 @@ message ContractSponsor {
   int64 created_at = 6;
   int64 updated_at = 7;
   repeated cosmos.base.v1beta1.Coin max_grant_per_user = 8;
+  uint64 generation = 9;        // Persistent Sponsor lifecycle generation
 }
 ```
 
@@ -72,20 +73,28 @@ Two‑phase, method‑ticket based sponsorship:
   - Admin can set/update/delete sponsorship, set optional `ticket_issuer_address`, withdraw funds, issue/revoke tickets.
   - When `ticket_issuer_address` is set, both admin and issuer can issue/revoke.
   - Issuing/revoking requires the sponsor to exist for the contract.
+  - The global toggle pauses fee sponsorship in Ante only; lifecycle management, ticket revocation/issuance, and withdrawals remain available for safe operations.
+
+- Lifecycle isolation
+  - Tickets and user grant usage are bound to the Sponsor `generation`.
+  - Deleting a Sponsor rotates its persistent generation without scanning related state.
+  - Recreating a Sponsor for the same contract cannot reactivate old tickets or inherit old user grant usage.
+  - Historical tickets remain eligible for bounded expiry-index GC, while Ante and public queries expose only the current generation.
 
 - Deterministic, efficient parsing
   - Enforce exactly one top‑level key for sponsored messages; scan via streaming JSON decoder.
   - Guards: per‑message bytes cap, method name length cap, and JSON depth cap when skipping nested values.
 
-- Mempool/runtme behavior
+- Mempool/runtime behavior
   - Self‑pay priority in both CheckTx and DeliverTx when user can afford declared fee.
-  - With a valid ticket and user cannot self‑pay: CheckTx marks a gate after prechecks; DeliverTx injects sponsor payment and consumes tickets.
+  - With a valid ticket and user cannot self‑pay: CheckTx reserves sponsor funds, quota, and ticket uses in isolated check-state; DeliverTx independently commits the same transitions.
   - Feegrant precedence over sponsorship.
 
 - Events and housekeeping
   - `policy_ticket_issued`, `policy_ticket_revoked` (revoked includes `method`), `ticket_uses_clamped`, `policy_ticket_issue_conflict`.
   - `sponsored_transaction` summary event; and one `sponsored_tx_ticket` event per digest with pre/post uses and consumed counts (DeliverTx only).
-  - Per‑block GC removes expired tickets (`ticket_gc_per_block`). Genesis import/export supports tickets with duplicate detection.
+  - Per-block GC removes expired tickets through the ordered expiry index. `ticket_gc_per_block` bounds inspected index entries, is independent of chain height, and has a hard maximum of 1000. Genesis import/export supports tickets with duplicate detection.
+  - A ticket remains valid at its `expiry_height` and expires starting at the next block; replacement follows the same boundary.
 
 ## Spam Prevention
 
@@ -102,7 +111,7 @@ Layered defenses to reduce spam/DoS:
 
 - Early short‑circuits
   - Self‑pay in both CheckTx/DeliverTx when user can afford the declared fee.
-  - With a valid ticket and user cannot self‑pay, CheckTx validates user grant limit and sponsor balance against the declared fee to avoid mempool pollution.
+  - With a valid ticket and user cannot self‑pay, CheckTx validates and reserves user grant, sponsor balance, and ticket uses to avoid mempool over-admission.
 
 - Accounting and visibility
   - Per‑user grant usage accounting; clamp events and skip reasons emit for observability.
@@ -126,6 +135,7 @@ message UserGrantUsage {
   string contract_address = 2;
   repeated cosmos.base.v1beta1.Coin total_grant_used = 3;
   int64 last_used_time = 4;
+  uint64 generation = 5;
 }
 ```
 
@@ -159,11 +169,11 @@ flowchart TD
     M -- No --> P[Fallback: user pays or insufficient funds error]
     M -- Yes --> N[Precheck: sponsor account exists and balance >= fee]
     N -- No --> Q[Error: sponsor insufficient]
-    N -- Yes --> R{CheckTx or DeliverTx?}
-    R -- CheckTx --> S[Mark ticket gate; pass to next]
-    R -- DeliverTx --> T[Inject SponsorPaymentInfo; pass to next]
+    N -- Yes --> T[Inject SponsorPaymentInfo; pass to next]
     T --> U[SponsorAwareDeductFeeDecorator]
-    U --> W[Deduct sponsor fee; update usage; consume tickets; emit events]
+    U --> R{CheckTx or DeliverTx?}
+    R -- CheckTx --> S[Reserve fee, usage and ticket uses in check-state]
+    R -- DeliverTx --> W[Deduct fee; update usage; consume tickets; emit events]
     Z --> V
     S --> V
     W --> V
@@ -231,6 +241,8 @@ All sponsored transactions must pass structural checks **before** ticket/eligibi
 
 - Only contract admins can register/modify sponsorship settings
 - Admin verification through wasm keeper queries
+- `creator_address` is audit metadata only and never regains authority after an admin transfer or clear
+- `MsgClearAdmin` is rejected while Sponsor state exists. The current admin must withdraw all Sponsor funds and delete the Sponsor before permanently clearing the Wasm admin
 - Immutable sponsorship settings by unauthorized parties
 
 ### Anti-Abuse Mechanisms
@@ -242,7 +254,7 @@ All sponsored transactions must pass structural checks **before** ticket/eligibi
 5. **Gas Limiting**: JSON scanning bounded by size and depth; no contract query gas
 6. **Transaction Structure Validation**: Only single-contract, multiple-message transactions allowed
 7. **Feegrant Priority**: Feegrant takes precedence over sponsorship to prevent conflicts
-8. **Global Toggle**: Sponsorship can be globally disabled via governance parameters
+8. **Global Toggle**: Governance can pause sponsored fee execution without blocking Sponsor administration or cleanup
 9. **Deterministic Method Extraction**: Enforce a single top‑level JSON field and extract method deterministically from raw tx JSON
 10. **Whitelist by Design (Recommended)**: The method‑ticket model is a whitelist. Only users who receive tickets from the contract admin or a delegated issuer can receive sponsorship. Admin/issuer can:
    - Maintain an off‑chain/on‑chain whitelist and issue tickets to listed users only
@@ -495,11 +507,11 @@ Governance‑controlled parameters:
 
 - `sponsorship_enabled` (bool)
 - `policy_ticket_ttl_blocks` (uint32, [1, 1000])
-- `max_exec_msgs_per_tx_for_sponsor` (uint32, 0 disables cap)
-- `max_policy_exec_msg_bytes` (uint32, <= 1,048,576)
+- `max_exec_msgs_per_tx_for_sponsor` (uint32, [1, 100], default 25)
+- `max_policy_exec_msg_bytes` (uint32, [1, 1,048,576], default 65,536)
 - `max_method_ticket_uses_per_issue` (uint32, [1, 100])
-- `ticket_gc_per_block` (uint32)
-- `max_method_name_bytes` (uint32, 0 = no cap; must be <= 256 when set)
+- `ticket_gc_per_block` (uint32, 0 disables GC; maximum 1000, default 200)
+- `max_method_name_bytes` (uint32, [1, 256], default 64)
 - `max_method_json_depth` (uint32, 0 = default 20; must be <= 64 when set)
 
 Denomination: `peaka` for all grants and fee accounting. Update via governance `MsgUpdateParams`.
@@ -535,6 +547,8 @@ dorad tx sponsor revoke-ticket [contract-address] [user-address] [method]   --fr
 
 - Critical for preventing unauthorized sponsorship registration
 - Verified through wasm keeper queries to ensure only actual contract admins can register
+- The current Wasm admin is the only Sponsor manager; there is no fallback to the original Sponsor creator
+- Admin-clear workflow: withdraw Sponsor funds, delete the Sponsor (which invalidates its ticket generation), then clear the Wasm admin
 
 ### 2. Policy Implementation
 
@@ -557,9 +571,8 @@ dorad tx sponsor revoke-ticket [contract-address] [user-address] [method]   --fr
 
 ### 5. Gas Considerations
 
-- Policy queries consume gas during transaction validation
-- Set appropriate gas limits for contract queries
-  Keep contract logic efficient; avoid heavy on-chain work regardless of sponsorship
+- Sponsored Ante validation performs bounded JSON scanning and exact ticket KV lookups.
+- Set appropriate transaction gas limits and keep contract execution efficient regardless of sponsorship.
 
 ### Operational Best Practices
 

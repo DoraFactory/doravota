@@ -1,6 +1,8 @@
 package keeper
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -88,6 +90,239 @@ func setupMsgServerEnv(t *testing.T) (Keeper, sdk.Context, types.MsgServer, *Moc
 	keeper, ctx, mockWasmKeeper, authKeeper, bankKeeper := setupKeeperWithDeps(t)
 	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 	return keeper, ctx, msgServer, mockWasmKeeper, bankKeeper
+}
+
+func TestMsgServerRejectsNonCanonicalStateAddresses(t *testing.T) {
+	keeper, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x11}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x12}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x13}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	require.Equal(
+		t,
+		keeper.ComputeMethodDigestSingle(contract.String(), "execute"),
+		keeper.ComputeMethodDigestSingle(strings.ToUpper(contract.String()), "execute"),
+	)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: strings.ToUpper(contract.String()),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.Error(t, err)
+	require.False(t, keeper.HasSponsor(ctx, contract.String()))
+
+	_, err = msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         strings.ToUpper(admin.String()),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.Error(t, err)
+	require.False(t, keeper.HasSponsor(ctx, contract.String()))
+
+	_, err = msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     strings.ToUpper(user.String()),
+		Method:          "execute",
+		Uses:            1,
+	})
+	require.Error(t, err)
+}
+
+func TestAdminClearedDisablesManagerAndTicketIssuer(t *testing.T) {
+	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x21}, 20))
+	issuer := sdk.AccAddress(bytes.Repeat([]byte{0x22}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x23}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x24}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		TicketIssuerAddress: issuer.String(),
+		IsSponsored:         true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "existing",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+
+	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
+	wasmKeeper.SetContractInfo(contract.String(), "")
+
+	for _, caller := range []sdk.AccAddress{admin, issuer} {
+		_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+			Creator:         caller.String(),
+			ContractAddress: contract.String(),
+			UserAddress:     user.String(),
+			Method:          "new",
+			Uses:            1,
+		})
+		require.ErrorIs(t, err, types.ErrContractNotAdmin)
+
+		_, err = msgServer.RevokePolicyTicket(goCtx, &types.MsgRevokePolicyTicket{
+			Creator:         caller.String(),
+			ContractAddress: contract.String(),
+			UserAddress:     user.String(),
+			Method:          "existing",
+		})
+		require.ErrorIs(t, err, types.ErrContractNotAdmin)
+	}
+}
+
+func TestUpdateSponsorCanExplicitlyClearTicketIssuer(t *testing.T) {
+	k, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x31}, 20))
+	issuer := sdk.AccAddress(bytes.Repeat([]byte{0x32}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x33}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x34}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		TicketIssuerAddress: issuer.String(),
+		IsSponsored:         false,
+	})
+	require.NoError(t, err)
+
+	// Omitting both update fields retains the current issuer for old clients.
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     false,
+	})
+	require.NoError(t, err)
+	stored, found := k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Equal(t, issuer.String(), stored.TicketIssuerAddress)
+
+	// Conflicting replace+clear requests are rejected without changing state.
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		IsSponsored:         false,
+		TicketIssuerAddress: issuer.String(),
+		ClearTicketIssuer:   true,
+	})
+	require.Error(t, err)
+	stored, found = k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Equal(t, issuer.String(), stored.TicketIssuerAddress)
+
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:           admin.String(),
+		ContractAddress:   contract.String(),
+		IsSponsored:       false,
+		ClearTicketIssuer: true,
+	})
+	require.NoError(t, err)
+	stored, found = k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Empty(t, stored.TicketIssuerAddress)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         issuer.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "after-clear",
+		Uses:            1,
+	})
+	require.ErrorIs(t, err, types.ErrUnauthorized)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "after-clear-admin",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+	digest := k.ComputeMethodDigestSingle(contract.String(), "after-clear-admin")
+	_, found = k.GetActivePolicyTicket(ctx, contract.String(), user.String(), digest)
+	require.True(t, found)
+}
+
+func TestGlobalDisablePausesExecutionButAllowsLifecycleManagement(t *testing.T) {
+	k, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = false
+	require.NoError(t, k.SetParams(ctx, params))
+
+	admin := sdk.AccAddress([]byte("disabled_admin______"))
+	contract := sdk.AccAddress([]byte("disabled_contract___"))
+	user := sdk.AccAddress([]byte("disabled_user_______"))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     true,
+		MaxGrantPerUser: []*sdk.Coin{{
+			Denom:  types.SponsorshipDenom,
+			Amount: sdk.NewInt(100),
+		}},
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     false,
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "prepare",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+
+	_, err = msgServer.DeleteSponsor(goCtx, &types.MsgDeleteSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+	})
+	require.NoError(t, err)
+	require.False(t, k.HasSponsor(ctx, contract.String()))
 }
 
 func TestIssuePolicyTicket_UsesClampAndDecrement(t *testing.T) {
@@ -858,12 +1093,22 @@ func TestIssuePolicyTicket_ReplaceExpiredOrConsumed(t *testing.T) {
 	mockWasmKeeper.SetContractInfo(contract.String(), admin.String())
 	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract.String(), IsSponsored: true}))
 
-	// Insert an expired ticket for method "inc"
+	// A ticket remains active at its expiry height and cannot be replaced yet.
 	md := keeper.ComputeMethodDigest(contract.String(), []string{"inc"})
-	expired := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
-	require.NoError(t, keeper.SetPolicyTicket(ctx, expired))
+	boundary := types.PolicyTicket{ContractAddress: contract.String(), UserAddress: user.String(), Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()), UsesRemaining: 1, Method: "inc"}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, boundary))
 
-	// Issue again -> should create a new one
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "inc",
+		Uses:            2,
+	})
+	require.ErrorIs(t, err, types.ErrPolicyTicketAlreadyExists)
+
+	// One block later the ticket is expired and can be replaced.
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
 		Creator:         admin.String(),
 		ContractAddress: contract.String(),
@@ -2148,10 +2393,14 @@ func TestIssuePolicyTicket_ClampToParamUpperBound(t *testing.T) {
 
 func TestIssuePolicyTicket_ParamZeroFallbackTreatsAsOne(t *testing.T) {
 	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-	// Force an invalid param using direct SetParams (bypassing governance validation)
+	// Inject invalid legacy/corrupt state directly to verify the defensive
+	// effective-value fallback. SetParams itself rejects this value.
 	p := types.DefaultParams()
 	p.MaxMethodTicketUsesPerIssue = 0
-	require.NoError(t, keeper.SetParams(ctx, p))
+	require.Error(t, keeper.SetParams(ctx, p))
+	bz, err := keeper.cdc.Marshal(&p)
+	require.NoError(t, err)
+	ctx.KVStore(keeper.storeKey).Set(types.ParamsKey, bz)
 
 	contract := sdk.AccAddress([]byte("contract_issue_fallback__")).String()
 	admin := sdk.AccAddress([]byte("admin_issue_fallback____")).String()

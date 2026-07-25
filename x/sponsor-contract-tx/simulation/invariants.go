@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -20,17 +21,22 @@ const (
 // AllInvariants runs all invariants for the sponsor module
 func AllInvariants(k keeper.Keeper, ak types.AccountKeeper, bk types.BankKeeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
-		res, stop := SponsorConsistencyInvariant(k)(ctx)
+		res, stop := keeper.LifecycleInvariant(k)(ctx)
+		if stop {
+			return res, stop
+		}
+
+		res, stop = keeper.ParamsInvariant(k)(ctx)
+		if stop {
+			return res, stop
+		}
+
+		res, stop = SponsorConsistencyInvariant(k)(ctx)
 		if stop {
 			return res, stop
 		}
 
 		res, stop = GrantUsageConsistencyInvariant(k)(ctx)
-		if stop {
-			return res, stop
-		}
-
-		res, stop = ParamsConsistencyInvariant(k)(ctx)
 		if stop {
 			return res, stop
 		}
@@ -96,15 +102,33 @@ func SponsorConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 			}
 		}
 
-		// Check 3: Contract addresses should be valid bech32 (if possible to validate)
+		// Check 3: addresses must be canonical and the sponsor account must be
+		// derived from the contract address.
 		for _, sponsor := range sponsors {
-			if sponsor.ContractAddress == "" {
+			contractAddress, err := types.AccAddressFromCanonicalBech32(sponsor.ContractAddress)
+			if err != nil {
 				broken = true
-				msg += "found sponsor with empty contract address\n"
+				msg += fmt.Sprintf("sponsor has invalid contract address %q\n", sponsor.ContractAddress)
+				continue
 			}
-			if sponsor.CreatorAddress == "" {
+			if err := types.ValidateCanonicalAddress(sponsor.CreatorAddress); err != nil {
 				broken = true
-				msg += fmt.Sprintf("sponsor for contract %s has empty creator address\n", sponsor.ContractAddress)
+				msg += fmt.Sprintf("sponsor for contract %s has invalid creator address\n", sponsor.ContractAddress)
+			}
+			if err := types.ValidateCanonicalAddress(sponsor.SponsorAddress); err != nil {
+				broken = true
+				msg += fmt.Sprintf("sponsor for contract %s has invalid sponsor address\n", sponsor.ContractAddress)
+				continue
+			}
+			expected := sdk.AccAddress(address.Derive(contractAddress, []byte("sponsor"))).String()
+			if sponsor.SponsorAddress != expected {
+				broken = true
+				msg += fmt.Sprintf(
+					"sponsor address mismatch for contract %s: expected %s, got %s\n",
+					sponsor.ContractAddress,
+					expected,
+					sponsor.SponsorAddress,
+				)
 			}
 		}
 
@@ -120,17 +144,30 @@ func GrantUsageConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 			msg    string
 		)
 
-		sponsors := k.GetAllSponsors(ctx)
-		sponsorMap := make(map[string]types.ContractSponsor)
-		for _, sponsor := range sponsors {
-			sponsorMap[sponsor.ContractAddress] = sponsor
-		}
-
-		// Note: For comprehensive invariant checking, we would need to iterate through all user grant usage entries
-		// However, this requires access to the internal store implementation
-		// For now, we'll validate the sponsors' consistency only
-
-		// In a full implementation, this would check all user grant usage entries against their sponsors
+		k.IterateUserGrantUsages(ctx, func(usage types.UserGrantUsage) bool {
+			if err := types.ValidateCanonicalAddress(usage.UserAddress); err != nil {
+				broken = true
+				msg += fmt.Sprintf("grant usage has invalid user address %q\n", usage.UserAddress)
+			}
+			if err := types.ValidateContractAddress(usage.ContractAddress); err != nil {
+				broken = true
+				msg += fmt.Sprintf("grant usage has invalid contract address %q\n", usage.ContractAddress)
+			}
+			for _, coin := range usage.TotalGrantUsed {
+				switch {
+				case coin == nil:
+					broken = true
+					msg += fmt.Sprintf("grant usage for %s/%s has nil coin\n", usage.ContractAddress, usage.UserAddress)
+				case coin.Denom != types.SponsorshipDenom:
+					broken = true
+					msg += fmt.Sprintf("grant usage for %s/%s has invalid denom %s\n", usage.ContractAddress, usage.UserAddress, coin.Denom)
+				case coin.Amount.IsNegative():
+					broken = true
+					msg += fmt.Sprintf("grant usage for %s/%s has negative amount\n", usage.ContractAddress, usage.UserAddress)
+				}
+			}
+			return false
+		})
 
 		return sdk.FormatInvariant(types.ModuleName, InvariantGrantUsageConsistency, msg), broken
 	}
@@ -146,11 +183,11 @@ func ParamsConsistencyInvariant(k keeper.Keeper) sdk.Invariant {
 
 		params := k.GetParams(ctx)
 
-        // Parameter validation
-        if err := params.Validate(); err != nil {
-            broken = true
-            msg += fmt.Sprintf("parameter validation failed: %v\n", err)
-        }
+		// Parameter validation
+		if err := params.Validate(); err != nil {
+			broken = true
+			msg += fmt.Sprintf("parameter validation failed: %v\n", err)
+		}
 
 		return sdk.FormatInvariant(types.ModuleName, InvariantParamsConsistency, msg), broken
 	}
@@ -164,37 +201,20 @@ func BalanceConsistencyInvariant(k keeper.Keeper, bk types.BankKeeper) sdk.Invar
 			msg    string
 		)
 
-		// Note: Module account balance checking would require access to module account keeper
-		// For now, we skip this validation as it requires additional keeper dependencies
-
 		sponsors := k.GetAllSponsors(ctx)
-
-		for _, sponsor := range sponsors {
-			if sponsor.IsSponsored {
-				for _, coin := range sponsor.MaxGrantPerUser {
-					if coin != nil {
-						// This is per user, so in theory unlimited users could use this
-						// We check that individual grants don't exceed reasonable bounds
-						if coin.Amount.GT(sdk.NewInt(100000000)) { // 100M peaka per user seems excessive
-							broken = true
-							msg += fmt.Sprintf("sponsor %s has excessive MaxGrantPerUser: %s\n", sponsor.ContractAddress, coin.Amount.String())
-						}
-					}
-				}
-			}
+		if bk == nil {
+			return sdk.FormatInvariant(types.ModuleName, InvariantBalanceConsistency, msg), broken
 		}
-
-		// Check that module has some balance if there are sponsored contracts
-		sponsoredCount := 0
 		for _, sponsor := range sponsors {
-			if sponsor.IsSponsored {
-				sponsoredCount++
+			sponsorAddress, err := types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+			if err != nil {
+				continue
 			}
-		}
-
-		if sponsoredCount > 0 {
-			// This might be normal in some cases, just log it
-			ctx.Logger().Info("Module has sponsored contracts", "sponsored_count", sponsoredCount)
+			spendable := bk.SpendableCoins(ctx, sponsorAddress)
+			if !spendable.IsValid() || spendable.IsAnyNegative() {
+				broken = true
+				msg += fmt.Sprintf("sponsor %s has invalid spendable balance %s\n", sponsor.ContractAddress, spendable)
+			}
 		}
 
 		return sdk.FormatInvariant(types.ModuleName, InvariantBalanceConsistency, msg), broken
