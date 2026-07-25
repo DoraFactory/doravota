@@ -35,6 +35,16 @@ message GenesisState {
   // also be included; they will be garbage-collected by the module's per-block
   // GC routine.
   repeated PolicyTicket policy_tickets = 4;
+  // Persistent lifecycle generations, including tombstones for contracts whose
+  // Sponsor and historical ticket/usage records have already been removed.
+  repeated ContractGeneration contract_generations = 5;
+}
+
+// ContractGeneration preserves the current Sponsor lifecycle generation for a
+// contract independently of active Sponsor, ticket, and usage records.
+message ContractGeneration {
+  string contract_address = 1;
+  uint64 generation = 2;
 }
 
 // UserGrantUsage tracks how much grant a user has used for a specific contract

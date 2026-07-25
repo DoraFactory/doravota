@@ -591,8 +591,17 @@ func (k Keeper) IsContractAdmin(ctx sdk.Context, contractAddr string, userAddr s
 	// Get contract info from wasm keeper (we know it exists from validation above)
 	contractInfo := k.wasmKeeper.GetContractInfo(ctx, contractAccAddr)
 
-	// Check if the user is the admin
-	return contractInfo.Admin == userAddr.String(), nil
+	if contractInfo.Admin == "" {
+		return false, nil
+	}
+	adminAddr, err := sdk.AccAddressFromBech32(contractInfo.Admin)
+	if err != nil {
+		return false, errorsmod.Wrap(
+			sdkerrors.ErrInvalidAddress,
+			"contract stores an invalid admin address",
+		)
+	}
+	return adminAddr.Equals(userAddr), nil
 }
 
 // HasContractAdmin reports whether the contract still has a current Wasm

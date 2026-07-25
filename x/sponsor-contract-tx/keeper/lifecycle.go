@@ -5,6 +5,7 @@ import (
 	"math"
 
 	errorsmod "cosmossdk.io/errors"
+	"github.com/cosmos/cosmos-sdk/store/prefix"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
@@ -19,6 +20,41 @@ func (k Keeper) GetSponsorGeneration(ctx sdk.Context, contractAddr string) uint6
 		return 0
 	}
 	return binary.BigEndian.Uint64(bz)
+}
+
+// IterateSponsorGenerations visits every persistent lifecycle generation in
+// deterministic key order, including tombstones without any remaining Sponsor,
+// ticket, or usage state.
+func (k Keeper) IterateSponsorGenerations(
+	ctx sdk.Context,
+	cb func(contractAddr string, generation uint64) (stop bool),
+) error {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.SponsorGenerationKeyPrefix)
+	iterator := sdk.KVStorePrefixIterator(store, nil)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		if len(iterator.Value()) != 8 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"malformed sponsor generation for contract %s: expected 8 bytes, got %d",
+				string(iterator.Key()),
+				len(iterator.Value()),
+			)
+		}
+		generation := binary.BigEndian.Uint64(iterator.Value())
+		if generation == 0 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"malformed sponsor generation for contract %s: generation must be positive",
+				string(iterator.Key()),
+			)
+		}
+		if cb(string(iterator.Key()), generation) {
+			return nil
+		}
+	}
+	return nil
 }
 
 func (k Keeper) setSponsorGeneration(ctx sdk.Context, contractAddr string, generation uint64) error {

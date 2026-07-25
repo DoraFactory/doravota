@@ -88,3 +88,31 @@ func TestDeleteSponsorDoesNotWrapGeneration(t *testing.T) {
 	require.True(t, k.HasSponsor(ctx, contract))
 	require.Equal(t, uint64(math.MaxUint64), k.GetSponsorGeneration(ctx, contract))
 }
+
+func TestIterateSponsorGenerationsRejectsMalformedState(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value []byte
+	}{
+		{name: "wrong encoded length", value: []byte{1}},
+		{name: "zero generation", value: make([]byte, 8)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k, ctx := setupKeeperSimple(t)
+			ctx.KVStore(k.storeKey).Set(
+				types.GetSponsorGenerationKey("contract"),
+				tc.value,
+			)
+
+			called := false
+			err := k.IterateSponsorGenerations(ctx, func(string, uint64) bool {
+				called = true
+				return false
+			})
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "malformed sponsor generation")
+			require.False(t, called)
+		})
+	}
+}

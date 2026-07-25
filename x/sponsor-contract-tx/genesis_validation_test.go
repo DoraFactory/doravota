@@ -1,6 +1,7 @@
 package sponsor_test
 
 import (
+	"math"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -84,4 +85,35 @@ func TestInitGenesisDoesNotMutateInputGenerations(t *testing.T) {
 	storedTicket, found := k.GetPolicyTicket(ctx, contract, user, digest)
 	require.True(t, found)
 	require.Equal(t, uint64(1), storedTicket.Generation)
+}
+
+func TestValidateGenesisRejectsAmbiguousOrOverflowingOrphanTickets(t *testing.T) {
+	contract := sdk.AccAddress([]byte("orphan_gen_contract_")).String()
+	user := sdk.AccAddress([]byte("orphan_gen_user_____")).String()
+	params := types.DefaultParams()
+	genesis := types.GenesisState{
+		Params: &params,
+		PolicyTickets: []*types.PolicyTicket{{
+			ContractAddress: contract,
+			UserAddress:     user,
+			Digest:          "digest",
+			UsesRemaining:   1,
+			ExpiryHeight:    10,
+		}},
+	}
+
+	require.Error(t, types.ValidateGenesis(genesis))
+
+	genesis.PolicyTickets[0].Generation = math.MaxUint64
+	require.Error(t, types.ValidateGenesis(genesis))
+
+	genesis.ContractGenerations = []*types.ContractGeneration{{
+		ContractAddress: contract,
+		Generation:      math.MaxUint64,
+	}}
+	genesis.PolicyTickets[0].Generation = math.MaxUint64 - 1
+	require.NoError(t, types.ValidateGenesis(genesis))
+
+	genesis.PolicyTickets[0].Generation = math.MaxUint64
+	require.Error(t, types.ValidateGenesis(genesis))
 }

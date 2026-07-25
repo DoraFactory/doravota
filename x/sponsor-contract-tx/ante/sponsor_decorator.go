@@ -61,10 +61,8 @@ func (safd SponsorAwareDeductFeeDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (newCtx sdk.Context, err error) {
-	// In CheckTx, if ExecuteTicketGate marked this tx as authorized via a valid ticket,
-	// skip standard fee checks and proceed. This enables sponsored txs to enter the mempool
-	// without requiring the user to prepay fees.
-	// Check if this transaction has sponsor payment information in context using type-safe key
+	// Check if this transaction has sponsor payment information in context using
+	// the package-private, type-safe key.
 	if sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo); ok {
 		if sponsorPayment.IsSponsored {
 			// Handle sponsor fee payment directly (two-phase aware; digestion is driven by DigestCounts on context)
@@ -116,6 +114,14 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 	if feeGranter != nil && !feeGranter.Empty() {
 		// Delegate to standard fee decorator to handle feegrant properly
 		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
+	}
+
+	sponsorPayment, ok := ctx.Value(sponsorPaymentKey{}).(SponsorPaymentInfo)
+	if !ok || !sponsorPayment.IsSponsored || len(sponsorPayment.DigestCounts) == 0 {
+		return ctx, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"sponsored fee payment requires policy ticket digests",
+		)
 	}
 
 	var priority int64

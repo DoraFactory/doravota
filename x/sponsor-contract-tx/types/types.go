@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -386,6 +387,12 @@ func (msg MsgUpdateSponsor) ValidateBasic() error {
 		return err
 	}
 
+	if msg.ClearTicketIssuer && msg.TicketIssuerAddress != "" {
+		return errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"ticket issuer address cannot be set and cleared in the same update",
+		)
+	}
 	// Validate optional ticket issuer address when provided
 	if msg.TicketIssuerAddress != "" {
 		if err := ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
@@ -466,17 +473,44 @@ func NewGenesisState(sponsors []*ContractSponsor, userGrantUsages []*UserGrantUs
 func DefaultGenesisState() *GenesisState {
 	params := DefaultParams()
 	return &GenesisState{
-		Sponsors:        []*ContractSponsor{},
-		Params:          &params,
-		UserGrantUsages: []*UserGrantUsage{},
-		PolicyTickets:   []*PolicyTicket{},
+		Sponsors:            []*ContractSponsor{},
+		Params:              &params,
+		UserGrantUsages:     []*UserGrantUsage{},
+		PolicyTickets:       []*PolicyTicket{},
+		ContractGenerations: []*ContractGeneration{},
 	}
 }
 
 // ValidateGenesis validates the genesis state
 func ValidateGenesis(data GenesisState) error {
+	generationsByContract := make(map[string]uint64, len(data.ContractGenerations))
+	for _, contractGeneration := range data.ContractGenerations {
+		if contractGeneration == nil {
+			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "contract generation cannot be nil")
+		}
+		if err := ValidateContractAddress(contractGeneration.ContractAddress); err != nil {
+			return err
+		}
+		if contractGeneration.Generation == 0 {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"contract generation must be positive for contract %s",
+				contractGeneration.ContractAddress,
+			)
+		}
+		if _, exists := generationsByContract[contractGeneration.ContractAddress]; exists {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"duplicate contract generation for contract %s",
+				contractGeneration.ContractAddress,
+			)
+		}
+		generationsByContract[contractGeneration.ContractAddress] = contractGeneration.Generation
+	}
+
 	// Validate sponsors: duplicates + deep validation
 	sponsorsByContract := make(map[string]*ContractSponsor)
+	activeGenerations := make(map[string]uint64)
 	for _, sponsor := range data.Sponsors {
 		if sponsor == nil {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "sponsor cannot be nil")
@@ -493,6 +527,23 @@ func ValidateGenesis(data GenesisState) error {
 			return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "duplicate sponsor contract address: %s", sponsor.ContractAddress)
 		}
 		sponsorsByContract[sponsor.ContractAddress] = sponsor
+		activeGeneration := sponsor.Generation
+		if activeGeneration == 0 {
+			activeGeneration = generationsByContract[sponsor.ContractAddress]
+			if activeGeneration == 0 {
+				activeGeneration = 1
+			}
+		}
+		if declared := generationsByContract[sponsor.ContractAddress]; declared != 0 && declared != activeGeneration {
+			return errorsmod.Wrapf(
+				sdkerrors.ErrInvalidRequest,
+				"active sponsor generation %d does not match contract generation %d for contract %s",
+				activeGeneration,
+				declared,
+				sponsor.ContractAddress,
+			)
+		}
+		activeGenerations[sponsor.ContractAddress] = activeGeneration
 
 		// Creator address validation
 		if sponsor.CreatorAddress == "" {
@@ -618,12 +669,26 @@ func ValidateGenesis(data GenesisState) error {
 			if usage.Generation == 0 {
 				return errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "user grant usage references unknown sponsor contract: %s", usage.ContractAddress)
 			}
+			if declared := generationsByContract[usage.ContractAddress]; declared != 0 {
+				if usage.Generation >= declared {
+					return errorsmod.Wrapf(
+						sdkerrors.ErrInvalidRequest,
+						"historical usage generation %d is not older than contract generation %d for contract %s",
+						usage.Generation,
+						declared,
+						usage.ContractAddress,
+					)
+				}
+			} else if usage.Generation == math.MaxUint64 {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"cannot derive deleted sponsor generation after MaxUint64 for contract %s",
+					usage.ContractAddress,
+				)
+			}
 			continue
 		}
-		sponsorGeneration := sponsor.Generation
-		if sponsorGeneration == 0 {
-			sponsorGeneration = 1
-		}
+		sponsorGeneration := activeGenerations[sponsor.ContractAddress]
 		usageGeneration := usage.Generation
 		if usageGeneration == 0 {
 			usageGeneration = sponsorGeneration
@@ -671,10 +736,7 @@ func ValidateGenesis(data GenesisState) error {
 			return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "policy ticket method too long")
 		}
 		if sponsor, found := sponsorsByContract[t.ContractAddress]; found {
-			sponsorGeneration := sponsor.Generation
-			if sponsorGeneration == 0 {
-				sponsorGeneration = 1
-			}
+			sponsorGeneration := activeGenerations[sponsor.ContractAddress]
 			ticketGeneration := t.Generation
 			if ticketGeneration == 0 {
 				ticketGeneration = sponsorGeneration
@@ -685,6 +747,31 @@ func ValidateGenesis(data GenesisState) error {
 					"policy ticket generation %d exceeds sponsor generation %d for contract %s",
 					ticketGeneration,
 					sponsorGeneration,
+					t.ContractAddress,
+				)
+			}
+		} else {
+			if t.Generation == 0 {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"policy ticket references unknown sponsor contract without a generation: %s",
+					t.ContractAddress,
+				)
+			}
+			if declared := generationsByContract[t.ContractAddress]; declared != 0 {
+				if t.Generation >= declared {
+					return errorsmod.Wrapf(
+						sdkerrors.ErrInvalidRequest,
+						"historical ticket generation %d is not older than contract generation %d for contract %s",
+						t.Generation,
+						declared,
+						t.ContractAddress,
+					)
+				}
+			} else if t.Generation == math.MaxUint64 {
+				return errorsmod.Wrapf(
+					sdkerrors.ErrInvalidRequest,
+					"cannot derive deleted sponsor generation after MaxUint64 for contract %s",
 					t.ContractAddress,
 				)
 			}

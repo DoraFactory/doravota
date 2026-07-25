@@ -655,6 +655,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_InitExport() {
             UsesRemaining:   2,
             IssuedHeight:    uint64(suite.ctx.BlockHeight()),
             Method:          "inc",
+            Generation:      1,
         }},
     }
 
@@ -693,6 +694,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_GCRemovesExpired() {
             UsesRemaining:   1,
             IssuedHeight:    0,
             Method:          "inc",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -790,6 +792,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedAndExpired_GcRe
             Consumed:        true,
             IssuedHeight:    0,
             Method:          "inc",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -819,6 +822,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ConsumedButUnexpired_Pr
             Consumed:        true,
             IssuedHeight:    1,
             Method:          "dec",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -857,6 +861,7 @@ func (suite *GenesisTestSuite) TestGenesis_PolicyTickets_ZeroUsesConsumed() {
             Consumed:        true,
             IssuedHeight:    1,
             Method:          "ping",
+            Generation:      1,
         }},
     }
     sponsor.InitGenesis(suite.ctx, suite.keeper, *gen)
@@ -888,6 +893,7 @@ func (suite *GenesisTestSuite) TestValidateGenesis_PolicyTicket_MethodOptional()
             UsesRemaining:   1,
             IssuedHeight:    1,
             Method:          "",
+            Generation:      1,
         }},
     }
     err := types.ValidateGenesis(*g)
@@ -1095,6 +1101,27 @@ func TestDeletedSponsorLifecycleSurvivesGenesis(t *testing.T) {
 	usage := k.GetUserGrantUsage(ctx, user, contract)
 	require.Equal(t, uint64(5), usage.Generation)
 	require.Empty(t, usage.TotalGrantUsed)
+}
+
+func TestPureSponsorGenerationTombstoneSurvivesGenesisRoundTrip(t *testing.T) {
+	k, ctx := setupKeeper(t)
+	contract := sdk.AccAddress([]byte("tombstone_contract__")).String()
+
+	require.NoError(t, k.SetSponsorGenerationForGenesis(ctx, contract, 7))
+	exported := sponsor.ExportGenesis(ctx, k)
+	require.NoError(t, types.ValidateGenesis(*exported))
+	require.Len(t, exported.ContractGenerations, 1)
+	require.Equal(t, contract, exported.ContractGenerations[0].ContractAddress)
+	require.Equal(t, uint64(7), exported.ContractGenerations[0].Generation)
+
+	k2, ctx2 := setupKeeper(t)
+	sponsor.InitGenesis(ctx2, k2, *exported)
+	require.Equal(t, uint64(7), k2.GetSponsorGeneration(ctx2, contract))
+
+	require.NoError(t, k2.SetSponsor(ctx2, types.ContractSponsor{ContractAddress: contract}))
+	recreated, found := k2.GetSponsor(ctx2, contract)
+	require.True(t, found)
+	require.Equal(t, uint64(7), recreated.Generation)
 }
 
 func TestGenesisRoundTripAfterGrantLimitReduction(t *testing.T) {

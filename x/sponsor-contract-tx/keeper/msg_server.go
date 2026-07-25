@@ -28,6 +28,14 @@ func NewMsgServerImplWithDeps(keeper Keeper, bk types.BankKeeper, ak types.AuthK
 
 var _ types.MsgServer = msgServer{}
 
+func matchesTicketIssuer(sponsor types.ContractSponsor, creator sdk.AccAddress) bool {
+	if sponsor.TicketIssuerAddress == "" {
+		return false
+	}
+	issuer, err := types.AccAddressFromCanonicalBech32(sponsor.TicketIssuerAddress)
+	return err == nil && issuer.Equals(creator)
+}
+
 // SetSponsor handles MsgSetSponsor
 func (k msgServer) SetSponsor(goCtx context.Context, msg *types.MsgSetSponsor) (*types.MsgSetSponsorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
@@ -179,7 +187,15 @@ func (k msgServer) UpdateSponsor(goCtx context.Context, msg *types.MsgUpdateSpon
 	// Update the sponsor
 	// Determine ticket issuer address
 	issuer := existingSponsor.TicketIssuerAddress
-	if msg.TicketIssuerAddress != "" {
+	switch {
+	case msg.ClearTicketIssuer && msg.TicketIssuerAddress != "":
+		return nil, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"ticket issuer address cannot be set and cleared in the same update",
+		)
+	case msg.ClearTicketIssuer:
+		issuer = ""
+	case msg.TicketIssuerAddress != "":
 		// Validate provided issuer address
 		if err := types.ValidateCanonicalAddress(msg.TicketIssuerAddress); err != nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "invalid ticket issuer address")
@@ -449,7 +465,7 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		if !hasAdmin {
 			return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "contract admin is cleared; ticket issuance is disabled")
 		}
-		if sponsor.TicketIssuerAddress == "" || sponsor.TicketIssuerAddress != creator.String() {
+		if !matchesTicketIssuer(sponsor, creator) {
 			return nil, errorsmod.Wrap(types.ErrUnauthorized, "not authorized to issue tickets")
 		}
 	}
@@ -522,14 +538,6 @@ func (k msgServer) IssuePolicyTicket(goCtx context.Context, msg *types.MsgIssueP
 		}
 		// If consumed or strictly past expiry, replace the stale ticket first.
 		k.Keeper.DeletePolicyTicket(ctx, msg.ContractAddress, msg.UserAddress, digest)
-	}
-
-	// No capacity limits enforced (whitelist controls issuance)
-	// Enforce method name length bound from params to avoid storing oversized strings
-	// and emitting large event attributes. 0 means use default behavior, but
-	// DefaultParams() already sets a sane default (64).
-	if lim := k.Keeper.GetParams(ctx).EffectiveMaxMethodBytes(); uint32(len(msg.Method)) > lim {
-		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "method name too long")
 	}
 
 	params := k.Keeper.GetParams(ctx)
@@ -643,7 +651,7 @@ func (k msgServer) RevokePolicyTicket(goCtx context.Context, msg *types.MsgRevok
 		if !found {
 			return nil, errorsmod.Wrap(types.ErrSponsorNotFound, "sponsor not found")
 		}
-		if sponsor.TicketIssuerAddress == "" || sponsor.TicketIssuerAddress != creator.String() {
+		if !matchesTicketIssuer(sponsor, creator) {
 			return nil, errorsmod.Wrap(types.ErrContractNotAdmin, "not authorized to revoke tickets")
 		}
 	}

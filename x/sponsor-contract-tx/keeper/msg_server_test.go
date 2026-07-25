@@ -204,6 +204,80 @@ func TestAdminClearedDisablesManagerAndTicketIssuer(t *testing.T) {
 	}
 }
 
+func TestUpdateSponsorCanExplicitlyClearTicketIssuer(t *testing.T) {
+	k, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress(bytes.Repeat([]byte{0x31}, 20))
+	issuer := sdk.AccAddress(bytes.Repeat([]byte{0x32}, 20))
+	contract := sdk.AccAddress(bytes.Repeat([]byte{0x33}, 20))
+	user := sdk.AccAddress(bytes.Repeat([]byte{0x34}, 20))
+	wasmKeeper.SetContractInfo(contract.String(), admin.String())
+	goCtx := sdk.WrapSDKContext(ctx)
+
+	_, err := msgServer.SetSponsor(goCtx, &types.MsgSetSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		TicketIssuerAddress: issuer.String(),
+		IsSponsored:         false,
+	})
+	require.NoError(t, err)
+
+	// Omitting both update fields retains the current issuer for old clients.
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		IsSponsored:     false,
+	})
+	require.NoError(t, err)
+	stored, found := k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Equal(t, issuer.String(), stored.TicketIssuerAddress)
+
+	// Conflicting replace+clear requests are rejected without changing state.
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:             admin.String(),
+		ContractAddress:     contract.String(),
+		IsSponsored:         false,
+		TicketIssuerAddress: issuer.String(),
+		ClearTicketIssuer:   true,
+	})
+	require.Error(t, err)
+	stored, found = k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Equal(t, issuer.String(), stored.TicketIssuerAddress)
+
+	_, err = msgServer.UpdateSponsor(goCtx, &types.MsgUpdateSponsor{
+		Creator:           admin.String(),
+		ContractAddress:   contract.String(),
+		IsSponsored:       false,
+		ClearTicketIssuer: true,
+	})
+	require.NoError(t, err)
+	stored, found = k.GetSponsor(ctx, contract.String())
+	require.True(t, found)
+	require.Empty(t, stored.TicketIssuerAddress)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         issuer.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "after-clear",
+		Uses:            1,
+	})
+	require.ErrorIs(t, err, types.ErrUnauthorized)
+
+	_, err = msgServer.IssuePolicyTicket(goCtx, &types.MsgIssuePolicyTicket{
+		Creator:         admin.String(),
+		ContractAddress: contract.String(),
+		UserAddress:     user.String(),
+		Method:          "after-clear-admin",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+	digest := k.ComputeMethodDigestSingle(contract.String(), "after-clear-admin")
+	_, found = k.GetActivePolicyTicket(ctx, contract.String(), user.String(), digest)
+	require.True(t, found)
+}
+
 func TestGlobalDisablePausesExecutionButAllowsLifecycleManagement(t *testing.T) {
 	k, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 	params := types.DefaultParams()

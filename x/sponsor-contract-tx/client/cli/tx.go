@@ -17,6 +17,11 @@ import (
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
+const (
+	flagTicketIssuer      = "ticket-issuer"
+	flagClearTicketIssuer = "clear-ticket-issuer"
+)
+
 // GetTxCmd returns the transaction commands for the sponsor module
 func GetTxCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -280,6 +285,8 @@ func parseCoinsWithDORASupport(coinsStr string) (sdk.Coins, error) {
 
 // GetCmdSetSponsor implements the set sponsor command
 func GetCmdSetSponsor() *cobra.Command {
+	var ticketIssuer string
+
 	cmd := &cobra.Command{
 		Use:   "set-sponsor [contract-address] [is-sponsored] [max-grant-per-user]",
 		Short: "Set a sponsor contract",
@@ -308,17 +315,27 @@ If not provided, no grant limit will be set.`,
 			}
 
 			msg := types.NewMsgSetSponsor(clientCtx.GetFromAddress().String(), args[0], isSponsored, maxGrantPerUser)
+			msg.TicketIssuerAddress = ticketIssuer
+			if err := msg.ValidateBasic(); err != nil {
+				return err
+			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().StringVar(&ticketIssuer, flagTicketIssuer, "", "optional address authorized to issue and revoke policy tickets")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }
 
 // GetCmdUpdateSponsor implements the update sponsor command
 func GetCmdUpdateSponsor() *cobra.Command {
+	var (
+		ticketIssuer      string
+		clearTicketIssuer bool
+	)
+
 	cmd := &cobra.Command{
 		Use:   "update-sponsor [contract-address] [is-sponsored] [max-grant-per-user]",
 		Short: "Update a sponsor status",
@@ -347,11 +364,18 @@ If not provided, no grant limit will be set.`,
 			}
 
 			msg := types.NewMsgUpdateSponsor(clientCtx.GetFromAddress().String(), args[0], isSponsored, maxGrantPerUser)
+			msg.TicketIssuerAddress = ticketIssuer
+			msg.ClearTicketIssuer = clearTicketIssuer
+			if err := msg.ValidateBasic(); err != nil {
+				return err
+			}
 
 			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
 		},
 	}
 
+	cmd.Flags().StringVar(&ticketIssuer, flagTicketIssuer, "", "replace the address authorized to issue and revoke policy tickets")
+	cmd.Flags().BoolVar(&clearTicketIssuer, flagClearTicketIssuer, false, "remove the current ticket issuer")
 	flags.AddTxFlagsToCmd(cmd)
 	return cmd
 }

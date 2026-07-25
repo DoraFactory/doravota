@@ -1908,9 +1908,9 @@ func TestAdvancedEdgeCases(t *testing.T) {
 	wasmKeeper2.SetContractInfo(contractAddr2, "admin")
 	userAddr2 := sdk.AccAddress("user________________")
 
-	// This should work normally
+	// Malformed stored admin data must fail closed.
 	isAdmin, err := keeper2.IsContractAdmin(ctx2, contractAddr2, userAddr2)
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.False(t, isAdmin)
 
 	// Test AllSponsors GRPC query pagination error paths

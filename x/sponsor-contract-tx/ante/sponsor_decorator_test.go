@@ -97,6 +97,26 @@ func (suite *SponsorDecoratorTestSuite) createAndFundSponsor(contractAddr sdk.Ac
 	}
 }
 
+func (suite *SponsorDecoratorTestSuite) attachPolicyTicket(payment *SponsorPaymentInfo) {
+	digest := suite.keeper.ComputeMethodDigestSingle(payment.ContractAddr.String(), "test-payment")
+	if _, found := suite.keeper.GetPolicyTicket(
+		suite.ctx,
+		payment.ContractAddr.String(),
+		payment.UserAddr.String(),
+		digest,
+	); !found {
+		suite.Require().NoError(suite.keeper.SetPolicyTicket(suite.ctx, types.PolicyTicket{
+			ContractAddress: payment.ContractAddr.String(),
+			UserAddress:     payment.UserAddr.String(),
+			Digest:          digest,
+			Method:          "test-payment",
+			UsesRemaining:   100,
+			ExpiryHeight:    uint64(suite.ctx.BlockHeight()) + 1_000,
+		}))
+	}
+	payment.DigestCounts = map[string]uint32{digest: 1}
+}
+
 func (suite *SponsorDecoratorTestSuite) SetupTest() {
 	// Create codec with proper interface registrations
 	interfaceRegistry := codectypes.NewInterfaceRegistry()
@@ -258,6 +278,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	ctxWithSponsor := suite.ctx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
@@ -339,6 +360,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 		Fee:          validFee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, validFee)
@@ -360,6 +382,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 		Fee:          invalidFee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPaymentInvalid)
 	ctxWithInvalidSponsor := suite.ctx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPaymentInvalid)
 
 	txInvalid := suite.createContractExecuteTx(suite.contract, suite.user, invalidFee)
@@ -400,6 +423,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
@@ -572,6 +596,7 @@ func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	cacheCtx, _ := suite.ctx.CacheContext()
 	ctxWithSponsor := cacheCtx.WithIsCheckTx(true).WithValue(sponsorPaymentKey{}, sponsorPayment)
 
@@ -616,6 +641,7 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 
 	next := func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
 		return ctx, nil
@@ -690,6 +716,7 @@ func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
@@ -734,6 +761,7 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	// Use DeliverTx mode
 	deliverCtx := suite.ctx.WithIsCheckTx(false).WithValue(sponsorPaymentKey{}, sponsorPayment)
 
@@ -1050,8 +1078,8 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigest_EmitsMinUsesAndE
 	suite.Require().True(decSeen)
 }
 
-// When DigestCounts is absent, fee is deducted but no ticket is consumed.
-func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_NoConsumption() {
+// Sponsored fee payment must never proceed without a corresponding ticket.
+func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_FailsClosed() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150)))
 	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000))))
@@ -1065,8 +1093,19 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_NoConsump
 	sp := SponsorPaymentInfo{ContractAddr: suite.contract, SponsorAddr: sponsorAddr, UserAddr: suite.user, Fee: fee, IsSponsored: true, DigestCounts: map[string]uint32{}}
 	deliver := suite.ctx.WithIsCheckTx(false).WithEventManager(sdk.NewEventManager()).WithValue(sponsorPaymentKey{}, sp)
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
+	beforeBalance := suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, types.SponsorshipDenom)
+	beforeUsage := suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String())
 	_, err := suite.sponsorDecorator.AnteHandle(deliver, tx, false, func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) { return ctx, nil })
-	suite.Require().NoError(err)
+	suite.Require().Error(err)
+	suite.Require().Contains(err.Error(), "requires policy ticket digests")
+	suite.Require().Equal(
+		beforeBalance,
+		suite.bankKeeper.GetBalance(suite.ctx, sponsorAddr, types.SponsorshipDenom),
+	)
+	suite.Require().Equal(
+		beforeUsage,
+		suite.keeper.GetUserGrantUsage(suite.ctx, suite.user.String(), suite.contract.String()),
+	)
 
 	// Ticket should remain unchanged (not consumed)
 	after, ok := suite.keeper.GetPolicyTicket(suite.ctx, suite.contract.String(), suite.user.String(), digest)
@@ -1122,6 +1161,7 @@ func (suite *SponsorDecoratorTestSuite) TestUnknownSponsorAccount_Error() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sp)
 	deliver := suite.ctx.WithIsCheckTx(false).WithValue(sponsorPaymentKey{}, sp)
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)
 
@@ -1247,6 +1287,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerError() {
 		Fee:          fee,
 		IsSponsored:  true,
 	}
+	suite.attachPolicyTicket(&sponsorPayment)
 	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
 
 	tx := suite.createContractExecuteTx(suite.contract, suite.user, fee)

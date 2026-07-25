@@ -25,15 +25,23 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	}
 
 	// Restore lifecycle generations before importing state. A contract without
-	// an active Sponsor is placed in the generation after its newest historical
-	// ticket/usage, so deleting a Sponsor remains irreversible across exports.
+	// an active Sponsor uses its explicitly exported tombstone. For legacy
+	// genesis files without that field, derive the generation after the newest
+	// historical ticket/usage.
+	declaredGenerations := make(map[string]uint64, len(genState.ContractGenerations))
+	for _, contractGeneration := range genState.ContractGenerations {
+		declaredGenerations[contractGeneration.ContractAddress] = contractGeneration.Generation
+	}
 	activeGenerations := make(map[string]uint64, len(genState.Sponsors))
 	maxHistoricalGeneration := make(map[string]uint64)
 	normalizedSponsors := make([]*types.ContractSponsor, len(genState.Sponsors))
 	for i, sponsor := range genState.Sponsors {
 		normalizedSponsor := *sponsor
 		if normalizedSponsor.Generation == 0 {
-			normalizedSponsor.Generation = 1
+			normalizedSponsor.Generation = declaredGenerations[normalizedSponsor.ContractAddress]
+			if normalizedSponsor.Generation == 0 {
+				normalizedSponsor.Generation = 1
+			}
 		}
 		normalizedSponsors[i] = &normalizedSponsor
 		activeGenerations[normalizedSponsor.ContractAddress] = normalizedSponsor.Generation
@@ -72,6 +80,15 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	}
 	genState.PolicyTickets = normalizedTickets
 
+	for _, contractAddr := range sortedGenerationContracts(declaredGenerations) {
+		if err := k.SetSponsorGenerationForGenesis(
+			ctx,
+			contractAddr,
+			declaredGenerations[contractAddr],
+		); err != nil {
+			panic(fmt.Errorf("failed to restore exported sponsor generation: %w", err))
+		}
+	}
 	for _, contractAddr := range sortedGenerationContracts(activeGenerations) {
 		generation := activeGenerations[contractAddr]
 		if historical := maxHistoricalGeneration[contractAddr]; historical > generation {
@@ -82,6 +99,17 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 				contractAddr,
 			))
 		}
+		if declared := declaredGenerations[contractAddr]; declared != 0 {
+			if declared != generation {
+				panic(fmt.Errorf(
+					"active sponsor generation %d does not match exported generation %d for contract %s",
+					generation,
+					declared,
+					contractAddr,
+				))
+			}
+			continue
+		}
 		if err := k.SetSponsorGenerationForGenesis(ctx, contractAddr, generation); err != nil {
 			panic(fmt.Errorf("failed to restore sponsor generation: %w", err))
 		}
@@ -89,6 +117,17 @@ func InitGenesis(ctx sdk.Context, k keeper.Keeper, genState types.GenesisState) 
 	for _, contractAddr := range sortedGenerationContracts(maxHistoricalGeneration) {
 		historical := maxHistoricalGeneration[contractAddr]
 		if _, active := activeGenerations[contractAddr]; active {
+			continue
+		}
+		if declared := declaredGenerations[contractAddr]; declared != 0 {
+			if historical >= declared {
+				panic(fmt.Errorf(
+					"historical generation %d is not older than exported tombstone %d for contract %s",
+					historical,
+					declared,
+					contractAddr,
+				))
+			}
 			continue
 		}
 		if historical == math.MaxUint64 {
@@ -213,6 +252,20 @@ func ExportGenesis(ctx sdk.Context, k keeper.Keeper) *types.GenesisState {
 		return false
 	})
 	genesis.PolicyTickets = tickets
+
+	// Export lifecycle generations independently of Sponsor/ticket/usage state.
+	// This preserves a deletion tombstone even after all historical rows are GC'd.
+	var generations []*types.ContractGeneration
+	if err := k.IterateSponsorGenerations(ctx, func(contractAddr string, generation uint64) bool {
+		generations = append(generations, &types.ContractGeneration{
+			ContractAddress: contractAddr,
+			Generation:      generation,
+		})
+		return false
+	}); err != nil {
+		panic(fmt.Errorf("failed to export sponsor lifecycle generations: %w", err))
+	}
+	genesis.ContractGenerations = generations
 
 	return genesis
 }

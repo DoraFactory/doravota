@@ -63,6 +63,7 @@ func TestValidateGenesisRejectsNonCanonicalStateAddresses(t *testing.T) {
 			UserAddress:     strings.ToUpper(user),
 			Digest:          "digest",
 			UsesRemaining:   1,
+			Generation:      1,
 		}},
 	}
 

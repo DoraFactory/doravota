@@ -146,9 +146,6 @@ func skipPairDepth(dec *json.Decoder, depth int, limit uint32) error {
 // validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
 // It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
 // Returns (haveValidTicket, requiredCounts, reason).
-// validateMethodTicketsStreaming parses methods one-by-one and validates digest coverage on the fly.
-// It short-circuits as soon as an invalid/expired/consumed/missing ticket or insufficient uses is detected.
-// Returns (haveValidTicket, requiredCounts, reason).
 // When haveValidTicket=false, reason provides a user-friendly failure code that can be surfaced to fallback.
 func (sctd SponsorContractTxAnteDecorator) validateMethodTicketsStreaming(ctx sdk.Context, contractAddr, userAddr string, tx sdk.Tx) (bool, map[string]uint32, string) {
 	// Collect target exec messages in tx order and delegate to preselected variant
@@ -280,9 +277,8 @@ func NewSponsorContractTxAnteDecorator(k types.SponsorKeeperInterface, ak authke
 // - Global toggle: respects module params; when disabled, sponsorship is skipped with informative events/errors.
 // - Signer model: single-signer only; FeePayer must match the validated signer to prevent spoofing.
 // - Self-pay preference: if user has sufficient balance for the declared fee, sponsorship is skipped (see note below).
-// - Two-phase rule: does NOT run policy checks here. ExecuteTx requires a valid ticket; policy checks run only in MsgProbeSponsorship (DeliverTx).
+// - Ticket authorization: validates every target execute method against current-generation policy tickets in both CheckTx and DeliverTx.
 // - Success path: verify grant limit and sponsor balance, then inject SponsorPaymentInfo for the sponsor-aware fee decorator to deduct/reimburse.
-// - Self-pay preference: if the user balance covers fees, skip sponsorship and let the user pay.
 func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	ctx sdk.Context,
 	tx sdk.Tx,
@@ -543,28 +539,42 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 			return sctd.handleSponsorshipFallback(ctx, tx, simulate, next, contractAddr, userAddr, reason)
 		}
 
+		var contractAccAddr sdk.AccAddress
+		var sponsorAccAddr sdk.AccAddress
+		if haveValidTicket {
+			contractAccAddr, err = types.AccAddressFromCanonicalBech32(contractAddr)
+			if err != nil {
+				return ctx, errorsmod.Wrap(
+					sdkerrors.ErrInvalidAddress,
+					"invalid sponsored contract address in state",
+				)
+			}
+			sponsorAccAddr, err = types.AccAddressFromCanonicalBech32(sponsor.SponsorAddress)
+			if err != nil {
+				return ctx, errorsmod.Wrap(
+					sdkerrors.ErrInvalidAddress,
+					"invalid sponsor payment address in state",
+				)
+			}
+		}
+
 		// Sponsor balance pre-check (only when we already have a valid ticket)
 		if haveValidTicket {
 			if feeTx, ok := tx.(sdk.FeeTx); ok {
 				declaredFee := feeTx.GetFee()
-				if sponsor.SponsorAddress != "" {
-					if sAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress); err == nil {
-						if sctd.accountKeeper.GetAccount(ctx, sAddr) == nil {
-							return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sAddr.String())
-						}
-						if spendable := sctd.bankKeeper.SpendableCoins(ctx, sAddr); !spendable.IsAllGTE(declaredFee) {
-							return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor insufficient funds: need %s, have %s", declaredFee.String(), spendable.String())
-						}
-					}
+				if sctd.accountKeeper.GetAccount(ctx, sponsorAccAddr) == nil {
+					return ctx, sdkerrors.ErrUnknownAddress.Wrapf("sponsor address: %s does not exist", sponsorAccAddr.String())
+				}
+				if spendable := sctd.bankKeeper.SpendableCoins(ctx, sponsorAccAddr); !spendable.IsAllGTE(declaredFee) {
+					return ctx, errorsmod.Wrapf(sdkerrors.ErrInsufficientFunds, "sponsor insufficient funds: need %s, have %s", declaredFee.String(), spendable.String())
 				}
 			}
 		}
 
 		// (sponsor-specific pre-checks executed earlier inside fee block when haveValidTicket)
-		// Two-phase flow: inject sponsor info only in DeliverTx; in CheckTx, mark authorization when a valid ticket exists.
+		// Both CheckTx and DeliverTx carry the same SponsorPaymentInfo. The
+		// fee decorator reserves check-state and commits deliver-state.
 		if haveValidTicket {
-			contractAccAddr, _ := sdk.AccAddressFromBech32(contractAddr)
-			sponsorAccAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 			fee := sdk.NewCoins()
 			if feeTx, ok := tx.(sdk.FeeTx); ok {
 				fee = feeTx.GetFee()

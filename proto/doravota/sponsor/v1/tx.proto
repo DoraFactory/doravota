@@ -82,6 +82,9 @@ message MsgUpdateSponsor {
   // address is authorized to issue/revoke policy tickets for the contract. If
   // omitted or empty, the existing value remains unchanged.
   string ticket_issuer_address = 5 [ (cosmos_proto.scalar) = "cosmos.AddressString" ];
+  // Explicitly removes the custom ticket issuer. This is separate from the
+  // address field so existing clients that omit it retain the current value.
+  bool clear_ticket_issuer = 6;
 }
 
 // MsgUpdateSponsorResponse defines the response to MsgUpdateSponsor
