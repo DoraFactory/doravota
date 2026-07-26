@@ -136,6 +136,11 @@ import (
 	votatypes "github.com/DoraFactory/doravota/types"
 	// crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 
+	// pqcauth module
+	pqcauthmodule "github.com/DoraFactory/doravota/x/pqcauth"
+	pqcauthkeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
+	pqcauthtypes "github.com/DoraFactory/doravota/x/pqcauth/types"
+
 	// sponsor module
 	sponsormodule "github.com/DoraFactory/doravota/x/sponsor-contract-tx"
 	sponsorkeeper "github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
@@ -238,6 +243,7 @@ var (
 		vesting.AppModuleBasic{},
 		consensus.AppModuleBasic{},
 		wasm.AppModuleBasic{},
+		pqcauthmodule.AppModuleBasic{},
 		// sponsor module
 		sponsormodule.AppModuleBasic{},
 	)
@@ -327,6 +333,7 @@ type App struct {
 	TransferKeeper      ibctransferkeeper.Keeper
 	WasmKeeper          wasm.Keeper
 	SponsorKeeper       *sponsorkeeper.Keeper
+	PQCAuthKeeper       pqcauthkeeper.Keeper
 
 	// make scoped keepers public for test purposes
 	ScopedIBCKeeper           capabilitykeeper.ScopedKeeper
@@ -391,6 +398,8 @@ func New(
 		icacontrollertypes.StoreKey,
 		// sponsor module store key
 		sponsortypes.StoreKey,
+		// pqcauth module store key
+		pqcauthtypes.StoreKey,
 	)
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
 	memKeys := sdk.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
@@ -615,6 +624,10 @@ func New(
 		scopedICAHostKeeper,
 		app.MsgServiceRouter(),
 	)
+	// IBC-Go requires the host keeper to have the application query router
+	// before its message server is registered. This is also what constrains
+	// MsgModuleQuerySafe to the application's registered gRPC query routes.
+	app.ICAHostKeeper.WithQueryRouter(app.GRPCQueryRouter())
 	icaControllerKeeper := icacontrollerkeeper.NewKeeper(
 		appCodec, keys[icacontrollertypes.StoreKey],
 		app.GetSubspace(icacontrollertypes.SubModuleName),
@@ -670,6 +683,11 @@ func New(
 		appCodec,
 		keys[sponsortypes.StoreKey],
 		app.WasmKeeper,
+		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+	)
+	app.PQCAuthKeeper = pqcauthkeeper.NewKeeper(
+		appCodec,
+		keys[pqcauthtypes.StoreKey],
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
@@ -782,8 +800,9 @@ func New(
 		ibcfee.NewAppModule(app.IBCFeeKeeper),
 		icaModule,
 		sponsorAwareWasmModule,
+		pqcauthmodule.NewAppModule(app.PQCAuthKeeper),
 		// sponsor module
-        sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper, app.AccountKeeper),
+		sponsormodule.NewAppModule(appCodec, *app.SponsorKeeper, app.BankKeeper, app.AccountKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -805,6 +824,7 @@ func New(
 		wasm.ModuleName,
 		// sponsor module
 		sponsortypes.ModuleName,
+		pqcauthtypes.ModuleName,
 	)
 
 	app.mm.SetOrderEndBlockers(
@@ -822,6 +842,7 @@ func New(
 		wasm.ModuleName,
 		// sponsor module
 		sponsortypes.ModuleName,
+		pqcauthtypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -844,6 +865,7 @@ func New(
 		wasm.ModuleName,
 		// sponsor module
 		sponsortypes.ModuleName,
+		pqcauthtypes.ModuleName,
 	}
 	app.mm.SetOrderInitGenesis(genesisModuleOrder...)
 	app.mm.SetOrderExportGenesis(genesisModuleOrder...)
@@ -875,6 +897,7 @@ func New(
 
 	// initialize BaseApp
 	app.setAnteHandler(encodingConfig.TxConfig, wasmConfig, keys[wasm.StoreKey], appOpts)
+	app.setProposalHandlers(encodingConfig.TxConfig)
 	app.SetInitChainer(app.InitChainer)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
@@ -913,22 +936,23 @@ func New(
 }
 
 func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.WasmConfig, txCounterStoreKey storetypes.StoreKey, appOpts servertypes.AppOptions) {
-    anteHandler, err := NewAnteHandler(
-        HandlerOptions{
-            HandlerOptions: ante.HandlerOptions{
-                AccountKeeper:   app.AccountKeeper,
-                BankKeeper:      app.BankKeeper,
-                SignModeHandler: txConfig.SignModeHandler(),
-                FeegrantKeeper:  app.FeeGrantKeeper,
-                SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
-            },
-            IBCKeeper:         app.IBCKeeper,
-            WasmConfig:        &wasmConfig,
-            TXCounterStoreKey: txCounterStoreKey,
-            SponsorKeeper:     app.SponsorKeeper,
-            AppOptions:        appOpts,
-        },
-    )
+	anteHandler, err := NewAnteHandler(
+		HandlerOptions{
+			HandlerOptions: ante.HandlerOptions{
+				AccountKeeper:   app.AccountKeeper,
+				BankKeeper:      app.BankKeeper,
+				SignModeHandler: txConfig.SignModeHandler(),
+				FeegrantKeeper:  app.FeeGrantKeeper,
+				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+			},
+			IBCKeeper:         app.IBCKeeper,
+			WasmConfig:        &wasmConfig,
+			TXCounterStoreKey: txCounterStoreKey,
+			SponsorKeeper:     app.SponsorKeeper,
+			PQCAuthKeeper:     app.PQCAuthKeeper,
+			AppOptions:        appOpts,
+		},
+	)
 	if err != nil {
 		panic(fmt.Errorf("failed to create AnteHandler: %s", err))
 	}
@@ -964,6 +988,12 @@ func (app *App) InitChainer(ctx sdk.Context, req abci.RequestInitChain) abci.Res
 	var genesisState GenesisState
 	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
 		panic(err)
+	}
+	if req.ConsensusParams == nil {
+		req.ConsensusParams = &tmproto.ConsensusParams{}
+	}
+	if ensureFiniteBlockLimits(req.ConsensusParams) {
+		app.StoreConsensusParams(ctx, req.ConsensusParams)
 	}
 	app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap())
 	return app.mm.InitGenesis(ctx, app.appCodec, genesisState)
@@ -1220,12 +1250,30 @@ func (app *App) setupUpgradeHandlers() {
 		v1_0_0.UpgradeName,
 		func(ctx sdk.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			logger := ctx.Logger().With("upgrade", v1_0_0.UpgradeName)
-			logger.Info("Upgrading to v1.0.0(Add contract sponsor module)")
+			logger.Info("Upgrading to v1.0.0 (add contract sponsor and PQC authentication modules)")
 
 			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 			if err != nil {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
+			}
+			pqcParams := app.PQCAuthKeeper.GetParams(ctx)
+			pqcParams.NetworkId = v1_0_0.PQCNetworkID(ctx.ChainID())
+			if err := app.PQCAuthKeeper.SetParams(ctx, pqcParams); err != nil {
+				logger.Error("failed to commit launch-specific PQC network ID", "error", err)
+				return nil, err
+			}
+			consensusParams := app.GetConsensusParams(ctx)
+			if consensusParams == nil {
+				consensusParams = &tmproto.ConsensusParams{}
+			}
+			if ensureFiniteBlockLimits(consensusParams) {
+				app.StoreConsensusParams(ctx, consensusParams)
+				logger.Info(
+					"Applied finite consensus block limits",
+					"max_gas", consensusParams.Block.MaxGas,
+					"max_bytes", consensusParams.Block.MaxBytes,
+				)
 			}
 
 			logger.Info("Upgrade completed successfully")

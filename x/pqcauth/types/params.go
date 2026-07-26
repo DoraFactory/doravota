@@ -1,0 +1,247 @@
+package types
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+
+	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+)
+
+const (
+	DefaultSignatureVerificationGas uint64 = 250_000
+	DefaultProofVerificationGas     uint64 = 250_000
+	DefaultMaxPQCSigners            uint32 = 8
+	DefaultMaxPQCAuthBytes          uint32 = 64 * 1024
+	DefaultMaxKeysPerAccount        uint32 = 8
+
+	AbsoluteMaxPQCSigners      uint32 = 32
+	AbsoluteMaxPQCAuthBytes    uint32 = 256 * 1024
+	AbsoluteMaxKeysPerAccount  uint32 = 16
+	AbsoluteMaxVerificationGas uint64 = 10_000_000
+
+	// Consensus gas floors prevent governance from making ML-DSA verification
+	// effectively free. They must only be lowered through a coordinated binary
+	// upgrade backed by target-hardware benchmarks.
+	MinimumSignatureVerificationGas uint64 = 250_000
+	MinimumProofVerificationGas     uint64 = 250_000
+)
+
+var defaultNetworkID = sha256.Sum256([]byte("doravota/pqcauth/network/v1"))
+
+// NetworkIDForChain deterministically separates fresh development and custom
+// chains. Production upgrades should replace this value with a launch-specific
+// constant so a same-chain-ID fork can deliberately choose a new identity.
+func NetworkIDForChain(chainID string) []byte {
+	sum := sha256.Sum256([]byte("doravota/pqcauth/network/v1/chain/" + chainID))
+	return append([]byte(nil), sum[:]...)
+}
+
+func UsesLegacyDefaultNetworkID(networkID []byte) bool {
+	return bytes.Equal(networkID, defaultNetworkID[:])
+}
+
+func DefaultParams() Params {
+	return Params{
+		EnforcementMode:          EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
+		NetworkId:                append([]byte(nil), defaultNetworkID[:]...),
+		AllowedAlgorithms:        []Algorithm{Algorithm_ALGORITHM_ML_DSA_65},
+		SignatureVerificationGas: DefaultSignatureVerificationGas,
+		ProofVerificationGas:     DefaultProofVerificationGas,
+		MaxPqcSigners:            DefaultMaxPQCSigners,
+		MaxPqcAuthBytes:          DefaultMaxPQCAuthBytes,
+		MaxKeysPerAccount:        DefaultMaxKeysPerAccount,
+		EmergencyMode:            EmergencyMode_EMERGENCY_MODE_NORMAL,
+	}
+}
+
+func (p Params) Validate() error {
+	if len(p.NetworkId) < 16 || len(p.NetworkId) > 64 {
+		return fmt.Errorf("%w: network_id length must be between 16 and 64 bytes", ErrInvalidParams)
+	}
+	if err := validateScheduledParams(p.AsScheduled()); err != nil {
+		return err
+	}
+	if p.PendingActivationHeight == 0 {
+		if p.Pending != nil {
+			return fmt.Errorf("%w: pending params require an activation height", ErrInvalidParams)
+		}
+	} else {
+		if p.Pending == nil {
+			return fmt.Errorf("%w: pending activation height requires params", ErrInvalidParams)
+		}
+		if err := validateScheduledParams(*p.Pending); err != nil {
+			return fmt.Errorf("invalid pending params: %w", err)
+		}
+	}
+	return nil
+}
+
+func validateScheduledParams(p ScheduledParams) error {
+	if !validEnforcementMode(p.EnforcementMode) {
+		return fmt.Errorf("%w: invalid enforcement mode %d", ErrInvalidParams, p.EnforcementMode)
+	}
+	if len(p.AllowedAlgorithms) == 0 {
+		return fmt.Errorf("%w: at least one algorithm must be allowed", ErrInvalidParams)
+	}
+	seen := make(map[Algorithm]struct{}, len(p.AllowedAlgorithms))
+	for _, algorithm := range p.AllowedAlgorithms {
+		if !SupportedAlgorithm(algorithm) {
+			return fmt.Errorf("%w: algorithm %d", ErrUnsupportedAlgorithm, algorithm)
+		}
+		if _, exists := seen[algorithm]; exists {
+			return fmt.Errorf("%w: duplicate algorithm %d", ErrInvalidParams, algorithm)
+		}
+		seen[algorithm] = struct{}{}
+	}
+	if p.SignatureVerificationGas < MinimumSignatureVerificationGas ||
+		p.SignatureVerificationGas > AbsoluteMaxVerificationGas {
+		return fmt.Errorf(
+			"%w: signature verification gas must be in [%d,%d]",
+			ErrInvalidParams,
+			MinimumSignatureVerificationGas,
+			AbsoluteMaxVerificationGas,
+		)
+	}
+	if p.ProofVerificationGas < MinimumProofVerificationGas ||
+		p.ProofVerificationGas > AbsoluteMaxVerificationGas {
+		return fmt.Errorf(
+			"%w: proof verification gas must be in [%d,%d]",
+			ErrInvalidParams,
+			MinimumProofVerificationGas,
+			AbsoluteMaxVerificationGas,
+		)
+	}
+	if p.MaxPqcSigners == 0 || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
+		return fmt.Errorf("%w: max PQC signers must be in [1,%d]", ErrInvalidParams, AbsoluteMaxPQCSigners)
+	}
+	if p.MaxPqcAuthBytes == 0 || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
+		return fmt.Errorf("%w: max PQC auth bytes must be in [1,%d]", ErrInvalidParams, AbsoluteMaxPQCAuthBytes)
+	}
+	if p.MaxKeysPerAccount == 0 || p.MaxKeysPerAccount > AbsoluteMaxKeysPerAccount {
+		return fmt.Errorf("%w: max keys per account must be in [1,%d]", ErrInvalidParams, AbsoluteMaxKeysPerAccount)
+	}
+	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
+		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS &&
+		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
+		return fmt.Errorf("%w: invalid emergency mode %d", ErrInvalidParams, p.EmergencyMode)
+	}
+	return nil
+}
+
+func SupportedAlgorithm(algorithm Algorithm) bool {
+	return algorithm == Algorithm_ALGORITHM_ML_DSA_65
+}
+
+func (p Params) IsAlgorithmAllowed(algorithm Algorithm) bool {
+	for _, allowed := range p.AllowedAlgorithms {
+		if allowed == algorithm {
+			return true
+		}
+	}
+	return false
+}
+
+func (p Params) EffectiveEnforcementMode(height int64) EnforcementMode {
+	return p.Effective(height).EnforcementMode
+}
+
+func (p Params) EffectiveEmergencyMode(height int64) EmergencyMode {
+	return p.Effective(height).EmergencyMode
+}
+
+// Effective atomically applies the complete pending parameter bundle at its
+// activation height. The returned copy never contains an activated schedule.
+func (p Params) Effective(height int64) Params {
+	if p.Pending == nil ||
+		p.PendingActivationHeight == 0 ||
+		height < 0 ||
+		uint64(height) < p.PendingActivationHeight {
+		return p
+	}
+	p.ApplyScheduled(*p.Pending)
+	p.Pending = nil
+	p.PendingActivationHeight = 0
+	return p
+}
+
+func (p Params) AsScheduled() ScheduledParams {
+	return ScheduledParams{
+		EnforcementMode:          p.EnforcementMode,
+		AllowedAlgorithms:        append([]Algorithm(nil), p.AllowedAlgorithms...),
+		SignatureVerificationGas: p.SignatureVerificationGas,
+		ProofVerificationGas:     p.ProofVerificationGas,
+		MaxPqcSigners:            p.MaxPqcSigners,
+		MaxPqcAuthBytes:          p.MaxPqcAuthBytes,
+		MaxKeysPerAccount:        p.MaxKeysPerAccount,
+		RegistrationCutoffHeight: p.RegistrationCutoffHeight,
+		EmergencyMode:            p.EmergencyMode,
+	}
+}
+
+func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
+	p.EnforcementMode = scheduled.EnforcementMode
+	p.AllowedAlgorithms = append([]Algorithm(nil), scheduled.AllowedAlgorithms...)
+	p.SignatureVerificationGas = scheduled.SignatureVerificationGas
+	p.ProofVerificationGas = scheduled.ProofVerificationGas
+	p.MaxPqcSigners = scheduled.MaxPqcSigners
+	p.MaxPqcAuthBytes = scheduled.MaxPqcAuthBytes
+	p.MaxKeysPerAccount = scheduled.MaxKeysPerAccount
+	p.RegistrationCutoffHeight = scheduled.RegistrationCutoffHeight
+	p.EmergencyMode = scheduled.EmergencyMode
+}
+
+func (p Params) EffectiveMaxPQCSigners() uint32 {
+	if p.MaxPqcSigners == 0 || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
+		return DefaultMaxPQCSigners
+	}
+	return p.MaxPqcSigners
+}
+
+func (p Params) EffectiveMaxPQCAuthBytes() uint32 {
+	if p.MaxPqcAuthBytes == 0 || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
+		return DefaultMaxPQCAuthBytes
+	}
+	return p.MaxPqcAuthBytes
+}
+
+func (p Params) EffectiveMaxKeysPerAccount() uint32 {
+	if p.MaxKeysPerAccount == 0 || p.MaxKeysPerAccount > AbsoluteMaxKeysPerAccount {
+		return DefaultMaxKeysPerAccount
+	}
+	return p.MaxKeysPerAccount
+}
+
+func (p Params) EffectiveSignatureVerificationGas() uint64 {
+	if p.SignatureVerificationGas < MinimumSignatureVerificationGas ||
+		p.SignatureVerificationGas > AbsoluteMaxVerificationGas {
+		return DefaultSignatureVerificationGas
+	}
+	return p.SignatureVerificationGas
+}
+
+func (p Params) EffectiveProofVerificationGas() uint64 {
+	if p.ProofVerificationGas < MinimumProofVerificationGas ||
+		p.ProofVerificationGas > AbsoluteMaxVerificationGas {
+		return DefaultProofVerificationGas
+	}
+	return p.ProofVerificationGas
+}
+
+func validEnforcementMode(mode EnforcementMode) bool {
+	return mode >= EnforcementMode_ENFORCEMENT_MODE_DISABLED &&
+		mode <= EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+}
+
+func CryptoAlgorithm(algorithm Algorithm) (pqccrypto.Algorithm, error) {
+	switch algorithm {
+	case Algorithm_ALGORITHM_ML_DSA_65:
+		return pqccrypto.AlgorithmMLDSA65, nil
+	default:
+		return pqccrypto.AlgorithmUnspecified, fmt.Errorf("%w: %d", ErrUnsupportedAlgorithm, algorithm)
+	}
+}
+
+func EqualNetworkID(a, b []byte) bool {
+	return bytes.Equal(a, b)
+}

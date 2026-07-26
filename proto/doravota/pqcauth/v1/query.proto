@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package doravota.pqcauth.v1;
+
+import "cosmos/base/query/v1beta1/pagination.proto";
+import "doravota/pqcauth/v1/state.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+
+option go_package = "github.com/DoraFactory/doravota/x/pqcauth/types";
+
+// Query defines pqcauth read APIs.
+service Query {
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/doravota/pqcauth/v1/params";
+  }
+  rpc Account(QueryAccountRequest) returns (QueryAccountResponse) {
+    option (google.api.http).get = "/doravota/pqcauth/v1/accounts/{owner}";
+  }
+  rpc Key(QueryKeyRequest) returns (QueryKeyResponse) {
+    option (google.api.http).get = "/doravota/pqcauth/v1/accounts/{owner}/keys/{key_id}";
+  }
+  rpc Keys(QueryKeysRequest) returns (QueryKeysResponse) {
+    option (google.api.http).get = "/doravota/pqcauth/v1/accounts/{owner}/keys";
+  }
+}
+
+message QueryParamsRequest {}
+
+message QueryParamsResponse {
+  // params is normalized for the query height. A future pending bundle remains
+  // present; a bundle whose activation height has arrived is applied and
+  // cleared in this response.
+  Params params = 1 [(gogoproto.nullable) = false];
+  EnforcementMode effective_enforcement_mode = 2;
+  EmergencyMode effective_emergency_mode = 3;
+}
+
+message QueryAccountRequest {
+  string owner = 1;
+}
+
+message QueryAccountResponse {
+  AccountPolicy policy = 1 [(gogoproto.nullable) = false];
+  PQCKeyRecord active_signing_key = 2;
+}
+
+message QueryKeyRequest {
+  string owner = 1;
+  uint64 key_id = 2;
+}
+
+message QueryKeyResponse {
+  PQCKeyRecord key = 1 [(gogoproto.nullable) = false];
+}
+
+message QueryKeysRequest {
+  string owner = 1;
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+}
+
+message QueryKeysResponse {
+  repeated PQCKeyRecord keys = 1 [(gogoproto.nullable) = false];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}

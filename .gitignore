@@ -5,6 +5,9 @@ release
 
 
 scripts/*
+!scripts/rehearse-v1.0.0-upgrade.sh
+!scripts/check-pqcauth-coverage.sh
+.rehearsal/
 
 # Rust artifacts
 **/*.rs.bk

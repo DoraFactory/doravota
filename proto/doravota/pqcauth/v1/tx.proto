@@ -1,0 +1,160 @@
+syntax = "proto3";
+
+package doravota.pqcauth.v1;
+
+import "amino/amino.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "doravota/pqcauth/v1/state.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/DoraFactory/doravota/x/pqcauth/types";
+option (gogoproto.equal_all) = true;
+
+// Msg defines the pqcauth transaction service.
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  rpc RegisterKey(MsgRegisterKey) returns (MsgRegisterKeyResponse);
+  rpc RotateKey(MsgRotateKey) returns (MsgRotateKeyResponse);
+  rpc RotateRecoveryKey(MsgRotateRecoveryKey) returns (MsgRotateRecoveryKeyResponse);
+  rpc SetProtection(MsgSetProtection) returns (MsgSetProtectionResponse);
+  rpc RevokeKey(MsgRevokeKey) returns (MsgRevokeKeyResponse);
+  rpc RecoverKey(MsgRecoverKey) returns (MsgRecoverKeyResponse);
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+}
+
+// MsgRegisterKey registers the first signing key and, optionally, one recovery
+// key. The change becomes effective at the next block height.
+message MsgRegisterKey {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgRegisterKey";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 expected_signing_key_id = 2;
+  Algorithm signing_algorithm = 3;
+  bytes signing_public_key = 4;
+  bytes signing_key_proof = 5;
+  bool self_enforce = 6;
+  Algorithm recovery_algorithm = 7;
+  bytes recovery_public_key = 8;
+  bytes recovery_key_proof = 9;
+}
+
+message MsgRegisterKeyResponse {
+  uint64 signing_key_id = 1;
+  uint64 recovery_key_id = 2;
+  uint64 effective_height = 3;
+  uint64 policy_version = 4;
+}
+
+// MsgRotateKey proposes a replacement signing key. The current transaction
+// remains authorized by the old key and the new key supplies proof of possession.
+message MsgRotateKey {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgRotateKey";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 expected_new_key_id = 2;
+  Algorithm new_algorithm = 3;
+  bytes new_public_key = 4;
+  bytes new_key_proof = 5;
+}
+
+message MsgRotateKeyResponse {
+  uint64 new_key_id = 1;
+  uint64 effective_height = 2;
+  uint64 policy_version = 3;
+}
+
+// MsgRotateRecoveryKey proposes a replacement offline recovery key. The
+// transaction is authorized by the current signing key and the replacement key
+// supplies proof of possession. The change becomes effective at H+1.
+message MsgRotateRecoveryKey {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgRotateRecoveryKey";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 expected_new_key_id = 2;
+  Algorithm new_algorithm = 3;
+  bytes new_public_key = 4;
+  bytes new_key_proof = 5;
+}
+
+message MsgRotateRecoveryKeyResponse {
+  uint64 new_key_id = 1;
+  uint64 effective_height = 2;
+  uint64 policy_version = 3;
+}
+
+// MsgSetProtection enables or disables per-account PQC enforcement at H+1.
+message MsgSetProtection {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgSetProtection";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  bool enabled = 2;
+}
+
+message MsgSetProtectionResponse {
+  uint64 effective_height = 1;
+  uint64 policy_version = 2;
+}
+
+// MsgRevokeKey permanently revokes a non-active key.
+message MsgRevokeKey {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgRevokeKey";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 key_id = 2;
+}
+
+message MsgRevokeKeyResponse {}
+
+// MsgRecoverKey replaces the signing key using the registered recovery key.
+message MsgRecoverKey {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgRecoverKey";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 recovery_key_id = 2;
+  bytes recovery_signature = 3;
+  uint64 expected_new_signing_key_id = 4;
+  Algorithm new_signing_algorithm = 5;
+  bytes new_signing_public_key = 6;
+  bytes new_signing_key_proof = 7;
+}
+
+message MsgRecoverKeyResponse {
+  uint64 new_signing_key_id = 1;
+  uint64 effective_height = 2;
+  uint64 policy_version = 3;
+}
+
+// MsgUpdateParams updates bounded module parameters through governance.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name) = "pqcauth/MsgUpdateParams";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+message MsgUpdateParamsResponse {
+  uint64 activation_height = 1;
+}

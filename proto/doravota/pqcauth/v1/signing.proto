@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package doravota.pqcauth.v1;
+
+import "doravota/pqcauth/v1/state.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/DoraFactory/doravota/x/pqcauth/types";
+option (gogoproto.equal_all) = true;
+
+// PQCSignDocV1 is the canonical payload signed by one transaction signer.
+// body_bytes_without_pqc_auth is the deterministic TxBody encoding after
+// removing the pqcauth extension while preserving every other body field.
+message PQCSignDocV1 {
+  uint32 format_version = 1;
+  bytes network_id = 2;
+  string chain_id = 3;
+  uint64 account_number = 4;
+  uint64 sequence = 5;
+  uint32 signer_index = 6;
+  string signer = 7;
+  uint64 key_id = 8;
+  Algorithm algorithm = 9;
+  uint64 policy_version = 10;
+  bytes body_bytes_without_pqc_auth = 11;
+  bytes auth_info_bytes = 12;
+}
+
+// KeyProofDocV1 is signed by a proposed key to prove possession before the key
+// is stored. purpose domain-separates registration, rotation, and recovery.
+message KeyProofDocV1 {
+  uint32 format_version = 1;
+  bytes network_id = 2;
+  string chain_id = 3;
+  string owner = 4;
+  uint64 proposed_key_id = 5;
+  Algorithm algorithm = 6;
+  bytes public_key = 7;
+  KeyRole role = 8;
+  string purpose = 9;
+  uint64 current_policy_version = 10;
+}
+
+// RecoverySignDocV1 is authorized by the registered recovery key. It binds the
+// replacement key and the complete transaction intent. The recovery signature
+// field inside body_bytes_without_pqc_auth_and_recovery_signature is cleared
+// before deterministic encoding to avoid a circular signature dependency.
+message RecoverySignDocV1 {
+  uint32 format_version = 1;
+  bytes network_id = 2;
+  string chain_id = 3;
+  string owner = 4;
+  uint64 recovery_key_id = 5;
+  uint64 proposed_signing_key_id = 6;
+  Algorithm proposed_algorithm = 7;
+  bytes proposed_public_key = 8;
+  uint64 current_policy_version = 9;
+  uint64 account_number = 10;
+  uint64 sequence = 11;
+  uint32 signer_index = 12;
+  string signer = 13;
+  bytes body_bytes_without_pqc_auth_and_recovery_signature = 14;
+  bytes auth_info_bytes = 15;
+}

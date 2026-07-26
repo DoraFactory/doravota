@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-ARG GO_VERSION="1.20"
+ARG GO_VERSION="1.25.12"
 ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # --------------------------------------------------------
 # Builder

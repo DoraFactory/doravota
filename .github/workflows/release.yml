@@ -34,7 +34,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version: '1.25.12'
 
       - name: Install cross-compilation tools
         run: |
@@ -58,7 +58,7 @@ jobs:
           mkdir -p release
 
           # ===== AMD PART =====
-          WASMVM_VERSION="v1.5.1"
+          WASMVM_VERSION="v1.5.9"
           echo "Downloading libwasmvm ${WASMVM_VERSION} static library for AMD64..."
           curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.x86_64.a > /tmp/libwasmvm_muslc.a
           sudo mv /tmp/libwasmvm_muslc.a /usr/local/lib/libwasmvm_muslc.a
