@@ -439,14 +439,14 @@ broadcast_ok() {
     fi
   fi
   jq -cn \
-    --arg label "$label" \
+    --arg scenario "$label" \
     --arg tx_hash "$tx_hash" \
     --argjson height "$LAST_TX_HEIGHT" \
     --argjson gas_wanted "$(jq -r '(.gas_wanted // .tx_response.gas_wanted // "0") | tonumber' "$committed_file")" \
     --argjson gas_used "$(jq -r '(.gas_used // .tx_response.gas_used // "0") | tonumber' "$committed_file")" \
     --argjson tx_bytes "$tx_bytes" \
     --argjson message_types "$(jq -c '[.tx.body.messages[]?["@type"]]' "$committed_file")" \
-    '{label:$label,tx_hash:$tx_hash,height:$height,gas_wanted:$gas_wanted,gas_used:$gas_used,tx_bytes:$tx_bytes,message_types:$message_types}' \
+    '{label:$scenario,tx_hash:$tx_hash,height:$height,gas_wanted:$gas_wanted,gas_used:$gas_used,tx_bytes:$tx_bytes,message_types:$message_types}' \
     >>"$METRICS_JSONL"
   pass "$label" "height=$LAST_TX_HEIGHT tx=$tx_hash"
 }
