@@ -851,6 +851,13 @@ initialize_network() {
       >"$WORK_DIR/secrets/validator-$index.json"
     sed -i.e2e 's/^timeout_propose = .*/timeout_propose = "1s"/' "$home/config/config.toml"
     sed -i.e2e 's/^timeout_commit = .*/timeout_commit = "1s"/' "$home/config/config.toml"
+    # Every validator is intentionally bound to loopback in this single-host
+    # test. CometBFT's production-safe defaults reject non-routable peers and
+    # duplicate IPs, so relax them only inside the disposable E2E homes.
+    sed -i.e2e 's/^addr_book_strict = .*/addr_book_strict = false/' "$home/config/config.toml"
+    sed -i.e2e 's/^allow_duplicate_ip = .*/allow_duplicate_ip = true/' "$home/config/config.toml"
+    # Multiple processes cannot share the default localhost:6060 profiler.
+    sed -i.e2e 's/^pprof_laddr = .*/pprof_laddr = ""/' "$home/config/config.toml"
   done
 
   local accounts=(alice bob carol dave eve grantee quota receiver)
