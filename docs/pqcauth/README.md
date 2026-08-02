@@ -3,6 +3,10 @@
 This directory contains the consensus and rollout specifications for
 `x/pqcauth`.
 
+For the implementation overview, application/transaction lifecycle, and a
+directory-by-directory source guide, see
+[`x/pqcauth/README.md`](../../x/pqcauth/README.md).
+
 The v1 design adds ML-DSA-65 as a second transaction-authentication factor:
 
 ```text

@@ -44,7 +44,8 @@ func (d VerifyPQCDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (sdk.Context, error) {
-	params := d.keeper.GetParams(ctx).Effective(ctx.BlockHeight())
+	stateCtx := pqcStateContext(ctx, simulate)
+	params := d.keeper.GetParams(stateCtx).Effective(stateCtx.BlockHeight())
 	extension, found, cached := getValidatedExtension(ctx, tx)
 	if !cached {
 		var err error
@@ -53,7 +54,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 			return ctx, err
 		}
 	}
-	if err := d.validateLifecycleProofs(ctx, tx, params, simulate); err != nil {
+	if err := d.validateLifecycleProofs(stateCtx, tx, params, simulate); err != nil {
 		return ctx, err
 	}
 	lifecycleMessage := topLevelLifecycleMessage(tx)
@@ -88,7 +89,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 	requiredCount := 0
 	missingRequiredCount := 0
 	for index, signer := range signers {
-		_, policy, hasActiveKey := d.keeper.GetActiveSigningKey(ctx, signer)
+		_, policy, hasActiveKey := d.keeper.GetActiveSigningKey(stateCtx, signer)
 		policyExpectsActiveKey := policy.CurrentSigningKeyId != 0
 		if policyExpectsActiveKey && !hasActiveKey {
 			return ctx, errorsmod.Wrapf(
@@ -106,7 +107,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 			requiredCount++
 		}
 		_, hasEntry := entries[uint32(index)]
-		substituted := d.lifecycleProofSubstitutesPQC(ctx, tx, signer, hasActiveKey)
+		substituted := d.lifecycleProofSubstitutesPQC(stateCtx, tx, signer, hasActiveKey)
 		if required && !hasEntry && !substituted {
 			if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 				return ctx, types.ErrEmergencyPause
@@ -123,7 +124,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 	}
 
 	if (found || requiredCount > 0) && len(signers) > 0 {
-		if err := requireDirectSignMode(tx); err != nil {
+		if err := requireDirectSignMode(tx, simulate); err != nil {
 			return ctx, err
 		}
 	}
@@ -144,7 +145,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 					entry.SignerIndex,
 				)
 			}
-			key, policy, active := d.keeper.GetActiveSigningKey(ctx, signer)
+			key, policy, active := d.keeper.GetActiveSigningKey(stateCtx, signer)
 			if !active {
 				return ctx, errorsmod.Wrapf(types.ErrKeyNotFound, "signer index %d", entry.SignerIndex)
 			}
@@ -160,7 +161,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 			if !params.IsAlgorithmAllowed(entry.Algorithm) {
 				return ctx, fmt.Errorf("%w: %d", types.ErrUnsupportedAlgorithm, entry.Algorithm)
 			}
-			account := d.accountKeeper.GetAccount(ctx, signer)
+			account := d.accountKeeper.GetAccount(stateCtx, signer)
 			if account == nil {
 				return ctx, errorsmod.Wrapf(
 					types.ErrUnauthorized,

@@ -52,7 +52,8 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 	simulate bool,
 	next sdk.AnteHandler,
 ) (sdk.Context, error) {
-	params := d.keeper.GetParams(ctx).Effective(ctx.BlockHeight())
+	stateCtx := pqcStateContext(ctx, simulate)
+	params := d.keeper.GetParams(stateCtx).Effective(stateCtx.BlockHeight())
 	extension, found, err := ExtractExtension(tx, params)
 	if err != nil {
 		return ctx, err
@@ -61,12 +62,27 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 		if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 			return ctx, types.ErrEmergencyPause
 		}
-		if err := requireDirectSignMode(tx); err != nil {
+		if err := requireDirectSignMode(tx, simulate); err != nil {
 			return ctx, err
 		}
 	}
 	ctx = withValidatedExtension(ctx, tx, extension, found)
 	return next(ctx, tx, simulate)
+}
+
+// pqcStateContext maps the SDK's height-zero gas-simulation context to the
+// latest committed store version. PQC policies and keys use absolute activation
+// heights, so reading them at height zero would make every post-genesis key
+// appear inactive. This adjustment is simulation-only; consensus execution
+// always uses the block height supplied by BaseApp.
+func pqcStateContext(ctx sdk.Context, simulate bool) sdk.Context {
+	if !simulate || ctx.BlockHeight() > 0 {
+		return ctx
+	}
+	if latest := ctx.MultiStore().LatestVersion(); latest > 0 {
+		return ctx.WithBlockHeight(latest)
+	}
+	return ctx
 }
 
 func withValidatedExtension(
@@ -219,7 +235,7 @@ func ExtractExtension(
 	return &extension, true, nil
 }
 
-func requireDirectSignMode(tx sdk.Tx) error {
+func requireDirectSignMode(tx sdk.Tx, simulate bool) error {
 	signatureTx, ok := tx.(authsigning.SigVerifiableTx)
 	if !ok {
 		return errorsmod.Wrap(types.ErrUnsupportedSignMode, "transaction does not expose signer metadata")
@@ -230,9 +246,21 @@ func requireDirectSignMode(tx sdk.Tx) error {
 	}
 	for index, signature := range signatures {
 		single, ok := signature.Data.(*txsigning.SingleSignatureData)
-		if !ok || single.SignMode != txsigning.SignMode_SIGN_MODE_DIRECT {
+		if !ok {
 			return fmt.Errorf("%w: signer index %d must use SIGN_MODE_DIRECT", types.ErrUnsupportedSignMode, index)
 		}
+		if single.SignMode == txsigning.SignMode_SIGN_MODE_DIRECT {
+			continue
+		}
+		// Cosmos SDK gas simulation creates an unsigned placeholder signer with
+		// SIGN_MODE_UNSPECIFIED. Accept only that exact empty placeholder while
+		// simulate=true; CheckTx and DeliverTx still require SIGN_MODE_DIRECT.
+		if simulate &&
+			single.SignMode == txsigning.SignMode_SIGN_MODE_UNSPECIFIED &&
+			len(single.Signature) == 0 {
+			continue
+		}
+		return fmt.Errorf("%w: signer index %d must use SIGN_MODE_DIRECT", types.ErrUnsupportedSignMode, index)
 	}
 	return nil
 }

@@ -505,6 +505,9 @@ func (m msgServer) UpdateParams(
 	if lockedCutoff != 0 && requested.RegistrationCutoffHeight != lockedCutoff {
 		return nil, types.ErrInvalidParams.Wrap("registration cutoff is irreversible once scheduled or active")
 	}
+	if err := m.ensureLifetimeKeyQuotaCompatible(ctx, requested.MaxKeysPerAccount); err != nil {
+		return nil, err
+	}
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
@@ -520,6 +523,31 @@ func (m msgServer) UpdateParams(
 	return &types.MsgUpdateParamsResponse{
 		ActivationHeight: effectiveHeight,
 	}, nil
+}
+
+// ensureLifetimeKeyQuotaCompatible prevents governance from scheduling a key
+// quota that is already smaller than an account's append-only key-id space.
+// Revocation does not release identifiers, so accepting such a reduction would
+// permanently strand affected accounts on their current signing key.
+func (m msgServer) ensureLifetimeKeyQuotaCompatible(ctx sdk.Context, requested uint32) error {
+	var incompatible types.AccountKeySequence
+	m.IterateAllSequences(ctx, func(sequence types.AccountKeySequence) bool {
+		consumed := sequence.NextKeyId - 1
+		if consumed > uint64(requested) {
+			incompatible = sequence
+			return true
+		}
+		return false
+	})
+	if incompatible.Owner == "" {
+		return nil
+	}
+	return types.ErrInvalidParams.Wrapf(
+		"max_keys_per_account %d is below the %d lifetime key records already allocated to %s",
+		requested,
+		incompatible.NextKeyId-1,
+		incompatible.Owner,
+	)
 }
 
 func ensureKeyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationCutoff bool) error {

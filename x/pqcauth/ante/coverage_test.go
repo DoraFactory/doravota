@@ -6,6 +6,7 @@ import (
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/stretchr/testify/require"
@@ -272,32 +273,63 @@ func TestExtensionFingerprintIncludesCriticalAndNonCriticalOptions(t *testing.T)
 }
 
 func TestRequireDirectSignModeMatrix(t *testing.T) {
-	require.ErrorIs(t, requireDirectSignMode(extensionOptionsTxStub{}), types.ErrUnsupportedSignMode)
+	require.ErrorIs(t, requireDirectSignMode(extensionOptionsTxStub{}, false), types.ErrUnsupportedSignMode)
 
 	expected := errors.New("signatures unavailable")
 	require.ErrorContains(t, requireDirectSignMode(sigVerifiableTxStub{
 		signErr: expected,
-	}), expected.Error())
+	}, false), expected.Error())
 
 	require.ErrorIs(t, requireDirectSignMode(sigVerifiableTxStub{
 		signatures: []txsigning.SignatureV2{{
 			Data: &txsigning.MultiSignatureData{},
 		}},
-	}), types.ErrUnsupportedSignMode)
+	}, false), types.ErrUnsupportedSignMode)
 	require.ErrorIs(t, requireDirectSignMode(sigVerifiableTxStub{
 		signatures: []txsigning.SignatureV2{{
 			Data: &txsigning.SingleSignatureData{
 				SignMode: txsigning.SignMode_SIGN_MODE_LEGACY_AMINO_JSON,
 			},
 		}},
-	}), types.ErrUnsupportedSignMode)
+	}, false), types.ErrUnsupportedSignMode)
 	require.NoError(t, requireDirectSignMode(sigVerifiableTxStub{
 		signatures: []txsigning.SignatureV2{{
 			Data: &txsigning.SingleSignatureData{
 				SignMode: txsigning.SignMode_SIGN_MODE_DIRECT,
 			},
 		}},
-	}))
+	}, false))
+
+	unsignedSimulation := sigVerifiableTxStub{
+		signatures: []txsigning.SignatureV2{{
+			Data: &txsigning.SingleSignatureData{
+				SignMode: txsigning.SignMode_SIGN_MODE_UNSPECIFIED,
+			},
+		}},
+	}
+	require.NoError(t, requireDirectSignMode(unsignedSimulation, true))
+	require.ErrorIs(t, requireDirectSignMode(unsignedSimulation, false), types.ErrUnsupportedSignMode)
+	require.ErrorIs(t, requireDirectSignMode(sigVerifiableTxStub{
+		signatures: []txsigning.SignatureV2{{
+			Data: &txsigning.SingleSignatureData{
+				SignMode:  txsigning.SignMode_SIGN_MODE_UNSPECIFIED,
+				Signature: []byte{1},
+			},
+		}},
+	}, true), types.ErrUnsupportedSignMode)
+}
+
+func TestPQCStateContextUsesLatestCommittedHeightOnlyForSimulation(t *testing.T) {
+	ctx, _, _, _, _ := setupAnteTest(t)
+	commitStore, ok := ctx.MultiStore().(storetypes.CommitMultiStore)
+	require.True(t, ok)
+	commitID := commitStore.Commit()
+	require.Positive(t, commitID.Version)
+
+	heightZero := ctx.WithBlockHeight(0)
+	require.Equal(t, int64(0), pqcStateContext(heightZero, false).BlockHeight())
+	require.Equal(t, commitID.Version, pqcStateContext(heightZero, true).BlockHeight())
+	require.Equal(t, int64(10), pqcStateContext(ctx, true).BlockHeight())
 }
 
 func TestPQCRequirementDecisionMatrix(t *testing.T) {

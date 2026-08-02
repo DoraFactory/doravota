@@ -103,6 +103,12 @@ test-cover:
 	@go test -v -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 
+e2e-pqcauth-smoke:
+	@E2E_NODES=1 ./tests/e2e/pqcauth/run.sh
+
+e2e-pqcauth-full:
+	@E2E_NODES=4 ./tests/e2e/pqcauth/run.sh
+
 ###############################################################################
 ###                                Linting                                 ###
 ###############################################################################
@@ -142,4 +148,4 @@ clean:
 	@rm -rf $(BUILDDIR)
 	@rm -rf coverage.out coverage.html
 
-.PHONY: build install go.sum proto-all proto-gen proto-format proto-lint proto-check-breaking proto-update-deps proto-gen-buf proto-lint-buf proto-format-buf proto-breaking-buf tools-install tools-clean test test-cover lint lint-fix format docker-build docker-run clean
+.PHONY: build install go.sum proto-all proto-gen proto-format proto-lint proto-check-breaking proto-update-deps proto-gen-buf proto-lint-buf proto-format-buf proto-breaking-buf tools-install tools-clean test test-cover e2e-pqcauth-smoke e2e-pqcauth-full lint lint-fix format docker-build docker-run clean

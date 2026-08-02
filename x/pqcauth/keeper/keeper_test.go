@@ -840,3 +840,31 @@ func TestUpdateParamsRejectsAuthorityNetworkAndNestedSchedule(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, response.ActivationHeight)
 }
+
+func TestUpdateParamsRejectsQuotaBelowConsumedLifetimeKeyIDs(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	current := types.DefaultParams()
+	require.NoError(t, moduleKeeper.SetParams(ctx, current))
+	owner := sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20))
+	require.NoError(t, moduleKeeper.SetKeySequence(ctx, owner, types.AccountKeySequence{
+		Owner:     owner.String(),
+		NextKeyId: 7,
+	}))
+
+	requested := current
+	requested.MaxKeysPerAccount = 5
+	_, err := NewMsgServer(moduleKeeper).UpdateParams(
+		sdk.WrapSDKContext(ctx),
+		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: requested},
+	)
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+	require.Contains(t, err.Error(), "6 lifetime key records")
+
+	requested.MaxKeysPerAccount = 6
+	response, err := NewMsgServer(moduleKeeper).UpdateParams(
+		sdk.WrapSDKContext(ctx),
+		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: requested},
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(11), response.ActivationHeight)
+}
