@@ -23,6 +23,7 @@ The implementation is gated by the following documents:
 - [Signing and wire specification](./signing-spec-v1.md)
 - [Implementation and rollout plan](./implementation-plan-v1.md)
 - [Operator runbook](./operator-runbook-v1.md)
+- [Four-validator real-network simulation report](./e2e-simulation-report-2026-08-03.md)
 
 Consensus code must not weaken the hybrid `AND` rule on verification errors.
 Emergency operation is fail-closed: protected transactions may be paused, but

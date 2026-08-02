@@ -187,6 +187,8 @@ The application currently remains on the Cosmos SDK 0.47 compatibility family.
 The PQC implementation does not make the full node production-ready while the
 following upstream findings remain reachable:
 
+- gRPC 1.79.3 has reachable xDS RBAC and HTTP/2 transport findings; the
+  advisory fixes them in 1.82.1.
 - CometBFT 0.37 has peer-driven blocksync and block-part denial-of-service
   findings. Their upstream advisories do not share a single compatible minimum
   fix version for this application line.
@@ -204,6 +206,16 @@ contains OpenPGP. Run `govulncheck ./...` on the exact release toolchain and
 treat any reachable Critical or High result as a release blocker.
 These are application dependency gates, not weaknesses in ML-DSA verification,
 but they affect the security of the node that enforces it.
+
+The 2026-08-02 UTC release-candidate scan used Go 1.25.12 and
+`govulncheck` 1.6.0. It found eight called vulnerabilities in five modules:
+GO-2026-6061 (gRPC), GO-2026-5932 (OpenPGP), GO-2025-3443 and GO-2025-3442
+(CometBFT), GO-2024-3319 and GO-2024-3059 (Wasmd), and GO-2023-1881 and
+GO-2023-1821 (Cosmos SDK `x/crisis`). It also found two vulnerabilities in
+imported packages and one in a required module for which no call path was
+identified. Re-run the scan for every release: vulnerability-database results
+change over time, so this count is evidence for that build, not a permanent
+allowlist.
 
 ## Observability
 
