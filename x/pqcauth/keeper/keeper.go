@@ -162,6 +162,10 @@ func (k Keeper) SetKey(ctx sdk.Context, owner sdk.AccAddress, key types.PQCKeyRe
 	return nil
 }
 
+func (k Keeper) DeleteKey(ctx sdk.Context, owner sdk.AccAddress, keyID uint64) {
+	ctx.KVStore(k.storeKey).Delete(types.PQCKeyRecordKey(owner, keyID))
+}
+
 func (k Keeper) GetActiveSigningKey(
 	ctx sdk.Context,
 	owner sdk.AccAddress,
@@ -240,6 +244,61 @@ func (k Keeper) IterateAllSequences(ctx sdk.Context, callback func(types.Account
 	}
 }
 
+func (k Keeper) GetKeyHistory(
+	ctx sdk.Context,
+	owner sdk.AccAddress,
+	role types.KeyRole,
+) (types.AccountKeyHistory, bool) {
+	bz := ctx.KVStore(k.storeKey).Get(types.AccountKeyHistoryKey(owner, role))
+	if bz == nil {
+		return types.AccountKeyHistory{}, false
+	}
+	var history types.AccountKeyHistory
+	if err := k.cdc.Unmarshal(bz, &history); err != nil {
+		panic(fmt.Errorf("corrupt pqcauth key history for %s/%s: %w", owner.String(), role, err))
+	}
+	return history, true
+}
+
+func (k Keeper) SetKeyHistory(
+	ctx sdk.Context,
+	owner sdk.AccAddress,
+	history types.AccountKeyHistory,
+) error {
+	if history.Owner != owner.String() ||
+		(history.Role != types.KeyRole_KEY_ROLE_SIGNING &&
+			history.Role != types.KeyRole_KEY_ROLE_RECOVERY) ||
+		history.CompactedCount == 0 ||
+		history.LastCompactedKeyId == 0 ||
+		len(history.Accumulator) != types.KeyHistoryAccumulatorSize {
+		return fmt.Errorf("%w: invalid account key history", types.ErrInvalidKey)
+	}
+	bz, err := k.cdc.Marshal(&history)
+	if err != nil {
+		return err
+	}
+	ctx.KVStore(k.storeKey).Set(types.AccountKeyHistoryKey(owner, history.Role), bz)
+	return nil
+}
+
+func (k Keeper) IterateAllKeyHistories(
+	ctx sdk.Context,
+	callback func(types.AccountKeyHistory) bool,
+) {
+	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.AccountKeyHistoryPrefix)
+	iterator := store.Iterator(nil, nil)
+	defer iterator.Close()
+	for ; iterator.Valid(); iterator.Next() {
+		var history types.AccountKeyHistory
+		if err := k.cdc.Unmarshal(iterator.Value(), &history); err != nil {
+			panic(fmt.Errorf("corrupt pqcauth key history during iteration: %w", err))
+		}
+		if callback(history) {
+			return
+		}
+	}
+}
+
 func (k Keeper) GetKeySequence(
 	ctx sdk.Context,
 	owner sdk.AccAddress,
@@ -276,7 +335,6 @@ func (k Keeper) ReserveKeyIDs(
 	owner sdk.AccAddress,
 	expectedFirst uint64,
 	count uint64,
-	maxKeys uint32,
 ) ([]uint64, types.AccountKeySequence, error) {
 	sequence := k.GetKeySequence(ctx, owner)
 	if expectedFirst == 0 || sequence.NextKeyId != expectedFirst {
@@ -287,12 +345,8 @@ func (k Keeper) ReserveKeyIDs(
 			sequence.NextKeyId,
 		)
 	}
-	if count == 0 || count > uint64(maxKeys) ||
-		sequence.NextKeyId-1 > uint64(maxKeys)-count {
-		return nil, sequence, types.ErrKeyLimit.Wrapf(
-			"lifetime key-record quota %d exhausted",
-			maxKeys,
-		)
+	if count == 0 || count > 2 {
+		return nil, sequence, types.ErrKeyLimit.Wrap("a key operation may reserve one or two identifiers")
 	}
 	if sequence.NextKeyId > math.MaxUint64-count {
 		return nil, sequence, types.ErrKeyLimit.Wrap("key identifier overflow")

@@ -79,6 +79,10 @@ func TestInitGenesisImportsStateAndDerivesMissingSequence(t *testing.T) {
 	require.NoError(t, err)
 	publicKey2, _, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
+	publicKey3, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
+	publicKey4, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
 	genesis := types.GenesisState{
 		Params: types.DefaultParams(),
 		Keys: []types.PQCKeyRecord{
@@ -92,11 +96,29 @@ func TestInitGenesisImportsStateAndDerivesMissingSequence(t *testing.T) {
 				EffectiveHeight: 1,
 			},
 			{
-				Owner:           ownerDerived.String(),
+				Owner:           ownerWithSequence.String(),
 				KeyId:           2,
 				Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
 				PublicKey:       publicKey2,
+				Role:            types.KeyRole_KEY_ROLE_RECOVERY,
+				Status:          types.KeyStatus_KEY_STATUS_LIVE,
+				EffectiveHeight: 1,
+			},
+			{
+				Owner:           ownerDerived.String(),
+				KeyId:           3,
+				Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
+				PublicKey:       publicKey3,
 				Role:            types.KeyRole_KEY_ROLE_SIGNING,
+				Status:          types.KeyStatus_KEY_STATUS_LIVE,
+				EffectiveHeight: 1,
+			},
+			{
+				Owner:           ownerDerived.String(),
+				KeyId:           4,
+				Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
+				PublicKey:       publicKey4,
+				Role:            types.KeyRole_KEY_ROLE_RECOVERY,
 				Status:          types.KeyStatus_KEY_STATUS_LIVE,
 				EffectiveHeight: 1,
 			},
@@ -105,17 +127,26 @@ func TestInitGenesisImportsStateAndDerivesMissingSequence(t *testing.T) {
 			{
 				Owner:               ownerWithSequence.String(),
 				CurrentSigningKeyId: 1,
+				RecoveryKeyId:       2,
 				PolicyVersion:       1,
 			},
 			{
 				Owner:               ownerDerived.String(),
-				CurrentSigningKeyId: 2,
+				CurrentSigningKeyId: 3,
+				RecoveryKeyId:       4,
 				PolicyVersion:       1,
 			},
 		},
 		KeySequences: []types.AccountKeySequence{{
 			Owner:     ownerWithSequence.String(),
-			NextKeyId: 2,
+			NextKeyId: 3,
+		}},
+		KeyHistories: []types.AccountKeyHistory{{
+			Owner:              ownerDerived.String(),
+			Role:               types.KeyRole_KEY_ROLE_SIGNING,
+			CompactedCount:     1,
+			LastCompactedKeyId: 1,
+			Accumulator:        bytes.Repeat([]byte{0x5a}, types.KeyHistoryAccumulatorSize),
 		}},
 	}
 
@@ -124,27 +155,35 @@ func TestInitGenesisImportsStateAndDerivesMissingSequence(t *testing.T) {
 	expectedParams := genesis.Params
 	expectedParams.NetworkId = types.NetworkIDForChain(ctx.ChainID())
 	require.Equal(t, expectedParams, moduleKeeper.GetParams(ctx))
-	key, found := moduleKeeper.GetKey(ctx, ownerDerived, 2)
+	key, found := moduleKeeper.GetKey(ctx, ownerDerived, 3)
 	require.True(t, found)
-	require.Equal(t, publicKey2, key.PublicKey)
+	require.Equal(t, publicKey3, key.PublicKey)
 	policy, found := moduleKeeper.GetAccountPolicy(ctx, ownerWithSequence)
 	require.True(t, found)
 	require.Equal(t, uint64(1), policy.CurrentSigningKeyId)
 	require.Equal(
 		t,
-		uint64(2),
+		uint64(3),
 		moduleKeeper.GetKeySequence(ctx, ownerWithSequence).NextKeyId,
 	)
 	require.Equal(
 		t,
-		uint64(3),
+		uint64(5),
 		moduleKeeper.GetKeySequence(ctx, ownerDerived).NextKeyId,
 	)
+	history, found := moduleKeeper.GetKeyHistory(
+		ctx,
+		ownerDerived,
+		types.KeyRole_KEY_ROLE_SIGNING,
+	)
+	require.True(t, found)
+	require.Equal(t, genesis.KeyHistories[0], history)
 
 	exported := ExportGenesis(ctx, moduleKeeper)
-	require.Len(t, exported.Keys, 2)
+	require.Len(t, exported.Keys, 4)
 	require.Len(t, exported.Policies, 2)
 	require.Len(t, exported.KeySequences, 2)
+	require.Equal(t, genesis.KeyHistories, exported.KeyHistories)
 }
 
 func TestInitGenesisPanicsOnInvalidState(t *testing.T) {

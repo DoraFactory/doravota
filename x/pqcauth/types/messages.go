@@ -44,13 +44,23 @@ func (m MsgRegisterKey) ValidateBasic() error {
 	if err := ValidatePublicKeyAndProofLengths(m.SigningAlgorithm, m.SigningPublicKey, m.SigningKeyProof); err != nil {
 		return err
 	}
-	hasRecovery := m.RecoveryAlgorithm != Algorithm_ALGORITHM_UNSPECIFIED ||
-		len(m.RecoveryPublicKey) != 0 ||
-		len(m.RecoveryKeyProof) != 0
-	if hasRecovery {
-		if err := ValidatePublicKeyAndProofLengths(m.RecoveryAlgorithm, m.RecoveryPublicKey, m.RecoveryKeyProof); err != nil {
-			return fmt.Errorf("invalid recovery key: %w", err)
-		}
+	if err := ValidatePublicKeyAndProofLengths(
+		m.RecoveryAlgorithm,
+		m.RecoveryPublicKey,
+		m.RecoveryKeyProof,
+	); err != nil {
+		return fmt.Errorf("invalid recovery key: %w", err)
+	}
+	if err := ValidateDistinctRoleKeys(
+		m.SigningAlgorithm,
+		m.SigningPublicKey,
+		m.RecoveryAlgorithm,
+		m.RecoveryPublicKey,
+	); err != nil {
+		return err
+	}
+	if !m.SelfEnforce {
+		return errorsmod.Wrap(ErrInvalidKey, "registration must enable self-enforcement")
 	}
 	return nil
 }

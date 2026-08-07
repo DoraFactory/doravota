@@ -29,6 +29,10 @@ func StateInvariant(moduleKeeper Keeper) sdk.Invariant {
 			genesis.KeySequences = append(genesis.KeySequences, sequence)
 			return false
 		})
+		moduleKeeper.IterateAllKeyHistories(ctx, func(history types.AccountKeyHistory) bool {
+			genesis.KeyHistories = append(genesis.KeyHistories, history)
+			return false
+		})
 		if err := types.ValidateGenesis(genesis); err != nil {
 			return sdk.FormatInvariant(
 				types.ModuleName,

@@ -54,10 +54,10 @@ message Params {
   uint64 proof_verification_gas = 5;
   uint32 max_pqc_signers = 6;
   uint32 max_pqc_auth_bytes = 7;
-  // Maximum lifetime key records allocated to one account. Retired or revoked
-  // records still count because key identifiers are append-only and never
-  // reused.
-  uint32 max_keys_per_account = 8;
+  // Maximum number of complete terminal key records retained per role and
+  // account. Current and pending policy keys are pinned and never count toward
+  // this limit. Older terminal records are committed into AccountKeyHistory.
+  uint32 max_retained_key_records_per_role = 8;
   uint64 registration_cutoff_height = 9;
   EmergencyMode emergency_mode = 10;
   ScheduledParams pending = 11;
@@ -73,8 +73,8 @@ message ScheduledParams {
   uint64 proof_verification_gas = 4;
   uint32 max_pqc_signers = 5;
   uint32 max_pqc_auth_bytes = 6;
-  // Scheduled replacement for the lifetime key-record quota.
-  uint32 max_keys_per_account = 7;
+  // Scheduled replacement for terminal key-record retention per role.
+  uint32 max_retained_key_records_per_role = 7;
   uint64 registration_cutoff_height = 8;
   EmergencyMode emergency_mode = 9;
 }
@@ -113,10 +113,22 @@ message AccountKeySequence {
   uint64 next_key_id = 2;
 }
 
+// AccountKeyHistory commits terminal key records that have been removed from
+// current state. Accumulators are maintained independently for signing and
+// recovery roles so rotation of one role cannot evict the other's live state.
+message AccountKeyHistory {
+  string owner = 1;
+  KeyRole role = 2;
+  uint64 compacted_count = 3;
+  uint64 last_compacted_key_id = 4;
+  bytes accumulator = 5;
+}
+
 // GenesisState defines pqcauth genesis state.
 message GenesisState {
   Params params = 1 [(gogoproto.nullable) = false];
   repeated PQCKeyRecord keys = 2 [(gogoproto.nullable) = false];
   repeated AccountPolicy policies = 3 [(gogoproto.nullable) = false];
   repeated AccountKeySequence key_sequences = 4 [(gogoproto.nullable) = false];
+  repeated AccountKeyHistory key_histories = 5 [(gogoproto.nullable) = false];
 }

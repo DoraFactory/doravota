@@ -21,6 +21,8 @@ func TestLifecycleMessageLegacySDKSurface(t *testing.T) {
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x81}, 20)).String()
 	publicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
 	_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
 	require.NoError(t, err)
 	proof := make([]byte, signatureSize)
@@ -36,6 +38,10 @@ func TestLifecycleMessageLegacySDKSurface(t *testing.T) {
 				SigningAlgorithm:     Algorithm_ALGORITHM_ML_DSA_65,
 				SigningPublicKey:     publicKey,
 				SigningKeyProof:      proof,
+				SelfEnforce:          true,
+				RecoveryAlgorithm:    Algorithm_ALGORITHM_ML_DSA_65,
+				RecoveryPublicKey:    recoveryPublicKey,
+				RecoveryKeyProof:     proof,
 			},
 			name: "register_key",
 		},
@@ -106,6 +112,8 @@ func TestLifecycleMessageValidateBasicRejectsMalformedInputs(t *testing.T) {
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x82}, 20)).String()
 	publicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
 	_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
 	require.NoError(t, err)
 	proof := make([]byte, signatureSize)
@@ -128,6 +136,27 @@ func TestLifecycleMessageValidateBasicRejectsMalformedInputs(t *testing.T) {
 			SigningPublicKey:     publicKey,
 			SigningKeyProof:      proof,
 			RecoveryAlgorithm:    Algorithm_ALGORITHM_ML_DSA_65,
+		}},
+		{"register without self enforcement", &MsgRegisterKey{
+			Owner:                owner,
+			ExpectedSigningKeyId: 1,
+			SigningAlgorithm:     Algorithm_ALGORITHM_ML_DSA_65,
+			SigningPublicKey:     publicKey,
+			SigningKeyProof:      proof,
+			RecoveryAlgorithm:    Algorithm_ALGORITHM_ML_DSA_65,
+			RecoveryPublicKey:    recoveryPublicKey,
+			RecoveryKeyProof:     proof,
+		}},
+		{"register same signing and recovery key", &MsgRegisterKey{
+			Owner:                owner,
+			ExpectedSigningKeyId: 1,
+			SigningAlgorithm:     Algorithm_ALGORITHM_ML_DSA_65,
+			SigningPublicKey:     publicKey,
+			SigningKeyProof:      proof,
+			SelfEnforce:          true,
+			RecoveryAlgorithm:    Algorithm_ALGORITHM_ML_DSA_65,
+			RecoveryPublicKey:    publicKey,
+			RecoveryKeyProof:     proof,
 		}},
 		{"rotate owner", &MsgRotateKey{Owner: "invalid"}},
 		{"rotate id", &MsgRotateKey{Owner: owner}},

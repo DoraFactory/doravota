@@ -17,6 +17,7 @@ var (
 	AccountPolicyKeyPrefix   = []byte{0x02}
 	PQCKeyRecordKeyPrefix    = []byte{0x03}
 	AccountSequenceKeyPrefix = []byte{0x04}
+	AccountKeyHistoryPrefix  = []byte{0x05}
 )
 
 func accountScopedPrefix(prefix []byte, owner sdk.AccAddress) []byte {
@@ -33,6 +34,11 @@ func AccountPolicyKey(owner sdk.AccAddress) []byte {
 
 func AccountSequenceKey(owner sdk.AccAddress) []byte {
 	return accountScopedPrefix(AccountSequenceKeyPrefix, owner)
+}
+
+func AccountKeyHistoryKey(owner sdk.AccAddress, role KeyRole) []byte {
+	key := accountScopedPrefix(AccountKeyHistoryPrefix, owner)
+	return append(key, byte(role))
 }
 
 func PQCKeyRecordPrefix(owner sdk.AccAddress) []byte {

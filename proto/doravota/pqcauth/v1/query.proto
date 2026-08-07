@@ -43,6 +43,7 @@ message QueryAccountRequest {
 message QueryAccountResponse {
   AccountPolicy policy = 1 [(gogoproto.nullable) = false];
   PQCKeyRecord active_signing_key = 2;
+  repeated AccountKeyHistory key_histories = 3 [(gogoproto.nullable) = false];
 }
 
 message QueryKeyRequest {

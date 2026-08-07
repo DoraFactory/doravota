@@ -161,9 +161,9 @@ func TestKeeperStorageValidationAndIteration(t *testing.T) {
 	})
 	require.Equal(t, 1, sequenceCalls)
 
-	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 0, 1, 8)
+	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 0, 1)
 	require.ErrorIs(t, err, types.ErrUnexpectedKeyID)
-	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 2, 0, 8)
+	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 2, 0)
 	require.ErrorIs(t, err, types.ErrKeyLimit)
 }
 
@@ -203,6 +203,15 @@ func TestKeeperCorruptStatePanicsFailClosed(t *testing.T) {
 				moduleKeeper.GetKeySequence(ctx, owner)
 			},
 		},
+		{
+			name: "key history",
+			key: func(owner sdk.AccAddress) []byte {
+				return types.AccountKeyHistoryKey(owner, types.KeyRole_KEY_ROLE_SIGNING)
+			},
+			read: func(moduleKeeper Keeper, ctx sdk.Context, owner sdk.AccAddress) {
+				moduleKeeper.GetKeyHistory(ctx, owner, types.KeyRole_KEY_ROLE_SIGNING)
+			},
+		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -237,6 +246,7 @@ func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x11}, 20)).String()
 
 	publicKey1, privateKey1 := keyPair(1)
+	recoveryPublicKey, recoveryPrivateKey := keyPair(2)
 	registerProof := keyProof(
 		t,
 		ctx,
@@ -257,34 +267,60 @@ func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
 		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
 		SigningPublicKey:     publicKey1,
 		SigningKeyProof:      registerProof,
-		SelfEnforce:          true,
+		RecoveryAlgorithm:    types.Algorithm_ALGORITHM_ML_DSA_65,
+		RecoveryPublicKey:    recoveryPublicKey,
+		RecoveryKeyProof: keyProof(
+			t,
+			ctx,
+			params,
+			owner,
+			2,
+			types.Algorithm_ALGORITHM_ML_DSA_65,
+			recoveryPublicKey,
+			recoveryPrivateKey,
+			types.KeyRole_KEY_ROLE_RECOVERY,
+			types.PurposeRegisterRecovery,
+			0,
+			[]byte(types.RegisterProofContext),
+		),
+		SelfEnforce: true,
 	}
 	registerResponse, err := server.RegisterKey(
 		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx, registerMessage)),
 		registerMessage,
 	)
 	require.NoError(t, err)
+	require.Equal(t, uint64(1), registerResponse.SigningKeyId)
+	require.Equal(t, uint64(2), registerResponse.RecoveryKeyId)
 	require.Equal(t, uint64(11), registerResponse.EffectiveHeight)
 
 	ownerAddress, err := sdk.AccAddressFromBech32(owner)
 	require.NoError(t, err)
 	_, _, active := moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
 	require.False(t, active)
+	pendingPolicy, found := moduleKeeper.GetEffectiveAccountPolicy(ctx, ownerAddress)
+	require.True(t, found)
+	require.Zero(t, pendingPolicy.CurrentSigningKeyId)
+	require.Zero(t, pendingPolicy.RecoveryKeyId)
+	require.Equal(t, uint64(1), pendingPolicy.PendingSigningKeyId)
+	require.Equal(t, uint64(2), pendingPolicy.PendingRecoveryKeyId)
+	require.True(t, pendingPolicy.PendingSelfEnforced)
 
 	ctx = ctx.WithBlockHeight(11)
 	activeKey, policy, active := moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
 	require.True(t, active)
 	require.Equal(t, uint64(1), activeKey.KeyId)
+	require.Equal(t, uint64(2), policy.RecoveryKeyId)
 	require.True(t, policy.SelfEnforced)
 	require.Equal(t, uint64(1), policy.PolicyVersion)
 
-	publicKey2, privateKey2 := keyPair(2)
+	publicKey2, privateKey2 := keyPair(3)
 	rotateProof := keyProof(
 		t,
 		ctx,
 		params,
 		owner,
-		2,
+		3,
 		types.Algorithm_ALGORITHM_ML_DSA_65,
 		publicKey2,
 		privateKey2,
@@ -295,7 +331,7 @@ func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
 	)
 	rotateMessage := &types.MsgRotateKey{
 		Owner:            owner,
-		ExpectedNewKeyId: 2,
+		ExpectedNewKeyId: 3,
 		NewAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
 		NewPublicKey:     publicKey2,
 		NewKeyProof:      rotateProof,
@@ -314,7 +350,7 @@ func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
 	ctx = ctx.WithBlockHeight(12)
 	activeKey, policy, active = moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
 	require.True(t, active)
-	require.Equal(t, uint64(2), activeKey.KeyId)
+	require.Equal(t, uint64(3), activeKey.KeyId)
 	require.Equal(t, uint64(2), policy.PolicyVersion)
 	oldKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 1)
 	require.True(t, found)
@@ -564,6 +600,11 @@ func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *tes
 		NewSigningPublicKey:     newPublicKey,
 		NewSigningKeyProof:      newKeyProof,
 	}
+	ownerAddress := sdk.MustAccAddressFromBech32(owner)
+	unavailableKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 1)
+	require.True(t, found)
+	unavailableKey.Status = types.KeyStatus_KEY_STATUS_REVOKED
+	require.NoError(t, moduleKeeper.SetKey(ctx, ownerAddress, unavailableKey))
 	response, err := server.RecoverKey(
 		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx, recoveryMessage)),
 		recoveryMessage,
@@ -571,10 +612,10 @@ func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *tes
 	require.NoError(t, err)
 	require.Equal(t, uint64(22), response.EffectiveHeight)
 
-	ownerAddress := sdk.MustAccAddressFromBech32(owner)
-	activeKey, _, active := moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
-	require.True(t, active)
-	require.Equal(t, uint64(1), activeKey.KeyId)
+	_, policyBeforeActivation, active := moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
+	require.False(t, active)
+	require.Equal(t, uint64(1), policyBeforeActivation.CurrentSigningKeyId)
+	require.Equal(t, uint64(3), policyBeforeActivation.PendingSigningKeyId)
 	activeKey, policy, active := moduleKeeper.GetActiveSigningKey(ctx.WithBlockHeight(22), ownerAddress)
 	require.True(t, active)
 	require.Equal(t, uint64(3), activeKey.KeyId)
@@ -676,26 +717,24 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.Nil(t, moduleKeeper.GetParams(activationCtx).Pending)
 }
 
-func TestReserveKeyIDsUsesLifetimeQuota(t *testing.T) {
+func TestReserveKeyIDsRemainMonotonicWithoutLifetimeQuota(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 10)
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x66}, 20))
 
-	ids, sequence, err := moduleKeeper.ReserveKeyIDs(ctx, owner, 1, 3, 3)
+	ids, sequence, err := moduleKeeper.ReserveKeyIDs(ctx, owner, 1, 2)
 	require.NoError(t, err)
-	require.Equal(t, []uint64{1, 2, 3}, ids)
+	require.Equal(t, []uint64{1, 2}, ids)
 	require.NoError(t, moduleKeeper.SetKeySequence(ctx, owner, sequence))
 
-	for _, keyID := range ids {
-		require.NoError(t, moduleKeeper.SetKey(ctx, owner, types.PQCKeyRecord{
-			Owner:  owner.String(),
-			KeyId:  keyID,
-			Status: types.KeyStatus_KEY_STATUS_REVOKED,
-		}))
+	for expectedID := uint64(3); expectedID <= 100; expectedID++ {
+		reserved, next, reserveErr := moduleKeeper.ReserveKeyIDs(ctx, owner, expectedID, 1)
+		require.NoError(t, reserveErr)
+		require.Equal(t, []uint64{expectedID}, reserved)
+		require.NoError(t, moduleKeeper.SetKeySequence(ctx, owner, next))
 	}
 
-	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 4, 1, 3)
+	_, _, err = moduleKeeper.ReserveKeyIDs(ctx, owner, 101, 3)
 	require.ErrorIs(t, err, types.ErrKeyLimit)
-	require.Contains(t, err.Error(), "lifetime key-record quota 3 exhausted")
 }
 
 func TestSetProtectionSchedulesOnlyRealChanges(t *testing.T) {
@@ -841,7 +880,7 @@ func TestUpdateParamsRejectsAuthorityNetworkAndNestedSchedule(t *testing.T) {
 	require.Zero(t, response.ActivationHeight)
 }
 
-func TestUpdateParamsRejectsQuotaBelowConsumedLifetimeKeyIDs(t *testing.T) {
+func TestUpdateParamsCanLowerHistoryRetentionIndependentlyOfKeySequence(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 10)
 	current := types.DefaultParams()
 	require.NoError(t, moduleKeeper.SetParams(ctx, current))
@@ -852,15 +891,7 @@ func TestUpdateParamsRejectsQuotaBelowConsumedLifetimeKeyIDs(t *testing.T) {
 	}))
 
 	requested := current
-	requested.MaxKeysPerAccount = 5
-	_, err := NewMsgServer(moduleKeeper).UpdateParams(
-		sdk.WrapSDKContext(ctx),
-		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: requested},
-	)
-	require.ErrorIs(t, err, types.ErrInvalidParams)
-	require.Contains(t, err.Error(), "6 lifetime key records")
-
-	requested.MaxKeysPerAccount = 6
+	requested.MaxRetainedKeyRecordsPerRole = 5
 	response, err := NewMsgServer(moduleKeeper).UpdateParams(
 		sdk.WrapSDKContext(ctx),
 		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: requested},

@@ -25,14 +25,21 @@ Parameter queries are normalized at the queried height: a future pending bundle
 is included, while a bundle whose activation height has arrived is applied and
 cleared from the response.
 
-`max_keys_per_account` is a lifetime key-record quota, not a live-key quota.
-The default permits eight total signing and recovery records per account
-(including initial registration); retired and revoked records continue to
-count, and key IDs are never reused. Before any rotation or recovery, query the
-account's key list and confirm capacity remains. Operators should alert before
-accounts approach the limit and publish a migration policy rather than raising
-the bound reactively. The protocol deliberately keeps this quota finite so
-repeated rotate/revoke cycles cannot grow consensus state without bound.
+`max_retained_key_records_per_role` bounds complete terminal records, not key
+creation. Key IDs remain monotonic and are never reused, but accounts cannot be
+locked by exhausting a small lifetime quota. The default retains 16 complete
+records independently for signing and recovery (hard parameter limit 64).
+Older terminal records are folded into a deterministic per-role hash-chain
+commitment exposed by the account query. Current and pending signing/recovery
+keys are always pinned and do not count toward retention. Operators should
+monitor `compacted_count`, retain exported genesis/history commitments, and
+archive transaction/event history externally when full historical detail is
+required.
+
+Registration always supplies distinct signing and recovery keys and activates
+`self_enforced=true` atomically at H+1. A signing-only or non-self-enforcing
+registration is invalid. The recovery private key must be generated and backed
+up separately from the online signing key before broadcasting registration.
 
 ## CLI flow
 
@@ -69,7 +76,7 @@ placeholder extension with the real signer, key ID, algorithm, policy version,
 and exact ML-DSA-65 signature length. Ante validates that structure and current
 chain metadata, charges the configured verification gas, but does not perform
 ML-DSA verification during simulation. Lifecycle key and recovery proofs follow
-the same rule: all structural, policy, quota, emergency, and proof-length checks
+the same rule: all structural, policy, retention, emergency, and proof-length checks
 remain active, while their configured proof gas replaces the cryptographic
 operation. The placeholder is used only by the simulation factory and is never
 retained in the transaction that is signed or broadcast. DeliverTx remains

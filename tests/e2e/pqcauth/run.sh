@@ -482,7 +482,7 @@ command_fails() {
 }
 
 # Accept either a mempool rejection or a committed execution rejection. Stateful
-# failures such as lifetime quota, registration cutoff, and nested authz cannot
+# failures such as history compaction, registration cutoff, and nested authz cannot
 # be decided safely by CheckTx alone.
 broadcast_rejected() {
   local label="$1"
@@ -615,7 +615,6 @@ common_tx_flags() {
 
 register_pqc_account() {
   local account="$1"
-  local self_enforce="$2"
   local owner
   owner="$(account_address "$account")"
   create_pqc_key "$account" signing1
@@ -633,28 +632,10 @@ register_pqc_account() {
     "$DORAD_BIN" tx pqcauth register-key 1 "$signing_public" "$signing_proof" \
       --recovery-public-key-base64 "$recovery_public" \
       --recovery-proof-base64 "$recovery_proof" \
-      --self-enforce="$self_enforce" \
+      --self-enforce=true \
       "${flags[@]}"
   wait_for_height $((LAST_TX_HEIGHT + 1))
   wait_for_policy "$owner" 1 2 1 "$account registration activates at H+1"
-}
-
-register_signing_only_account() {
-  local account="$1"
-  local self_enforce="$2"
-  local owner
-  owner="$(account_address "$account")"
-  create_pqc_key "$account" signing1
-  create_key_proof "$account" signing1 1 signing register-signing 0
-  local public proof flags=()
-  public="$(jq -r '.public_key_base64' "$(key_json_file "$account" signing1)")"
-  proof="$(jq -r '.proof_base64' "$(proof_json_file "$account" signing1 register-signing)")"
-  while IFS= read -r -d '' item; do flags+=("$item"); done < <(common_tx_flags "$account")
-  broadcast_ok "register $account signing key only" \
-    "$DORAD_BIN" tx pqcauth register-key 1 "$public" "$proof" \
-      --self-enforce="$self_enforce" "${flags[@]}"
-  wait_for_height $((LAST_TX_HEIGHT + 1))
-  wait_for_policy "$owner" 1 0 1 "$account signing-only registration activates at H+1"
 }
 
 generate_unsigned_bank_send() {
@@ -1008,12 +989,23 @@ assert_same_app_hash() {
 }
 
 run_nested_authz_scenario() {
-  local carol_flags=()
-  while IFS= read -r -d '' item; do carol_flags+=("$item"); done < <(common_tx_flags carol)
-  broadcast_ok "grant authz for pqcauth lifecycle message" \
-    "$DORAD_BIN" tx authz grant "$(account_address grantee)" generic \
-      --msg-type /doravota.pqcauth.v1.MsgSetProtection \
-      "${carol_flags[@]}"
+  local grant_unsigned="$WORK_DIR/tx/carol-authz-grant.unsigned.json"
+  "$DORAD_BIN" tx authz grant "$(account_address grantee)" generic \
+    --msg-type /doravota.pqcauth.v1.MsgSetProtection \
+    --from carol --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --generate-only --output json >"$grant_unsigned"
+  "$DORAD_BIN" tx pqcauth prepare-bundle "$grant_unsigned" "$WORK_DIR/tx/carol-authz-grant.prepared.json" \
+    --from carol --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --output json --yes \
+    >"$WORK_DIR/tx/carol-authz-grant.prepare-result.json"
+  "$DORAD_BIN" tx pqcauth sign-bundle \
+    "$WORK_DIR/tx/carol-authz-grant.prepared.json" \
+    "$(key_private_file carol signing1)" \
+    "$WORK_DIR/tx/carol-authz-grant.signed.json" \
+    --home "$CLIENT_HOME" --yes >"$WORK_DIR/tx/carol-authz-grant.sign-result.json"
+  broadcast_signed_bundle "grant authz for pqcauth lifecycle message" carol \
+    "$WORK_DIR/tx/carol-authz-grant.signed.json"
 
   local inner="$WORK_DIR/tx/authz-inner-pqcauth-lifecycle.json"
   jq -n --arg owner "$(account_address carol)" \
@@ -1026,47 +1018,48 @@ run_nested_authz_scenario() {
 
   local account="$WORK_DIR/tx/carol-after-authz-rejection.account.json"
   query_account_to_file "$(account_address carol)" "$account"
-  [[ "$(jq -r '.policy.self_enforced' "$account")" == "false" ]] || die "nested authz changed Carol's protection policy"
+  [[ "$(jq -r '.policy.self_enforced' "$account")" == "true" ]] || die "nested authz changed Carol's protection policy"
   pass "nested authz rejection leaves pqcauth state unchanged"
 }
 
-run_lifetime_quota_scenario() {
-  register_signing_only_account quota false
+run_history_compaction_scenario() {
+  register_pqc_account quota
   local quota_flags=()
   while IFS= read -r -d '' item; do quota_flags+=("$item"); done < <(common_tx_flags quota)
-  local current=1
+  local current_key_id=1
+  local current_label=signing1
+  local policy_version=1
   local next
-  for next in 2 3 4 5 6 7 8; do
+  for ((next = 3; next <= 22; next++)); do
     create_pqc_key quota "signing$next"
-    create_key_proof quota "signing$next" "$next" signing rotate-signing "$current"
+    create_key_proof quota "signing$next" "$next" signing rotate-signing "$policy_version"
     local public proof
     public="$(jq -r '.public_key_base64' "$(key_json_file quota "signing$next")")"
     proof="$(jq -r '.proof_base64' "$(proof_json_file quota "signing$next" rotate-signing)")"
-    broadcast_ok "quota account rotates to lifetime key $next" \
+    broadcast_ok "history account rotates signing key to id $next" \
       "$DORAD_BIN" tx pqcauth rotate-key "$next" "$public" "$proof" \
-        --pqc-private-key-file "$(key_private_file quota "signing$current")" \
+        --pqc-private-key-file "$(key_private_file quota "$current_label")" \
         "${quota_flags[@]}"
     wait_for_height $((LAST_TX_HEIGHT + 1))
-    wait_for_policy "$(account_address quota)" "$next" 0 "$next" "quota key $next activates at H+1"
-    current="$next"
+    policy_version=$((policy_version + 1))
+    wait_for_policy "$(account_address quota)" "$next" 2 "$policy_version" "signing key $next activates at H+1"
+    current_key_id="$next"
+    current_label="signing$next"
   done
 
-  create_pqc_key quota signing9
-  create_key_proof quota signing9 9 signing rotate-signing 8
-  local public9 proof9
-  public9="$(jq -r '.public_key_base64' "$(key_json_file quota signing9)")"
-  proof9="$(jq -r '.proof_base64' "$(proof_json_file quota signing9 rotate-signing)")"
-  broadcast_rejected "ninth lifetime key is rejected at default quota eight" "quota 8 exhausted" \
-    "$DORAD_BIN" tx pqcauth rotate-key 9 "$public9" "$proof9" \
-      --pqc-private-key-file "$(key_private_file quota signing8)" \
-      "${quota_flags[@]}"
-
-  local keys="$REPORT_DIR/quota-account-keys.json"
+  [[ "$current_key_id" == "22" ]] || die "history rotation loop ended on an unexpected key id"
+  local keys="$REPORT_DIR/history-account-keys.json"
   "$DORAD_BIN" query pqcauth keys "$(account_address quota)" \
     --node "$RPC_URL" --output json >"$keys"
-  [[ "$(jq '.keys | length' "$keys")" == "8" ]] || die "quota account did not retain exactly eight lifetime key records"
-  [[ "$(jq '[.keys[] | select(.status == "KEY_STATUS_REVOKED")] | length' "$keys")" == "0" ]] || die "unexpected revoked quota key"
-  pass "key query exposes exactly eight append-only lifetime records"
+  [[ "$(jq '.keys | length' "$keys")" == "18" ]] || die "history account did not retain 16 terminal signing records plus two active keys"
+  jq -e '.keys | any(.key_id == "22" and .role == "KEY_ROLE_SIGNING")' "$keys" >/dev/null || die "current signing key was removed by history compaction"
+  jq -e '.keys | any(.key_id == "2" and .role == "KEY_ROLE_RECOVERY")' "$keys" >/dev/null || die "current recovery key was removed by signing history compaction"
+
+  local account="$REPORT_DIR/history-account-policy.json"
+  query_account_to_file "$(account_address quota)" "$account"
+  [[ "$(jq -r '[.key_histories[] | select(.role == "KEY_ROLE_SIGNING")][0].compacted_count' "$account")" == "4" ]] || die "unexpected compacted signing-key count"
+  [[ "$(jq -r '[.key_histories[] | select(.role == "KEY_ROLE_RECOVERY")] | length' "$account")" == "0" ]] || die "signing churn unexpectedly compacted recovery history"
+  pass "unbounded key IDs compact old signing history without deleting active signing or recovery keys"
 }
 
 run_governance_scenarios() {
@@ -1086,14 +1079,14 @@ run_governance_scenarios() {
   while IFS= read -r -d '' item; do bob_flags+=("$item"); done < <(common_tx_flags bob)
 
   submit_params_update "require PQC for every registered account" "$registered" "$normal" 0
-  command_fails "registered non-self-enforced account is protected by governance mode" "PQC authorization" \
+  command_fails "registered account remains protected in registered-required mode" "PQC authorization" \
     "$DORAD_BIN" tx bank send "$(account_address carol)" "$(account_address receiver)" "201${DENOM}" \
       "${carol_flags[@]}"
   prepare_and_sign_bank_bundle carol signing1 "$(account_address receiver)" "202${DENOM}" carol-required-registered
   broadcast_signed_bundle "registered account succeeds with hybrid authorization" carol "$WORK_DIR/tx/carol-required-registered.signed.json"
 
   submit_params_update "restore optional enforcement" "$optional" "$normal" 0
-  broadcast_ok "registered non-self-enforced account is classic-compatible in optional mode" \
+  command_fails "registered self-enforced account stays protected in optional mode" "PQC authorization" \
     "$DORAD_BIN" tx bank send "$(account_address carol)" "$(account_address receiver)" "203${DENOM}" \
       "${carol_flags[@]}"
 
@@ -1101,7 +1094,7 @@ run_governance_scenarios() {
   command_fails "disabled mode does not override account self-enforcement" "PQC authorization" \
     "$DORAD_BIN" tx bank send "$(account_address alice)" "$(account_address receiver)" "204${DENOM}" \
       "${alice_flags[@]}"
-  broadcast_ok "disabled mode permits a non-self-enforced registered account" \
+  command_fails "disabled mode cannot override another account's self-enforcement" "PQC authorization" \
     "$DORAD_BIN" tx bank send "$(account_address carol)" "$(account_address receiver)" "205${DENOM}" \
       "${carol_flags[@]}"
   submit_params_update "restore optional mode after disabled test" "$optional" "$normal" 0
@@ -1144,6 +1137,8 @@ run_governance_scenarios() {
   while IFS= read -r -d '' item; do eve_flags+=("$item"); done < <(common_tx_flags eve)
   broadcast_rejected "new registration is rejected at irreversible cutoff" "registration is closed" \
     "$DORAD_BIN" tx pqcauth register-key 1 "$eve_public" "$eve_proof" \
+      --recovery-public-key-base64 "$(jq -r '.public_key_base64' "$(key_json_file eve recovery2)")" \
+      --recovery-proof-base64 "$(jq -r '.proof_base64' "$(proof_json_file eve recovery2 register-recovery)")" \
       --self-enforce=true "${eve_flags[@]}"
 
   submit_params_update "final network-wide PQC requirement" "$required" "$normal" "$cutoff"
@@ -1169,17 +1164,23 @@ run_scenarios() {
 
   create_pqc_key eve invalid1
   create_key_proof eve invalid1 2 signing register-signing 0
-  local invalid_public invalid_proof eve_flags=()
+  create_pqc_key eve recovery2
+  create_key_proof eve recovery2 2 recovery register-recovery 0
+  local invalid_public invalid_proof eve_recovery_public eve_recovery_proof eve_flags=()
   invalid_public="$(jq -r '.public_key_base64' "$(key_json_file eve invalid1)")"
   invalid_proof="$(jq -r '.proof_base64' "$(proof_json_file eve invalid1 register-signing)")"
+  eve_recovery_public="$(jq -r '.public_key_base64' "$(key_json_file eve recovery2)")"
+  eve_recovery_proof="$(jq -r '.proof_base64' "$(proof_json_file eve recovery2 register-recovery)")"
   while IFS= read -r -d '' item; do eve_flags+=("$item"); done < <(common_tx_flags eve)
   command_fails "registration proof bound to wrong key id" "invalid" \
     "$DORAD_BIN" tx pqcauth register-key 1 "$invalid_public" "$invalid_proof" \
+      --recovery-public-key-base64 "$eve_recovery_public" \
+      --recovery-proof-base64 "$eve_recovery_proof" \
       --self-enforce=true "${eve_flags[@]}"
 
-  register_pqc_account alice true
-  register_pqc_account dave true
-  register_signing_only_account carol false
+  register_pqc_account alice
+  register_pqc_account dave
+  register_pqc_account carol
 
   local alice_flags=()
   while IFS= read -r -d '' item; do alice_flags+=("$item"); done < <(common_tx_flags alice)
@@ -1311,7 +1312,7 @@ run_scenarios() {
   broadcast_signed_bundle "valid transaction succeeds after adversarial rejection matrix" alice "$adversarial_bundle"
 
   run_nested_authz_scenario
-  run_lifetime_quota_scenario
+  run_history_compaction_scenario
 
   if (( NODES >= 4 )); then
     local before_stop

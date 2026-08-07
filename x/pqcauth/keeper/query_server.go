@@ -57,6 +57,14 @@ func (q QueryServer) Account(
 	if key, _, active := q.GetActiveSigningKey(ctx, owner); active {
 		response.ActiveSigningKey = &key
 	}
+	for _, role := range []types.KeyRole{
+		types.KeyRole_KEY_ROLE_SIGNING,
+		types.KeyRole_KEY_ROLE_RECOVERY,
+	} {
+		if history, exists := q.GetKeyHistory(ctx, owner, role); exists {
+			response.KeyHistories = append(response.KeyHistories, history)
+		}
+	}
 	return response, nil
 }
 

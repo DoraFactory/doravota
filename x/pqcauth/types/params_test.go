@@ -34,7 +34,9 @@ func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 		{"zero signers", func(p *Params) { p.MaxPqcSigners = 0 }},
 		{"too many signers", func(p *Params) { p.MaxPqcSigners = AbsoluteMaxPQCSigners + 1 }},
 		{"oversized auth", func(p *Params) { p.MaxPqcAuthBytes = AbsoluteMaxPQCAuthBytes + 1 }},
-		{"too many keys", func(p *Params) { p.MaxKeysPerAccount = AbsoluteMaxKeysPerAccount + 1 }},
+		{"too much key history", func(p *Params) {
+			p.MaxRetainedKeyRecordsPerRole = AbsoluteMaxRetainedKeyRecordsPerRole + 1
+		}},
 		{"zero verification gas", func(p *Params) { p.SignatureVerificationGas = 0 }},
 		{"signature gas below floor", func(p *Params) {
 			p.SignatureVerificationGas = MinimumSignatureVerificationGas - 1
@@ -82,14 +84,18 @@ func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
 	params := Params{}
 	require.Equal(t, DefaultMaxPQCSigners, params.EffectiveMaxPQCSigners())
 	require.Equal(t, DefaultMaxPQCAuthBytes, params.EffectiveMaxPQCAuthBytes())
-	require.Equal(t, DefaultMaxKeysPerAccount, params.EffectiveMaxKeysPerAccount())
+	require.Equal(t, DefaultMaxRetainedKeyRecordsPerRole, params.EffectiveMaxRetainedKeyRecordsPerRole())
 	require.Equal(t, DefaultSignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, DefaultProofVerificationGas, params.EffectiveProofVerificationGas())
 
 	params = DefaultParams()
 	require.Equal(t, params.MaxPqcSigners, params.EffectiveMaxPQCSigners())
 	require.Equal(t, params.MaxPqcAuthBytes, params.EffectiveMaxPQCAuthBytes())
-	require.Equal(t, params.MaxKeysPerAccount, params.EffectiveMaxKeysPerAccount())
+	require.Equal(
+		t,
+		params.MaxRetainedKeyRecordsPerRole,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	)
 	require.Equal(t, params.SignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, params.ProofVerificationGas, params.EffectiveProofVerificationGas())
 	require.Equal(
@@ -121,7 +127,7 @@ func TestParamsRejectRemainingInvalidBoundsAndSchedules(t *testing.T) {
 		func(params *Params) { params.ProofVerificationGas = 0 },
 		func(params *Params) { params.ProofVerificationGas = AbsoluteMaxVerificationGas + 1 },
 		func(params *Params) { params.MaxPqcAuthBytes = 0 },
-		func(params *Params) { params.MaxKeysPerAccount = 0 },
+		func(params *Params) { params.MaxRetainedKeyRecordsPerRole = 0 },
 		func(params *Params) { params.EmergencyMode = EmergencyMode(99) },
 		func(params *Params) { params.Pending = new(ScheduledParams) },
 		func(params *Params) { params.PendingActivationHeight = 2 },

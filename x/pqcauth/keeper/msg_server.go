@@ -45,24 +45,14 @@ func (m msgServer) RegisterKey(
 		return nil, types.ErrAlreadyRegistered
 	}
 
-	keyCount := uint64(1)
-	if len(msg.RecoveryPublicKey) != 0 {
-		keyCount++
-	}
 	ids, sequence, err := m.ReserveKeyIDs(
 		ctx,
 		owner,
 		msg.ExpectedSigningKeyId,
-		keyCount,
-		params.EffectiveMaxKeysPerAccount(),
+		2,
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	var recoveryKeyID uint64
-	if keyCount == 2 {
-		recoveryKeyID = ids[1]
 	}
 
 	effectiveHeight := uint64(ctx.BlockHeight()) + 1
@@ -79,30 +69,28 @@ func (m msgServer) RegisterKey(
 	if err := m.SetKey(ctx, owner, signingKey); err != nil {
 		return nil, err
 	}
-	if recoveryKeyID != 0 {
-		recoveryKey := types.PQCKeyRecord{
-			Owner:           msg.Owner,
-			KeyId:           recoveryKeyID,
-			Algorithm:       msg.RecoveryAlgorithm,
-			PublicKey:       append([]byte(nil), msg.RecoveryPublicKey...),
-			Role:            types.KeyRole_KEY_ROLE_RECOVERY,
-			Status:          types.KeyStatus_KEY_STATUS_LIVE,
-			CreatedHeight:   uint64(ctx.BlockHeight()),
-			EffectiveHeight: effectiveHeight,
-		}
-		if err := m.SetKey(ctx, owner, recoveryKey); err != nil {
-			return nil, err
-		}
+	recoveryKey := types.PQCKeyRecord{
+		Owner:           msg.Owner,
+		KeyId:           ids[1],
+		Algorithm:       msg.RecoveryAlgorithm,
+		PublicKey:       append([]byte(nil), msg.RecoveryPublicKey...),
+		Role:            types.KeyRole_KEY_ROLE_RECOVERY,
+		Status:          types.KeyStatus_KEY_STATUS_LIVE,
+		CreatedHeight:   uint64(ctx.BlockHeight()),
+		EffectiveHeight: effectiveHeight,
+	}
+	if err := m.SetKey(ctx, owner, recoveryKey); err != nil {
+		return nil, err
 	}
 
 	const initialPolicyVersion = 1
 	policy := types.AccountPolicy{
 		Owner:                  msg.Owner,
 		PendingSigningKeyId:    signingKey.KeyId,
+		PendingRecoveryKeyId:   recoveryKey.KeyId,
 		PendingEffectiveHeight: effectiveHeight,
-		PendingSelfEnforced:    msg.SelfEnforce,
+		PendingSelfEnforced:    true,
 		PendingPolicyVersion:   initialPolicyVersion,
-		RecoveryKeyId:          recoveryKeyID,
 	}
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
@@ -114,7 +102,7 @@ func (m msgServer) RegisterKey(
 	emitPolicyEvent(ctx, "pqc_register_key", msg.Owner, signingKey.KeyId, effectiveHeight, initialPolicyVersion)
 	return &types.MsgRegisterKeyResponse{
 		SigningKeyId:    signingKey.KeyId,
-		RecoveryKeyId:   recoveryKeyID,
+		RecoveryKeyId:   recoveryKey.KeyId,
 		EffectiveHeight: effectiveHeight,
 		PolicyVersion:   initialPolicyVersion,
 	}, nil
@@ -146,13 +134,26 @@ func (m msgServer) RotateKey(
 	if policy.HasPendingChange(ctx.BlockHeight()) {
 		return nil, types.ErrPendingChange
 	}
+	recoveryKey, found := m.GetKey(ctx, owner, policy.RecoveryKeyId)
+	if !found ||
+		recoveryKey.Role != types.KeyRole_KEY_ROLE_RECOVERY ||
+		!recoveryKey.IsEffective(ctx.BlockHeight()) {
+		return nil, types.ErrKeyNotFound.Wrap("active recovery key")
+	}
+	if err := types.ValidateDistinctRoleKeys(
+		msg.NewAlgorithm,
+		msg.NewPublicKey,
+		recoveryKey.Algorithm,
+		recoveryKey.PublicKey,
+	); err != nil {
+		return nil, err
+	}
 
 	ids, sequence, err := m.ReserveKeyIDs(
 		ctx,
 		owner,
 		msg.ExpectedNewKeyId,
 		1,
-		params.EffectiveMaxKeysPerAccount(),
 	)
 	if err != nil {
 		return nil, err
@@ -192,6 +193,14 @@ func (m msgServer) RotateKey(
 		return nil, err
 	}
 	if err := m.SetKeySequence(ctx, owner, sequence); err != nil {
+		return nil, err
+	}
+	if err := m.CompactTerminalKeyHistory(
+		ctx,
+		owner,
+		policy,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	); err != nil {
 		return nil, err
 	}
 
@@ -235,13 +244,26 @@ func (m msgServer) RotateRecoveryKey(
 		!oldRecoveryKey.IsEffective(ctx.BlockHeight()) {
 		return nil, types.ErrKeyNotFound.Wrap("active recovery key")
 	}
+	signingKey, found := m.GetKey(ctx, owner, policy.CurrentSigningKeyId)
+	if !found ||
+		signingKey.Role != types.KeyRole_KEY_ROLE_SIGNING ||
+		!signingKey.IsEffective(ctx.BlockHeight()) {
+		return nil, types.ErrKeyNotFound.Wrap("active signing key")
+	}
+	if err := types.ValidateDistinctRoleKeys(
+		signingKey.Algorithm,
+		signingKey.PublicKey,
+		msg.NewAlgorithm,
+		msg.NewPublicKey,
+	); err != nil {
+		return nil, err
+	}
 
 	ids, sequence, err := m.ReserveKeyIDs(
 		ctx,
 		owner,
 		msg.ExpectedNewKeyId,
 		1,
-		params.EffectiveMaxKeysPerAccount(),
 	)
 	if err != nil {
 		return nil, err
@@ -280,6 +302,14 @@ func (m msgServer) RotateRecoveryKey(
 	if err := m.SetKeySequence(ctx, owner, sequence); err != nil {
 		return nil, err
 	}
+	if err := m.CompactTerminalKeyHistory(
+		ctx,
+		owner,
+		policy,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	); err != nil {
+		return nil, err
+	}
 
 	emitPolicyEvent(
 		ctx,
@@ -307,7 +337,8 @@ func (m msgServer) SetProtection(
 	if err := execution.RequireLifecycleMessage(ctx, msg); err != nil {
 		return nil, err
 	}
-	if err := ensurePQCTransactionAllowed(m.GetParams(ctx).Effective(ctx.BlockHeight())); err != nil {
+	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
+	if err := ensurePQCTransactionAllowed(params); err != nil {
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
@@ -359,7 +390,8 @@ func (m msgServer) RevokeKey(
 	if err := execution.RequireLifecycleMessage(ctx, msg); err != nil {
 		return nil, err
 	}
-	if err := ensurePQCTransactionAllowed(m.GetParams(ctx).Effective(ctx.BlockHeight())); err != nil {
+	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
+	if err := ensurePQCTransactionAllowed(params); err != nil {
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
@@ -379,6 +411,14 @@ func (m msgServer) RevokeKey(
 	}
 	key.Status = types.KeyStatus_KEY_STATUS_REVOKED
 	if err := m.SetKey(ctx, owner, key); err != nil {
+		return nil, err
+	}
+	if err := m.CompactTerminalKeyHistory(
+		ctx,
+		owner,
+		policy,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	); err != nil {
 		return nil, err
 	}
 	emitPolicyEvent(
@@ -423,13 +463,20 @@ func (m msgServer) RecoverKey(
 		!recoveryKey.IsEffective(ctx.BlockHeight()) {
 		return nil, types.ErrKeyNotFound.Wrap("active recovery key")
 	}
+	if err := types.ValidateDistinctRoleKeys(
+		msg.NewSigningAlgorithm,
+		msg.NewSigningPublicKey,
+		recoveryKey.Algorithm,
+		recoveryKey.PublicKey,
+	); err != nil {
+		return nil, err
+	}
 
 	ids, sequence, err := m.ReserveKeyIDs(
 		ctx,
 		owner,
 		msg.ExpectedNewSigningKeyId,
 		1,
-		params.EffectiveMaxKeysPerAccount(),
 	)
 	if err != nil {
 		return nil, err
@@ -469,6 +516,14 @@ func (m msgServer) RecoverKey(
 	if err := m.SetKeySequence(ctx, owner, sequence); err != nil {
 		return nil, err
 	}
+	if err := m.CompactTerminalKeyHistory(
+		ctx,
+		owner,
+		policy,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	); err != nil {
+		return nil, err
+	}
 
 	emitPolicyEvent(ctx, "pqc_recover_key", msg.Owner, newKey.KeyId, effectiveHeight, newPolicyVersion)
 	return &types.MsgRecoverKeyResponse{
@@ -505,9 +560,6 @@ func (m msgServer) UpdateParams(
 	if lockedCutoff != 0 && requested.RegistrationCutoffHeight != lockedCutoff {
 		return nil, types.ErrInvalidParams.Wrap("registration cutoff is irreversible once scheduled or active")
 	}
-	if err := m.ensureLifetimeKeyQuotaCompatible(ctx, requested.MaxKeysPerAccount); err != nil {
-		return nil, err
-	}
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
@@ -523,31 +575,6 @@ func (m msgServer) UpdateParams(
 	return &types.MsgUpdateParamsResponse{
 		ActivationHeight: effectiveHeight,
 	}, nil
-}
-
-// ensureLifetimeKeyQuotaCompatible prevents governance from scheduling a key
-// quota that is already smaller than an account's append-only key-id space.
-// Revocation does not release identifiers, so accepting such a reduction would
-// permanently strand affected accounts on their current signing key.
-func (m msgServer) ensureLifetimeKeyQuotaCompatible(ctx sdk.Context, requested uint32) error {
-	var incompatible types.AccountKeySequence
-	m.IterateAllSequences(ctx, func(sequence types.AccountKeySequence) bool {
-		consumed := sequence.NextKeyId - 1
-		if consumed > uint64(requested) {
-			incompatible = sequence
-			return true
-		}
-		return false
-	})
-	if incompatible.Owner == "" {
-		return nil
-	}
-	return types.ErrInvalidParams.Wrapf(
-		"max_keys_per_account %d is below the %d lifetime key records already allocated to %s",
-		requested,
-		incompatible.NextKeyId-1,
-		incompatible.Owner,
-	)
 }
 
 func ensureKeyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationCutoff bool) error {

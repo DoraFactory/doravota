@@ -24,8 +24,8 @@ service Msg {
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 
-// MsgRegisterKey registers the first signing key and, optionally, one recovery
-// key. The change becomes effective at the next block height.
+// MsgRegisterKey atomically registers distinct signing and recovery keys. Both
+// keys and self-enforcement become effective at the next block height.
 message MsgRegisterKey {
   option (cosmos.msg.v1.signer) = "owner";
   option (amino.name) = "pqcauth/MsgRegisterKey";
@@ -37,6 +37,8 @@ message MsgRegisterKey {
   Algorithm signing_algorithm = 3;
   bytes signing_public_key = 4;
   bytes signing_key_proof = 5;
+  // Must be true in v1. Retained on the wire for explicit intent and stable
+  // message encoding.
   bool self_enforce = 6;
   Algorithm recovery_algorithm = 7;
   bytes recovery_public_key = 8;

@@ -1,5 +1,11 @@
 # PQCAuth 四验证节点真实网络模拟报告
 
+> 历史结果说明：本报告对应 2026-08-03 当时的实现与链上数据。当前版本已经取消
+> lifetime key quota，改为按角色保留完整 terminal records 并提交压缩历史；注册也已
+> 改为必须同时提供不同的 signing/recovery key 并开启 self-enforcement。本文中的旧
+> quota 数值和 signing-only 场景不可作为当前协议说明，当前行为以模块 README、
+> implementation 文档和最新 E2E 脚本为准。
+
 ## 1. 结论
 
 `x/pqcauth` 在隔离的四验证节点 Doravota 网络上完成了本次计划内的完整功能、异常、安全边界、治理切换和节点故障恢复模拟：**150 项断言通过，0 项失败**。网络执行了 80 笔成功上链交易，最终到达高度 190；四个验证节点最终得到相同的 AppHash：

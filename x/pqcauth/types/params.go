@@ -9,16 +9,16 @@ import (
 )
 
 const (
-	DefaultSignatureVerificationGas uint64 = 250_000
-	DefaultProofVerificationGas     uint64 = 250_000
-	DefaultMaxPQCSigners            uint32 = 8
-	DefaultMaxPQCAuthBytes          uint32 = 64 * 1024
-	DefaultMaxKeysPerAccount        uint32 = 8
+	DefaultSignatureVerificationGas     uint64 = 250_000
+	DefaultProofVerificationGas         uint64 = 250_000
+	DefaultMaxPQCSigners                uint32 = 8
+	DefaultMaxPQCAuthBytes              uint32 = 64 * 1024
+	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
 
-	AbsoluteMaxPQCSigners      uint32 = 32
-	AbsoluteMaxPQCAuthBytes    uint32 = 256 * 1024
-	AbsoluteMaxKeysPerAccount  uint32 = 16
-	AbsoluteMaxVerificationGas uint64 = 10_000_000
+	AbsoluteMaxPQCSigners                uint32 = 32
+	AbsoluteMaxPQCAuthBytes              uint32 = 256 * 1024
+	AbsoluteMaxRetainedKeyRecordsPerRole uint32 = 64
+	AbsoluteMaxVerificationGas           uint64 = 10_000_000
 
 	// Consensus gas floors prevent governance from making ML-DSA verification
 	// effectively free. They must only be lowered through a coordinated binary
@@ -43,15 +43,15 @@ func UsesLegacyDefaultNetworkID(networkID []byte) bool {
 
 func DefaultParams() Params {
 	return Params{
-		EnforcementMode:          EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
-		NetworkId:                append([]byte(nil), defaultNetworkID[:]...),
-		AllowedAlgorithms:        []Algorithm{Algorithm_ALGORITHM_ML_DSA_65},
-		SignatureVerificationGas: DefaultSignatureVerificationGas,
-		ProofVerificationGas:     DefaultProofVerificationGas,
-		MaxPqcSigners:            DefaultMaxPQCSigners,
-		MaxPqcAuthBytes:          DefaultMaxPQCAuthBytes,
-		MaxKeysPerAccount:        DefaultMaxKeysPerAccount,
-		EmergencyMode:            EmergencyMode_EMERGENCY_MODE_NORMAL,
+		EnforcementMode:              EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
+		NetworkId:                    append([]byte(nil), defaultNetworkID[:]...),
+		AllowedAlgorithms:            []Algorithm{Algorithm_ALGORITHM_ML_DSA_65},
+		SignatureVerificationGas:     DefaultSignatureVerificationGas,
+		ProofVerificationGas:         DefaultProofVerificationGas,
+		MaxPqcSigners:                DefaultMaxPQCSigners,
+		MaxPqcAuthBytes:              DefaultMaxPQCAuthBytes,
+		MaxRetainedKeyRecordsPerRole: DefaultMaxRetainedKeyRecordsPerRole,
+		EmergencyMode:                EmergencyMode_EMERGENCY_MODE_NORMAL,
 	}
 }
 
@@ -118,8 +118,13 @@ func validateScheduledParams(p ScheduledParams) error {
 	if p.MaxPqcAuthBytes == 0 || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
 		return fmt.Errorf("%w: max PQC auth bytes must be in [1,%d]", ErrInvalidParams, AbsoluteMaxPQCAuthBytes)
 	}
-	if p.MaxKeysPerAccount == 0 || p.MaxKeysPerAccount > AbsoluteMaxKeysPerAccount {
-		return fmt.Errorf("%w: max keys per account must be in [1,%d]", ErrInvalidParams, AbsoluteMaxKeysPerAccount)
+	if p.MaxRetainedKeyRecordsPerRole == 0 ||
+		p.MaxRetainedKeyRecordsPerRole > AbsoluteMaxRetainedKeyRecordsPerRole {
+		return fmt.Errorf(
+			"%w: max retained key records per role must be in [1,%d]",
+			ErrInvalidParams,
+			AbsoluteMaxRetainedKeyRecordsPerRole,
+		)
 	}
 	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS &&
@@ -167,15 +172,15 @@ func (p Params) Effective(height int64) Params {
 
 func (p Params) AsScheduled() ScheduledParams {
 	return ScheduledParams{
-		EnforcementMode:          p.EnforcementMode,
-		AllowedAlgorithms:        append([]Algorithm(nil), p.AllowedAlgorithms...),
-		SignatureVerificationGas: p.SignatureVerificationGas,
-		ProofVerificationGas:     p.ProofVerificationGas,
-		MaxPqcSigners:            p.MaxPqcSigners,
-		MaxPqcAuthBytes:          p.MaxPqcAuthBytes,
-		MaxKeysPerAccount:        p.MaxKeysPerAccount,
-		RegistrationCutoffHeight: p.RegistrationCutoffHeight,
-		EmergencyMode:            p.EmergencyMode,
+		EnforcementMode:              p.EnforcementMode,
+		AllowedAlgorithms:            append([]Algorithm(nil), p.AllowedAlgorithms...),
+		SignatureVerificationGas:     p.SignatureVerificationGas,
+		ProofVerificationGas:         p.ProofVerificationGas,
+		MaxPqcSigners:                p.MaxPqcSigners,
+		MaxPqcAuthBytes:              p.MaxPqcAuthBytes,
+		MaxRetainedKeyRecordsPerRole: p.MaxRetainedKeyRecordsPerRole,
+		RegistrationCutoffHeight:     p.RegistrationCutoffHeight,
+		EmergencyMode:                p.EmergencyMode,
 	}
 }
 
@@ -186,7 +191,7 @@ func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
 	p.ProofVerificationGas = scheduled.ProofVerificationGas
 	p.MaxPqcSigners = scheduled.MaxPqcSigners
 	p.MaxPqcAuthBytes = scheduled.MaxPqcAuthBytes
-	p.MaxKeysPerAccount = scheduled.MaxKeysPerAccount
+	p.MaxRetainedKeyRecordsPerRole = scheduled.MaxRetainedKeyRecordsPerRole
 	p.RegistrationCutoffHeight = scheduled.RegistrationCutoffHeight
 	p.EmergencyMode = scheduled.EmergencyMode
 }
@@ -205,11 +210,12 @@ func (p Params) EffectiveMaxPQCAuthBytes() uint32 {
 	return p.MaxPqcAuthBytes
 }
 
-func (p Params) EffectiveMaxKeysPerAccount() uint32 {
-	if p.MaxKeysPerAccount == 0 || p.MaxKeysPerAccount > AbsoluteMaxKeysPerAccount {
-		return DefaultMaxKeysPerAccount
+func (p Params) EffectiveMaxRetainedKeyRecordsPerRole() uint32 {
+	if p.MaxRetainedKeyRecordsPerRole == 0 ||
+		p.MaxRetainedKeyRecordsPerRole > AbsoluteMaxRetainedKeyRecordsPerRole {
+		return DefaultMaxRetainedKeyRecordsPerRole
 	}
-	return p.MaxKeysPerAccount
+	return p.MaxRetainedKeyRecordsPerRole
 }
 
 func (p Params) EffectiveSignatureVerificationGas() uint64 {

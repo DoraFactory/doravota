@@ -263,11 +263,11 @@ single signer index 0 的编排，这是“共识能力”和“钱包能力”�
 [`state.proto`](../../proto/doravota/pqcauth/v1/state.proto)，KV key 编码在
 [`types/keys.go`](types/keys.go)。
 
-模块 store 中主要有四类数据。
+模块 store 中主要有五类数据。
 
 ### 5.1 `PQCKeyRecord`
 
-`PQCKeyRecord` 是一条保留历史的公钥记录：
+`PQCKeyRecord` 是当前、待生效或近期历史的完整公钥记录：
 
 ```text
 owner
@@ -307,7 +307,7 @@ AND (
 
 - 历史 key ID 不会重新指向另一把公钥；
 - 旧签名不能因为 key ID 被复用而重新有效；
-- 可以审计账户的完整轮换历史；
+- 可以把近期完整记录与更早历史的哈希链承诺关联起来审计；
 - genesis export 和 invariant 可以检查连续性；
 - recovery、pending policy 和事件可以引用不可变 key record。
 
@@ -343,17 +343,40 @@ version 增加，因此旧版本签名不能重放到新策略。
 [`keeper/keeper.go`](keeper/keeper.go) 的 `ReserveKeyIDs` 会检查：
 
 - 调用者声明的 expected key ID 是否等于链上 next key ID；
-- 是否超过账户终身 key-record 配额；
 - 是否发生 uint64 overflow；
-- 一次需要分配多个 key 时是否有足够空间。
+- 单次操作分配数量是否为协议允许的一把或两把。
 
 “expected key ID”也被 key proof 签名绑定。这样在 proof 离线生成后，如果链上已经有
 其他轮换占用了该 ID，旧 proof 不会被悄悄用于另一个 ID。
 
-当前配额语义是 lifetime key-record quota：旧 key 失活或撤销后仍然占用额度。
-这需要在产品和运维层面明确，它不是“同时 live 的 key 数量”。
+key ID 不再有小额终身配额。完整 terminal records 按 signing/recovery 角色分别保留
+最近若干条，更早记录由 [`keeper/key_history.go`](keeper/key_history.go) 写入
+`AccountKeyHistory` 哈希链承诺后删除。当前和 pending policy 引用始终 pin，角色之间
+互不挤占，所以大量 Recovery Key 轮换不会删除当前 Signing Key。
 
-### 5.4 `Params`
+### 5.4 `AccountKeyHistory`
+
+`AccountKeyHistory` 不是一把可用于验签的 key，而是已删除完整 terminal records 的
+共识承诺。每个账户最多有 signing、recovery 两条摘要，包含：
+
+```text
+owner
+role
+compacted_count
+last_compacted_key_id
+accumulator
+```
+
+压缩按同一角色的 key ID 递增顺序执行。每一步把前一个 accumulator 与完整 record
+的 owner、ID、algorithm、role、status、高度窗口和公钥 fingerprint 做域分离哈希。
+这样链上状态保持有界，同时 export/import 和外部归档可以验证历史承诺没有变化。
+
+保留数只作用于未被 policy 引用的 terminal records。四个引用
+`current_signing`、`pending_signing`、`recovery`、`pending_recovery` 永远 pin。
+当一次 H+1 轮换即将使 current key 退休时，压缩器会提前预留一个槽位，保证激活后
+完整 terminal records 仍不超过参数上限。
+
+### 5.5 `Params`
 
 `Params` 控制全局策略：
 
@@ -362,7 +385,7 @@ version 增加，因此旧版本签名不能重放到新策略。
 - 允许的算法；
 - signature/proof verification gas；
 - extension 大小和 signer 数量上限；
-- 每账户 key record 上限；
+- 每账户、每角色完整 terminal key record 保留数；
 - registration cutoff；
 - emergency mode；
 - H+1 pending 参数 bundle。
@@ -834,7 +857,7 @@ batch。
 
 | 消息 | 它解决什么 | 认证要求 | 状态结果 |
 |---|---|---|---|
-| `MsgRegisterKey` | 首次加入 PQC | 经典签名 + 新 Signing Key PoP；可选 Recovery Key 也需 PoP | key 和 policy 在 H+1 生效 |
+| `MsgRegisterKey` | 首次加入 PQC | 经典签名 + 不同的 Signing/Recovery Key 各自 PoP | 两把 key 与 self-enforcement 在 H+1 原子生效 |
 | `MsgRotateKey` | 正常更换日常 Signing Key | 经典签名 + 当前 PQC Signing Key + 新 key PoP | 新旧 Signing Key 在 H+1 切换 |
 | `MsgRotateRecoveryKey` | 主动更换离线 Recovery Key | 经典签名 + 当前 PQC Signing Key + 新 Recovery Key PoP | Recovery Key 在 H+1 切换 |
 | `MsgSetProtection` | 开/关账户 `self_enforced` | 经典签名 + 当前 PQC Signing Key | policy 在 H+1 变化 |
@@ -941,9 +964,11 @@ Signing Key 的 PoP。
 - Params get/set/normalize；
 - AccountPolicy get/set/effective/normalize；
 - PQCKeyRecord get/set/iterate；
+- AccountKeyHistory get/set/iterate；
 - active Signing Key 查询；
 - AccountKeySequence get/set；
-- key ID 和终身配额计算；
+- 单调且永不复用的 key ID 计算；
+- 按角色压缩 terminal key history，并 pin 当前/pending key；
 - query pagination。
 
 Keeper 不持有私钥。链上只保存 public key、policy 和生命周期元数据。
@@ -955,6 +980,7 @@ store key 前缀定义在 [`types/keys.go`](types/keys.go)：
 0x02 AccountPolicy
 0x03 PQCKeyRecord
 0x04 AccountKeySequence
+0x05 AccountKeyHistory
 ```
 
 owner 地址使用长度前缀，key ID 使用 big-endian uint64，避免不同 key 空间或地址编码
@@ -1354,7 +1380,7 @@ Recovery Key 不会在这个流程中被更换或消耗；如需更换 Recovery 
 
 - H+1 边界；
 - pending change；
-- lifetime key quota；
+- 无终身 key-ID 锁死、历史按角色压缩且 active/pending key 永不删除；
 - wrong chain proof；
 - rotate/recovery/revoke；
 - authority 和参数约束；
@@ -1522,7 +1548,7 @@ Ante 层
   -> 经典签名 AND 策略判断 AND ML-DSA/proof 验证
 
 State 层
-  -> append-only key records + versioned policy + H+1 transition
+  -> monotonic key identity + retained/committed history + versioned policy + H+1 transition
 
 Application 层
   -> Ante 顺序、proposal 重验、store upgrade、有限资源

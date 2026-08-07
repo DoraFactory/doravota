@@ -22,7 +22,7 @@ func validGenesisForTest(t testing.TB) GenesisState {
 				Owner:           owner,
 				KeyId:           1,
 				Algorithm:       Algorithm_ALGORITHM_ML_DSA_65,
-				PublicKey:       make([]byte, publicKeySize),
+				PublicKey:       bytes.Repeat([]byte{0x01}, publicKeySize),
 				Role:            KeyRole_KEY_ROLE_SIGNING,
 				Status:          KeyStatus_KEY_STATUS_LIVE,
 				EffectiveHeight: 1,
@@ -120,6 +120,12 @@ func TestGenesisValidationRejectsInconsistentState(t *testing.T) {
 		{"missing recovery key", func(genesis *GenesisState) {
 			genesis.Policies[0].RecoveryKeyId = 9
 		}},
+		{"policy without recovery key", func(genesis *GenesisState) {
+			genesis.Policies[0].RecoveryKeyId = 0
+		}},
+		{"same signing and recovery key material", func(genesis *GenesisState) {
+			genesis.Keys[1].PublicKey = append([]byte(nil), genesis.Keys[0].PublicKey...)
+		}},
 		{"sequence owner", func(genesis *GenesisState) {
 			genesis.KeySequences[0].Owner = "invalid"
 		}},
@@ -135,16 +141,31 @@ func TestGenesisValidationRejectsInconsistentState(t *testing.T) {
 		{"next id behind key", func(genesis *GenesisState) {
 			genesis.KeySequences[0].NextKeyId = 2
 		}},
-		{"next id exceeds lifetime quota", func(genesis *GenesisState) {
-			genesis.KeySequences[0].NextKeyId =
-				uint64(genesis.Params.EffectiveMaxKeysPerAccount()) + 2
+		{"invalid key history", func(genesis *GenesisState) {
+			genesis.KeyHistories = append(genesis.KeyHistories, AccountKeyHistory{
+				Owner:              genesis.Policies[0].Owner,
+				Role:               KeyRole_KEY_ROLE_SIGNING,
+				CompactedCount:     1,
+				LastCompactedKeyId: 3,
+			})
 		}},
-		{"key count exceeds lifetime quota", func(genesis *GenesisState) {
-			for id := uint64(3); id <= 9; id++ {
-				key := genesis.Keys[0]
-				key.KeyId = id
-				genesis.Keys = append(genesis.Keys, key)
-			}
+		{"next id behind compacted history", func(genesis *GenesisState) {
+			genesis.KeyHistories = append(genesis.KeyHistories, AccountKeyHistory{
+				Owner:              genesis.Policies[0].Owner,
+				Role:               KeyRole_KEY_ROLE_SIGNING,
+				CompactedCount:     1,
+				LastCompactedKeyId: 3,
+				Accumulator:        make([]byte, KeyHistoryAccumulatorSize),
+			})
+		}},
+		{"full key overlaps compacted role history", func(genesis *GenesisState) {
+			genesis.KeyHistories = append(genesis.KeyHistories, AccountKeyHistory{
+				Owner:              genesis.Policies[0].Owner,
+				Role:               KeyRole_KEY_ROLE_SIGNING,
+				CompactedCount:     1,
+				LastCompactedKeyId: 1,
+				Accumulator:        make([]byte, KeyHistoryAccumulatorSize),
+			})
 		}},
 		{"pending policy version skips generation", func(genesis *GenesisState) {
 			pending := genesis.Keys[0]
@@ -174,4 +195,16 @@ func TestGenesisValidationRejectsInconsistentState(t *testing.T) {
 			require.Error(t, ValidateGenesis(genesis))
 		})
 	}
+}
+
+func TestGenesisAllowsUnboundedHistoricalKeyIdentifiers(t *testing.T) {
+	genesis := validGenesisForTest(t)
+	for id := uint64(3); id <= 100; id++ {
+		key := genesis.Keys[0]
+		key.KeyId = id
+		key.Status = KeyStatus_KEY_STATUS_REVOKED
+		genesis.Keys = append(genesis.Keys, key)
+	}
+	genesis.KeySequences[0].NextKeyId = 101
+	require.NoError(t, ValidateGenesis(genesis))
 }

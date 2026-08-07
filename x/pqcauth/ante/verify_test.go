@@ -107,6 +107,8 @@ func setupAnteTest(
 	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
 	publicKey, privateKey, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
 	require.NoError(t, moduleKeeper.SetKey(ctx, address, types.PQCKeyRecord{
 		Owner:           address.String(),
 		KeyId:           1,
@@ -116,11 +118,25 @@ func setupAnteTest(
 		Status:          types.KeyStatus_KEY_STATUS_LIVE,
 		EffectiveHeight: 1,
 	}))
+	require.NoError(t, moduleKeeper.SetKey(ctx, address, types.PQCKeyRecord{
+		Owner:           address.String(),
+		KeyId:           2,
+		Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
+		PublicKey:       recoveryPublicKey,
+		Role:            types.KeyRole_KEY_ROLE_RECOVERY,
+		Status:          types.KeyStatus_KEY_STATUS_LIVE,
+		EffectiveHeight: 1,
+	}))
 	require.NoError(t, moduleKeeper.SetAccountPolicy(ctx, address, types.AccountPolicy{
 		Owner:               address.String(),
 		CurrentSigningKeyId: 1,
+		RecoveryKeyId:       2,
 		SelfEnforced:        true,
 		PolicyVersion:       1,
+	}))
+	require.NoError(t, moduleKeeper.SetKeySequence(ctx, address, types.AccountKeySequence{
+		Owner:     address.String(),
+		NextKeyId: 3,
 	}))
 	return ctx, moduleKeeper, accountKeeperMock{account: account}, txConfig, privateKey
 }
@@ -316,7 +332,7 @@ func TestLifecycleSimulationChargesProofAndRequiredSignatureGas(t *testing.T) {
 	address := accountKeeper.account.GetAddress()
 	require.NoError(t, moduleKeeper.SetKeySequence(ctx, address, types.AccountKeySequence{
 		Owner:     address.String(),
-		NextKeyId: 2,
+		NextKeyId: 3,
 	}))
 	newPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
@@ -326,7 +342,7 @@ func TestLifecycleSimulationChargesProofAndRequiredSignatureGas(t *testing.T) {
 	require.NoError(t, err)
 	message := &types.MsgRotateKey{
 		Owner:            address.String(),
-		ExpectedNewKeyId: 2,
+		ExpectedNewKeyId: 3,
 		NewAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
 		NewPublicKey:     newPublicKey,
 		NewKeyProof:      make([]byte, signatureSize),
@@ -790,11 +806,13 @@ func TestRegisteredPolicyWithUnavailableSigningKeyFailsClosed(t *testing.T) {
 
 func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 	type mutation struct {
-		name   string
-		mutate func(client.TxBuilder, accountKeeperMock)
+		name               string
+		unavailableSigning bool
+		mutate             func(client.TxBuilder, accountKeeperMock)
 	}
 	testCases := []mutation{
 		{name: "valid"},
+		{name: "valid with unavailable signing key", unavailableSigning: true},
 		{
 			name: "fee",
 			mutate: func(builder client.TxBuilder, _ accountKeeperMock) {
@@ -933,6 +951,12 @@ func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 
 			if testCase.mutate != nil {
 				testCase.mutate(builder, accountKeeper)
+			}
+			if testCase.unavailableSigning {
+				signingKey, exists := moduleKeeper.GetKey(ctx, address, policy.CurrentSigningKeyId)
+				require.True(t, exists)
+				signingKey.Status = types.KeyStatus_KEY_STATUS_REVOKED
+				require.NoError(t, moduleKeeper.SetKey(ctx, address, signingKey))
 			}
 			called := false
 			_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(

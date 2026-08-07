@@ -50,12 +50,19 @@ func TestQueryServerAccountAndKeyMatrix(t *testing.T) {
 		EffectiveHeight: 1,
 	}
 	require.NoError(t, moduleKeeper.SetKey(ctx, owner, key))
+	history := types.AccountKeyHistory{
+		Owner: owner.String(), Role: types.KeyRole_KEY_ROLE_RECOVERY,
+		CompactedCount: 3, LastCompactedKeyId: 8,
+		Accumulator: bytes.Repeat([]byte{0x39}, types.KeyHistoryAccumulatorSize),
+	}
+	require.NoError(t, moduleKeeper.SetKeyHistory(ctx, owner, history))
 	accountResponse, err = server.Account(goCtx, &types.QueryAccountRequest{
 		Owner: owner.String(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, accountResponse.ActiveSigningKey)
 	require.Equal(t, key, *accountResponse.ActiveSigningKey)
+	require.Equal(t, []types.AccountKeyHistory{history}, accountResponse.KeyHistories)
 
 	_, err = server.Key(goCtx, nil)
 	require.ErrorIs(t, err, sdkerrors.ErrInvalidRequest)

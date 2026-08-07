@@ -52,7 +52,7 @@ func GetTxCmd() *cobra.Command {
 func registerKeyCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "register-key [expected-key-id] [public-key-base64] [proof-base64]",
-		Short: "Register the first ML-DSA-65 signing key at H+1",
+		Short: "Register distinct ML-DSA-65 signing and recovery keys at H+1",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(command)
@@ -66,21 +66,16 @@ func registerKeyCommand() *cobra.Command {
 			selfEnforce, _ := command.Flags().GetBool(flagSelfEnforce)
 			recoveryPublicKeyEncoded, _ := command.Flags().GetString(flagRecoveryPublicKey)
 			recoveryProofEncoded, _ := command.Flags().GetString(flagRecoveryProof)
-			if (recoveryPublicKeyEncoded == "") != (recoveryProofEncoded == "") {
-				return fmt.Errorf("recovery public key and proof must be supplied together")
+			if recoveryPublicKeyEncoded == "" || recoveryProofEncoded == "" {
+				return fmt.Errorf("recovery public key and proof are required")
 			}
-			var recoveryPublicKey, recoveryProof []byte
-			recoveryAlgorithm := types.Algorithm_ALGORITHM_UNSPECIFIED
-			if recoveryPublicKeyEncoded != "" {
-				recoveryPublicKey, err = decodeBase64("recovery public key", recoveryPublicKeyEncoded)
-				if err != nil {
-					return err
-				}
-				recoveryProof, err = decodeBase64("recovery proof", recoveryProofEncoded)
-				if err != nil {
-					return err
-				}
-				recoveryAlgorithm = types.Algorithm_ALGORITHM_ML_DSA_65
+			recoveryPublicKey, err := decodeBase64("recovery public key", recoveryPublicKeyEncoded)
+			if err != nil {
+				return err
+			}
+			recoveryProof, err := decodeBase64("recovery proof", recoveryProofEncoded)
+			if err != nil {
+				return err
 			}
 			message := &types.MsgRegisterKey{
 				Owner:                clientCtx.GetFromAddress().String(),
@@ -89,7 +84,7 @@ func registerKeyCommand() *cobra.Command {
 				SigningPublicKey:     publicKey,
 				SigningKeyProof:      proof,
 				SelfEnforce:          selfEnforce,
-				RecoveryAlgorithm:    recoveryAlgorithm,
+				RecoveryAlgorithm:    types.Algorithm_ALGORITHM_ML_DSA_65,
 				RecoveryPublicKey:    recoveryPublicKey,
 				RecoveryKeyProof:     recoveryProof,
 			}
@@ -97,8 +92,8 @@ func registerKeyCommand() *cobra.Command {
 		},
 	}
 	command.Flags().Bool(flagSelfEnforce, true, "require PQC authorization after activation")
-	command.Flags().String(flagRecoveryPublicKey, "", "optional ML-DSA-65 recovery public key in base64")
-	command.Flags().String(flagRecoveryProof, "", "optional recovery key proof in base64; binds expected-key-id+1")
+	command.Flags().String(flagRecoveryPublicKey, "", "required ML-DSA-65 recovery public key in base64")
+	command.Flags().String(flagRecoveryProof, "", "required recovery key proof in base64; binds expected-key-id+1")
 	flags.AddTxFlagsToCmd(command)
 	return command
 }

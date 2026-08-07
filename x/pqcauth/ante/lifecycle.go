@@ -34,16 +34,11 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if _, found := d.keeper.GetAccountPolicy(ctx, owner); found {
 				return types.ErrAlreadyRegistered
 			}
-			count := uint64(1)
-			if len(message.RecoveryPublicKey) != 0 {
-				count++
-			}
 			ids, _, err := d.keeper.ReserveKeyIDs(
 				ctx,
 				owner,
 				message.ExpectedSigningKeyId,
-				count,
-				params.EffectiveMaxKeysPerAccount(),
+				2,
 			)
 			if err != nil {
 				return err
@@ -64,23 +59,21 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			); err != nil {
 				return err
 			}
-			if count == 2 {
-				if err := verifyLifecycleKeyProof(
-					ctx,
-					params,
-					simulate,
-					message.Owner,
-					ids[1],
-					message.RecoveryAlgorithm,
-					message.RecoveryPublicKey,
-					types.KeyRole_KEY_ROLE_RECOVERY,
-					types.PurposeRegisterRecovery,
-					0,
-					message.RecoveryKeyProof,
-					[]byte(types.RegisterProofContext),
-				); err != nil {
-					return err
-				}
+			if err := verifyLifecycleKeyProof(
+				ctx,
+				params,
+				simulate,
+				message.Owner,
+				ids[1],
+				message.RecoveryAlgorithm,
+				message.RecoveryPublicKey,
+				types.KeyRole_KEY_ROLE_RECOVERY,
+				types.PurposeRegisterRecovery,
+				0,
+				message.RecoveryKeyProof,
+				[]byte(types.RegisterProofContext),
+			); err != nil {
+				return err
 			}
 		case *types.MsgRotateKey:
 			if len(tx.GetMsgs()) != 1 {
@@ -100,12 +93,25 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if policy.HasPendingChange(ctx.BlockHeight()) {
 				return types.ErrPendingChange
 			}
+			recoveryKey, found := d.keeper.GetKey(ctx, owner, policy.RecoveryKeyId)
+			if !found ||
+				recoveryKey.Role != types.KeyRole_KEY_ROLE_RECOVERY ||
+				!recoveryKey.IsEffective(ctx.BlockHeight()) {
+				return types.ErrKeyNotFound
+			}
+			if err := types.ValidateDistinctRoleKeys(
+				message.NewAlgorithm,
+				message.NewPublicKey,
+				recoveryKey.Algorithm,
+				recoveryKey.PublicKey,
+			); err != nil {
+				return err
+			}
 			ids, _, err := d.keeper.ReserveKeyIDs(
 				ctx,
 				owner,
 				message.ExpectedNewKeyId,
 				1,
-				params.EffectiveMaxKeysPerAccount(),
 			)
 			if err != nil {
 				return err
@@ -150,12 +156,25 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				!recoveryKey.IsEffective(ctx.BlockHeight()) {
 				return types.ErrKeyNotFound
 			}
+			signingKey, found := d.keeper.GetKey(ctx, owner, policy.CurrentSigningKeyId)
+			if !found ||
+				signingKey.Role != types.KeyRole_KEY_ROLE_SIGNING ||
+				!signingKey.IsEffective(ctx.BlockHeight()) {
+				return types.ErrKeyNotFound
+			}
+			if err := types.ValidateDistinctRoleKeys(
+				signingKey.Algorithm,
+				signingKey.PublicKey,
+				message.NewAlgorithm,
+				message.NewPublicKey,
+			); err != nil {
+				return err
+			}
 			ids, _, err := d.keeper.ReserveKeyIDs(
 				ctx,
 				owner,
 				message.ExpectedNewKeyId,
 				1,
-				params.EffectiveMaxKeysPerAccount(),
 			)
 			if err != nil {
 				return err
@@ -200,12 +219,19 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				!recoveryKey.IsEffective(ctx.BlockHeight()) {
 				return types.ErrKeyNotFound
 			}
+			if err := types.ValidateDistinctRoleKeys(
+				message.NewSigningAlgorithm,
+				message.NewSigningPublicKey,
+				recoveryKey.Algorithm,
+				recoveryKey.PublicKey,
+			); err != nil {
+				return err
+			}
 			ids, _, err := d.keeper.ReserveKeyIDs(
 				ctx,
 				owner,
 				message.ExpectedNewSigningKeyId,
 				1,
-				params.EffectiveMaxKeysPerAccount(),
 			)
 			if err != nil {
 				return err

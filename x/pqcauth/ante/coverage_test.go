@@ -495,6 +495,7 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 		RecoveryAlgorithm:    types.Algorithm_ALGORITHM_ML_DSA_65,
 		RecoveryPublicKey:    recoveryPublicKey,
 		RecoveryKeyProof:     make([]byte, signatureSize),
+		SelfEnforce:          true,
 	}
 
 	gasMeter := newRecordingGasMeter()
@@ -623,8 +624,8 @@ func TestValidateLifecycleStateFailureMatrix(t *testing.T) {
 	))
 
 	rotateRecovery := &types.MsgRotateRecoveryKey{
-		Owner:            activeOwner,
-		ExpectedNewKeyId: 2,
+		Owner:            unregisteredOwner,
+		ExpectedNewKeyId: 1,
 		NewAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
 		NewPublicKey:     publicKey,
 		NewKeyProof:      make([]byte, signatureSize),
@@ -641,7 +642,7 @@ func TestValidateLifecycleStateFailureMatrix(t *testing.T) {
 		Owner:                   activeOwner,
 		RecoveryKeyId:           2,
 		RecoverySignature:       make([]byte, signatureSize),
-		ExpectedNewSigningKeyId: 2,
+		ExpectedNewSigningKeyId: 3,
 		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
 		NewSigningPublicKey:     publicKey,
 		NewSigningKeyProof:      make([]byte, signatureSize),
@@ -652,7 +653,7 @@ func TestValidateLifecycleStateFailureMatrix(t *testing.T) {
 		params,
 		true,
 	)
-	require.ErrorIs(t, err, types.ErrUnauthorized)
+	require.ErrorIs(t, err, types.ErrInvalidKeyProof)
 
 	for _, message := range []sdk.Msg{
 		&types.MsgSetProtection{Owner: activeOwner},

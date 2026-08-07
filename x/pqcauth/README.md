@@ -41,14 +41,14 @@ classic-only。
 每个账户可以维护：
 
 - 一个当前交易签名密钥；
-- 一个可选的离线恢复密钥；
-- append-only 的历史密钥记录；
+- 一个必须存在且与交易签名密钥不同的离线恢复密钥；
+- 每个角色最近若干条完整历史记录，以及更早记录的哈希链承诺；
 - 当前及 H+1 待生效的账户保护策略；
 - 单调递增、永不复用的 key ID 序列。
 
 支持的生命周期操作：
 
-- 首次注册交易签名密钥和可选恢复密钥；
+- 原子注册一对不同的交易签名密钥和恢复密钥，并在 H+1 开启自保护；
 - 轮换交易签名密钥；
 - 轮换离线恢复密钥；
 - 开启或关闭账户级自保护；
@@ -73,7 +73,7 @@ classic-only。
 - 当前有效参数；
 - 账户当前有效策略及活跃交易签名公钥；
 - 指定 key ID；
-- 账户全部历史 key records。
+- 账户保留的完整 key records，以及按 signing/recovery 角色划分的压缩历史摘要。
 
 治理可以更新 enforcement mode、允许算法、验证 gas、大小/数量上限、
 registration cutoff 和 emergency mode。参数更新以完整 bundle 在 H+1
@@ -82,17 +82,25 @@ registration cutoff 一旦安排或生效也不可回退。
 
 ## 2. 共识状态模型
 
-模块 KV store 中有四类状态：
+模块 KV store 中有五类状态：
 
 | 状态 | 作用 |
 |---|---|
 | `Params` | 全局 enforcement、network ID、允许算法、gas、资源上限、cutoff、emergency mode，以及 H+1 pending 参数 |
 | `AccountPolicy` | 当前/待生效 signing key、recovery key、自保护开关和 policy version |
-| `PQCKeyRecord` | append-only 公钥记录，包含 owner、key ID、算法、角色、状态及生效高度区间 |
+| `PQCKeyRecord` | 当前、待生效和近期历史公钥记录，包含 owner、key ID、算法、角色、状态及生效高度区间 |
 | `AccountKeySequence` | 为账户分配单调递增的 key ID，已经停用或吊销的 ID 不会回收 |
+| `AccountKeyHistory` | 按 signing/recovery 角色记录已压缩条数、最后压缩 ID 和确定性哈希链承诺 |
 
-默认每个账户最多分配 8 条终身 key records，代码绝对上限为 16。注册 signing
-和 recovery key 会消耗两条额度；后续每次轮换或恢复都会继续消耗一条。
+key ID 没有小额终身配额，始终单调递增且永不复用。默认每个账户、每个角色保留
+最近 16 条完整的 terminal key records（参数硬上限 64）；更早的记录按 key ID
+递增顺序写入独立的 SHA-256 哈希链后删除完整记录。当前 signing、当前 recovery、
+pending signing 和 pending recovery 四类 policy 引用永远被 pin，不计入历史保留数，
+所以频繁轮换 recovery key 不会删除仍在使用的 signing key。
+
+当前实现按“模块首次启用时没有旧 PQC policy”设计，不包含 signing-only PQC 状态的
+兼容迁移。普通 Cosmos 账户不需要预迁移：它通过 `MsgRegisterKey` 一次性登记两把
+不同的 key，随后在 H+1 成为受保护账户。
 
 `PQCKeyRecord` 的有效区间为：
 
@@ -179,7 +187,7 @@ DeliverTx 可能看到不同的认证状态。
 
 | 操作 | 需要的授权 | 状态结果 |
 |---|---|---|
-| `MsgRegisterKey` | 经典账户签名 + 新 signing key proof；可选 recovery key 也必须提供 proof | 新 key 和 policy 在 H+1 生效 |
+| `MsgRegisterKey` | 经典账户签名 + 不同的 signing/recovery key 各自的 proof | 两把 key 与 `self_enforced=true` 在 H+1 原子生效 |
 | `MsgRotateKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 + 新 signing key proof | 旧 key 在 H+1 失活，新 key 在 H+1 生效 |
 | `MsgRotateRecoveryKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 + 新 recovery key proof | recovery key 在 H+1 原子切换 |
 | `MsgSetProtection` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 | 开启和关闭都在 H+1 生效；关闭也不能绕开当前 PQC |
@@ -429,6 +437,10 @@ bundle 当前只支持单 signer index 0。共识 extension 和 Ante 可以验�
 8. Ante 验证 recovery signature 和新 key proof；MsgServer 安排新 signing key
    在 H+1 生效。
 
+恢复是唯一允许在 policy 指向的 current signing key 缺失、已吊销或失效时继续执行的
+逃生路径。Ante 必须先完整验证 recovery signature 和新 signing key proof，之后才会
+豁免 current signing key 的一致性错误；普通交易和其他生命周期消息仍然 fail-closed。
+
 ## 11. Emergency mode
 
 | Mode | 行为 |
@@ -548,11 +560,16 @@ ML-DSA-65 的最小密码学适配层：
 共识状态和服务实现：
 
 - `keeper.go`
-  - params、policy、key record、key sequence 的 KV 读写；
+  - params、policy、key record、key history、key sequence 的 KV 读写；
   - effective/normalize 逻辑；
   - active signing key 查询；
-  - append-only key ID 分配和终身额度检查；
+  - 不复用、无小额终身上限的单调 key ID 分配；
   - genesis/export/invariant 使用的安全迭代。
+- `key_history.go`
+  - 按 signing/recovery 角色独立压缩 terminal records；
+  - 永久 pin 当前与 pending policy key；
+  - 为 H+1 即将退休的 key 预留历史槽位；
+  - 写入可审计的确定性哈希链承诺。
 - `msg_server.go`
   - 所有 lifecycle Msg service；
   - 重复关键权限和状态检查；
@@ -561,11 +578,11 @@ ML-DSA-65 的最小密码学适配层：
   - 限制 authority、immutable network ID 和 irreversible cutoff；
   - 发出 lifecycle events。
 - `query_server.go`
-  - params、account、key、keys gRPC 查询。
+  - params、account、key、keys gRPC 查询；account 查询同时返回压缩历史摘要。
 - `invariants.go`
   - 将当前共识状态重新组织为 genesis 并执行完整一致性验证。
 - `*_test.go`
-  - 覆盖 store、Msg/Query、H+1、额度、治理边界、revoke 和 invariant。
+  - 覆盖 store、Msg/Query、H+1、历史压缩/pinning、治理边界、revoke、恢复逃生口和 invariant。
 
 ### `types/`
 

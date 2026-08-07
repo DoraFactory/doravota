@@ -398,17 +398,26 @@ func TestQueryCommandsRoundTripOverGRPC(t *testing.T) {
 func TestTransactionCommandsGenerateOnlyAndRejectMalformedArguments(t *testing.T) {
 	publicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
 	_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
 	require.NoError(t, err)
 	proof := make([]byte, signatureSize)
 	encodedPublicKey := base64.StdEncoding.EncodeToString(publicKey)
+	encodedRecoveryPublicKey := base64.StdEncoding.EncodeToString(recoveryPublicKey)
 	encodedProof := base64.StdEncoding.EncodeToString(proof)
 
 	var output bytes.Buffer
 	clientCtx := cliTestClientContext(t, &output).WithGenerateOnly(true)
 	register := registerKeyCommand()
 	register.SetContext(attachClientContext(context.Background(), &clientCtx))
-	register.SetArgs([]string{"1", encodedPublicKey, encodedProof})
+	register.SetArgs([]string{
+		"1",
+		encodedPublicKey,
+		encodedProof,
+		"--recovery-public-key-base64", encodedRecoveryPublicKey,
+		"--recovery-proof-base64", encodedProof,
+	})
 	require.NoError(t, register.Execute())
 	require.Contains(t, output.String(), "@type")
 
@@ -446,7 +455,7 @@ func TestTransactionCommandsGenerateOnlyAndRejectMalformedArguments(t *testing.T
 		"--" + flagRecoveryPublicKey,
 		encodedPublicKey,
 	})
-	require.ErrorContains(t, register.Execute(), "must be supplied together")
+	require.ErrorContains(t, register.Execute(), "recovery public key and proof are required")
 }
 
 func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {

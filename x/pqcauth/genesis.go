@@ -24,14 +24,23 @@ func InitGenesis(ctx sdk.Context, moduleKeeper keeper.Keeper, genesis types.Gene
 		panic(fmt.Errorf("set pqcauth genesis params: %w", err))
 	}
 
-	maxKeyID := make(map[string]uint64)
+	maxKnownKeyID := make(map[string]uint64)
 	for _, key := range genesis.Keys {
 		owner := sdk.MustAccAddressFromBech32(key.Owner)
 		if err := moduleKeeper.SetKey(ctx, owner, key); err != nil {
 			panic(fmt.Errorf("set pqcauth genesis key: %w", err))
 		}
-		if key.KeyId > maxKeyID[key.Owner] {
-			maxKeyID[key.Owner] = key.KeyId
+		if key.KeyId > maxKnownKeyID[key.Owner] {
+			maxKnownKeyID[key.Owner] = key.KeyId
+		}
+	}
+	for _, history := range genesis.KeyHistories {
+		owner := sdk.MustAccAddressFromBech32(history.Owner)
+		if err := moduleKeeper.SetKeyHistory(ctx, owner, history); err != nil {
+			panic(fmt.Errorf("set pqcauth genesis key history: %w", err))
+		}
+		if history.LastCompactedKeyId > maxKnownKeyID[history.Owner] {
+			maxKnownKeyID[history.Owner] = history.LastCompactedKeyId
 		}
 	}
 	for _, policy := range genesis.Policies {
@@ -48,7 +57,7 @@ func InitGenesis(ctx sdk.Context, moduleKeeper keeper.Keeper, genesis types.Gene
 		}
 		sequenceOwners[sequence.Owner] = struct{}{}
 	}
-	for owner, keyID := range maxKeyID {
+	for owner, keyID := range maxKnownKeyID {
 		if _, exists := sequenceOwners[owner]; exists {
 			continue
 		}
@@ -78,6 +87,10 @@ func ExportGenesis(ctx sdk.Context, moduleKeeper keeper.Keeper) *types.GenesisSt
 	})
 	moduleKeeper.IterateAllSequences(ctx, func(sequence types.AccountKeySequence) bool {
 		genesis.KeySequences = append(genesis.KeySequences, sequence)
+		return false
+	})
+	moduleKeeper.IterateAllKeyHistories(ctx, func(history types.AccountKeyHistory) bool {
+		genesis.KeyHistories = append(genesis.KeyHistories, history)
 		return false
 	})
 	return genesis

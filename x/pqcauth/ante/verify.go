@@ -91,7 +91,8 @@ func (d VerifyPQCDecorator) AnteHandle(
 	for index, signer := range signers {
 		_, policy, hasActiveKey := d.keeper.GetActiveSigningKey(stateCtx, signer)
 		policyExpectsActiveKey := policy.CurrentSigningKeyId != 0
-		if policyExpectsActiveKey && !hasActiveKey {
+		substituted := d.lifecycleProofSubstitutesPQC(stateCtx, tx, signer, hasActiveKey)
+		if policyExpectsActiveKey && !hasActiveKey && !substituted {
 			return ctx, errorsmod.Wrapf(
 				types.ErrInconsistentState,
 				"policy for signer index %d references unavailable signing key %d",
@@ -107,7 +108,6 @@ func (d VerifyPQCDecorator) AnteHandle(
 			requiredCount++
 		}
 		_, hasEntry := entries[uint32(index)]
-		substituted := d.lifecycleProofSubstitutesPQC(stateCtx, tx, signer, hasActiveKey)
 		if required && !hasEntry && !substituted {
 			if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 				return ctx, types.ErrEmergencyPause

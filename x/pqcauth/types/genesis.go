@@ -19,15 +19,13 @@ func ValidateGenesis(genesis GenesisState) error {
 	}
 
 	keys := make(map[string]PQCKeyRecord, len(genesis.Keys))
-	maxKeyID := make(map[string]uint64)
-	keyCount := make(map[string]uint32)
+	maxKnownKeyID := make(map[string]uint64)
 	for _, key := range genesis.Keys {
 		owner, err := canonicalAddress(key.Owner)
 		if err != nil {
 			return fmt.Errorf("invalid key owner: %w", err)
 		}
 		if key.KeyId == 0 || key.KeyId == math.MaxUint64 ||
-			key.KeyId > uint64(genesis.Params.EffectiveMaxKeysPerAccount()) ||
 			!genesis.Params.IsAlgorithmAllowed(key.Algorithm) {
 			return fmt.Errorf("%w: invalid genesis key id or algorithm", ErrInvalidKey)
 		}
@@ -53,16 +51,48 @@ func ValidateGenesis(genesis GenesisState) error {
 			return fmt.Errorf("%w: duplicate key %s", ErrInvalidKey, mapKey)
 		}
 		keys[mapKey] = key
-		keyCount[owner.String()]++
-		if keyCount[owner.String()] > genesis.Params.EffectiveMaxKeysPerAccount() {
-			return fmt.Errorf(
-				"%w: lifetime key-record quota exceeded for %s",
-				ErrKeyLimit,
-				key.Owner,
-			)
+		if key.KeyId > maxKnownKeyID[owner.String()] {
+			maxKnownKeyID[owner.String()] = key.KeyId
 		}
-		if key.KeyId > maxKeyID[owner.String()] {
-			maxKeyID[owner.String()] = key.KeyId
+	}
+
+	histories := make(map[string]AccountKeyHistory, len(genesis.KeyHistories))
+	for _, history := range genesis.KeyHistories {
+		owner, err := canonicalAddress(history.Owner)
+		if err != nil {
+			return fmt.Errorf("invalid key history owner: %w", err)
+		}
+		if history.Role != KeyRole_KEY_ROLE_SIGNING && history.Role != KeyRole_KEY_ROLE_RECOVERY {
+			return fmt.Errorf("%w: invalid key history role for %s", ErrInvalidKey, history.Owner)
+		}
+		if history.CompactedCount == 0 ||
+			history.CompactedCount > history.LastCompactedKeyId ||
+			history.LastCompactedKeyId == 0 ||
+			history.LastCompactedKeyId == math.MaxUint64 ||
+			len(history.Accumulator) != KeyHistoryAccumulatorSize {
+			return fmt.Errorf("%w: invalid key history for %s/%s", ErrInvalidKey, history.Owner, history.Role)
+		}
+		mapKey := fmt.Sprintf("%s/%d", owner.String(), history.Role)
+		if _, duplicate := histories[mapKey]; duplicate {
+			return fmt.Errorf("%w: duplicate key history %s", ErrInvalidKey, mapKey)
+		}
+		histories[mapKey] = history
+		if history.LastCompactedKeyId > maxKnownKeyID[owner.String()] {
+			maxKnownKeyID[owner.String()] = history.LastCompactedKeyId
+		}
+	}
+	for _, key := range genesis.Keys {
+		mapKey := fmt.Sprintf("%s/%d", key.Owner, key.Role)
+		history, found := histories[mapKey]
+		if found && key.KeyId <= history.LastCompactedKeyId {
+			return fmt.Errorf(
+				"%w: full key %s/%d is not newer than compacted %s history %d",
+				ErrInconsistentState,
+				key.Owner,
+				key.KeyId,
+				key.Role,
+				history.LastCompactedKeyId,
+			)
 		}
 	}
 
@@ -78,6 +108,9 @@ func ValidateGenesis(genesis GenesisState) error {
 		policies[owner.String()] = struct{}{}
 		if policy.CurrentSigningKeyId == 0 && policy.PendingSigningKeyId == 0 {
 			return fmt.Errorf("%w: policy has no signing key", ErrInvalidKey)
+		}
+		if policy.RecoveryKeyId == 0 && policy.PendingRecoveryKeyId == 0 {
+			return fmt.Errorf("%w: policy has no recovery key", ErrInvalidKey)
 		}
 		if policy.CurrentSigningKeyId != 0 {
 			key, exists := keys[owner.String()+fmt.Sprintf("/%d", policy.CurrentSigningKeyId)]
@@ -150,6 +183,9 @@ func ValidateGenesis(genesis GenesisState) error {
 				return fmt.Errorf("%w: recovery key missing for %s", ErrInvalidKey, policy.Owner)
 			}
 		}
+		if err := validateDistinctPolicyRoleKeys(owner.String(), policy, keys); err != nil {
+			return err
+		}
 	}
 
 	sequences := make(map[string]struct{}, len(genesis.KeySequences))
@@ -163,9 +199,44 @@ func ValidateGenesis(genesis GenesisState) error {
 		}
 		sequences[owner.String()] = struct{}{}
 		if sequence.NextKeyId == 0 ||
-			sequence.NextKeyId <= maxKeyID[owner.String()] ||
-			sequence.NextKeyId-1 > uint64(genesis.Params.EffectiveMaxKeysPerAccount()) {
+			sequence.NextKeyId <= maxKnownKeyID[owner.String()] {
 			return fmt.Errorf("%w: invalid next key id for %s", ErrInvalidKey, sequence.Owner)
+		}
+	}
+	return nil
+}
+
+func validateDistinctPolicyRoleKeys(
+	owner string,
+	policy AccountPolicy,
+	keys map[string]PQCKeyRecord,
+) error {
+	signingIDs := []uint64{policy.CurrentSigningKeyId, policy.PendingSigningKeyId}
+	recoveryIDs := []uint64{policy.RecoveryKeyId, policy.PendingRecoveryKeyId}
+	for _, signingID := range signingIDs {
+		if signingID == 0 {
+			continue
+		}
+		signing, found := keys[owner+fmt.Sprintf("/%d", signingID)]
+		if !found {
+			continue
+		}
+		for _, recoveryID := range recoveryIDs {
+			if recoveryID == 0 {
+				continue
+			}
+			recovery, found := keys[owner+fmt.Sprintf("/%d", recoveryID)]
+			if !found {
+				continue
+			}
+			if err := ValidateDistinctRoleKeys(
+				signing.Algorithm,
+				signing.PublicKey,
+				recovery.Algorithm,
+				recovery.PublicKey,
+			); err != nil {
+				return fmt.Errorf("%w for %s", err, owner)
+			}
 		}
 	}
 	return nil
