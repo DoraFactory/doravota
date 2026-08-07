@@ -14,11 +14,17 @@ const (
 	DefaultMaxPQCSigners                uint32 = 8
 	DefaultMaxPQCAuthBytes              uint32 = 64 * 1024
 	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
+	DefaultGovernanceSafetyDelayBlocks  uint64 = 17_280
+	DefaultMaxEmergencyDurationBlocks   uint64 = 17_280
 
-	AbsoluteMaxPQCSigners                uint32 = 32
-	AbsoluteMaxPQCAuthBytes              uint32 = 256 * 1024
-	AbsoluteMaxRetainedKeyRecordsPerRole uint32 = 64
-	AbsoluteMaxVerificationGas           uint64 = 10_000_000
+	AbsoluteMaxPQCSigners                  uint32 = 32
+	AbsoluteMaxPQCAuthBytes                uint32 = 256 * 1024
+	AbsoluteMaxRetainedKeyRecordsPerRole   uint32 = 64
+	AbsoluteMaxVerificationGas             uint64 = 10_000_000
+	AbsoluteMaxGovernanceSafetyDelayBlocks uint64 = 2_000_000
+	AbsoluteMaxEmergencyDurationBlocks     uint64 = 172_800
+	MinimumGovernanceSafetyDelayBlocks     uint64 = 2
+	MinimumEmergencyDurationBlocks         uint64 = 2
 
 	// Consensus gas floors prevent governance from making ML-DSA verification
 	// effectively free. They must only be lowered through a coordinated binary
@@ -52,12 +58,32 @@ func DefaultParams() Params {
 		MaxPqcAuthBytes:              DefaultMaxPQCAuthBytes,
 		MaxRetainedKeyRecordsPerRole: DefaultMaxRetainedKeyRecordsPerRole,
 		EmergencyMode:                EmergencyMode_EMERGENCY_MODE_NORMAL,
+		GovernanceSafetyDelayBlocks:  DefaultGovernanceSafetyDelayBlocks,
+		MaxEmergencyDurationBlocks:   DefaultMaxEmergencyDurationBlocks,
 	}
 }
 
 func (p Params) Validate() error {
 	if len(p.NetworkId) < 16 || len(p.NetworkId) > 64 {
 		return fmt.Errorf("%w: network_id length must be between 16 and 64 bytes", ErrInvalidParams)
+	}
+	if p.GovernanceSafetyDelayBlocks < MinimumGovernanceSafetyDelayBlocks ||
+		p.GovernanceSafetyDelayBlocks > AbsoluteMaxGovernanceSafetyDelayBlocks {
+		return fmt.Errorf(
+			"%w: governance safety delay must be in [%d,%d] blocks",
+			ErrInvalidParams,
+			MinimumGovernanceSafetyDelayBlocks,
+			AbsoluteMaxGovernanceSafetyDelayBlocks,
+		)
+	}
+	if p.MaxEmergencyDurationBlocks < MinimumEmergencyDurationBlocks ||
+		p.MaxEmergencyDurationBlocks > AbsoluteMaxEmergencyDurationBlocks {
+		return fmt.Errorf(
+			"%w: maximum emergency duration must be in [%d,%d] blocks",
+			ErrInvalidParams,
+			MinimumEmergencyDurationBlocks,
+			AbsoluteMaxEmergencyDurationBlocks,
+		)
 	}
 	if err := validateScheduledParams(p.AsScheduled()); err != nil {
 		return err
@@ -73,8 +99,31 @@ func (p Params) Validate() error {
 		if err := validateScheduledParams(*p.Pending); err != nil {
 			return fmt.Errorf("invalid pending params: %w", err)
 		}
+		if p.Pending.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
+			p.Pending.EmergencyExpiresHeight <= p.PendingActivationHeight {
+			return fmt.Errorf(
+				"%w: pending emergency must expire after its activation height",
+				ErrInvalidParams,
+			)
+		}
 	}
 	return nil
+}
+
+// ValidateGovernanceUpdate validates the user-controlled part of a parameter
+// proposal. Emergency expiration is deliberately absent from that authority:
+// the message server computes it from the immutable maximum duration.
+func (p Params) ValidateGovernanceUpdate() error {
+	if p.Pending != nil || p.PendingActivationHeight != 0 {
+		return fmt.Errorf("%w: governance message cannot supply a nested pending schedule", ErrInvalidParams)
+	}
+	if p.EmergencyExpiresHeight != 0 {
+		return fmt.Errorf("%w: governance message cannot set emergency expiration", ErrInvalidParams)
+	}
+	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL {
+		p.EmergencyExpiresHeight = 1
+	}
+	return p.Validate()
 }
 
 func validateScheduledParams(p ScheduledParams) error {
@@ -131,6 +180,12 @@ func validateScheduledParams(p ScheduledParams) error {
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 		return fmt.Errorf("%w: invalid emergency mode %d", ErrInvalidParams, p.EmergencyMode)
 	}
+	if p.EmergencyMode == EmergencyMode_EMERGENCY_MODE_NORMAL && p.EmergencyExpiresHeight != 0 {
+		return fmt.Errorf("%w: normal emergency mode must not have an expiration height", ErrInvalidParams)
+	}
+	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL && p.EmergencyExpiresHeight == 0 {
+		return fmt.Errorf("%w: emergency pause requires an expiration height", ErrInvalidParams)
+	}
 	return nil
 }
 
@@ -158,15 +213,22 @@ func (p Params) EffectiveEmergencyMode(height int64) EmergencyMode {
 // Effective atomically applies the complete pending parameter bundle at its
 // activation height. The returned copy never contains an activated schedule.
 func (p Params) Effective(height int64) Params {
-	if p.Pending == nil ||
-		p.PendingActivationHeight == 0 ||
-		height < 0 ||
-		uint64(height) < p.PendingActivationHeight {
+	if height < 0 {
 		return p
 	}
-	p.ApplyScheduled(*p.Pending)
-	p.Pending = nil
-	p.PendingActivationHeight = 0
+	if p.Pending != nil &&
+		p.PendingActivationHeight != 0 &&
+		uint64(height) >= p.PendingActivationHeight {
+		p.ApplyScheduled(*p.Pending)
+		p.Pending = nil
+		p.PendingActivationHeight = 0
+	}
+	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
+		p.EmergencyExpiresHeight != 0 &&
+		uint64(height) >= p.EmergencyExpiresHeight {
+		p.EmergencyMode = EmergencyMode_EMERGENCY_MODE_NORMAL
+		p.EmergencyExpiresHeight = 0
+	}
 	return p
 }
 
@@ -181,6 +243,7 @@ func (p Params) AsScheduled() ScheduledParams {
 		MaxRetainedKeyRecordsPerRole: p.MaxRetainedKeyRecordsPerRole,
 		RegistrationCutoffHeight:     p.RegistrationCutoffHeight,
 		EmergencyMode:                p.EmergencyMode,
+		EmergencyExpiresHeight:       p.EmergencyExpiresHeight,
 	}
 }
 
@@ -194,6 +257,7 @@ func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
 	p.MaxRetainedKeyRecordsPerRole = scheduled.MaxRetainedKeyRecordsPerRole
 	p.RegistrationCutoffHeight = scheduled.RegistrationCutoffHeight
 	p.EmergencyMode = scheduled.EmergencyMode
+	p.EmergencyExpiresHeight = scheduled.EmergencyExpiresHeight
 }
 
 func (p Params) EffectiveMaxPQCSigners() uint32 {

@@ -761,6 +761,7 @@ submit_params_update() {
      | .enforcement_mode = $mode
      | .emergency_mode = $emergency
      | .registration_cutoff_height = $cutoff
+     | .emergency_expires_height = "0"
      | .pending = null
      | .pending_activation_height = "0"' \
     "$current" >"$desired"
@@ -814,7 +815,7 @@ submit_params_update() {
   done
   [[ "$status" == "PROPOSAL_STATUS_PASSED" ]] || die "governance proposal $proposal_id did not pass before timeout"
   pass "governance executes proposal $proposal_id" "$label"
-  wait_for_param_state "$mode" "$emergency" "$label activates atomically at H+1"
+  wait_for_param_state "$mode" "$emergency" "$label activates at its consensus-scheduled height"
 }
 
 initialize_network() {
@@ -859,6 +860,9 @@ initialize_network() {
     | .app_state.gov.params.min_deposit = [{"denom":"peaka","amount":"1000000"}]
     | .app_state.gov.params.max_deposit_period = "10s"
     | .app_state.gov.params.voting_period = "10s"
+    | .app_state.pqcauth.params.governance_safety_delay_blocks = "4"
+    | .app_state.pqcauth.params.max_emergency_duration_blocks = "20"
+    | .app_state.pqcauth.params.emergency_expires_height = "0"
   ' "$genesis" >"$genesis_tmp"
   mv "$genesis_tmp" "$genesis"
 
@@ -1123,7 +1127,33 @@ run_governance_scenarios() {
   broadcast_ok "unregistered classic transaction remains available during PQC pause" \
     "$DORAD_BIN" tx bank send "$(account_address bob)" "$(account_address receiver)" "208${DENOM}" \
       "${bob_flags[@]}"
-  submit_params_update "resume PQC-authorized transactions" "$optional" "$normal" 0
+
+  create_pqc_key dave signing4
+  create_key_proof dave signing4 4 signing recover-signing 2
+  local dave_signing4_public dave_signing4_proof
+  dave_signing4_public="$(jq -r '.public_key_base64' "$(key_json_file dave signing4)")"
+  dave_signing4_proof="$(jq -r '.proof_base64' "$(proof_json_file dave signing4 recover-signing)")"
+  local paused_recovery_prepared="$WORK_DIR/tx/dave-paused-recovery.prepared.json"
+  local paused_recovery_signed="$WORK_DIR/tx/dave-paused-recovery.signed.json"
+  "$DORAD_BIN" tx pqcauth recover-key 2 4 "$dave_signing4_public" "$dave_signing4_proof" \
+    --recovery-sign-bundle-output "$paused_recovery_prepared" \
+    --from dave --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --output json --yes \
+    >"$WORK_DIR/tx/dave-paused-recovery.prepare-result.json"
+  "$DORAD_BIN" tx pqcauth sign-recovery-bundle \
+    "$paused_recovery_prepared" "$(key_private_file dave recovery2)" "$paused_recovery_signed" \
+    --home "$CLIENT_HOME" --yes >"$WORK_DIR/tx/dave-paused-recovery.sign-result.json"
+  broadcast_ok "recovery-only transaction remains available during full PQC pause" \
+    "$DORAD_BIN" tx pqcauth broadcast-recovery-bundle "$paused_recovery_signed" \
+      --from dave --keyring-backend test --home "$CLIENT_HOME" \
+      --chain-id "$CHAIN_ID" --node "$RPC_URL" --broadcast-mode sync --output json --yes
+  wait_for_height $((LAST_TX_HEIGHT + 1))
+  wait_for_policy "$(account_address dave)" 4 2 3 "paused recovery signing key activates at H+1"
+
+  wait_for_param_state "$optional" "$normal" "full PQC pause expires automatically"
+  broadcast_signed_bundle "protected transaction succeeds again after automatic pause expiry" alice \
+    "$WORK_DIR/tx/alice-before-pqc-pause.signed.json"
 
   create_pqc_key eve signing1
   create_key_proof eve signing1 1 signing register-signing 0

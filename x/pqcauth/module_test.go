@@ -90,6 +90,16 @@ func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 	appModule.BeginBlock(ctx, abci.RequestBeginBlock{})
 	require.Nil(t, moduleKeeper.GetParams(ctx).Pending)
+
+	paused := moduleKeeper.GetParams(ctx)
+	paused.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	paused.EmergencyExpiresHeight = uint64(ctx.BlockHeight() + 1)
+	require.NoError(t, moduleKeeper.SetParams(ctx, paused))
+	expiryCtx := ctx.WithBlockHeight(ctx.BlockHeight() + 1)
+	appModule.BeginBlock(expiryCtx, abci.RequestBeginBlock{})
+	normalized := moduleKeeper.GetParams(expiryCtx)
+	require.Equal(t, types.EmergencyMode_EMERGENCY_MODE_NORMAL, normalized.EmergencyMode)
+	require.Zero(t, normalized.EmergencyExpiresHeight)
 	require.Empty(t, appModule.EndBlock(ctx, abci.RequestEndBlock{}))
 
 	invariants := &moduleInvariantRegistryStub{}

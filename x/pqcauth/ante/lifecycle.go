@@ -202,7 +202,7 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if err := message.ValidateBasic(); err != nil {
 				return err
 			}
-			if err := keyChangeAllowed(ctx, params, false); err != nil {
+			if err := recoveryChangeAllowed(params); err != nil {
 				return err
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
@@ -451,4 +451,15 @@ func keyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationC
 		return types.ErrRegistrationClosed
 	}
 	return nil
+}
+
+func recoveryChangeAllowed(params types.Params) error {
+	switch params.EmergencyMode {
+	case types.EmergencyMode_EMERGENCY_MODE_NORMAL,
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS,
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS:
+		return nil
+	default:
+		return types.ErrEmergencyPause
+	}
 }

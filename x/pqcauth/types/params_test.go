@@ -11,8 +11,25 @@ import (
 func TestDefaultParamsValidate(t *testing.T) {
 	params := DefaultParams()
 	require.NoError(t, params.Validate())
+	require.Equal(t, DefaultGovernanceSafetyDelayBlocks, params.GovernanceSafetyDelayBlocks)
+	require.Equal(t, DefaultMaxEmergencyDurationBlocks, params.MaxEmergencyDurationBlocks)
 	require.True(t, params.IsAlgorithmAllowed(Algorithm_ALGORITHM_ML_DSA_65))
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(10))
+}
+
+func TestEmergencyModeAutoExpiresAtExactHeight(t *testing.T) {
+	params := DefaultParams()
+	params.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	params.EmergencyExpiresHeight = 20
+	require.NoError(t, params.Validate())
+	require.Equal(
+		t,
+		EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS,
+		params.EffectiveEmergencyMode(19),
+	)
+	effective := params.Effective(20)
+	require.Equal(t, EmergencyMode_EMERGENCY_MODE_NORMAL, effective.EmergencyMode)
+	require.Zero(t, effective.EmergencyExpiresHeight)
 }
 
 func TestParamsEnforcementActivatesAtExactHeight(t *testing.T) {
@@ -46,6 +63,14 @@ func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 		}},
 		{"short network id", func(p *Params) { p.NetworkId = []byte("short") }},
 		{"unknown algorithm", func(p *Params) { p.AllowedAlgorithms = []Algorithm{99} }},
+		{"zero governance safety delay", func(p *Params) { p.GovernanceSafetyDelayBlocks = 0 }},
+		{"excessive governance safety delay", func(p *Params) {
+			p.GovernanceSafetyDelayBlocks = AbsoluteMaxGovernanceSafetyDelayBlocks + 1
+		}},
+		{"zero emergency duration", func(p *Params) { p.MaxEmergencyDurationBlocks = 0 }},
+		{"excessive emergency duration", func(p *Params) {
+			p.MaxEmergencyDurationBlocks = AbsoluteMaxEmergencyDurationBlocks + 1
+		}},
 	}
 
 	for _, test := range tests {
@@ -129,11 +154,22 @@ func TestParamsRejectRemainingInvalidBoundsAndSchedules(t *testing.T) {
 		func(params *Params) { params.MaxPqcAuthBytes = 0 },
 		func(params *Params) { params.MaxRetainedKeyRecordsPerRole = 0 },
 		func(params *Params) { params.EmergencyMode = EmergencyMode(99) },
+		func(params *Params) {
+			params.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+		},
+		func(params *Params) { params.EmergencyExpiresHeight = 2 },
 		func(params *Params) { params.Pending = new(ScheduledParams) },
 		func(params *Params) { params.PendingActivationHeight = 2 },
 		func(params *Params) {
 			pending := params.AsScheduled()
 			pending.MaxPqcSigners = 0
+			params.Pending = &pending
+			params.PendingActivationHeight = 2
+		},
+		func(params *Params) {
+			pending := params.AsScheduled()
+			pending.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+			pending.EmergencyExpiresHeight = 2
 			params.Pending = &pending
 			params.PendingActivationHeight = 2
 		},
@@ -143,6 +179,20 @@ func TestParamsRejectRemainingInvalidBoundsAndSchedules(t *testing.T) {
 		mutate(&params)
 		require.Error(t, params.Validate())
 	}
+}
+
+func TestGovernanceUpdateCannotChooseRuntimeSchedulingFields(t *testing.T) {
+	params := DefaultParams()
+	params.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+	require.NoError(t, params.ValidateGovernanceUpdate())
+
+	params.EmergencyExpiresHeight = 100
+	require.Error(t, params.ValidateGovernanceUpdate())
+	params.EmergencyExpiresHeight = 0
+	pending := params.AsScheduled()
+	params.Pending = &pending
+	params.PendingActivationHeight = 10
+	require.Error(t, params.ValidateGovernanceUpdate())
 }
 
 func TestPolicyAndKeyEffectivenessBoundaries(t *testing.T) {

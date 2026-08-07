@@ -155,5 +155,5 @@ func (m MsgUpdateParams) ValidateBasic() error {
 	if err := validateOwner(m.Authority); err != nil {
 		return errorsmod.Wrap(ErrInvalidAuthority, err.Error())
 	}
-	return m.Params.Validate()
+	return m.Params.ValidateGovernanceUpdate()
 }

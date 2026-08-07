@@ -388,7 +388,8 @@ accumulator
 - 每账户、每角色完整 terminal key record 保留数；
 - registration cutoff；
 - emergency mode；
-- H+1 pending 参数 bundle。
+- 创世固定、治理不可修改的安全通知期和紧急暂停最长持续 blocks；
+- pending 参数 bundle 和紧急暂停自动到期高度。
 
 验证和安全上下界在 [`types/params.go`](types/params.go)。
 
@@ -863,7 +864,7 @@ batch。
 | `MsgSetProtection` | 开/关账户 `self_enforced` | 经典签名 + 当前 PQC Signing Key | policy 在 H+1 变化 |
 | `MsgRevokeKey` | 永久吊销非活跃历史 key | 经典签名 + 当前 PQC Signing Key | 立即将历史 key 标为 revoked |
 | `MsgRecoverKey` | Signing Key 丢失后恢复 | 经典签名 + Recovery Key 交易签名 + 新 Signing Key PoP | Signing Key 在 H+1 切换 |
-| `MsgUpdateParams` | 治理修改模块参数 | governance authority | 完整参数 bundle 在 H+1 生效 |
+| `MsgUpdateParams` | 治理修改模块参数 | governance authority | 完整 bundle 在 H+1 或创世固定安全延迟后原子生效；pause 自动到期 |
 
 ### 11.3 首次注册的特殊性
 
@@ -1011,8 +1012,8 @@ owner 地址使用长度前缀，key ID 使用 big-endian uint64，避免不同 
 它只能执行 Ante 精确授权过的顶层消息。
 
 `MsgUpdateParams` 不是账户生命周期消息，不使用上述 Context marker；它单独要求
-`msg.authority` 等于 Keeper 配置的 governance authority，并限制 network ID、cutoff
-和 pending schedule。
+`msg.authority` 等于 Keeper 配置的 governance authority，并限制 network ID、两个
+创世安全时长、cutoff、pending schedule 和由模块计算的 emergency expiration。
 
 ### 13.3 为什么 Ante 和 MsgServer 都有检查
 
@@ -1077,16 +1078,29 @@ REQUIRED
 | Mode | 行为 |
 |---|---|
 | `NORMAL` | 正常运行 |
-| `PAUSE_NEW_KEYS` | 暂停注册、轮换和恢复，但已有受保护交易继续验证 |
-| `PAUSE_PQC_TRANSACTIONS` | 暂停携带或要求 PQC 的交易 |
+| `PAUSE_NEW_KEYS` | 暂停注册和普通轮换，但已有受保护交易继续验证 |
+| `PAUSE_PQC_TRANSACTIONS` | 暂停携带或要求 PQC 的普通交易 |
 
 紧急模式是 pause，不是降级。系统不会因为 PQC 组件出现问题就自动允许
-classic-only 交易。
+classic-only 交易。两种 pause 在 H+1 生效，并在模块计算的
+`emergency_expires_height` 自动恢复为 `NORMAL`。最长持续 blocks 在 genesis 固定，
+治理不能修改，也不能直接填写 expiration。
 
-### 14.3 参数为什么整包 H+1 更新
+唯一例外是严格的 `MsgRecoverKey` 逃生口。它必须是唯一 top-level message，并继续
+验证经典签名、当前 Recovery Key 对完整恢复交易的签名、新 Signing Key PoP、key ID
+和 policy version。其他 key lifecycle 消息、普通 protected 交易和嵌套恢复仍被暂停。
+
+### 14.3 参数为什么整包调度更新
 
 `MsgUpdateParams` 不直接修改当前字段，而是安排完整 `ScheduledParams` bundle 在
-H+1 生效。
+一个确定高度原子生效。放宽认证边界和单独的紧急暂停在 H+1 生效；以下收紧操作必须
+等待 `governance_safety_delay_blocks`：
+
+- 提高 enforcement 等级；
+- 首次设置 registration cutoff；
+- 移除已允许算法；
+- 提高 signature/proof verification gas；
+- 降低 signer 数量或 extension 字节上限。
 
 整包更新避免某些节点或某些读取路径看到：
 
@@ -1096,8 +1110,10 @@ H+1 生效。
 + 旧 gas
 ```
 
-`network_id` 不在可调度字段中，治理不能修改。registration cutoff 也不能回退，避免
-重新打开已关闭的经典 bootstrap 窗口。
+`network_id`、`governance_safety_delay_blocks` 和
+`max_emergency_duration_blocks` 不在可调度字段中，治理不能修改。默认安全通知期和
+最长暂停期都是 17,280 blocks；生产链应根据目标 block time 在 genesis 明确校准。
+registration cutoff 也不能回退，避免重新打开已关闭的经典 bootstrap 窗口。
 
 ## 15. 第十一核心部件：Genesis、Module 和 Query
 

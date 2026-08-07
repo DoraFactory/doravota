@@ -620,10 +620,6 @@ func queryRecoveryState(
 		return types.AccountPolicy{}, types.PQCKeyRecord{}, types.Params{},
 			fmt.Errorf("query PQC params for recovery: %w", err)
 	}
-	if paramsResponse.EffectiveEmergencyMode !=
-		types.EmergencyMode_EMERGENCY_MODE_NORMAL {
-		return types.AccountPolicy{}, types.PQCKeyRecord{}, types.Params{}, types.ErrEmergencyPause
-	}
 	return accountResponse.Policy, keyResponse.Key, paramsResponse.Params, nil
 }
 

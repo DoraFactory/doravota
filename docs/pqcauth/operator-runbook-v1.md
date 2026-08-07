@@ -20,10 +20,20 @@ development value unless its genesis supplies an explicit value. A same-chain-ID
 fork that intends to become a separate security domain must choose a new
 network ID before launch; the value is immutable after initialization.
 
-All mutable pqcauth parameters are scheduled as one atomic bundle for H+1.
-Parameter queries are normalized at the queried height: a future pending bundle
-is included, while a bundle whose activation height has arrived is applied and
-cleared from the response.
+All mutable pqcauth parameters are scheduled as one atomic bundle. Relaxations
+and an emergency-only change activate at H+1. Changes that can invalidate a
+currently valid transaction wait the genesis-fixed
+`governance_safety_delay_blocks`: enforcement escalation, the first
+registration cutoff, algorithm removal, verification-gas increases, and lower
+signer or extension-size limits. Parameter queries expose the future activation
+height and normalize a bundle once that height arrives.
+
+`governance_safety_delay_blocks` and `max_emergency_duration_blocks` are launch
+parameters and cannot be changed by governance. Their defaults are 17,280
+blocks; calibrate both in genesis against the target block time and document the
+resulting wall-clock windows before launch. Governance must submit
+`emergency_expires_height=0`; the module computes the real exclusive expiration
+height and automatically returns the mode to `NORMAL` in BeginBlock.
 
 `max_retained_key_records_per_role` bounds complete terminal records, not key
 creation. Key IDs remain monotonic and are never reused, but accounts cannot be
@@ -172,10 +182,15 @@ authenticated transport, request timeout, approval policy, and audit log.
 
 ## Fail-closed incidents
 
-- `PAUSE_NEW_KEYS` stops registration, rotation, and recovery but does not
+- `PAUSE_NEW_KEYS` stops registration and ordinary key rotation but does not
   weaken authentication on ordinary protected transactions.
 - `PAUSE_PQC_TRANSACTIONS` freezes PQC-authorized and protected-account
   transactions. It never falls back to classical-only authorization.
+- Both pauses expire automatically. During either pause, the only account
+  lifecycle escape hatch is one top-level `MsgRecoverKey`. Ante still verifies
+  the classical signature, the registered recovery key's signature over the
+  complete transaction, and the replacement signing key's proof of possession.
+  Batched or nested recovery and all other lifecycle messages remain rejected.
 - An account with `self_enforced=true` remains protected even if governance
   changes the global mode to `DISABLED`.
 - A policy that references a missing, revoked, mistyped, or not-yet-effective
@@ -236,6 +251,6 @@ signatures are never metric labels.
 
 Alert on a sustained verification-failure increase, proposal rejection spikes,
 or verification latency approaching the gas calibration envelope. Recalibrate
-gas only through an announced H+1 parameter update and retain the existing
-finite block limit until the new benchmark has been reproduced by every
-supported validator architecture.
+gas only through an announced, consensus-scheduled parameter update and retain
+the existing finite block limit until the new benchmark has been reproduced by
+every supported validator architecture.

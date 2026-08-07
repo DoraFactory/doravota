@@ -808,11 +808,21 @@ func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 	type mutation struct {
 		name               string
 		unavailableSigning bool
+		emergencyMode      types.EmergencyMode
 		mutate             func(client.TxBuilder, accountKeeperMock)
 	}
 	testCases := []mutation{
 		{name: "valid"},
 		{name: "valid with unavailable signing key", unavailableSigning: true},
+		{
+			name:          "valid during new-key pause",
+			emergencyMode: types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS,
+		},
+		{
+			name:               "valid during full PQC pause with unavailable signing key",
+			unavailableSigning: true,
+			emergencyMode:      types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS,
+		},
 		{
 			name: "fee",
 			mutate: func(builder client.TxBuilder, _ accountKeeperMock) {
@@ -958,8 +968,14 @@ func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 				signingKey.Status = types.KeyStatus_KEY_STATUS_REVOKED
 				require.NoError(t, moduleKeeper.SetKey(ctx, address, signingKey))
 			}
+			if testCase.emergencyMode != types.EmergencyMode_EMERGENCY_MODE_UNSPECIFIED {
+				params.EmergencyMode = testCase.emergencyMode
+				params.EmergencyExpiresHeight = uint64(ctx.BlockHeight() + 10)
+				require.NoError(t, moduleKeeper.SetParams(ctx, params))
+			}
+			decorator := NewVerifyPQCDecorator(moduleKeeper, accountKeeper)
 			called := false
-			_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+			_, err = decorator.AnteHandle(
 				ctx,
 				builder.GetTx(),
 				false,

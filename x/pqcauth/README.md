@@ -76,9 +76,11 @@ classic-only。
 - 账户保留的完整 key records，以及按 signing/recovery 角色划分的压缩历史摘要。
 
 治理可以更新 enforcement mode、允许算法、验证 gas、大小/数量上限、
-registration cutoff 和 emergency mode。参数更新以完整 bundle 在 H+1
-原子生效；治理不能替账户更换密钥，`network_id` 在 genesis 后不可修改，
-registration cutoff 一旦安排或生效也不可回退。
+registration cutoff 和 emergency mode。参数始终以完整 bundle 原子生效；会让当前
+合法交易失效的收紧操作必须等待创世固定的 `governance_safety_delay_blocks`，放宽
+操作和单独的紧急暂停在 H+1 生效。紧急暂停由创世固定的
+`max_emergency_duration_blocks` 自动限时。治理不能替账户更换密钥，`network_id`
+及两个安全时长在 genesis 后不可修改，registration cutoff 一旦安排或生效也不可回退。
 
 ## 2. 共识状态模型
 
@@ -86,7 +88,7 @@ registration cutoff 一旦安排或生效也不可回退。
 
 | 状态 | 作用 |
 |---|---|
-| `Params` | 全局 enforcement、network ID、允许算法、gas、资源上限、cutoff、emergency mode，以及 H+1 pending 参数 |
+| `Params` | 全局 enforcement、network ID、允许算法、gas、资源上限、cutoff、emergency mode、治理安全延迟、暂停期限和 pending 参数 |
 | `AccountPolicy` | 当前/待生效 signing key、recovery key、自保护开关和 policy version |
 | `PQCKeyRecord` | 当前、待生效和近期历史公钥记录，包含 owner、key ID、算法、角色、状态及生效高度区间 |
 | `AccountKeySequence` | 为账户分配单调递增的 key ID，已经停用或吊销的 ID 不会回收 |
@@ -193,7 +195,7 @@ DeliverTx 可能看到不同的认证状态。
 | `MsgSetProtection` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 | 开启和关闭都在 H+1 生效；关闭也不能绕开当前 PQC |
 | `MsgRevokeKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 | 立即永久吊销非活跃历史 key；active/pending/recovery key 不允许直接吊销 |
 | `MsgRecoverKey` | 经典账户签名 + 当前 recovery key 对完整恢复交易的签名 + 新 signing key proof | 当前 signing key 在 H+1 失活，新 key 在 H+1 生效 |
-| `MsgUpdateParams` | 治理 authority | 完整参数 bundle 在 H+1 生效 |
+| `MsgUpdateParams` | 治理 authority | 完整 bundle 在共识计算的高度生效；收紧认证边界要经过安全延迟，紧急暂停 H+1 生效且自动到期 |
 
 proof of possession 签名绑定：
 
@@ -375,12 +377,12 @@ signature”的授权继承漏洞。
   -> ProcessProposal：其他验证人再执行 Ante，任一非法交易会使 proposal 被拒绝
   -> DeliverTx/FinalizeBlock：再次执行 Ante，通过后执行 MsgServer
   -> Commit：提交业务状态、PQC policy/key/sequence 变化
-  -> H+1：pending key/policy/params 在读取路径上成为 effective
+  -> 调度高度：H+1 key/policy 或治理计算的 pending params 成为 effective
 ```
 
 PrepareProposal 和 ProcessProposal 不执行消息，所以模块不依赖同高度消息产生的
-PQC 状态。H+1 保证同一个高度中的提议者、验证者和 DeliverTx 都按照同一组
-key/policy 验证。
+PQC 状态。H+1 key/policy 边界和确定的 params activation height 保证同一个高度中的
+提议者、验证者和 DeliverTx 都按照同一组认证状态验证。
 
 ## 8. Gas simulation 生命周期
 
@@ -446,11 +448,18 @@ bundle 当前只支持单 signer index 0。共识 extension 和 Ante 可以验�
 | Mode | 行为 |
 |---|---|
 | `NORMAL` | 正常运行 |
-| `PAUSE_NEW_KEYS` | 暂停注册、signing/recovery key 轮换和恢复；已有 protected transaction 继续要求并验证 PQC |
-| `PAUSE_PQC_TRANSACTIONS` | 暂停携带 PQC extension 的交易以及需要 PQC 的账户交易 |
+| `PAUSE_NEW_KEYS` | 暂停注册和普通 signing/recovery key 轮换；已有 protected transaction 继续要求并验证 PQC |
+| `PAUSE_PQC_TRANSACTIONS` | 暂停携带 PQC extension 的交易以及普通的、需要 PQC 的账户交易 |
 
 紧急模式不会把 protected account 降级为 classic-only。
-`PAUSE_PQC_TRANSACTIONS` 的含义是暂停，而不是绕开第二因子。
+`PAUSE_PQC_TRANSACTIONS` 的含义是暂停，而不是绕开第二因子。两种 pause 都在
+`emergency_expires_height` 自动恢复为 `NORMAL`；该高度由模块按不可变的最大持续
+blocks 计算，治理不能自选或无限续期。
+
+`MsgRecoverKey` 是 pause 期间唯一保留的账户生命周期逃生口。它必须是交易中唯一的
+top-level message，不能带普通 PQC extension，也不能通过 authz/group/wasm 嵌套；
+Ante 仍完整验证经典账户签名、已登记 recovery key 对完整交易的签名，以及 replacement
+signing key 的 PoP。注册、普通轮换、策略修改和已保护业务交易仍然 fail-closed。
 
 ## 12. `x/pqcauth` 目录说明
 
@@ -573,7 +582,7 @@ ML-DSA-65 的最小密码学适配层：
 - `msg_server.go`
   - 所有 lifecycle Msg service；
   - 重复关键权限和状态检查；
-  - 安排 H+1 key/policy/params；
+  - 安排 H+1 key/policy，以及带安全延迟和自动到期的治理 params；
   - 验证 key proof；
   - 限制 authority、immutable network ID 和 irreversible cutoff；
   - 发出 lifecycle events。
@@ -590,7 +599,7 @@ ML-DSA-65 的最小密码学适配层：
 
 - `canonical_tx.go`：构造普通和恢复交易的 canonical body/AuthInfo；
 - `signing.go`：固定 format、purpose、domain-separation context 和 sign-doc 校验；
-- `params.go`：默认值、绝对上限、gas 下限、enforcement/emergency 和 H+1 params；
+- `params.go`：默认值、绝对上限、gas 下限、enforcement/emergency、治理安全延迟、暂停自动到期和 pending params；
 - `policy.go`：账户 policy 的 H+1 effective 计算和 key 有效区间；
 - `messages.go`：所有 Msg 的 signer、ValidateBasic 和 legacy SDK 接口；
 - `keys.go`：KV key prefixes 和 owner/key ID 编码；

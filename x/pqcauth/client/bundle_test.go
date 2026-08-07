@@ -589,6 +589,12 @@ func (s *mutableBundleQueryServer) setPolicyVersion(version uint64) {
 	s.account.Policy.PolicyVersion = version
 }
 
+func (s *mutableBundleQueryServer) setEmergencyMode(mode types.EmergencyMode) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.params.EffectiveEmergencyMode = mode
+}
+
 func startBundleQueryServer(
 	t *testing.T,
 	queryServer types.QueryServer,

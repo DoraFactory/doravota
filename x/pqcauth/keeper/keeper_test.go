@@ -232,10 +232,12 @@ func TestEmergencyModesFailClosed(t *testing.T) {
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	require.ErrorIs(t, ensureKeyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
 	require.NoError(t, ensurePQCTransactionAllowed(params))
+	require.NoError(t, ensureRecoveryAllowed(params))
 
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
 	require.ErrorIs(t, ensureKeyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
 	require.ErrorIs(t, ensurePQCTransactionAllowed(params), types.ErrEmergencyPause)
+	require.NoError(t, ensureRecoveryAllowed(params))
 }
 
 func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
@@ -605,6 +607,10 @@ func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *tes
 	require.True(t, found)
 	unavailableKey.Status = types.KeyStatus_KEY_STATUS_REVOKED
 	require.NoError(t, moduleKeeper.SetKey(ctx, ownerAddress, unavailableKey))
+	paused := params
+	paused.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	paused.EmergencyExpiresHeight = 100
+	require.NoError(t, moduleKeeper.SetParams(ctx, paused))
 	response, err := server.RecoverKey(
 		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx, recoveryMessage)),
 		recoveryMessage,
@@ -642,10 +648,13 @@ func TestLifecycleMessagesRequireExactAnteAuthorization(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrPolicyNotFound)
 }
 
-func TestUpdateParamsSchedulesAtomicHPlusOneBundle(t *testing.T) {
+func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
-	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
-	requested := types.DefaultParams()
+	current := types.DefaultParams()
+	current.GovernanceSafetyDelayBlocks = 5
+	current.MaxEmergencyDurationBlocks = 7
+	require.NoError(t, moduleKeeper.SetParams(ctx, current))
+	requested := current
 	requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	requested.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	requested.MaxPqcSigners = 4
@@ -659,21 +668,32 @@ func TestUpdateParamsSchedulesAtomicHPlusOneBundle(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	require.Equal(t, uint64(31), response.ActivationHeight)
+	require.Equal(t, uint64(35), response.ActivationHeight)
 
 	stored := moduleKeeper.GetParams(ctx)
 	require.NotNil(t, stored.Pending)
-	before := stored.Effective(30)
+	require.Equal(t, uint64(42), stored.Pending.EmergencyExpiresHeight)
+	before := stored.Effective(34)
 	require.Equal(t, types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, before.EnforcementMode)
 	require.Equal(t, types.EmergencyMode_EMERGENCY_MODE_NORMAL, before.EmergencyMode)
 	require.Equal(t, types.DefaultMaxPQCSigners, before.MaxPqcSigners)
 
-	after := stored.Effective(31)
+	after := stored.Effective(35)
 	require.Equal(t, requested.EnforcementMode, after.EnforcementMode)
 	require.Equal(t, requested.EmergencyMode, after.EmergencyMode)
 	require.Equal(t, requested.MaxPqcSigners, after.MaxPqcSigners)
 	require.Equal(t, requested.RegistrationCutoffHeight, after.RegistrationCutoffHeight)
 	require.Nil(t, after.Pending)
+	require.Equal(
+		t,
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS,
+		stored.Effective(41).EmergencyMode,
+	)
+	require.Equal(
+		t,
+		types.EmergencyMode_EMERGENCY_MODE_NORMAL,
+		stored.Effective(42).EmergencyMode,
+	)
 
 	requested.RegistrationCutoffHeight = 0
 	_, err = NewMsgServer(moduleKeeper).UpdateParams(
@@ -686,12 +706,132 @@ func TestUpdateParamsSchedulesAtomicHPlusOneBundle(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestEmergencyOnlyUpdateActivatesAtHPlusOneAndCanBeCancelled(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 30)
+	current := types.DefaultParams()
+	current.GovernanceSafetyDelayBlocks = 5
+	current.MaxEmergencyDurationBlocks = 7
+	require.NoError(t, moduleKeeper.SetParams(ctx, current))
+	server := NewMsgServer(moduleKeeper)
+
+	requested := current
+	requested.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    requested,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(31), response.ActivationHeight)
+	stored := moduleKeeper.GetParams(ctx)
+	require.Equal(t, uint64(38), stored.Pending.EmergencyExpiresHeight)
+
+	response, err = server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    current,
+	})
+	require.NoError(t, err)
+	require.Zero(t, response.ActivationHeight)
+	require.Nil(t, moduleKeeper.GetParams(ctx).Pending)
+}
+
+func TestGovernanceSafetyDelayClassification(t *testing.T) {
+	base := types.DefaultParams().AsScheduled()
+	testCases := []struct {
+		name        string
+		current     types.ScheduledParams
+		mutate      func(*types.ScheduledParams)
+		restrictive bool
+	}{
+		{
+			name: "enforcement escalation",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+			},
+			restrictive: true,
+		},
+		{
+			name: "registration cutoff",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.RegistrationCutoffHeight = 100
+			},
+			restrictive: true,
+		},
+		{
+			name: "signature gas increase",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.SignatureVerificationGas++
+			},
+			restrictive: true,
+		},
+		{
+			name: "proof gas increase",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.ProofVerificationGas++
+			},
+			restrictive: true,
+		},
+		{
+			name:        "signer limit reduction",
+			mutate:      func(requested *types.ScheduledParams) { requested.MaxPqcSigners-- },
+			restrictive: true,
+		},
+		{
+			name:        "byte limit reduction",
+			mutate:      func(requested *types.ScheduledParams) { requested.MaxPqcAuthBytes-- },
+			restrictive: true,
+		},
+		{
+			name:        "algorithm removal",
+			mutate:      func(requested *types.ScheduledParams) { requested.AllowedAlgorithms = nil },
+			restrictive: true,
+		},
+		{
+			name: "emergency activation remains fast",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+			},
+		},
+		{
+			name: "enforcement relaxation",
+			current: func() types.ScheduledParams {
+				value := base
+				value.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				return value
+			}(),
+			mutate: func(requested *types.ScheduledParams) {
+				requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			current := testCase.current
+			if current.EnforcementMode == types.EnforcementMode_ENFORCEMENT_MODE_UNSPECIFIED {
+				current = base
+			}
+			requested := current
+			requested.AllowedAlgorithms = append(
+				[]types.Algorithm(nil),
+				current.AllowedAlgorithms...,
+			)
+			testCase.mutate(&requested)
+			require.Equal(
+				t,
+				testCase.restrictive,
+				requiresGovernanceSafetyDelay(current, requested),
+			)
+		})
+	}
+}
+
 func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
 	params := types.DefaultParams()
 	scheduled := params.AsScheduled()
 	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
 	scheduled.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+	scheduled.EmergencyExpiresHeight = 40
 	scheduled.MaxPqcSigners = 4
 	params.Pending = &scheduled
 	params.PendingActivationHeight = 31
@@ -829,6 +969,7 @@ func TestSetProtectionAndRevokeFailClosedStateMatrix(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrKeyNotFound)
 
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	params.EmergencyExpiresHeight = 100
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 	_, err = server.SetProtection(
 		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx, setProtection)),
@@ -859,6 +1000,22 @@ func TestUpdateParamsRejectsAuthorityNetworkAndNestedSchedule(t *testing.T) {
 	_, err = server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
 		Authority: moduleKeeper.Authority(),
 		Params:    differentNetwork,
+	})
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+
+	differentDelay := current
+	differentDelay.GovernanceSafetyDelayBlocks++
+	_, err = server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    differentDelay,
+	})
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+
+	differentEmergencyLimit := current
+	differentEmergencyLimit.MaxEmergencyDurationBlocks++
+	_, err = server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    differentEmergencyLimit,
 	})
 	require.ErrorIs(t, err, types.ErrInvalidParams)
 

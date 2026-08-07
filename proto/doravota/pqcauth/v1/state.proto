@@ -62,6 +62,15 @@ message Params {
   EmergencyMode emergency_mode = 10;
   ScheduledParams pending = 11;
   uint64 pending_activation_height = 12;
+  // Minimum notice period for governance changes that can make existing
+  // transactions invalid. This launch parameter is immutable after genesis.
+  uint64 governance_safety_delay_blocks = 13;
+  // Maximum lifetime of either emergency pause. This launch parameter is
+  // immutable after genesis and prevents an indefinite governance freeze.
+  uint64 max_emergency_duration_blocks = 14;
+  // Exclusive height at which the active emergency mode automatically returns
+  // to NORMAL. Zero is required while emergency_mode is NORMAL.
+  uint64 emergency_expires_height = 15;
 }
 
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The
@@ -77,6 +86,9 @@ message ScheduledParams {
   uint32 max_retained_key_records_per_role = 7;
   uint64 registration_cutoff_height = 8;
   EmergencyMode emergency_mode = 9;
+  // Computed by the module when an emergency is scheduled. Governance callers
+  // cannot choose or extend this value directly.
+  uint64 emergency_expires_height = 10;
 }
 
 // PQCKeyRecord is an append-only key record. inactive_from_height is exclusive;

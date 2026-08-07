@@ -181,6 +181,9 @@ func TestRecoverySignBundleOnlinePrepareAttachAndStalePolicy(t *testing.T) {
 		recoveryPrivateKey,
 	)
 	require.NoError(t, err)
+	queryServer.setEmergencyMode(
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS,
+	)
 	finalBuilder, _, err := AttachRecoverySignBundle(
 		context.Background(),
 		clientCtx,

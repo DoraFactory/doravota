@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	errorsmod "cosmossdk.io/errors"
@@ -444,7 +445,7 @@ func (m msgServer) RecoverKey(
 		return nil, err
 	}
 	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
-	if err := ensureKeyChangeAllowed(ctx, params, false); err != nil {
+	if err := ensureRecoveryAllowed(params); err != nil {
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
@@ -549,10 +550,17 @@ func (m msgServer) UpdateParams(
 	if !types.EqualNetworkID(current.NetworkId, msg.Params.NetworkId) {
 		return nil, types.ErrInvalidParams.Wrap("network_id is immutable after genesis")
 	}
-	requested := msg.Params
-	if requested.Pending != nil || requested.PendingActivationHeight != 0 {
-		return nil, types.ErrInvalidParams.Wrap("governance message cannot supply a nested pending schedule")
+	if current.GovernanceSafetyDelayBlocks != msg.Params.GovernanceSafetyDelayBlocks {
+		return nil, types.ErrInvalidParams.Wrap(
+			"governance_safety_delay_blocks is immutable after genesis",
+		)
 	}
+	if current.MaxEmergencyDurationBlocks != msg.Params.MaxEmergencyDurationBlocks {
+		return nil, types.ErrInvalidParams.Wrap(
+			"max_emergency_duration_blocks is immutable after genesis",
+		)
+	}
+	requested := msg.Params
 	lockedCutoff := current.RegistrationCutoffHeight
 	if lockedCutoff == 0 && current.Pending != nil {
 		lockedCutoff = current.Pending.RegistrationCutoffHeight
@@ -563,8 +571,28 @@ func (m msgServer) UpdateParams(
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
-	if !currentScheduled.Equal(requestedScheduled) {
-		effectiveHeight = uint64(ctx.BlockHeight()) + 1
+	if currentScheduled.Equal(requestedScheduled) {
+		// A proposal equal to the active state is an explicit cancellation of a
+		// future schedule. This lets governance defuse a queued restrictive
+		// change without waiting for it to activate first.
+		current.Pending = nil
+		current.PendingActivationHeight = 0
+	} else {
+		delay := uint64(1)
+		if requiresGovernanceSafetyDelay(currentScheduled, requestedScheduled) {
+			delay = current.GovernanceSafetyDelayBlocks
+		}
+		if ctx.BlockHeight() < 0 || uint64(ctx.BlockHeight()) > math.MaxUint64-delay {
+			return nil, types.ErrInvalidParams.Wrap("parameter activation height overflow")
+		}
+		effectiveHeight = uint64(ctx.BlockHeight()) + delay
+		if requestedScheduled.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL {
+			if effectiveHeight > math.MaxUint64-current.MaxEmergencyDurationBlocks {
+				return nil, types.ErrInvalidParams.Wrap("emergency expiration height overflow")
+			}
+			requestedScheduled.EmergencyExpiresHeight =
+				effectiveHeight + current.MaxEmergencyDurationBlocks
+		}
 		current.Pending = new(types.ScheduledParams)
 		*current.Pending = requestedScheduled
 		current.PendingActivationHeight = effectiveHeight
@@ -575,6 +603,28 @@ func (m msgServer) UpdateParams(
 	return &types.MsgUpdateParamsResponse{
 		ActivationHeight: effectiveHeight,
 	}, nil
+}
+
+func requiresGovernanceSafetyDelay(current, requested types.ScheduledParams) bool {
+	if requested.EnforcementMode > current.EnforcementMode ||
+		(current.RegistrationCutoffHeight == 0 && requested.RegistrationCutoffHeight != 0) ||
+		requested.SignatureVerificationGas > current.SignatureVerificationGas ||
+		requested.ProofVerificationGas > current.ProofVerificationGas ||
+		requested.MaxPqcSigners < current.MaxPqcSigners ||
+		requested.MaxPqcAuthBytes < current.MaxPqcAuthBytes {
+		return true
+	}
+
+	allowed := make(map[types.Algorithm]struct{}, len(requested.AllowedAlgorithms))
+	for _, algorithm := range requested.AllowedAlgorithms {
+		allowed[algorithm] = struct{}{}
+	}
+	for _, algorithm := range current.AllowedAlgorithms {
+		if _, found := allowed[algorithm]; !found {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureKeyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationCutoff bool) error {
@@ -597,6 +647,20 @@ func ensurePQCTransactionAllowed(params types.Params) error {
 		return types.ErrEmergencyPause
 	}
 	return nil
+}
+
+// Recovery is the sole lifecycle escape hatch that remains open during either
+// emergency mode. Ante still requires exactly one top-level MsgRecoverKey and
+// verifies both the registered recovery signature and the replacement key PoP.
+func ensureRecoveryAllowed(params types.Params) error {
+	switch params.EmergencyMode {
+	case types.EmergencyMode_EMERGENCY_MODE_NORMAL,
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS,
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS:
+		return nil
+	default:
+		return types.ErrEmergencyPause
+	}
 }
 
 func VerifyKeyProof(

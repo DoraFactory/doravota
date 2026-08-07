@@ -692,8 +692,10 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 	require.NoError(t, keyChangeAllowed(ctx, params, false))
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	require.ErrorIs(t, keyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.NoError(t, recoveryChangeAllowed(params))
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
 	require.ErrorIs(t, keyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.NoError(t, recoveryChangeAllowed(params))
 
 	params = moduleKeeper.GetParams(ctx)
 	params.AllowedAlgorithms = []types.Algorithm{
