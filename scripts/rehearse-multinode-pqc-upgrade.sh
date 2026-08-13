@@ -111,14 +111,14 @@ record_step() {
   local phase="$1" label="$2" detail="${3:-}"
   jq -cn --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg phase "$phase" \
     --arg label "$label" --arg detail "$detail" \
-    '{at:$at,phase:$phase,label:$label,detail:$detail}' >>"$STEP_RECORDS"
+    '{at:$at,phase:$phase,"label":$label,detail:$detail}' >>"$STEP_RECORDS"
   log "$phase: $label${detail:+ ($detail)}"
 }
 
 record_tx() {
   local phase="$1" label="$2" committed="$3"
   jq -c --arg phase "$phase" --arg label "$label" \
-    '{phase:$phase,label:$label,txhash:(.txhash // .tx_response.txhash),height:((.height // .tx_response.height)|tonumber),code:((.code // .tx_response.code // 0)|tonumber),gas_wanted:(.gas_wanted // .tx_response.gas_wanted // "0"),gas_used:(.gas_used // .tx_response.gas_used // "0"),message_types:[.tx.body.messages[]?["@type"]]}' \
+    '{phase:$phase,"label":$label,txhash:(.txhash // .tx_response.txhash),height:((.height // .tx_response.height)|tonumber),code:((.code // .tx_response.code // 0)|tonumber),gas_wanted:(.gas_wanted // .tx_response.gas_wanted // "0"),gas_used:(.gas_used // .tx_response.gas_used // "0"),message_types:[.tx.body.messages[]?["@type"]]}' \
     "$committed" >>"$TX_RECORDS"
 }
 
