@@ -5,12 +5,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
+	"cosmossdk.io/log"
+	"cosmossdk.io/store"
+	"cosmossdk.io/store/snapshots"
+	snapshottypes "cosmossdk.io/store/snapshots/types"
+	storetypes "cosmossdk.io/store/types"
 	tmcfg "github.com/cometbft/cometbft/config"
 	tmcli "github.com/cometbft/cometbft/libs/cli"
-	"github.com/cometbft/cometbft/libs/log"
 	tmtypes "github.com/cometbft/cometbft/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
@@ -18,14 +23,12 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/server"
-	"github.com/cosmos/cosmos-sdk/version"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
-	"github.com/cosmos/cosmos-sdk/snapshots"
-	snapshottypes "github.com/cosmos/cosmos-sdk/snapshots/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
+	"github.com/cosmos/cosmos-sdk/version"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -44,10 +47,15 @@ import (
 
 	"github.com/DoraFactory/doravota/app"
 	appparams "github.com/DoraFactory/doravota/app/params"
+	sdk_v053_bridge "github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application
 func NewRootCmd() (*cobra.Command, appparams.EncodingConfig) {
+	// Address codecs are captured while building the interface registry. Set
+	// and seal the chain prefixes first so tx sign bytes use dora addresses
+	// instead of the SDK's default cosmos prefix.
+	initSDKConfig()
 	encodingConfig := app.MakeEncodingConfig()
 	initClientCtx := client.Context{}.
 		WithCodec(encodingConfig.Marshaler).
@@ -89,6 +97,26 @@ func NewRootCmd() (*cobra.Command, appparams.EncodingConfig) {
 
 	initRootCmd(rootCmd, encodingConfig)
 
+	tempHome := filepath.Join(os.TempDir(), "dorad-autocli-"+time.Now().UTC().Format("20060102150405.000000000"))
+	defer os.RemoveAll(tempHome)
+	tempApp := app.New(
+		log.NewNopLogger(),
+		dbm.NewMemDB(),
+		nil,
+		false,
+		map[int64]bool{},
+		tempHome,
+		0,
+		encodingConfig,
+		simtestutil.NewAppOptionsWithFlagHome(tempHome),
+		nil,
+	)
+	autoCLIOpts := tempApp.AutoCliOpts()
+	autoCLIOpts.ClientCtx = initClientCtx
+	if err := autoCLIOpts.EnhanceRootCommand(rootCmd); err != nil {
+		panic(err)
+	}
+
 	return rootCmd, encodingConfig
 }
 
@@ -103,26 +131,24 @@ func initRootCmd(
 	rootCmd *cobra.Command,
 	encodingConfig appparams.EncodingConfig,
 ) {
-	// Set config
-	initSDKConfig()
 	// Set app version info
 	setVersionInfo()
 	gentxModule := app.ModuleBasics[genutiltypes.ModuleName].(genutil.AppModuleBasic)
+	validatorAddressCodec := address.Bech32Codec{Bech32Prefix: app.AccountAddressPrefix + "valoper"}
 	rootCmd.AddCommand(
 		genutilcli.InitCmd(app.ModuleBasics, app.DefaultNodeHome),
-		genutilcli.CollectGenTxsCmd(banktypes.GenesisBalancesIterator{}, app.DefaultNodeHome, gentxModule.GenTxValidator),
-		genutilcli.MigrateGenesisCmd(),
+		genutilcli.CollectGenTxsCmd(banktypes.GenesisBalancesIterator{}, app.DefaultNodeHome, gentxModule.GenTxValidator, validatorAddressCodec),
 		genutilcli.GenTxCmd(
 			app.ModuleBasics,
 			encodingConfig.TxConfig,
 			banktypes.GenesisBalancesIterator{},
 			app.DefaultNodeHome,
+			validatorAddressCodec,
 		),
 		genutilcli.ValidateGenesisCmd(app.ModuleBasics),
 		AddGenesisAccountCmd(app.DefaultNodeHome),
 		tmcli.NewCompletionCmd(rootCmd, true),
 		debug.Cmd(),
-		config.Cmd(),
 		genesisCommand(encodingConfig),
 		version.NewVersionCommand(),
 	)
@@ -142,10 +168,10 @@ func initRootCmd(
 
 	// add keybase, auxiliary RPC, query, and tx child commands
 	rootCmd.AddCommand(
-		rpc.StatusCommand(),
+		server.StatusCommand(),
 		queryCommand(),
 		txCommand(),
-		keys.Commands(app.DefaultNodeHome),
+		keys.Commands(),
 	)
 }
 
@@ -161,9 +187,8 @@ func queryCommand() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		authcmd.GetAccountCmd(),
 		rpc.ValidatorCommand(),
-		rpc.BlockCommand(),
+		server.QueryBlockCmd(),
 		authcmd.QueryTxsByEventsCmd(),
 		authcmd.QueryTxCmd(),
 	)
@@ -215,7 +240,6 @@ func genesisCommand(encodingConfig params.EncodingConfig, cmds ...*cobra.Command
 	return cmd
 }
 
-
 type appCreator struct {
 	encodingConfig appparams.EncodingConfig
 }
@@ -233,7 +257,7 @@ func (a appCreator) newApp(
 		wasmOpts = append(wasmOpts, wasmkeeper.WithVMCacheMetrics(prometheus.DefaultRegisterer))
 	}
 
-	var cache sdk.MultiStorePersistentCache
+	var cache storetypes.MultiStorePersistentCache
 
 	if cast.ToBool(appOpts.Get(server.FlagInterBlockCache)) {
 		cache = store.NewCommitKVStoreCacheManager()
@@ -250,6 +274,18 @@ func (a appCreator) newApp(
 	}
 
 	homeDir := cast.ToString(appOpts.Get(flags.FlagHome))
+	appDB, compatibleStores, err := sdk_v053_bridge.WrapLegacyEmptyIAVLDB(logger, db, homeDir)
+	if err != nil {
+		panic(err)
+	}
+	if len(compatibleStores) != 0 {
+		logger.Info(
+			"enabled read compatibility for legacy empty IAVL stores",
+			"upgrade", sdk_v053_bridge.UpgradeName,
+			"stores", compatibleStores,
+		)
+	}
+
 	chainID := cast.ToString(appOpts.Get(flags.FlagChainID))
 	if chainID == "" {
 		// fallback to genesis chain-id
@@ -278,7 +314,7 @@ func (a appCreator) newApp(
 
 	return app.New(
 		logger,
-		db,
+		appDB,
 		traceStore,
 		true,
 		skipUpgradeHeights,
@@ -319,10 +355,15 @@ func (a appCreator) appExport(
 		return servertypes.ExportedApp{}, errors.New("application home not set")
 	}
 
+	appDB, _, err := sdk_v053_bridge.WrapLegacyEmptyIAVLDB(logger, db, homePath)
+	if err != nil {
+		return servertypes.ExportedApp{}, err
+	}
+
 	var emptyWasmOpts []wasm.Option
 	app := app.New(
 		logger,
-		db,
+		appDB,
 		traceStore,
 		height == -1, // -1: no height provided
 		map[int64]bool{},
@@ -351,7 +392,7 @@ func initAppConfig() (string, interface{}) {
 	type CustomAppConfig struct {
 		serverconfig.Config
 
-		Wasm wasmtypes.WasmConfig `mapstructure:"wasm"`
+		Wasm wasmtypes.NodeConfig `mapstructure:"wasm"`
 	}
 
 	// Optionally allow the chain developer to overwrite the SDK's default
@@ -368,11 +409,11 @@ func initAppConfig() (string, interface{}) {
 	// - if you set srvCfg.MinGasPrices non-empty, validators CAN tweak their
 	//   own app.toml to override, or use this default value.
 	//
-	srvCfg.MinGasPrices = "100000000000peaka"
+	srvCfg.MinGasPrices = "10000000000peaka"
 
 	customAppConfig := CustomAppConfig{
 		Config: *srvCfg,
-		Wasm:   wasmtypes.DefaultWasmConfig(),
+		Wasm:   wasmtypes.DefaultNodeConfig(),
 	}
 	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
 

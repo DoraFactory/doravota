@@ -1,62 +1,71 @@
 package app
 
 import (
-	errorsmod "cosmossdk.io/errors"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"errors"
+
+	corestore "cosmossdk.io/core/store"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	ibcante "github.com/cosmos/ibc-go/v7/modules/core/ante"
-	"github.com/cosmos/ibc-go/v7/modules/core/keeper"
+	ibcante "github.com/cosmos/ibc-go/v10/modules/core/ante"
+	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
 
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmTypes "github.com/CosmWasm/wasmd/x/wasm/types"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
-// HandlerOptions extend the SDK's AnteHandler options by requiring the IBC
-// channel keeper.
+// HandlerOptions extends the SDK ante options with IBC and Wasm keepers. The
+// bridge intentionally has no Sponsor or PQC decorators: it only migrates the
+// existing production transaction path.
 type HandlerOptions struct {
 	ante.HandlerOptions
 
-	IBCKeeper         *keeper.Keeper
-	WasmConfig        *wasmTypes.WasmConfig
-	TXCounterStoreKey storetypes.StoreKey
+	IBCKeeper             *ibckeeper.Keeper
+	NodeConfig            *wasmtypes.NodeConfig
+	WasmKeeper            *wasmkeeper.Keeper
+	TXCounterStoreService corestore.KVStoreService
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	if options.AccountKeeper == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "account keeper is required for AnteHandler")
+		return nil, errors.New("account keeper is required for ante builder")
 	}
 	if options.BankKeeper == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "bank keeper is required for AnteHandler")
+		return nil, errors.New("bank keeper is required for ante builder")
 	}
 	if options.SignModeHandler == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "sign mode handler is required for ante builder")
+		return nil, errors.New("sign mode handler is required for ante builder")
 	}
-	if options.WasmConfig == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "wasm config is required for ante builder")
+	if options.IBCKeeper == nil {
+		return nil, errors.New("IBC keeper is required for ante builder")
 	}
-	if options.TXCounterStoreKey == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "tx counter key is required for ante builder")
+	if options.NodeConfig == nil {
+		return nil, errors.New("wasm config is required for ante builder")
+	}
+	if options.WasmKeeper == nil {
+		return nil, errors.New("wasm keeper is required for ante builder")
+	}
+	if options.TXCounterStoreService == nil {
+		return nil, errors.New("wasm store service is required for ante builder")
 	}
 
-	anteDecorators := []sdk.AnteDecorator{
-		ante.NewSetUpContextDecorator(), // outermost AnteDecorator. SetUpContext must be called first
-		wasmkeeper.NewLimitSimulationGasDecorator(options.WasmConfig.SimulationGasLimit), // after setup context to enforce limits early
-		wasmkeeper.NewCountTXDecorator(options.TXCounterStoreKey),
+	return sdk.ChainAnteDecorators(
+		ante.NewSetUpContextDecorator(),
+		wasmkeeper.NewLimitSimulationGasDecorator(options.NodeConfig.SimulationGasLimit),
+		wasmkeeper.NewCountTXDecorator(options.TXCounterStoreService),
+		wasmkeeper.NewGasRegisterDecorator(options.WasmKeeper.GetGasRegister()),
+		wasmkeeper.NewTxContractsDecorator(),
 		ante.NewExtensionOptionsDecorator(options.ExtensionOptionChecker),
 		ante.NewValidateBasicDecorator(),
 		ante.NewTxTimeoutHeightDecorator(),
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
 		ante.NewDeductFeeDecorator(options.AccountKeeper, options.BankKeeper, options.FeegrantKeeper, options.TxFeeChecker),
-		ante.NewSetPubKeyDecorator(options.AccountKeeper), // SetPubKeyDecorator must be called before all signature verification decorators
+		ante.NewSetPubKeyDecorator(options.AccountKeeper),
 		ante.NewValidateSigCountDecorator(options.AccountKeeper),
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),
-	}
-
-	return sdk.ChainAnteDecorators(anteDecorators...), nil
+	), nil
 }
