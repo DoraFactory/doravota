@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -21,10 +22,10 @@ import (
 // dummyWasmKeeper is a minimal stub to satisfy keeper's WasmKeeperInterface in local QueryServer tests
 type dummyWasmKeeper struct{}
 
-func (d dummyWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+func (d dummyWasmKeeper) GetContractInfo(ctx context.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
 	return nil
 }
-func (d dummyWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+func (d dummyWasmKeeper) QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
 	return []byte("{}"), nil
 }
 
@@ -223,6 +224,7 @@ func (s *QueryTestSuite) TestQuerySponsorStatus() {
 		})
 	}
 }
+
 // TestQueryUserGrantUsage tests the user grant usage query command
 func (s *QueryTestSuite) TestQueryUserGrantUsage() {
 	val := s.network.Validators[0]
@@ -475,36 +477,54 @@ func TestAllSponsorsCLIHasPaginationFlags(t *testing.T) {
 // --- Unit tests for command wiring (no network) ---
 
 func TestQueryPolicyTicketCmd_Usage(t *testing.T) {
-    cmd := cli.GetCmdQueryPolicyTicket()
-    if cmd == nil { t.Fatalf("nil command") }
-    if got, want := cmd.Use, "ticket"; !strings.Contains(cmd.Use, want) { t.Fatalf("expected Use to contain %q, got %q", want, got) }
-    // Args validation
-    if err := cmd.Args(cmd, []string{"c","u"}); err == nil { t.Fatalf("expected error for too-few args") }
-    if err := cmd.Args(cmd, []string{"c","u","d"}); err != nil { t.Fatalf("unexpected error for exact args: %v", err) }
+	cmd := cli.GetCmdQueryPolicyTicket()
+	if cmd == nil {
+		t.Fatalf("nil command")
+	}
+	if got, want := cmd.Use, "ticket"; !strings.Contains(cmd.Use, want) {
+		t.Fatalf("expected Use to contain %q, got %q", want, got)
+	}
+	// Args validation
+	if err := cmd.Args(cmd, []string{"c", "u"}); err == nil {
+		t.Fatalf("expected error for too-few args")
+	}
+	if err := cmd.Args(cmd, []string{"c", "u", "d"}); err != nil {
+		t.Fatalf("unexpected error for exact args: %v", err)
+	}
 }
 
 // Removed probe window, negative probe, and compute-digest query command tests
 
 func TestReadPageRequest_FromFlags(t *testing.T) {
-    // Use the all-sponsors cmd which has pagination flags attached
-    cmd := cli.GetCmdQueryAllSponsors()
-    // Set flags to simulate pagination input
-    fs := cmd.Flags()
-    // page=2, limit=10 => offset=(2-1)*10=10
-    _ = fs.Set(flags.FlagPage, "2")
-    _ = fs.Set(flags.FlagLimit, "10")
-    // page-key overrides key-based pagination
-    _ = fs.Set(flags.FlagPageKey, "aGVsbG8=") // "hello"
-    _ = fs.Set(flags.FlagOffset, "3")         // offset provided too
-    _ = fs.Set(flags.FlagCountTotal, "true")
-    _ = fs.Set(flags.FlagReverse, "true")
+	// Use the all-sponsors cmd which has pagination flags attached
+	cmd := cli.GetCmdQueryAllSponsors()
+	// Set flags to simulate pagination input
+	fs := cmd.Flags()
+	// page=2, limit=10 => offset=(2-1)*10=10
+	_ = fs.Set(flags.FlagPage, "2")
+	_ = fs.Set(flags.FlagLimit, "10")
+	// page-key overrides key-based pagination
+	_ = fs.Set(flags.FlagPageKey, "aGVsbG8=") // "hello"
+	_ = fs.Set(flags.FlagOffset, "3")         // offset provided too
+	_ = fs.Set(flags.FlagCountTotal, "true")
+	_ = fs.Set(flags.FlagReverse, "true")
 
-    pr, err := cli.ReadPageRequestForTests(cmd)
-    if err != nil { t.Fatalf("readPageRequest error: %v", err) }
-    if pr.Offset == 0 { t.Fatalf("expected non-zero Offset from flags") }
-    if pr.Limit != 10 { t.Fatalf("expected Limit=10, got %d", pr.Limit) }
-    if !pr.CountTotal { t.Fatalf("expected CountTotal=true") }
-    if !pr.Reverse { t.Fatalf("expected Reverse=true") }
+	pr, err := cli.ReadPageRequestForTests(cmd)
+	if err != nil {
+		t.Fatalf("readPageRequest error: %v", err)
+	}
+	if pr.Offset == 0 {
+		t.Fatalf("expected non-zero Offset from flags")
+	}
+	if pr.Limit != 10 {
+		t.Fatalf("expected Limit=10, got %d", pr.Limit)
+	}
+	if !pr.CountTotal {
+		t.Fatalf("expected CountTotal=true")
+	}
+	if !pr.Reverse {
+		t.Fatalf("expected Reverse=true")
+	}
 }
 
 // no extra helpers needed

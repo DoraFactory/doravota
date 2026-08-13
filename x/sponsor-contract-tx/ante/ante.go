@@ -11,6 +11,7 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	ante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -288,12 +289,12 @@ func (sctd SponsorContractTxAnteDecorator) AnteHandle(
 	// Check for feegrant first - if present, delegate to standard processing
 	if feeTx, ok := tx.(sdk.FeeTx); ok {
 		feeGranter := feeTx.FeeGranter()
-		if feeGranter != nil && !feeGranter.Empty() {
+		if len(feeGranter) != 0 {
 			// Transaction has feegrant set, skip sponsor logic entirely
 			// Let standard fee processing handle feegrant behavior
 			ctx.Logger().With("module", "sponsor-contract-tx").Info(
 				"transaction has feegrant set, skipping sponsor logic",
-				"granter", feeGranter.String(),
+				"granter", sdk.AccAddress(feeGranter).String(),
 			)
 			return next(ctx, tx, simulate)
 		}
@@ -784,51 +785,27 @@ func (sctd SponsorContractTxAnteDecorator) handleSponsorshipFallback(
 // - Multi-signer transactions are rejected for sponsorship.
 // - If a FeePayer is provided by the tx, it MUST equal the validated signer to prevent spoofing.
 func (sctd SponsorContractTxAnteDecorator) getUserAddressForSponsorship(tx sdk.Tx) (sdk.AccAddress, error) {
-	msgs := tx.GetMsgs()
-	if len(msgs) == 0 {
-		return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "transaction has no messages")
+	sigTx, ok := tx.(authsigning.SigVerifiableTx)
+	if !ok {
+		return nil, errorsmod.Wrap(sdkerrors.ErrTxDecode, "transaction does not expose canonical signers")
 	}
-
-	// First, validate all message signers are consistent for security
-	var validatedSigner sdk.AccAddress
-	var allSigners []sdk.AccAddress
-
-	for i, msg := range msgs {
-		msgSigners := msg.GetSigners()
-		if len(msgSigners) == 0 {
-			return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "message at index %d has no signers", i)
-		}
-
-		// For the first message, record all its signers
-		if i == 0 {
-			validatedSigner = msgSigners[0]
-			allSigners = append(allSigners, msgSigners...)
-		} else {
-			// For subsequent messages, ensure signers match the first message
-			if len(msgSigners) != len(allSigners) {
-				return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized,
-					"inconsistent signer count across messages - sponsored transactions require consistent signers")
-			}
-
-			for j, signer := range msgSigners {
-				if !signer.Equals(allSigners[j]) {
-					return sdk.AccAddress{}, errorsmod.Wrapf(sdkerrors.ErrUnauthorized,
-						"signer mismatch at message %d, position %d - sponsored transactions require consistent signers", i, j)
-				}
-			}
-		}
+	signerBytes, err := sigTx.GetSigners()
+	if err != nil {
+		return nil, errorsmod.Wrap(err, "extract transaction signers")
 	}
 
 	// Reject multi-signer transactions for security reasons
-	if len(allSigners) > 1 {
+	if len(signerBytes) != 1 {
 		return sdk.AccAddress{}, errorsmod.Wrap(sdkerrors.ErrUnauthorized,
 			"multi-signer transactions are not supported for sponsorship - please use single signer transactions or separate transactions")
 	}
+	validatedSigner := sdk.AccAddress(signerBytes[0])
 
 	// Now check FeePayer, but it must be consistent with validated signers for security
 	if feeTx, ok := tx.(sdk.FeeTx); ok {
-		feePayer := feeTx.FeePayer()
-		if !feePayer.Empty() {
+		feePayerBytes := feeTx.FeePayer()
+		if len(feePayerBytes) != 0 {
+			feePayer := sdk.AccAddress(feePayerBytes)
 			// Security check: FeePayer must match the validated signer to prevent abuse
 			// This prevents users from setting arbitrary FeePayer addresses
 			if !feePayer.Equals(validatedSigner) {

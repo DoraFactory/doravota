@@ -7,16 +7,20 @@ import (
 	"testing"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
+	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 )
 
 func deterministicKeyPair() ([]byte, []byte) {
-	var seed [mldsa65.SeedSize]byte
+	seed := make([]byte, cmtmldsa65.SeedSize)
 	for i := range seed {
 		seed[i] = byte(i + 1)
 	}
-	pk, sk := mldsa65.NewKeyFromSeed(&seed)
-	return pk.Bytes(), sk.Bytes()
+	sk, err := sdkmldsa65.GenPrivKeyFromSeed(seed)
+	if err != nil {
+		panic(err)
+	}
+	return sk.PubKey().Bytes(), sk.Bytes()
 }
 
 func TestMLDSA65RoundTrip(t *testing.T) {
@@ -186,7 +190,7 @@ func TestAlgorithmSizesAndKeyGenerationBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sizes: %v", err)
 	}
-	if publicKeySize != mldsa65.PublicKeySize || signatureSize != mldsa65.SignatureSize {
+	if publicKeySize != cmtmldsa65.PubKeySize || signatureSize != cmtmldsa65.SignatureSize {
 		t.Fatalf("unexpected sizes: public=%d signature=%d", publicKeySize, signatureSize)
 	}
 	if _, _, err := pqccrypto.Sizes(99); !errors.Is(
@@ -196,7 +200,7 @@ func TestAlgorithmSizesAndKeyGenerationBoundaries(t *testing.T) {
 		t.Fatalf("unsupported sizes: %v", err)
 	}
 	privateKeySize, err := pqccrypto.PrivateKeySize(pqccrypto.AlgorithmMLDSA65)
-	if err != nil || privateKeySize != mldsa65.PrivateKeySize {
+	if err != nil || privateKeySize != cmtmldsa65.PrivKeySize {
 		t.Fatalf("private key size: %d, %v", privateKeySize, err)
 	}
 	if _, err := pqccrypto.PrivateKeySize(99); !errors.Is(
@@ -207,7 +211,7 @@ func TestAlgorithmSizesAndKeyGenerationBoundaries(t *testing.T) {
 	}
 
 	publicKey, privateKey, err := pqccrypto.GenerateMLDSA65Key(
-		bytes.NewReader(make([]byte, mldsa65.SeedSize)),
+		bytes.NewReader(make([]byte, cmtmldsa65.SeedSize)),
 	)
 	if err != nil {
 		t.Fatalf("deterministic generation: %v", err)

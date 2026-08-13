@@ -171,7 +171,7 @@ func generateOrBroadcastRecoveryTx(
 			return errors.New("recovery transaction broadcast cancelled")
 		}
 	}
-	if err := sdktx.Sign(txf, clientCtx.GetFromName(), builder, true); err != nil {
+	if err := sdktx.Sign(ctx, txf, clientCtx.GetFromName(), builder, true); err != nil {
 		return err
 	}
 	txBytes, err := clientCtx.TxConfig.TxEncoder()(builder.GetTx())
@@ -344,7 +344,7 @@ func broadcastRecoveryBundleCommand() *cobra.Command {
 					return errors.New("recovery transaction broadcast cancelled")
 				}
 			}
-			if err := sdktx.Sign(txf, clientCtx.GetFromName(), builder, true); err != nil {
+			if err := sdktx.Sign(command.Context(), txf, clientCtx.GetFromName(), builder, true); err != nil {
 				return err
 			}
 			txBytes, err := clientCtx.TxConfig.TxEncoder()(builder.GetTx())

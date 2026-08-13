@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"math"
 	"testing"
 
@@ -39,7 +40,7 @@ func TestSponsorDeletionPermanentlyInvalidatesLifecycleState(t *testing.T) {
 		UserAddress:     user,
 		ContractAddress: contract,
 		TotalGrantUsed: []*sdk.Coin{
-			{Denom: types.SponsorshipDenom, Amount: sdk.NewInt(25)},
+			{Denom: types.SponsorshipDenom, Amount: sdkmath.NewInt(25)},
 		},
 		Generation: firstSponsor.Generation,
 	}

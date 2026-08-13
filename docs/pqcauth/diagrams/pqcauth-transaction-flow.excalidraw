@@ -1,0 +1,452 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "type": "text", "id": "flow_title", "x": 70, "y": 35, "width": 930, "height": 45,
+      "text": "一笔 PQC 交易如何通过 Cosmos 节点", "originalText": "一笔 PQC 交易如何通过 Cosmos 节点",
+      "fontSize": 32, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100001,
+      "version": 1, "versionNonce": 100002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "flow_subtitle", "x": 72, "y": 88, "width": 1200, "height": 25,
+      "text": "经典 SIGN_MODE_DIRECT 与 ML-DSA-65 同时授权同一份交易意图；任一失败，整笔交易失败", "originalText": "经典 SIGN_MODE_DIRECT 与 ML-DSA-65 同时授权同一份交易意图；任一失败，整笔交易失败",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100003,
+      "version": 1, "versionNonce": 100004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "wallet_start", "x": 85, "y": 155, "width": 220, "height": 100,
+      "strokeColor": "#c2410c", "backgroundColor": "#fed7aa", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100005,
+      "version": 1, "versionNonce": 100006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "wallet_start_text", "x": 115, "y": 180, "width": 160, "height": 48,
+      "text": "Wallet / CLI\n组装并双签", "originalText": "Wallet / CLI\n组装并双签",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100007,
+      "version": 1, "versionNonce": 100008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "tx_envelope", "x": 420, "y": 145, "width": 300, "height": 120,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100009,
+      "version": 1, "versionNonce": 100010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "tx_envelope_text", "x": 450, "y": 169, "width": 240, "height": 72,
+      "text": "Cosmos Tx\nTxBody + AuthInfo\nclassic signatures[] + PQC extension", "originalText": "Cosmos Tx\nTxBody + AuthInfo\nclassic signatures[] + PQC extension",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100011,
+      "version": 1, "versionNonce": 100012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "ante_gate", "x": 850, "y": 135, "width": 340, "height": 140,
+      "strokeColor": "#6d28d9", "backgroundColor": "#ddd6fe", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100013,
+      "version": 1, "versionNonce": 100014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "ante_gate_text", "x": 885, "y": 164, "width": 270, "height": 72,
+      "text": "Ante Handler 安全门\n经典验签 AND PQC 验签\nfail closed", "originalText": "Ante Handler 安全门\n经典验签 AND PQC 验签\nfail closed",
+      "fontSize": 19, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100015,
+      "version": 1, "versionNonce": 100016, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "execute_end", "x": 1335, "y": 155, "width": 270, "height": 100,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100017,
+      "version": 1, "versionNonce": 100018, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "execute_end_text", "x": 1368, "y": 181, "width": 205, "height": 48,
+      "text": "执行 bank / staking / wasm\n或 pqcauth lifecycle", "originalText": "执行 bank / staking / wasm\n或 pqcauth lifecycle",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100019,
+      "version": 1, "versionNonce": 100020, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "summary_arrow_1", "x": 310, "y": 205, "width": 105, "height": 0,
+      "strokeColor": "#c2410c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100021,
+      "version": 1, "versionNonce": 100022, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[105,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "summary_arrow_2", "x": 725, "y": 205, "width": 120, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100023,
+      "version": 1, "versionNonce": 100024, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[120,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "summary_arrow_3", "x": 1195, "y": 205, "width": 135, "height": 0,
+      "strokeColor": "#6d28d9", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100025,
+      "version": 1, "versionNonce": 100026, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[135,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "line", "id": "detail_divider", "x": 70, "y": 305, "width": 1535, "height": 0,
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200001,
+      "version": 1, "versionNonce": 200002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[1535,0]]
+    },
+    {
+      "type": "text", "id": "payload_heading", "x": 70, "y": 335, "width": 440, "height": 30,
+      "text": "1  载荷：PQC 位于 TxBody critical extension", "originalText": "1  载荷：PQC 位于 TxBody critical extension",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200003,
+      "version": 1, "versionNonce": 200004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "tx_payload_code", "x": 70, "y": 380, "width": 450, "height": 400,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#1e293b", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200005,
+      "version": 1, "versionNonce": 200006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "tx_payload_code_text", "x": 95, "y": 405, "width": 400, "height": 345,
+      "text": "TxRaw\n├─ body\n│  ├─ messages[]\n│  ├─ memo / timeout_height\n│  └─ extension_options[-1]\n│     └─ ExtensionPQCAuth\n│        ├─ format_version = 1\n│        └─ signatures[]\n│           ├─ signer_index\n│           ├─ key_id / policy_version\n│           └─ ML-DSA signature\n├─ auth_info\n│  ├─ signer_infos[] / sequence\n│  └─ fee / fee_granter\n└─ signatures[]   // 经典签名", "originalText": "TxRaw\n├─ body\n│  ├─ messages[]\n│  ├─ memo / timeout_height\n│  └─ extension_options[-1]\n│     └─ ExtensionPQCAuth\n│        ├─ format_version = 1\n│        └─ signatures[]\n│           ├─ signer_index\n│           ├─ key_id / policy_version\n│           └─ ML-DSA signature\n├─ auth_info\n│  ├─ signer_infos[] / sequence\n│  └─ fee / fee_granter\n└─ signatures[]   // 经典签名",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#22c55e", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200007,
+      "version": 1, "versionNonce": 200008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "ante_heading", "x": 610, "y": 335, "width": 520, "height": 30,
+      "text": "2  Ante：廉价检查优先，经典验签后再做 ML-DSA", "originalText": "2  Ante：廉价检查优先，经典验签后再做 ML-DSA",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200009,
+      "version": 1, "versionNonce": 200010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "ante_timeline", "x": 650, "y": 395, "width": 0, "height": 405,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200011,
+      "version": 1, "versionNonce": 200012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[0,405]]
+    },
+    {
+      "type": "ellipse", "id": "ante_dot_1", "x": 640, "y": 410, "width": 20, "height": 20,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200013,
+      "version": 1, "versionNonce": 200014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "ante_step_1", "x": 690, "y": 395, "width": 510, "height": 60,
+      "text": "ValidateBasic + timeout + memo + TxSize gas\n先限制交易基本格式与字节成本", "originalText": "ValidateBasic + timeout + memo + TxSize gas\n先限制交易基本格式与字节成本",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200015,
+      "version": 1, "versionNonce": 200016, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "ante_dot_2", "x": 640, "y": 495, "width": 20, "height": 20,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200017,
+      "version": 1, "versionNonce": 200018, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "ante_step_2", "x": 690, "y": 475, "width": 535, "height": 80,
+      "text": "ValidatePQCStructureDecorator\ncritical、唯一、必须最后、canonical protobuf、长度与 signer 顺序；只接受 SIGN_MODE_DIRECT", "originalText": "ValidatePQCStructureDecorator\ncritical、唯一、必须最后、canonical protobuf、长度与 signer 顺序；只接受 SIGN_MODE_DIRECT",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200019,
+      "version": 1, "versionNonce": 200020, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "ante_dot_3", "x": 640, "y": 590, "width": 20, "height": 20,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200021,
+      "version": 1, "versionNonce": 200022, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "ante_step_3", "x": 690, "y": 570, "width": 510, "height": 70,
+      "text": "扣费 + SetPubKey + SigVerificationDecorator\n先验证 Cosmos 经典签名，失败则不消耗 ML-DSA CPU", "originalText": "扣费 + SetPubKey + SigVerificationDecorator\n先验证 Cosmos 经典签名，失败则不消耗 ML-DSA CPU",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200023,
+      "version": 1, "versionNonce": 200024, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "ante_dot_4", "x": 637, "y": 682, "width": 26, "height": 26,
+      "strokeColor": "#6d28d9", "backgroundColor": "#ddd6fe", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200025,
+      "version": 1, "versionNonce": 200026, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "ante_step_4", "x": 690, "y": 655, "width": 540, "height": 92,
+      "text": "VerifyPQCDecorator\n读取 AccountPolicy / active PQCKeyRecord\n按 signer 重建 PQCSignDocV1；扣 gas 后调用 CIRCL ML-DSA-65", "originalText": "VerifyPQCDecorator\n读取 AccountPolicy / active PQCKeyRecord\n按 signer 重建 PQCSignDocV1；扣 gas 后调用 CIRCL ML-DSA-65",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200027,
+      "version": 1, "versionNonce": 200028, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "ante_dot_5", "x": 640, "y": 775, "width": 20, "height": 20,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200029,
+      "version": 1, "versionNonce": 200030, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "ante_step_5", "x": 690, "y": 758, "width": 510, "height": 55,
+      "text": "IncrementSequenceDecorator → 业务 MsgServer\n两种签名均通过后才允许改变业务状态", "originalText": "IncrementSequenceDecorator → 业务 MsgServer\n两种签名均通过后才允许改变业务状态",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200031,
+      "version": 1, "versionNonce": 200032, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "payload_to_ante", "x": 525, "y": 575, "width": 100, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200033,
+      "version": 1, "versionNonce": 200034, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[100,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "diamond", "id": "both_valid_decision", "x": 1280, "y": 585, "width": 200, "height": 155,
+      "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200035,
+      "version": 1, "versionNonce": 200036, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "both_valid_text", "x": 1320, "y": 628, "width": 120, "height": 48,
+      "text": "两种签名\n都有效？", "originalText": "两种签名\n都有效？",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200037,
+      "version": 1, "versionNonce": 200038, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "verify_to_decision", "x": 1215, "y": 692, "width": 60, "height": 0,
+      "strokeColor": "#6d28d9", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200039,
+      "version": 1, "versionNonce": 200040, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[60,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "ellipse", "id": "valid_result", "x": 1530, "y": 575, "width": 150, "height": 85,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200041,
+      "version": 1, "versionNonce": 200042, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "valid_result_text", "x": 1555, "y": 597, "width": 100, "height": 42,
+      "text": "执行消息\n提交状态", "originalText": "执行消息\n提交状态",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200043,
+      "version": 1, "versionNonce": 200044, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "invalid_result", "x": 1530, "y": 700, "width": 150, "height": 85,
+      "strokeColor": "#b91c1c", "backgroundColor": "#fecaca", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200045,
+      "version": 1, "versionNonce": 200046, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "invalid_result_text", "x": 1550, "y": 721, "width": 110, "height": 44,
+      "text": "返回 error\n不执行消息", "originalText": "返回 error\n不执行消息",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200047,
+      "version": 1, "versionNonce": 200048, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "decision_yes", "x": 1455, "y": 625, "width": 70, "height": 0,
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200049,
+      "version": 1, "versionNonce": 200050, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[70,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "decision_yes_label", "x": 1475, "y": 595, "width": 45, "height": 22,
+      "text": "YES", "originalText": "YES", "fontSize": 14, "fontFamily": 3, "textAlign": "center", "verticalAlign": "top",
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200051,
+      "version": 1, "versionNonce": 200052, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "decision_no", "x": 1460, "y": 705, "width": 65, "height": 40,
+      "strokeColor": "#b91c1c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200053,
+      "version": 1, "versionNonce": 200054, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[35,40],[65,40]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "decision_no_label", "x": 1470, "y": 708, "width": 35, "height": 22,
+      "text": "NO", "originalText": "NO", "fontSize": 14, "fontFamily": 3, "textAlign": "center", "verticalAlign": "top",
+      "strokeColor": "#b91c1c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200055,
+      "version": 1, "versionNonce": 200056, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "binding_divider", "x": 70, "y": 850, "width": 1610, "height": 0,
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300001,
+      "version": 1, "versionNonce": 300002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[1610,0]]
+    },
+    {
+      "type": "text", "id": "binding_heading", "x": 70, "y": 875, "width": 750, "height": 30,
+      "text": "3  PQCSignDocV1：完整绑定交易意图", "originalText": "3  PQCSignDocV1：完整绑定交易意图",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300003,
+      "version": 1, "versionNonce": 300004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "sign_doc_code", "x": 70, "y": 925, "width": 1020, "height": 235,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#1e293b", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300005,
+      "version": 1, "versionNonce": 300006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "sign_doc_code_text", "x": 95, "y": 950, "width": 970, "height": 180,
+      "text": "PQCSignDocV1 {\n  network_id, chain_id, account_number, sequence,\n  signer_index, signer, key_id, algorithm, policy_version,\n  body_bytes_without_pqc_auth,   // 删除自身 extension，避免循环签名\n  auth_info_bytes                // fee、fee_granter、signer_infos 全部绑定\n}\nFIPS 204 context = doravota/pqcauth/tx/v1", "originalText": "PQCSignDocV1 {\n  network_id, chain_id, account_number, sequence,\n  signer_index, signer, key_id, algorithm, policy_version,\n  body_bytes_without_pqc_auth,   // 删除自身 extension，避免循环签名\n  auth_info_bytes                // fee、fee_granter、signer_infos 全部绑定\n}\nFIPS 204 context = doravota/pqcauth/tx/v1",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#22c55e", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300007,
+      "version": 1, "versionNonce": 300008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "verify_to_signdoc", "x": 1240, "y": 705, "width": 220, "height": 205,
+      "strokeColor": "#6d28d9", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300009,
+      "version": 1, "versionNonce": 300010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[-70,80],[-70,205],[-220,205]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "proposal_heading", "x": 1170, "y": 875, "width": 500, "height": 30,
+      "text": "4  共识提案路径再次执行同一安全门", "originalText": "4  共识提案路径再次执行同一安全门",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300011,
+      "version": 1, "versionNonce": 300012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "proposal_timeline", "x": 1205, "y": 965, "width": 390, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300013,
+      "version": 1, "versionNonce": 300014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[390,0]]
+    },
+    {
+      "type": "ellipse", "id": "proposal_dot_1", "x": 1197, "y": 957, "width": 16, "height": 16,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300015,
+      "version": 1, "versionNonce": 300016, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "ellipse", "id": "proposal_dot_2", "x": 1367, "y": 957, "width": 16, "height": 16,
+      "strokeColor": "#3b82f6", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300017,
+      "version": 1, "versionNonce": 300018, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "ellipse", "id": "proposal_dot_3", "x": 1587, "y": 957, "width": 16, "height": 16,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300019,
+      "version": 1, "versionNonce": 300020, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "proposal_label_1", "x": 1165, "y": 990, "width": 105, "height": 52,
+      "text": "CheckTx\n进入 mempool", "originalText": "CheckTx\n进入 mempool",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300021,
+      "version": 1, "versionNonce": 300022, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "proposal_label_2", "x": 1305, "y": 990, "width": 145, "height": 72,
+      "text": "PrepareProposal\nproposer 过滤并\n受 gas/bytes 上限约束", "originalText": "PrepareProposal\nproposer 过滤并\n受 gas/bytes 上限约束",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300023,
+      "version": 1, "versionNonce": 300024, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "proposal_label_3", "x": 1515, "y": 990, "width": 165, "height": 72,
+      "text": "ProcessProposal\n每个验证人重验 Ante\n全部有效才接受区块", "originalText": "ProcessProposal\n每个验证人重验 Ante\n全部有效才接受区块",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "top",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300025,
+      "version": 1, "versionNonce": 300026, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "flow_footer", "x": 70, "y": 1190, "width": 1500, "height": 25,
+      "text": "核心性质：PQC 不替换 Cosmos 账户公钥；它作为交易级第二授权因子，绑定同一个 body、AuthInfo、账户与 sequence。", "originalText": "核心性质：PQC 不替换 Cosmos 账户公钥；它作为交易级第二授权因子，绑定同一个 body、AuthInfo、账户与 sequence。",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300027,
+      "version": 1, "versionNonce": 300028, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    }
+  ],
+  "appState": {"viewBackgroundColor": "#ffffff", "gridSize": 20},
+  "files": {}
+}

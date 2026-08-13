@@ -5,6 +5,7 @@ import (
 	"math"
 
 	errorsmod "cosmossdk.io/errors"
+	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/address"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -55,7 +56,7 @@ func NormalizeMaxGrantPerUser(maxGrantPerUser []*sdk.Coin) ([]*sdk.Coin, error) 
 	}
 
 	// First validate and manually merge duplicates
-	denominationTotals := make(map[string]sdk.Int)
+	denominationTotals := make(map[string]sdkmath.Int)
 
 	for _, coin := range coins {
 		if coin.Denom != SponsorshipDenom {
@@ -973,7 +974,7 @@ func (msg *MsgWithdrawSponsorFunds) XXX_MessageName() string {
 // NormalizedAmount returns a canonical sdk.Coins representation even when
 // Amount is empty. Duplicate entries are merged with checked arithmetic.
 func (msg MsgWithdrawSponsorFunds) NormalizedAmount() (sdk.Coins, error) {
-	total := sdk.ZeroInt()
+	total := sdkmath.ZeroInt()
 	for _, c := range msg.Amount {
 		if c == nil {
 			return nil, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coin cannot be nil")

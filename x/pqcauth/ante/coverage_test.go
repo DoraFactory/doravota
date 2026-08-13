@@ -4,9 +4,11 @@ import (
 	"errors"
 	"testing"
 
+	protov2 "google.golang.org/protobuf/proto"
+
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	"github.com/stretchr/testify/require"
@@ -22,7 +24,10 @@ type extensionOptionsTxStub struct {
 }
 
 func (tx extensionOptionsTxStub) GetMsgs() []sdk.Msg { return tx.messages }
-func (extensionOptionsTxStub) ValidateBasic() error  { return nil }
+func (extensionOptionsTxStub) GetMsgsV2() ([]protov2.Message, error) {
+	return nil, nil
+}
+func (extensionOptionsTxStub) ValidateBasic() error { return nil }
 func (tx extensionOptionsTxStub) GetExtensionOptions() []*codectypes.Any {
 	return tx.critical
 }
@@ -37,7 +42,13 @@ type sigVerifiableTxStub struct {
 	signErr    error
 }
 
-func (tx sigVerifiableTxStub) GetSigners() []sdk.AccAddress { return tx.signers }
+func (tx sigVerifiableTxStub) GetSigners() ([][]byte, error) {
+	signers := make([][]byte, len(tx.signers))
+	for index := range tx.signers {
+		signers[index] = tx.signers[index]
+	}
+	return signers, nil
+}
 func (tx sigVerifiableTxStub) GetPubKeys() ([]cryptotypes.PubKey, error) {
 	return make([]cryptotypes.PubKey, len(tx.signers)), nil
 }
@@ -509,7 +520,7 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 	require.Len(t, gasMeter.chargesFor("simulated pqcauth key proof verification"), 2)
 
 	err = decorator.validateLifecycleProofs(
-		ctx.WithGasMeter(sdk.NewInfiniteGasMeter()),
+		ctx.WithGasMeter(storetypes.NewInfiniteGasMeter()),
 		extensionOptionsTxStub{messages: []sdk.Msg{register}},
 		params,
 		false,

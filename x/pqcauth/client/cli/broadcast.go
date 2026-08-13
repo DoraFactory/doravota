@@ -36,8 +36,10 @@ func generateOrBroadcastProtectedTx(
 		return errors.New("use --pqc-sign-bundle-output to prepare a protected transaction for offline signing")
 	}
 	for _, message := range messages {
-		if err := message.ValidateBasic(); err != nil {
-			return err
+		if validator, ok := message.(sdk.HasValidateBasic); ok {
+			if err := validator.ValidateBasic(); err != nil {
+				return err
+			}
 		}
 	}
 	txf, err := sdktx.NewFactoryCLI(clientCtx, flagSet)
@@ -137,7 +139,7 @@ func generateOrBroadcastProtectedTx(
 			return err
 		}
 	}
-	if err := sdktx.Sign(txf, clientCtx.GetFromName(), builder, true); err != nil {
+	if err := sdktx.Sign(ctx, txf, clientCtx.GetFromName(), builder, true); err != nil {
 		return err
 	}
 	txBytes, err := clientCtx.TxConfig.TxEncoder()(builder.GetTx())

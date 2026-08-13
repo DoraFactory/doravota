@@ -2,17 +2,19 @@ package keeper
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sort"
 
 	errorsmod "cosmossdk.io/errors"
+	"cosmossdk.io/log/v2"
+	"cosmossdk.io/math"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/store/prefix"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2/prefix"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -24,8 +26,8 @@ import (
 
 // WasmKeeperInterface defines the interface we need from wasm keeper
 type WasmKeeperInterface interface {
-	GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo
-	QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error)
+	GetContractInfo(ctx context.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo
+	QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error)
 }
 
 // Keeper maintains the link to storage and exposes getter/setter methods for the various parts of the state machine
@@ -184,7 +186,7 @@ func (k Keeper) SetPolicyTicket(ctx sdk.Context, t types.PolicyTicket) error {
 // If cb returns true, iteration stops early.
 func (k Keeper) IteratePolicyTickets(ctx sdk.Context, cb func(key []byte, t types.PolicyTicket) (stop bool)) {
 	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.PolicyTicketKeyPrefix)
-	it := sdk.KVStorePrefixIterator(store, []byte{})
+	it := storetypes.KVStorePrefixIterator(store, []byte{})
 	defer it.Close()
 	for ; it.Valid(); it.Next() {
 		var t types.PolicyTicket
@@ -641,7 +643,7 @@ func (k Keeper) GetAllSponsors(ctx sdk.Context) []types.ContractSponsor {
 // IterateSponsors iterates over all sponsors and calls the provided callback function
 func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractSponsor) (stop bool)) {
 	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.SponsorKeyPrefix)
-	iterator := sdk.KVStorePrefixIterator(store, []byte{})
+	iterator := storetypes.KVStorePrefixIterator(store, []byte{})
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {
@@ -663,7 +665,7 @@ func (k Keeper) IterateSponsors(ctx sdk.Context, cb func(sponsor types.ContractS
 // IterateUserGrantUsages iterates over all user grant usage entries and calls the provided callback
 func (k Keeper) IterateUserGrantUsages(ctx sdk.Context, cb func(usage types.UserGrantUsage) (stop bool)) {
 	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.UserGrantUsageKeyPrefix)
-	iterator := sdk.KVStorePrefixIterator(store, []byte{})
+	iterator := storetypes.KVStorePrefixIterator(store, []byte{})
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {
@@ -925,7 +927,7 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 	}
 
 	// Compare against the remaining allowance without adding first. This avoids
-	// sdk.Int overflow when a caller supplies a near-maximum requested amount.
+	// sdkmath.Int overflow when a caller supplies a near-maximum requested amount.
 	remaining, err := maxAmount.SafeSub(currentUsed)
 	if err != nil || remaining.IsNegative() || requested.GT(remaining) {
 		return types.ErrUserGrantLimitExceeded.Wrapf(
@@ -941,15 +943,15 @@ func (k Keeper) CheckUserGrantLimit(ctx sdk.Context, userAddr, contractAddr stri
 	return nil
 }
 
-func sponsorshipCoinAmount(coins sdk.Coins) (sdk.Int, error) {
+func sponsorshipCoinAmount(coins sdk.Coins) (math.Int, error) {
 	if !coins.IsValid() {
-		return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coins must be valid and sorted")
+		return math.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "coins must be valid and sorted")
 	}
 	if coins.Empty() {
-		return sdk.ZeroInt(), nil
+		return math.ZeroInt(), nil
 	}
 	if len(coins) != 1 || coins[0].Denom != types.SponsorshipDenom {
-		return sdk.Int{}, errorsmod.Wrapf(
+		return math.Int{}, errorsmod.Wrapf(
 			sdkerrors.ErrInvalidCoins,
 			"only %q denomination is supported",
 			types.SponsorshipDenom,
@@ -958,29 +960,29 @@ func sponsorshipCoinAmount(coins sdk.Coins) (sdk.Int, error) {
 	return coins[0].Amount, nil
 }
 
-func grantUsageAmount(coins []*sdk.Coin) (sdk.Int, error) {
-	total := sdk.ZeroInt()
+func grantUsageAmount(coins []*sdk.Coin) (math.Int, error) {
+	total := math.ZeroInt()
 	seen := false
 	for _, coin := range coins {
 		if coin == nil {
-			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
+			return math.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage coin cannot be nil")
 		}
 		if coin.Denom != types.SponsorshipDenom {
-			return sdk.Int{}, errorsmod.Wrapf(
+			return math.Int{}, errorsmod.Wrapf(
 				sdkerrors.ErrInvalidCoins,
 				"only %q denomination is supported",
 				types.SponsorshipDenom,
 			)
 		}
 		if seen {
-			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "duplicate user grant usage denomination")
+			return math.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "duplicate user grant usage denomination")
 		}
 		if coin.Amount.IsNegative() {
-			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
+			return math.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount cannot be negative")
 		}
 		next, err := total.SafeAdd(coin.Amount)
 		if err != nil {
-			return sdk.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
+			return math.Int{}, errorsmod.Wrap(sdkerrors.ErrInvalidCoins, "user grant usage amount overflow")
 		}
 		total = next
 		seen = true

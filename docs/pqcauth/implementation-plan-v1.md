@@ -4,8 +4,9 @@
 
 1. **Implemented:** freeze the threat model, wire format, signer document,
    lifecycle, and unsupported sign modes.
-2. **Implemented:** pin Go and CIRCL and add the bounded ML-DSA adapter, mutation
-   tests, fuzz target, and benchmark.
+2. **Implemented:** pin Go, Cosmos SDK v0.55 and CometBFT v0.40, use the SDK's
+   native ML-DSA-65 key API through a bounded adapter, and add mutation tests,
+   a fuzz target, and a benchmark.
 3. **Implemented:** protobuf state, lifecycle messages, queries, signing and
    recovery-key rotation, recovery, and H+1 key/policy/parameter activation.
 4. **Implemented:** critical-extension registration, app store, module manager,
@@ -23,10 +24,11 @@
    mutation vectors, full Go tests, the race detector, an 80% handwritten-code
    coverage gate, proposal rejection, upgrade initialization, Linux
    amd64/arm64 static builds, stale-bundle rejection, and explicit
-   sponsor-message, fee-granter, and nested-authz binding tests are covered.
-   Native multi-architecture execution, snapshot and recovery rehearsals, load
-   testing, external review, and the application dependency migration listed
-   in the operator runbook remain.
+   sponsor-message, fee-granter, nested-authz binding, target upgrade source
+   guards, and retained group-state tests are covered. Native
+   multi-architecture execution, the v0.47 -> v0.53/IBC v10 bridge release,
+   two-height production-snapshot and recovery rehearsals, load testing, and
+   external review remain.
 
 ## Production gates
 

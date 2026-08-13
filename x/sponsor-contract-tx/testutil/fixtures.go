@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"encoding/json"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
@@ -159,7 +160,10 @@ func (tx *TestFeeTx) GetFeeGranter() sdk.AccAddress {
 func (tx *TestFeeTx) GetSigners() []sdk.AccAddress {
 	signers := make([]sdk.AccAddress, 0)
 	for _, msg := range tx.msgs {
-		signers = append(signers, msg.GetSigners()...)
+		legacyMsg, ok := msg.(sdk.LegacyMsg)
+		if ok {
+			signers = append(signers, legacyMsg.GetSigners()...)
+		}
 	}
 	return signers
 }
@@ -181,12 +185,12 @@ var (
 
 // Test Coins - Common test coin denominations and amounts
 var (
-	TestStakeCoins = sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000000)))
-    TestPeakaCoins = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)))
-	TestFeeCoins   = sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(100)))
+	TestStakeCoins = sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(1000000)))
+	TestPeakaCoins = sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(1000000)))
+	TestFeeCoins   = sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(100)))
 	TestMixedCoins = sdk.NewCoins(
-		sdk.NewCoin("stake", sdk.NewInt(1000000)),
-        sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)),
+		sdk.NewCoin("stake", sdkmath.NewInt(1000000)),
+		sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(1000000)),
 	)
 )
 

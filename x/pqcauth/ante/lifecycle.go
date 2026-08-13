@@ -320,7 +320,14 @@ func (d VerifyPQCDecorator) newRecoverySignDoc(
 			"recovery transaction does not expose signers",
 		)
 	}
-	signers := signatureTx.GetSigners()
+	rawSigners, err := signatureTx.GetSigners()
+	if err != nil {
+		return types.RecoverySignDocV1{}, errorsmod.Wrap(types.ErrInvalidKeyProof, err.Error())
+	}
+	signers := make([]sdk.AccAddress, len(rawSigners))
+	for index := range rawSigners {
+		signers[index] = sdk.AccAddress(rawSigners[index])
+	}
 	signatures, err := signatureTx.GetSignaturesV2()
 	if err != nil {
 		return types.RecoverySignDocV1{}, errorsmod.Wrap(types.ErrInvalidKeyProof, err.Error())

@@ -11,6 +11,7 @@ import (
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	sdktx "github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdkaddress "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
@@ -19,6 +20,8 @@ import (
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	sdksigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
@@ -463,16 +466,26 @@ func TestPQCSignBundleOnlineRevalidationRejectsStalePolicy(t *testing.T) {
 }
 
 func testTxConfig() sdkclient.TxConfig {
-	registry := codectypes.NewInterfaceRegistry()
-	std.RegisterInterfaces(registry)
-	banktypes.RegisterInterfaces(registry)
-	types.RegisterInterfaces(registry)
+	registry := testInterfaceRegistry()
 	cdc := codec.NewProtoCodec(registry)
 	return authtx.NewTxConfig(cdc, authtx.DefaultSignModes)
 }
 
 func testInterfaceRegistry() codectypes.InterfaceRegistry {
-	registry := codectypes.NewInterfaceRegistry()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: sdksigning.Options{
+			AddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
+			},
+			ValidatorAddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 	std.RegisterInterfaces(registry)
 	banktypes.RegisterInterfaces(registry)
 	types.RegisterInterfaces(registry)

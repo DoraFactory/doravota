@@ -1,7 +1,8 @@
 # x/pqcauth：交易级混合抗量子认证模块
 
 `x/pqcauth` 为 Cosmos SDK 交易增加一个独立的后量子认证因子。v1
-使用 Cloudflare CIRCL 提供的 ML-DSA-65，实现的授权条件是：
+使用 Cosmos SDK v0.55 原生的 ML-DSA-65 key implementation（底层由
+CometBFT/CIRCL 实现），授权条件是：
 
 ```text
 现有 Cosmos 账户签名有效 AND 账户的 ML-DSA-65 签名有效
@@ -127,12 +128,24 @@ AND (inactive_from_height == 0 OR height < inactive_from_height)
 7. `app/proposal.go` 在 PrepareProposal 和 ProcessProposal 中重新执行 Ante
    验证，防止 proposer 绕开 CheckTx 直接放入无效交易。
 
-对于已有链的 v1.0.0 升级：
+对于当前运行在 Cosmos SDK v0.47 / IBC-Go v7 的已有链，不能把 v1.0.0
+目标二进制直接放到升级高度。受支持的生产路径是：
 
-1. upgrade store loader 增加 `pqcauth` store；
-2. ModuleManager 执行模块迁移并初始化默认状态；
-3. 写入 mainnet、testnet 或 rehearsal chain 专属的 `network_id`；
-4. 对历史上无限制的 consensus block gas/bytes 设置有限上限。
+1. 先用独立的 bridge release 从 SDK v0.47 升到 SDK v0.53 / IBC-Go v10，
+   完成仍然依赖旧 `x/params`、IBC capability 和 Wasm 迁移代码的历史迁移；
+2. 在 bridge 高度后持续出块并核对 app hash、IBC、Wasm、group 和账户状态；
+3. 再升级到本分支的 SDK v0.55 / IBC-Go v11 目标二进制；
+4. 目标 store loader 增加 `sponsor`、`pqcauth` store，并移除已经完成迁移的
+   `params`、`capability`、`feeibc` store；
+5. v1.0.0 handler 在运行任何迁移前检查 module version map。若仍是 v0.47
+   状态，会 fail closed 拒绝升级；
+6. ModuleManager 执行 v0.53 到 v0.55 的累计迁移并初始化 pqcauth 默认状态；
+7. 写入 mainnet、testnet 或 rehearsal chain 专属的 `network_id`；
+8. 对历史上无限制的 consensus block gas/bytes 设置有限上限。
+
+旧链的 `group` store 不会删除。SDK v0.55 已移除内置 `x/group` 源码，因此应用
+固定维护一份从 SDK v0.53.6 移植的兼容实现，用于保持原有 group 消息、查询、
+状态和 consensus version 2。
 
 ### 3.2 InitGenesis
 
@@ -330,7 +343,7 @@ ProcessProposal 和最终 DeliverTx/FinalizeBlock 验证。应用中的关键顺
    与交易 signer 和链上状态逐项匹配。
 5. 使用节点自己的 protobuf transaction 重建 canonical sign document。
 6. 每次验证先消耗固定、受治理上下界约束的 verification gas。
-7. 使用 CIRCL ML-DSA-65 和固定 FIPS 204 context 验签。
+7. 使用 SDK 原生 ML-DSA-65 验证带协议域分离 envelope 的消息。
 8. 任意一个 required signer 缺少 entry，或任意提供的 entry 无效，整笔交易失败。
 
 全局 enforcement mode 的含义：
@@ -544,13 +557,19 @@ x/pqcauth/
 
 ML-DSA-65 的最小密码学适配层：
 
-- 基于 `github.com/cloudflare/circl/sign/mldsa/mldsa65`；
+- 基于 `github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65`；
+- 固定长度取自 CometBFT 的 `crypto/mldsa65` 常量；
 - 严格检查 public/private key 和 signature 固定长度；
 - 封装 key generation、public key derivation、sign 和 verify；
-- 使用 FIPS 204 context，context 最大 255 bytes；
-- 默认钱包签名使用 randomized ML-DSA；
-- deterministic 模式仅用于测试向量或明确要求的硬件实现；
-- 不把 CIRCL 的具体 key 类型暴露给模块其他层。
+- 将最大 255 bytes 的协议 context 编码进 canonical message envelope；
+- 使用 SDK/CometBFT 提供的 deterministic pure-mode ML-DSA；
+- 不把 SDK、CometBFT 或 CIRCL 的具体 key 类型暴露给模块其他层。
+
+SDK 原生实现使用空 FIPS 204 context。为保留交易、key proof 和 recovery 之间的
+域隔离，适配层实际签名 `version || context_length || context || message`。这与早期直接
+把 context 传给 CIRCL 的签名字节不兼容，属于共识格式变化。它只适用于 PQC 尚未
+部署的升级；如果网络已经接受过旧格式 PQC 交易，则必须使用显式版本迁移或同时
+验证两个 wire version，不能静默替换。
 
 ### `internal/execution/`
 
@@ -635,7 +654,7 @@ ML-DSA-65 的最小密码学适配层：
 | [`app/ante.go`](../../app/ante.go) | 把结构检查和 PQC Verify 放入经典签名流程的正确位置 |
 | [`app/app.go`](../../app/app.go) | store、keeper、ModuleManager、genesis/block order、service 和 v1 handler 装配 |
 | [`app/proposal.go`](../../app/proposal.go) | PrepareProposal/ProcessProposal 的 Ante 重验和 block gas/bytes 上限 |
-| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | 升级增加 store、写入 launch-specific network ID |
+| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | 校验 bridge 状态、变更 store、写入 launch-specific network ID |
 | [`docs/pqcauth`](../../docs/pqcauth) | threat model、wire/signing spec、rollout plan 和 operator runbook |
 | [`scripts/check-pqcauth-coverage.sh`](../../scripts/check-pqcauth-coverage.sh) | 手写代码覆盖率门禁 |
 
@@ -654,6 +673,8 @@ ML-DSA-65 的最小密码学适配层：
 - `WeightedOperations` 目前为空；长期随机 simulation 覆盖仍可继续补充。
 - 模块安全不等于整条链依赖安全，生产发布还需要处理 CometBFT、Wasmd、
   Cosmos SDK 等应用级依赖门禁。
+- 当前仓库包含 v0.55 目标 binary，不包含可直接发布的 v0.47→v0.53 bridge
+  binary；bridge release 及真实生产快照双阶段演练仍是上线阻断项。
 
 ## 15. 相关规范
 

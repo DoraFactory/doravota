@@ -5,19 +5,25 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
+	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 )
 
 func TestMLDSA65DeterministicVector(t *testing.T) {
-	var seed [mldsa65.SeedSize]byte
+	seed := make([]byte, cmtmldsa65.SeedSize)
 	for i := range seed {
 		seed[i] = byte(i*7 + 3)
 	}
-	publicKey, privateKey := mldsa65.NewKeyFromSeed(&seed)
+	privateKey, err := sdkmldsa65.GenPrivKeyFromSeed(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := privateKey.PubKey()
 	message := []byte("doravota pqcauth deterministic cross-architecture vector v1")
 	context := []byte("doravota/pqcauth/tx/v1")
-	signature := make([]byte, mldsa65.SignatureSize)
-	if err := mldsa65.SignTo(privateKey, message, context, false, signature); err != nil {
+	signature, err := pqccrypto.SignMLDSA65(privateKey.Bytes(), message, context, false)
+	if err != nil {
 		t.Fatal(err)
 	}
 	publicKeyDigest := sha256.Sum256(publicKey.Bytes())
@@ -25,7 +31,7 @@ func TestMLDSA65DeterministicVector(t *testing.T) {
 	if got, want := hex.EncodeToString(publicKeyDigest[:]), "f03a276f0d38544fe656170c0098c2507ac0a4936f1f0bbf6a3e73cba5dcc42d"; got != want {
 		t.Fatalf("public key digest changed: got %s, want %s", got, want)
 	}
-	if got, want := hex.EncodeToString(signatureDigest[:]), "84ef4fed3e30e3cb8f61b7622fc2f6ac89e87aba619ce53d33e90499ee8cbb9f"; got != want {
+	if got, want := hex.EncodeToString(signatureDigest[:]), "be0b385e2c26739b954e52fd9dbb3ff1b47212a5abc4eda23e2e384352e83d47"; got != want {
 		t.Fatalf("signature digest changed: got %s, want %s", got, want)
 	}
 }

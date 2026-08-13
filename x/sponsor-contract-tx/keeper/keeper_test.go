@@ -1,23 +1,26 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
+	"cosmossdk.io/log/v2"
+	sdkmath "cosmossdk.io/math"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	"github.com/cosmos/cosmos-sdk/store/prefix"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	"github.com/cosmos/cosmos-sdk/store/v2/prefix"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	protov2 "google.golang.org/protobuf/proto"
 
-	dbm "github.com/cometbft/cometbft-db"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -32,8 +35,9 @@ type MockWasmKeeper struct {
 // miniTx is a minimal sdk.Tx implementation for unit tests that only need GetMsgs()
 type miniTx struct{ msgs []sdk.Msg }
 
-func (t miniTx) GetMsgs() []sdk.Msg   { return t.msgs }
-func (t miniTx) ValidateBasic() error { return nil }
+func (t miniTx) GetMsgs() []sdk.Msg                    { return t.msgs }
+func (t miniTx) GetMsgsV2() ([]protov2.Message, error) { return nil, nil }
+func (t miniTx) ValidateBasic() error                  { return nil }
 
 func NewMockWasmKeeper() *MockWasmKeeper {
 	return &MockWasmKeeper{
@@ -42,13 +46,13 @@ func NewMockWasmKeeper() *MockWasmKeeper {
 	}
 }
 
-func (m *MockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+func (m *MockWasmKeeper) GetContractInfo(ctx context.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
 	return m.contracts[contractAddress.String()]
 }
 
-func (m *MockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+func (m *MockWasmKeeper) QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
 	if m.customQueryHandler != nil {
-		return m.customQueryHandler(ctx, contractAddr, req)
+		return m.customQueryHandler(sdk.UnwrapSDKContext(ctx), contractAddr, req)
 	}
 	return []byte(m.queryResponse), nil
 }
@@ -75,11 +79,11 @@ func setupKeeper(t testing.TB) (Keeper, sdk.Context, *MockWasmKeeper) {
 	cdc := codec.NewProtoCodec(registry)
 
 	// Create store
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 
 	// Create an in-memory database for testing
 	db := dbm.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
+	ms := store.NewCommitMultiStore(db, log.NewNopLogger())
 	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 
 	// Load the stores
@@ -105,44 +109,43 @@ func setupKeeper(t testing.TB) (Keeper, sdk.Context, *MockWasmKeeper) {
 
 // setupKeeperSimple provides backward compatibility for simple tests
 func setupKeeperSimple(t testing.TB) (Keeper, sdk.Context) {
-    keeper, ctx, _ := setupKeeper(t)
-    return keeper, ctx
+	keeper, ctx, _ := setupKeeper(t)
+	return keeper, ctx
 }
 
 func TestComputeDigestDeterministic(t *testing.T) { t.Skip("ComputeDigest removed") }
 
 func TestEffectiveTicketTTLForContract(t *testing.T) {
-    keeper, ctx := setupKeeperSimple(t)
-    params := types.DefaultParams()
-    params.PolicyTicketTtlBlocks = 30
-    require.NoError(t, keeper.SetParams(ctx, params))
+	keeper, ctx := setupKeeperSimple(t)
+	params := types.DefaultParams()
+	params.PolicyTicketTtlBlocks = 30
+	require.NoError(t, keeper.SetParams(ctx, params))
 
-    contract := "dora1contractttl__________________________"
-    // No sponsor override -> default
-    eff := keeper.EffectiveTicketTTLForContract(ctx, contract)
-    require.Equal(t, uint32(30), eff)
+	contract := "dora1contractttl__________________________"
+	// No sponsor override -> default
+	eff := keeper.EffectiveTicketTTLForContract(ctx, contract)
+	require.Equal(t, uint32(30), eff)
 
-    // No per-contract override: effective equals global always
-    s := types.ContractSponsor{ContractAddress: contract, IsSponsored: true}
-    require.NoError(t, keeper.SetSponsor(ctx, s))
-    eff = keeper.EffectiveTicketTTLForContract(ctx, contract)
-    require.Equal(t, uint32(30), eff)
+	// No per-contract override: effective equals global always
+	s := types.ContractSponsor{ContractAddress: contract, IsSponsored: true}
+	require.NoError(t, keeper.SetSponsor(ctx, s))
+	eff = keeper.EffectiveTicketTTLForContract(ctx, contract)
+	require.Equal(t, uint32(30), eff)
 }
 
-
 func TestRevokePolicyTicket(t *testing.T) {
-    keeper, ctx := setupKeeperSimple(t)
-    // create a ticket
-    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: uint64(ctx.BlockHeight()+10)}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
-    // revoke
-    err := keeper.RevokePolicyTicket(ctx, "c", "u", "d")
-    require.NoError(t, err)
-    _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "d")
-    require.False(t, ok)
-    // revoke non-existing
-    err = keeper.RevokePolicyTicket(ctx, "c", "u", "d")
-    require.Error(t, err)
+	keeper, ctx := setupKeeperSimple(t)
+	// create a ticket
+	tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: uint64(ctx.BlockHeight() + 10)}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+	// revoke
+	err := keeper.RevokePolicyTicket(ctx, "c", "u", "d")
+	require.NoError(t, err)
+	_, ok := keeper.GetPolicyTicket(ctx, "c", "u", "d")
+	require.False(t, ok)
+	// revoke non-existing
+	err = keeper.RevokePolicyTicket(ctx, "c", "u", "d")
+	require.Error(t, err)
 }
 func TestSetSponsor(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
@@ -303,136 +306,138 @@ func TestGetAllSponsors(t *testing.T) {
 
 // helper: count keys under a prefix store
 func countKeys(ps storetypes.KVStore) int {
-    it := ps.Iterator(nil, nil)
-    defer it.Close()
-    n := 0
-    for ; it.Valid(); it.Next() { n++ }
-    return n
+	it := ps.Iterator(nil, nil)
+	defer it.Close()
+	n := 0
+	for ; it.Valid(); it.Next() {
+		n++
+	}
+	return n
 }
 
 func TestExpiryIndex_WriteAndGC(t *testing.T) {
-    kpr, ctx := setupKeeperSimple(t)
-    // set block height to 100
-    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+	kpr, ctx := setupKeeperSimple(t)
+	// set block height to 100
+	ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
 
-    // create tickets with various expiry heights
-    // expired: 90,95,99; not expired: 100 (equal), 120 (future)
-    tks := []types.PolicyTicket{
-        {ContractAddress: "c", UserAddress: "u", Digest: "d90", ExpiryHeight: 90, UsesRemaining: 1},
-        {ContractAddress: "c", UserAddress: "u", Digest: "d95", ExpiryHeight: 95, UsesRemaining: 1},
-        {ContractAddress: "c", UserAddress: "u", Digest: "d99", ExpiryHeight: 99, UsesRemaining: 1},
-        {ContractAddress: "c", UserAddress: "u", Digest: "d100", ExpiryHeight: 100, UsesRemaining: 1},
-        {ContractAddress: "c", UserAddress: "u", Digest: "d120", ExpiryHeight: 120, UsesRemaining: 1},
-    }
-    for _, tk := range tks {
-        require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
-    }
+	// create tickets with various expiry heights
+	// expired: 90,95,99; not expired: 100 (equal), 120 (future)
+	tks := []types.PolicyTicket{
+		{ContractAddress: "c", UserAddress: "u", Digest: "d90", ExpiryHeight: 90, UsesRemaining: 1},
+		{ContractAddress: "c", UserAddress: "u", Digest: "d95", ExpiryHeight: 95, UsesRemaining: 1},
+		{ContractAddress: "c", UserAddress: "u", Digest: "d99", ExpiryHeight: 99, UsesRemaining: 1},
+		{ContractAddress: "c", UserAddress: "u", Digest: "d100", ExpiryHeight: 100, UsesRemaining: 1},
+		{ContractAddress: "c", UserAddress: "u", Digest: "d120", ExpiryHeight: 120, UsesRemaining: 1},
+	}
+	for _, tk := range tks {
+		require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+	}
 
-    // verify index keys exist
-    idxStore := prefix.NewStore(ctx.KVStore(kpr.storeKey), types.ExpiryIndexKeyPrefix)
-    require.GreaterOrEqual(t, countKeys(idxStore), 5)
+	// verify index keys exist
+	idxStore := prefix.NewStore(ctx.KVStore(kpr.storeKey), types.ExpiryIndexKeyPrefix)
+	require.GreaterOrEqual(t, countKeys(idxStore), 5)
 
-    // run GC with small budget: 2
-    kpr.GarbageCollectByExpiry(ctx, 2)
+	// run GC with small budget: 2
+	kpr.GarbageCollectByExpiry(ctx, 2)
 
-    // d90, d95 should be gone; others remain
-    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d90")
-    require.False(t, ok)
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d95")
-    require.False(t, ok)
-    // not-yet-deleted expired d99 remains until next GC tick
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
-    require.True(t, ok)
-    // non-expired remain
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
-    require.True(t, ok)
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
-    require.True(t, ok)
+	// d90, d95 should be gone; others remain
+	_, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d90")
+	require.False(t, ok)
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d95")
+	require.False(t, ok)
+	// not-yet-deleted expired d99 remains until next GC tick
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+	require.True(t, ok)
+	// non-expired remain
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+	require.True(t, ok)
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+	require.True(t, ok)
 
-    // run GC again with larger budget: should delete remaining expired (d99), but not d100/d120
-    kpr.GarbageCollectByExpiry(ctx, 10)
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
-    require.False(t, ok)
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
-    require.True(t, ok)
-    _, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
-    require.True(t, ok)
+	// run GC again with larger budget: should delete remaining expired (d99), but not d100/d120
+	kpr.GarbageCollectByExpiry(ctx, 10)
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d99")
+	require.False(t, ok)
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d100")
+	require.True(t, ok)
+	_, ok = kpr.GetPolicyTicket(ctx, "c", "u", "d120")
+	require.True(t, ok)
 }
 
 func TestConsumePolicyTicket_MarksConsumedKeepsRecord(t *testing.T) {
-    kpr, ctx := setupKeeperSimple(t)
-    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 50})
-    // single-use ticket
-    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 60, UsesRemaining: 1}
-    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+	kpr, ctx := setupKeeperSimple(t)
+	ctx = ctx.WithBlockHeader(tmproto.Header{Height: 50})
+	// single-use ticket
+	tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 60, UsesRemaining: 1}
+	require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
 
-    // consume -> should mark consumed and keep record
-    require.NoError(t, kpr.ConsumePolicyTicket(ctx, "c", "u", "d"))
-    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
-    require.True(t, ok)
-    require.True(t, got.Consumed)
+	// consume -> should mark consumed and keep record
+	require.NoError(t, kpr.ConsumePolicyTicket(ctx, "c", "u", "d"))
+	got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+	require.True(t, ok)
+	require.True(t, got.Consumed)
 
-    // index should remain until expiry; GC will remove later
-    idxKey := types.GetExpiryIndexKey(60, "c", "u", "d")
-    idxStore := ctx.KVStore(kpr.storeKey)
-    require.True(t, idxStore.Has(idxKey))
+	// index should remain until expiry; GC will remove later
+	idxKey := types.GetExpiryIndexKey(60, "c", "u", "d")
+	idxStore := ctx.KVStore(kpr.storeKey)
+	require.True(t, idxStore.Has(idxKey))
 }
 
 func TestDeleteAndRevoke_RemoveIndex(t *testing.T) {
-    kpr, ctx := setupKeeperSimple(t)
-    tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 10, UsesRemaining: 3}
-    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+	kpr, ctx := setupKeeperSimple(t)
+	tk := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 10, UsesRemaining: 3}
+	require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
 
-    // delete
-    kpr.DeletePolicyTicket(ctx, "c", "u", "d")
-    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
-    require.False(t, ok)
-    idxKey := types.GetExpiryIndexKey(10, "c", "u", "d")
-    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+	// delete
+	kpr.DeletePolicyTicket(ctx, "c", "u", "d")
+	_, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+	require.False(t, ok)
+	idxKey := types.GetExpiryIndexKey(10, "c", "u", "d")
+	require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
 
-    // set again and revoke
-    require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
-    require.NoError(t, kpr.RevokePolicyTicket(ctx, "c", "u", "d"))
-    require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
+	// set again and revoke
+	require.NoError(t, kpr.SetPolicyTicket(ctx, tk))
+	require.NoError(t, kpr.RevokePolicyTicket(ctx, "c", "u", "d"))
+	require.False(t, ctx.KVStore(kpr.storeKey).Has(idxKey))
 }
 
 func TestBulkConsume_MarksConsumedOnZeroUse(t *testing.T) {
-    kpr, ctx := setupKeeperSimple(t)
-    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 1})
-    // two tickets
-    t1 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d1", ExpiryHeight: 5, UsesRemaining: 2}
-    t2 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d2", ExpiryHeight: 5, UsesRemaining: 1}
-    require.NoError(t, kpr.SetPolicyTicket(ctx, t1))
-    require.NoError(t, kpr.SetPolicyTicket(ctx, t2))
+	kpr, ctx := setupKeeperSimple(t)
+	ctx = ctx.WithBlockHeader(tmproto.Header{Height: 1})
+	// two tickets
+	t1 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d1", ExpiryHeight: 5, UsesRemaining: 2}
+	t2 := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d2", ExpiryHeight: 5, UsesRemaining: 1}
+	require.NoError(t, kpr.SetPolicyTicket(ctx, t1))
+	require.NoError(t, kpr.SetPolicyTicket(ctx, t2))
 
-    // consume d1 by 1 (remain 1), d2 by 1 (becomes 0 -> mark consumed)
-    err := kpr.ConsumePolicyTicketsBulk(ctx, "c", "u", map[string]uint32{"d1": 1, "d2": 1})
-    require.NoError(t, err)
+	// consume d1 by 1 (remain 1), d2 by 1 (becomes 0 -> mark consumed)
+	err := kpr.ConsumePolicyTicketsBulk(ctx, "c", "u", map[string]uint32{"d1": 1, "d2": 1})
+	require.NoError(t, err)
 
-    // d1 remains
-    _, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d1")
-    require.True(t, ok)
-    // d2 remains but consumed
-    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d2")
-    require.True(t, ok)
-    require.True(t, got.Consumed)
+	// d1 remains
+	_, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d1")
+	require.True(t, ok)
+	// d2 remains but consumed
+	got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d2")
+	require.True(t, ok)
+	require.True(t, got.Consumed)
 }
 
 func TestGetPolicyTicket_DoesNotDeleteExpired(t *testing.T) {
-    kpr, ctx := setupKeeperSimple(t)
-    // set height high and create expired ticket
-    ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
-    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 90, UsesRemaining: 1}
-    require.NoError(t, kpr.SetPolicyTicket(ctx, tkt))
-    // call Get -> should not delete even if expired
-    got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
-    require.True(t, ok)
-    require.Equal(t, uint64(90), got.ExpiryHeight)
-    // verify keys remain
-    idx := types.GetExpiryIndexKey(90, "c", "u", "d")
-    store := ctx.KVStore(kpr.storeKey)
-    require.True(t, store.Has(idx))
-    require.True(t, store.Has(types.GetPolicyTicketKey("c", "u", "d")))
+	kpr, ctx := setupKeeperSimple(t)
+	// set height high and create expired ticket
+	ctx = ctx.WithBlockHeader(tmproto.Header{Height: 100})
+	tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "d", ExpiryHeight: 90, UsesRemaining: 1}
+	require.NoError(t, kpr.SetPolicyTicket(ctx, tkt))
+	// call Get -> should not delete even if expired
+	got, ok := kpr.GetPolicyTicket(ctx, "c", "u", "d")
+	require.True(t, ok)
+	require.Equal(t, uint64(90), got.ExpiryHeight)
+	// verify keys remain
+	idx := types.GetExpiryIndexKey(90, "c", "u", "d")
+	store := ctx.KVStore(kpr.storeKey)
+	require.True(t, store.Has(idx))
+	require.True(t, store.Has(types.GetPolicyTicketKey("c", "u", "d")))
 }
 
 // removed: HasAnyLiveMethodTicket tests; ante now uses exact digest lookups
@@ -595,7 +600,7 @@ func TestMaxGrantPerUser(t *testing.T) {
 	t.Run("custom max grant per user", func(t *testing.T) {
 		// Create custom limit with only peaka denomination
 		customLimit := sdk.NewCoins(
-			sdk.NewCoin("peaka", sdk.NewInt(1000000)),
+			sdk.NewCoin("peaka", sdkmath.NewInt(1000000)),
 		)
 
 		// Convert to protobuf coins
@@ -629,9 +634,9 @@ func TestMaxGrantPerUser(t *testing.T) {
 	t.Run("normalization merges duplicate peaka denominations", func(t *testing.T) {
 		// Create duplicate peaka entries that should be merged
 		pbCoins := []*sdk.Coin{
-			{Denom: "peaka", Amount: sdk.NewInt(100000)},
-			{Denom: "peaka", Amount: sdk.NewInt(200000)},
-			{Denom: "peaka", Amount: sdk.NewInt(300000)},
+			{Denom: "peaka", Amount: sdkmath.NewInt(100000)},
+			{Denom: "peaka", Amount: sdkmath.NewInt(200000)},
+			{Denom: "peaka", Amount: sdkmath.NewInt(300000)},
 		}
 
 		sponsor := types.ContractSponsor{
@@ -649,7 +654,7 @@ func TestMaxGrantPerUser(t *testing.T) {
 		// Should have only one peaka entry with merged amount
 		assert.Len(t, retrievedSponsor.MaxGrantPerUser, 1)
 		assert.Equal(t, "peaka", retrievedSponsor.MaxGrantPerUser[0].Denom)
-		assert.Equal(t, sdk.NewInt(600000), retrievedSponsor.MaxGrantPerUser[0].Amount) // 100000 + 200000 + 300000
+		assert.Equal(t, sdkmath.NewInt(600000), retrievedSponsor.MaxGrantPerUser[0].Amount) // 100000 + 200000 + 300000
 	})
 }
 
@@ -668,7 +673,7 @@ func TestUserGrantUsage(t *testing.T) {
 	})
 
 	t.Run("update user grant usage", func(t *testing.T) {
-		consumedAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+		consumedAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100000)))
 
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
 
@@ -687,11 +692,11 @@ func TestUserGrantUsage(t *testing.T) {
 
 	t.Run("accumulate user grant usage", func(t *testing.T) {
 		// Add more usage
-		additionalAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
+		additionalAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(50000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, additionalAmount)
 
 		usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
-		expectedTotal := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000))) // 100000 + 50000
+		expectedTotal := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(150000))) // 100000 + 50000
 		// Convert []*sdk.Coin to sdk.Coins for comparison
 		actualUsed := sdk.Coins{}
 		for _, coin := range usage.TotalGrantUsed {
@@ -710,7 +715,7 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	contractAddr := sdk.AccAddress([]byte("limit_test_contract_")).String()
 
 	// Set up sponsor with custom limit (using peaka denomination)
-	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
+	customLimit := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200000)))
 	pbCoins := make([]*sdk.Coin, len(customLimit))
 	for i, coin := range customLimit {
 		pbCoins[i] = &coin
@@ -724,19 +729,19 @@ func TestCheckUserGrantLimit(t *testing.T) {
 	keeper.SetSponsor(ctx, sponsor)
 
 	t.Run("within limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exactly at limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
 
 	t.Run("exceeds limit", func(t *testing.T) {
-		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(300000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(300000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -744,11 +749,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 
 	t.Run("exceeds limit after previous usage", func(t *testing.T) {
 		// Simulate previous usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(150000)))
 		keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, previousUsage)
 
 		// Try to use more than remaining limit
-		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100000)))
 		err := keeper.CheckUserGrantLimit(ctx, userAddr, contractAddr, requestAmount)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "grant limit exceeded")
@@ -759,11 +764,11 @@ func TestCheckUserGrantLimit(t *testing.T) {
 		newUserAddr := sdk.AccAddress([]byte("limit_test_user_two_")).String()
 
 		// Simulate some usage
-		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100000)))
+		previousUsage := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100000)))
 		keeper.UpdateUserGrantUsage(ctx, newUserAddr, contractAddr, previousUsage)
 
 		// Request amount within remaining limit (200000 - 100000 = 100000 remaining)
-		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))
+		requestAmount := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(50000)))
 		err := keeper.CheckUserGrantLimit(ctx, newUserAddr, contractAddr, requestAmount)
 		assert.NoError(t, err)
 	})
@@ -773,7 +778,7 @@ func TestGrantArithmeticRejectsOverflowWithoutPanic(t *testing.T) {
 	k, ctx := setupKeeperSimple(t)
 	userAddr := sdk.AccAddress([]byte("overflow_user_______")).String()
 	contractAddr := sdk.AccAddress([]byte("overflow_contract___")).String()
-	maxInt, ok := sdk.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
+	maxInt, ok := sdkmath.NewIntFromString("115792089237316195423570985008687907853269984665640564039457584007913129639935")
 	require.True(t, ok)
 
 	require.NoError(t, k.SetSponsor(ctx, types.ContractSponsor{
@@ -788,7 +793,7 @@ func TestGrantArithmeticRejectsOverflowWithoutPanic(t *testing.T) {
 		ctx,
 		userAddr,
 		contractAddr,
-		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.OneInt())),
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.OneInt())),
 	))
 
 	requested := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, maxInt))
@@ -805,7 +810,7 @@ func TestGrantArithmeticRejectsOverflowWithoutPanic(t *testing.T) {
 
 	usage := k.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, usage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.OneInt(), usage.TotalGrantUsed[0].Amount)
+	require.Equal(t, sdkmath.OneInt(), usage.TotalGrantUsed[0].Amount)
 }
 
 // TestLogger tests the Logger function
@@ -821,16 +826,18 @@ func TestLogger(t *testing.T) {
 
 // ExpiryHeight==0 tickets should be removed after height advances and GC runs.
 func TestGarbageCollect_ZeroExpiry_RemovedAfterHeightAdvance(t *testing.T) {
-    keeper, ctx := setupKeeperSimple(t)
-    // Insert a ticket expiring at height 0
-    tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:zero", ExpiryHeight: 0}
-    require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
-    if _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero"); !ok { t.Fatalf("ticket not inserted") }
-    // Advance height beyond 0 and collect
-    ctx = ctx.WithBlockHeight(1)
-    keeper.GarbageCollectByExpiry(ctx, 10)
-    _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero")
-    require.False(t, ok)
+	keeper, ctx := setupKeeperSimple(t)
+	// Insert a ticket expiring at height 0
+	tkt := types.PolicyTicket{ContractAddress: "c", UserAddress: "u", Digest: "m:zero", ExpiryHeight: 0}
+	require.NoError(t, keeper.SetPolicyTicket(ctx, tkt))
+	if _, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero"); !ok {
+		t.Fatalf("ticket not inserted")
+	}
+	// Advance height beyond 0 and collect
+	ctx = ctx.WithBlockHeight(1)
+	keeper.GarbageCollectByExpiry(ctx, 10)
+	_, ok := keeper.GetPolicyTicket(ctx, "c", "u", "m:zero")
+	require.False(t, ok)
 }
 
 // HasAnyLiveMethodTicket only returns true for unconsumed, unexpired method tickets (prefix "m:").
@@ -838,13 +845,13 @@ func TestGarbageCollect_ZeroExpiry_RemovedAfterHeightAdvance(t *testing.T) {
 
 // ComputeMethodDigest must be stable and include a separator to avoid collisions.
 func TestComputeMethodDigest_StableSeparator(t *testing.T) {
-    keeper, _ := setupKeeperSimple(t)
-    c := "contract1"
-    d1 := keeper.ComputeMethodDigest(c, []string{"ab", "c"})
-    d2 := keeper.ComputeMethodDigest(c, []string{"a", "bc"})
-    require.NotEqual(t, d1, d2)
-    require.Contains(t, d1, "m:")
-    require.Contains(t, d2, "m:")
+	keeper, _ := setupKeeperSimple(t)
+	c := "contract1"
+	d1 := keeper.ComputeMethodDigest(c, []string{"ab", "c"})
+	d2 := keeper.ComputeMethodDigest(c, []string{"a", "bc"})
+	require.NotEqual(t, d1, d2)
+	require.Contains(t, d1, "m:")
+	require.Contains(t, d2, "m:")
 }
 
 // TestGetAuthority tests the GetAuthority function
@@ -860,44 +867,44 @@ func TestGetAuthority(t *testing.T) {
 
 // Bulk consumption: exact uses should consume and mark ticket as consumed
 func TestConsumePolicyTicketsBulk_ExactExhaust(t *testing.T) {
-    k, ctx := setupKeeperSimple(t)
-    // Prepare a method digest and a ticket with uses=3
-    contract := "c"
-    user := "u"
-    md := k.ComputeMethodDigest(contract, []string{"inc"})
-    tkt := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: md, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 3}
-    require.NoError(t, k.SetPolicyTicket(ctx, tkt))
+	k, ctx := setupKeeperSimple(t)
+	// Prepare a method digest and a ticket with uses=3
+	contract := "c"
+	user := "u"
+	md := k.ComputeMethodDigest(contract, []string{"inc"})
+	tkt := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: md, ExpiryHeight: uint64(ctx.BlockHeight() + 10), UsesRemaining: 3}
+	require.NoError(t, k.SetPolicyTicket(ctx, tkt))
 
-    // Consume exactly 3 uses
-    err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{md: 3})
-    require.NoError(t, err)
-    t2, ok := k.GetPolicyTicket(ctx, contract, user, md)
-    require.True(t, ok)
-    require.Equal(t, uint32(0), t2.UsesRemaining)
-    require.True(t, t2.Consumed)
+	// Consume exactly 3 uses
+	err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{md: 3})
+	require.NoError(t, err)
+	t2, ok := k.GetPolicyTicket(ctx, contract, user, md)
+	require.True(t, ok)
+	require.Equal(t, uint32(0), t2.UsesRemaining)
+	require.True(t, t2.Consumed)
 }
 
 // Bulk consumption atomicity: when one digest is insufficient, none are consumed
 func TestConsumePolicyTicketsBulk_AtomicFailure_Mixed(t *testing.T) {
-    k, ctx := setupKeeperSimple(t)
-    contract := "c"
-    user := "u"
-    inc := k.ComputeMethodDigest(contract, []string{"inc"})
-    dec := k.ComputeMethodDigest(contract, []string{"dec"})
-    // inc has enough uses; dec has zero
-    require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: inc, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 2}))
-    require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: dec, ExpiryHeight: uint64(ctx.BlockHeight()+10), UsesRemaining: 0}))
+	k, ctx := setupKeeperSimple(t)
+	contract := "c"
+	user := "u"
+	inc := k.ComputeMethodDigest(contract, []string{"inc"})
+	dec := k.ComputeMethodDigest(contract, []string{"dec"})
+	// inc has enough uses; dec has zero
+	require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: inc, ExpiryHeight: uint64(ctx.BlockHeight() + 10), UsesRemaining: 2}))
+	require.NoError(t, k.SetPolicyTicket(ctx, types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: dec, ExpiryHeight: uint64(ctx.BlockHeight() + 10), UsesRemaining: 0}))
 
-    // Attempt to consume inc:2 and dec:1 -> should fail atomically
-    err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{inc: 2, dec: 1})
-    require.Error(t, err)
-    // Verify no changes applied
-    tInc, _ := k.GetPolicyTicket(ctx, contract, user, inc)
-    tDec, _ := k.GetPolicyTicket(ctx, contract, user, dec)
-    require.Equal(t, uint32(2), tInc.UsesRemaining)
-    require.False(t, tInc.Consumed)
-    require.Equal(t, uint32(0), tDec.UsesRemaining)
-    require.False(t, tDec.Consumed)
+	// Attempt to consume inc:2 and dec:1 -> should fail atomically
+	err := k.ConsumePolicyTicketsBulk(ctx, contract, user, map[string]uint32{inc: 2, dec: 1})
+	require.Error(t, err)
+	// Verify no changes applied
+	tInc, _ := k.GetPolicyTicket(ctx, contract, user, inc)
+	tDec, _ := k.GetPolicyTicket(ctx, contract, user, dec)
+	require.Equal(t, uint32(2), tInc.UsesRemaining)
+	require.False(t, tInc.Consumed)
+	require.Equal(t, uint32(0), tDec.UsesRemaining)
+	require.False(t, tDec.Consumed)
 }
 
 // TestCheckContractPolicy deprecated: policy probe removed
@@ -907,10 +914,14 @@ func TestCheckContractPolicy(t *testing.T) { t.Skip("policy probe removed") }
 func TestExtractAllContractMessages(t *testing.T) { t.Skip("policy probe helpers removed") }
 
 // Test that messages with multiple top-level keys are rejected to prevent non-determinism
-func TestExtractAllContractMessages_MultipleTopLevelKeysError(t *testing.T) { t.Skip("policy probe helpers removed") }
+func TestExtractAllContractMessages_MultipleTopLevelKeysError(t *testing.T) {
+	t.Skip("policy probe helpers removed")
+}
 
 // Test that MsgData preserves the raw JSON bytes from the tx for determinism
-func TestExtractAllContractMessages_UsesRawMsgBytes(t *testing.T) { t.Skip("policy probe helpers removed") }
+func TestExtractAllContractMessages_UsesRawMsgBytes(t *testing.T) {
+	t.Skip("policy probe helpers removed")
+}
 
 // TestValidateContractExists tests the ValidateContractExists function
 func TestValidateContractExists(t *testing.T) {
@@ -943,6 +954,8 @@ type MockTx struct {
 func (tx *MockTx) GetMsgs() []sdk.Msg {
 	return tx.msgs
 }
+
+func (tx *MockTx) GetMsgsV2() ([]protov2.Message, error) { return nil, nil }
 
 func (tx *MockTx) ValidateBasic() error {
 	return nil
@@ -984,8 +997,8 @@ func TestGetSetParams(t *testing.T) {
 	keeper, ctx := setupKeeperSimple(t)
 
 	// Get default params
-    params := keeper.GetParams(ctx)
-    require.True(t, params.SponsorshipEnabled)
+	params := keeper.GetParams(ctx)
+	require.True(t, params.SponsorshipEnabled)
 
 	// Set custom params
 	customParams := types.DefaultParams()
@@ -995,7 +1008,7 @@ func TestGetSetParams(t *testing.T) {
 
 	// Verify params were set
 	retrievedParams := keeper.GetParams(ctx)
-    require.False(t, retrievedParams.SponsorshipEnabled)
+	require.False(t, retrievedParams.SponsorshipEnabled)
 }
 
 // TestUserGrantUsageLifecycle tests the full lifecycle of user grant usage
@@ -1014,7 +1027,7 @@ func TestUserGrantUsageLifecycle(t *testing.T) {
 
 	// Update usage with some coins
 	consumedAmount := sdk.NewCoins(sdk.NewInt64Coin("peaka", 1000))
-	usage.TotalGrantUsed = []*sdk.Coin{&sdk.Coin{Denom: "peaka", Amount: sdk.NewInt(500)}}
+	usage.TotalGrantUsed = []*sdk.Coin{&sdk.Coin{Denom: "peaka", Amount: sdkmath.NewInt(500)}}
 	usage.LastUsedTime = ctx.BlockTime().Unix()
 
 	err := keeper.SetUserGrantUsage(ctx, usage)
@@ -1026,7 +1039,7 @@ func TestUserGrantUsageLifecycle(t *testing.T) {
 	require.Equal(t, contractAddr, retrievedUsage.ContractAddress)
 	require.Len(t, retrievedUsage.TotalGrantUsed, 1)
 	require.Equal(t, "peaka", retrievedUsage.TotalGrantUsed[0].Denom)
-	require.Equal(t, sdk.NewInt(500), retrievedUsage.TotalGrantUsed[0].Amount)
+	require.Equal(t, sdkmath.NewInt(500), retrievedUsage.TotalGrantUsed[0].Amount)
 
 	// Test UpdateUserGrantUsage
 	err = keeper.UpdateUserGrantUsage(ctx, userAddr, contractAddr, consumedAmount)
@@ -1035,7 +1048,7 @@ func TestUserGrantUsageLifecycle(t *testing.T) {
 	// Verify updated usage
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(1500), finalUsage.TotalGrantUsed[0].Amount) // 500 + 1000
+	require.Equal(t, sdkmath.NewInt(1500), finalUsage.TotalGrantUsed[0].Amount) // 500 + 1000
 }
 
 // TestGetMaxGrantPerUser tests the GetMaxGrantPerUser function
@@ -1053,7 +1066,7 @@ func TestGetMaxGrantPerUser(t *testing.T) {
 	sponsor := types.ContractSponsor{
 		ContractAddress: contractAddr,
 		IsSponsored:     false,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}},
 	}
 	err = keeper.SetSponsor(ctx, sponsor)
 	require.NoError(t, err)
@@ -1073,7 +1086,7 @@ func TestGetMaxGrantPerUser(t *testing.T) {
 	require.Contains(t, err.Error(), "max_grant_per_user is required")
 
 	// Set proper sponsor with max grant
-	sponsor.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}}
+	sponsor.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}}
 	err = keeper.SetSponsor(ctx, sponsor)
 	require.NoError(t, err)
 
@@ -1081,7 +1094,7 @@ func TestGetMaxGrantPerUser(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, maxGrant, 1)
 	require.Equal(t, "peaka", maxGrant[0].Denom)
-	require.Equal(t, sdk.NewInt(1000), maxGrant[0].Amount)
+	require.Equal(t, sdkmath.NewInt(1000), maxGrant[0].Amount)
 }
 
 // TestIterateSponsorsErrorHandling tests error handling in IterateSponsors
@@ -1122,7 +1135,7 @@ func TestSetSponsorErrorHandling(t *testing.T) {
 	sponsor := types.ContractSponsor{
 		ContractAddress: contractAddr,
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(-100)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(-100)}},
 	}
 
 	// This should fail because negative amounts are invalid
@@ -1134,7 +1147,7 @@ func TestSetSponsorErrorHandling(t *testing.T) {
 	validSponsor := types.ContractSponsor{
 		ContractAddress: contractAddr,
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}},
 	}
 
 	err = keeper.SetSponsor(ctx, validSponsor)
@@ -1171,7 +1184,7 @@ func TestUserGrantUsageErrorHandling(t *testing.T) {
 
 	// Test with negative amounts in existing usage (edge case)
 	usage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
-	usage.TotalGrantUsed = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(-100)}}
+	usage.TotalGrantUsed = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(-100)}}
 	err = keeper.SetUserGrantUsage(ctx, usage)
 	require.NoError(t, err)
 
@@ -1185,7 +1198,7 @@ func TestUserGrantUsageErrorHandling(t *testing.T) {
 	// Verify the invalid legacy value was not silently rewritten.
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(-100), finalUsage.TotalGrantUsed[0].Amount)
+	require.Equal(t, sdkmath.NewInt(-100), finalUsage.TotalGrantUsed[0].Amount)
 }
 
 // TestParamsErrorHandling tests error handling in params functions
@@ -1200,7 +1213,7 @@ func TestParamsErrorHandling(t *testing.T) {
 	require.NoError(t, err)
 
 	retrievedParams := keeper.GetParams(ctx)
-    require.True(t, retrievedParams.SponsorshipEnabled)
+	require.True(t, retrievedParams.SponsorshipEnabled)
 }
 
 // TestNewKeeperAndBasicFunctions tests the NewKeeper constructor and basic functions
@@ -1210,7 +1223,7 @@ func TestNewKeeperAndBasicFunctions(t *testing.T) {
 	cdc := codec.NewProtoCodec(registry)
 
 	// Create store key
-	storeKey := sdk.NewKVStoreKey("test")
+	storeKey := storetypes.NewKVStoreKey("test")
 
 	// Create mock wasm keeper
 	wasmKeeper := NewMockWasmKeeper()
@@ -1224,7 +1237,7 @@ func TestNewKeeperAndBasicFunctions(t *testing.T) {
 
 	// Create context for logging test
 	db := dbm.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
+	ms := store.NewCommitMultiStore(db, log.NewNopLogger())
 	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 	err := ms.LoadLatestVersion()
 	require.NoError(t, err)
@@ -1254,47 +1267,51 @@ func TestUpdateParams(t *testing.T) {
 		Params:    paramsToSet,
 	}
 
-    // Capture events
-    evCtx := sdk.UnwrapSDKContext(ctx).WithEventManager(sdk.NewEventManager())
-    _, err := msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
-    require.NoError(t, err)
+	// Capture events
+	evCtx := sdk.UnwrapSDKContext(ctx).WithEventManager(sdk.NewEventManager())
+	_, err := msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+	require.NoError(t, err)
 
-    // Verify params were updated
-    params := keeper.GetParams(evCtx)
-    require.False(t, params.SponsorshipEnabled)
-    // Check update event attributes present
-    found := false
-    for _, ev := range evCtx.EventManager().Events() {
-        if ev.Type != types.EventTypeUpdateParams { continue }
-        kv := map[string]string{}
-        for _, a := range ev.Attributes { kv[a.Key] = a.Value }
-        if kv[types.AttributeKeyAuthority] == authority && kv[types.AttributeKeySponsorshipEnabled] == "false" {
-            found = true
-            break
-        }
-    }
-    require.True(t, found)
+	// Verify params were updated
+	params := keeper.GetParams(evCtx)
+	require.False(t, params.SponsorshipEnabled)
+	// Check update event attributes present
+	found := false
+	for _, ev := range evCtx.EventManager().Events() {
+		if ev.Type != types.EventTypeUpdateParams {
+			continue
+		}
+		kv := map[string]string{}
+		for _, a := range ev.Attributes {
+			kv[a.Key] = a.Value
+		}
+		if kv[types.AttributeKeyAuthority] == authority && kv[types.AttributeKeySponsorshipEnabled] == "false" {
+			found = true
+			break
+		}
+	}
+	require.True(t, found)
 
 	// Test with invalid authority
 	msg.Authority = "invalid-authority"
-    _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "invalid authority")
+	_, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid authority")
 
-    // Test with invalid params (TTL zero)
-    msg.Authority = authority
-    msg.Params.PolicyTicketTtlBlocks = 0
+	// Test with invalid params (TTL zero)
+	msg.Authority = authority
+	msg.Params.PolicyTicketTtlBlocks = 0
 
 	// First check if the types package has validation that catches this
-    err = msg.Params.Validate()
-    if err != nil {
-        _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
-        require.Error(t, err)
-        require.Contains(t, err.Error(), "invalid module parameters")
-    } else {
-        _, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
-        require.Error(t, err)
-    }
+	err = msg.Params.Validate()
+	if err != nil {
+		_, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid module parameters")
+	} else {
+		_, err = msgServer.UpdateParams(sdk.WrapSDKContext(evCtx), msg)
+		require.Error(t, err)
+	}
 }
 
 // TestLegacyQuerier tests the legacy querier functions
@@ -1345,7 +1362,7 @@ func TestMoreEdgeCases(t *testing.T) {
 		ContractAddress: contractAddr,
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{
-			{Denom: "peaka", Amount: sdk.NewInt(2000)},
+			{Denom: "peaka", Amount: sdkmath.NewInt(2000)},
 		},
 	}
 	err = keeper.SetSponsor(ctx, sponsor)
@@ -1397,7 +1414,7 @@ func TestMsgServerComprehensiveSetSponsor(t *testing.T) {
 		Creator:         "invalid-address",
 		ContractAddress: contractAddr,
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}},
 	}
 	_, err := msgServer.SetSponsor(ctx, msg)
 	require.Error(t, err)
@@ -1437,7 +1454,7 @@ func TestMsgServerComprehensiveSetSponsor(t *testing.T) {
 	newContractAddr := sdk.AccAddress([]byte("newcontractaddr12345")).String()
 	wasmKeeper.SetContractInfo(newContractAddr, adminAddr.String())
 	msg.ContractAddress = newContractAddr
-	msg.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(-100)}}
+	msg.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(-100)}}
 	_, err = msgServer.SetSponsor(ctx, msg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "coin amount must be positive")
@@ -1453,7 +1470,7 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 	// Set up contract and initial sponsor
 	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(500)))
 	setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant)
 	_, err := msgServer.SetSponsor(ctx, setMsg)
 	require.NoError(t, err)
@@ -1468,7 +1485,7 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 		Creator:         adminAddr.String(),
 		ContractAddress: contractAddr,
 		IsSponsored:     false, // Disable sponsorship
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(2000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(2000)}},
 	}
 
 	_, err = msgServer.UpdateSponsor(ctx, msg)
@@ -1478,7 +1495,7 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 	sponsor, found := keeper.GetSponsor(sdk.UnwrapSDKContext(ctx), contractAddr)
 	require.True(t, found)
 	require.False(t, sponsor.IsSponsored)
-	require.Equal(t, sdk.NewInt(2000), sponsor.MaxGrantPerUser[0].Amount)
+	require.Equal(t, sdkmath.NewInt(2000), sponsor.MaxGrantPerUser[0].Amount)
 
 	// Test 2: Invalid creator address
 	msg.Creator = "invalid-address"
@@ -1509,7 +1526,7 @@ func TestMsgServerComprehensiveUpdateSponsor(t *testing.T) {
 
 	// Test 6: Invalid MaxGrantPerUser
 	msg.ContractAddress = contractAddr
-	msg.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(-100)}}
+	msg.MaxGrantPerUser = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(-100)}}
 	_, err = msgServer.UpdateSponsor(ctx, msg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "coin amount must be positive")
@@ -1526,7 +1543,7 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 
 	// Set up contract and initial sponsor
 	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(500)))
 	setMsg := types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant)
 	_, err := msgServer.SetSponsor(ctx, setMsg)
 	require.NoError(t, err)
@@ -1582,29 +1599,29 @@ func TestMsgServerComprehensiveDeleteSponsor(t *testing.T) {
 func TestMsgServer_AdminCleared_OriginalCreatorUnauthorized(t *testing.T) {
 	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
 
-    contractAddr := sdk.AccAddress([]byte("contractadminclear____")).String()
-    adminAddr := sdk.AccAddress("admin_______________")
+	contractAddr := sdk.AccAddress([]byte("contractadminclear____")).String()
+	adminAddr := sdk.AccAddress("admin_______________")
 
-    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
 	setMsg := types.NewMsgSetSponsor(
 		adminAddr.String(),
 		contractAddr,
 		true,
-		sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000))),
 	)
-    _, err := msgServer.SetSponsor(ctx, setMsg)
-    require.NoError(t, err)
+	_, err := msgServer.SetSponsor(ctx, setMsg)
+	require.NoError(t, err)
 
 	// Simulate legacy/direct keeper state that bypassed the MsgClearAdmin guard.
-    wasmKeeper.SetContractInfo(contractAddr, "")
+	wasmKeeper.SetContractInfo(contractAddr, "")
 
 	_, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{
 		Creator:         adminAddr.String(),
-        ContractAddress: contractAddr,
-        IsSponsored:     false,
+		ContractAddress: contractAddr,
+		IsSponsored:     false,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  "peaka",
-			Amount: sdk.NewInt(2000),
+			Amount: sdkmath.NewInt(2000),
 		}},
 	})
 	require.ErrorIs(t, err, types.ErrContractNotAdmin)
@@ -1621,7 +1638,7 @@ func TestMsgServer_AdminCleared_OriginalCreatorUnauthorized(t *testing.T) {
 		Recipient:       adminAddr.String(),
 		Amount: []*sdk.Coin{{
 			Denom:  "peaka",
-			Amount: sdk.NewInt(1),
+			Amount: sdkmath.NewInt(1),
 		}},
 	})
 	require.ErrorIs(t, err, types.ErrContractNotAdmin)
@@ -1629,61 +1646,61 @@ func TestMsgServer_AdminCleared_OriginalCreatorUnauthorized(t *testing.T) {
 
 // Admin cleared: unrelated callers are also unauthorized.
 func TestMsgServer_AdminCleared_CreatorMismatch_Unauthorized(t *testing.T) {
-    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
-    contractAddr := sdk.AccAddress([]byte("contractadminclear_mis__")).String()
-    adminAddr := sdk.AccAddress("admin_______________")
-    other := sdk.AccAddress("other_______________")
+	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	contractAddr := sdk.AccAddress([]byte("contractadminclear_mis__")).String()
+	adminAddr := sdk.AccAddress("admin_______________")
+	other := sdk.AccAddress("other_______________")
 
-    wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
-    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant))
-    require.NoError(t, err)
-    // Clear admin
-    wasmKeeper.SetContractInfo(contractAddr, "")
+	wasmKeeper.SetContractInfo(contractAddr, adminAddr.String())
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
+	_, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(adminAddr.String(), contractAddr, true, initGrant))
+	require.NoError(t, err)
+	// Clear admin
+	wasmKeeper.SetContractInfo(contractAddr, "")
 
-    // Update by non-creator should be rejected
-    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: other.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	// Update by non-creator should be rejected
+	_, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: other.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1)}}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 
-    // Delete by non-creator should be rejected
-    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: other.String(), ContractAddress: contractAddr})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	// Delete by non-creator should be rejected
+	_, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: other.String(), ContractAddress: contractAddr})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 
-    // Withdraw by non-creator should be rejected
-    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: other.String(), ContractAddress: contractAddr, Recipient: other.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	// Withdraw by non-creator should be rejected
+	_, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: other.String(), ContractAddress: contractAddr, Recipient: other.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1)}}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 }
 
 // Admin present but creator is not current admin -> creator should not be able to manage
 func TestMsgServer_AdminPresent_CreatorNotAdmin_Unauthorized(t *testing.T) {
-    _, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
-    contractAddr := sdk.AccAddress([]byte("contractadminpresent___")).String()
-    initialAdmin := sdk.AccAddress("adminA______________")
-    newAdmin := sdk.AccAddress("adminB______________")
+	_, ctx, msgServer, wasmKeeper, _ := setupMsgServerEnv(t)
+	contractAddr := sdk.AccAddress([]byte("contractadminpresent___")).String()
+	initialAdmin := sdk.AccAddress("adminA______________")
+	newAdmin := sdk.AccAddress("adminB______________")
 
-    wasmKeeper.SetContractInfo(contractAddr, initialAdmin.String())
-    initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-    _, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, initGrant))
-    require.NoError(t, err)
+	wasmKeeper.SetContractInfo(contractAddr, initialAdmin.String())
+	initGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
+	_, err := msgServer.SetSponsor(ctx, types.NewMsgSetSponsor(initialAdmin.String(), contractAddr, true, initGrant))
+	require.NoError(t, err)
 
-    // Change admin to newAdmin
-    wasmKeeper.SetContractInfo(contractAddr, newAdmin.String())
+	// Change admin to newAdmin
+	wasmKeeper.SetContractInfo(contractAddr, newAdmin.String())
 
-    // Original creator (initial admin) should not be authorized now
-    _, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	// Original creator (initial admin) should not be authorized now
+	_, err = msgServer.UpdateSponsor(ctx, &types.MsgUpdateSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr, IsSponsored: false, MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1)}}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 
-    _, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	_, err = msgServer.DeleteSponsor(ctx, &types.MsgDeleteSponsor{Creator: initialAdmin.String(), ContractAddress: contractAddr})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 
-    _, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: initialAdmin.String(), ContractAddress: contractAddr, Recipient: initialAdmin.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1)}}})
-    require.Error(t, err)
-    require.Contains(t, err.Error(), "not contract admin")
+	_, err = msgServer.WithdrawSponsorFunds(ctx, &types.MsgWithdrawSponsorFunds{Creator: initialAdmin.String(), ContractAddress: contractAddr, Recipient: initialAdmin.String(), Amount: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1)}}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not contract admin")
 }
 
 // TestMsgServerComprehensiveWithdrawFunds tests WithdrawSponsorFunds with full coverage
@@ -1700,7 +1717,7 @@ func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
 		ContractAddress: contractAddr,
 		CreatorAddress:  adminAddr.String(),
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}},
 	}
 	// Set a valid bech32 sponsor address since we bypass MsgServer SetSponsor in this test
 	sponsor.SponsorAddress = contractAddr
@@ -1711,7 +1728,7 @@ func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
 	msg := &types.MsgWithdrawSponsorFunds{
 		Creator:         "invalid-address",
 		ContractAddress: contractAddr,
-		Amount:          []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}},
+		Amount:          []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(100)}},
 	}
 	_, err = msgServer.WithdrawSponsorFunds(ctx, msg)
 	require.Error(t, err)
@@ -1747,14 +1764,14 @@ func TestMsgServerComprehensiveWithdrawFunds(t *testing.T) {
 	require.Contains(t, err.Error(), "no funds available to withdraw")
 
 	// Test 6: Invalid amount (zero coins) - address is checked first
-	msg.Amount = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(0)}}
+	msg.Amount = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(0)}}
 	_, err = msgServer.WithdrawSponsorFunds(ctx, msg)
 	require.Error(t, err)
 	// Address validation happens first, so we get invalid sponsor address error
 	require.Contains(t, err.Error(), "invalid")
 
 	// Test 7: Large amount (but address validation comes first)
-	msg.Amount = []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000000)}}
+	msg.Amount = []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000000)}}
 	_, err = msgServer.WithdrawSponsorFunds(ctx, msg)
 	require.Error(t, err)
 	// Address validation error comes before amount/bank validation
@@ -1819,7 +1836,7 @@ func TestErrorPathsInKeeper(t *testing.T) {
 	// Verify result
 	finalUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, finalUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(100), finalUsage.TotalGrantUsed[0].Amount)
+	require.Equal(t, sdkmath.NewInt(100), finalUsage.TotalGrantUsed[0].Amount)
 }
 
 // TestMessageServerErrorPaths tests remaining message server error paths
@@ -1847,7 +1864,7 @@ func TestMessageServerErrorPaths(t *testing.T) {
 		ContractAddress: contractAddr,
 		CreatorAddress:  adminAddr.String(),
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(1000)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(1000)}},
 	}
 	err := keeper.SetSponsor(sdk.UnwrapSDKContext(ctx), sponsor)
 	require.NoError(t, err)
@@ -1856,7 +1873,7 @@ func TestMessageServerErrorPaths(t *testing.T) {
 	msg := &types.MsgWithdrawSponsorFunds{
 		Creator:         adminAddr.String(),
 		ContractAddress: contractAddr,
-		Amount:          []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}},
+		Amount:          []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(100)}},
 	}
 	_, err = msgServer.WithdrawSponsorFunds(ctx, msg)
 	require.Error(t, err)
@@ -1898,7 +1915,7 @@ func TestAdvancedEdgeCases(t *testing.T) {
 	// Verify
 	updatedUsage := keeper.GetUserGrantUsage(ctx, userAddr, contractAddr)
 	require.Len(t, updatedUsage.TotalGrantUsed, 1)
-	require.Equal(t, sdk.NewInt(200), updatedUsage.TotalGrantUsed[0].Amount)
+	require.Equal(t, sdkmath.NewInt(200), updatedUsage.TotalGrantUsed[0].Amount)
 
 	// Test IsContractAdmin with invalid address format in the error case we haven't hit
 	keeper2, ctx2, wasmKeeper2 := setupKeeper(t)
@@ -1938,7 +1955,7 @@ func TestRemainingUncoveredPaths(t *testing.T) {
 	sponsor := types.ContractSponsor{
 		ContractAddress: contractAddr,
 		IsSponsored:     true,
-		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(500)}},
+		MaxGrantPerUser: []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(500)}},
 	}
 	err := keeper.SetSponsor(ctx, sponsor)
 	require.NoError(t, err)
@@ -2102,56 +2119,54 @@ func TestSpecificUncoveredLines(t *testing.T) {
 	})
 }
 
-
-
 // Test that a non-admin creator equal to sponsor.ticket_issuer_address is authorized to issue tickets
 func TestIssuePolicyTicket_IssuerAddressAuthorized(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    // Setup: admin A, issuer B
-    admin := sdk.AccAddress([]byte("admin_issuer_auth________")).String()
-    issuer := sdk.AccAddress([]byte("issuer_issuer_auth_______")).String()
-    user := sdk.AccAddress([]byte("user_issuer_auth_________")).String()
-    contract := sdk.AccAddress([]byte("contract_issuer_auth____")).String()
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	// Setup: admin A, issuer B
+	admin := sdk.AccAddress([]byte("admin_issuer_auth________")).String()
+	issuer := sdk.AccAddress([]byte("issuer_issuer_auth_______")).String()
+	user := sdk.AccAddress([]byte("user_issuer_auth_________")).String()
+	contract := sdk.AccAddress([]byte("contract_issuer_auth____")).String()
 
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    // Set sponsor with ticket_issuer_address=issuer
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	// Set sponsor with ticket_issuer_address=issuer
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
 
-    // Non-admin issuer issues a method ticket
-    resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         issuer,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.NoError(t, err)
-    require.True(t, resp.Created)
-    // Ticket stored
-    _, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
-    require.True(t, ok)
+	// Non-admin issuer issues a method ticket
+	resp, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         issuer,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Created)
+	// Ticket stored
+	_, ok := keeper.GetPolicyTicket(ctx, contract, user, resp.Ticket.Digest)
+	require.True(t, ok)
 }
 
 // Test that a non-admin creator not equal to ticket_issuer_address is rejected
 func TestIssuePolicyTicket_IssuerUnauthorized(t *testing.T) {
-    keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
-    admin := sdk.AccAddress([]byte("admin_issuer_unauth______")).String()
-    issuer := sdk.AccAddress([]byte("issuer_issuer_unauth_____")).String()
-    outsider := sdk.AccAddress([]byte("outsider_issuer_unauth__")).String()
-    user := sdk.AccAddress([]byte("user_issuer_unauth_______")).String()
-    contract := sdk.AccAddress([]byte("contract_issuer_unauth__")).String()
+	keeper, ctx, msgServer, mockWasmKeeper, _ := setupMsgServerEnv(t)
+	admin := sdk.AccAddress([]byte("admin_issuer_unauth______")).String()
+	issuer := sdk.AccAddress([]byte("issuer_issuer_unauth_____")).String()
+	outsider := sdk.AccAddress([]byte("outsider_issuer_unauth__")).String()
+	user := sdk.AccAddress([]byte("user_issuer_unauth_______")).String()
+	contract := sdk.AccAddress([]byte("contract_issuer_unauth__")).String()
 
-    mockWasmKeeper.SetContractInfo(contract, admin)
-    // Set sponsor with issuer=issuer
-    require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
+	mockWasmKeeper.SetContractInfo(contract, admin)
+	// Set sponsor with issuer=issuer
+	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, TicketIssuerAddress: issuer}))
 
-    // Outsider (neither admin nor issuer) should fail
-    _, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
-        Creator:         outsider,
-        ContractAddress: contract,
-        UserAddress:     user,
-        Method:          "inc",
-        Uses:            1,
-    })
-    require.Error(t, err)
+	// Outsider (neither admin nor issuer) should fail
+	_, err := msgServer.IssuePolicyTicket(sdk.WrapSDKContext(ctx), &types.MsgIssuePolicyTicket{
+		Creator:         outsider,
+		ContractAddress: contract,
+		UserAddress:     user,
+		Method:          "inc",
+		Uses:            1,
+	})
+	require.Error(t, err)
 }

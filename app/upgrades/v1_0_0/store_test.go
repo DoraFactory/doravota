@@ -10,11 +10,11 @@ import (
 	sponsortypes "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
 
-func TestStoreUpgradesAddsV100Stores(t *testing.T) {
+func TestStoreUpgradesAddsV100StoresAndDeletesRetiredStores(t *testing.T) {
 	upgrades := StoreUpgrades()
 
 	require.Equal(t, []string{sponsortypes.StoreKey, pqcauthtypes.StoreKey}, upgrades.Added)
-	require.Empty(t, upgrades.Deleted)
+	require.Equal(t, []string{"params"}, upgrades.Deleted)
 	require.Empty(t, upgrades.Renamed)
 }
 

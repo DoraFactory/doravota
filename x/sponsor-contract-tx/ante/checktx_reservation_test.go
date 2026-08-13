@@ -1,6 +1,7 @@
 package sponsor
 
 import (
+	sdkmath "cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -9,12 +10,12 @@ import (
 func (suite *SponsorDecoratorTestSuite) TestCheckTxReservesTicketUsesInCheckState() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(100)))
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(100)))
 	suite.createAndFundSponsor(
 		suite.contract,
 		true,
-		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1_000))),
-		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1_000))),
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(1_000))),
+		sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(1_000))),
 	)
 
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())

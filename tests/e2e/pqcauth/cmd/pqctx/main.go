@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -137,7 +138,7 @@ func main() {
 		WithAccountNumber(summary.AccountNumber).
 		WithSequence(summary.Sequence).
 		WithSignMode(txsigning.SignMode_SIGN_MODE_DIRECT)
-	if err := sdktx.Sign(txf, from, builder, true); err != nil {
+	if err := sdktx.Sign(context.Background(), txf, from, builder, true); err != nil {
 		fail("classically sign adversarial transaction: %v", err)
 	}
 	encoded, err := encoding.TxConfig.TxEncoder()(builder.GetTx())

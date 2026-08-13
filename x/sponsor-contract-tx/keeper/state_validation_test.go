@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -25,7 +26,7 @@ func activeSponsorFixture(contract, admin string) types.ContractSponsor {
 		MaxGrantPerUser: []*sdk.Coin{
 			{
 				Denom:  types.SponsorshipDenom,
-				Amount: sdk.NewInt(1_000_000),
+				Amount: sdkmath.NewInt(1_000_000),
 			},
 		},
 	}
@@ -118,7 +119,7 @@ func TestActiveAndGenesisUsageLifecycleValidation(t *testing.T) {
 		TotalGrantUsed: []*sdk.Coin{
 			{
 				Denom:  types.SponsorshipDenom,
-				Amount: sdk.NewInt(100),
+				Amount: sdkmath.NewInt(100),
 			},
 		},
 	}

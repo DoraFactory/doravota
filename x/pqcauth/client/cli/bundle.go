@@ -247,7 +247,7 @@ func broadcastBundleCommand() *cobra.Command {
 					return errors.New("protected transaction broadcast cancelled")
 				}
 			}
-			if err := sdktx.Sign(txf, clientCtx.GetFromName(), builder, true); err != nil {
+			if err := sdktx.Sign(command.Context(), txf, clientCtx.GetFromName(), builder, true); err != nil {
 				return err
 			}
 			txBytes, err := clientCtx.TxConfig.TxEncoder()(builder.GetTx())

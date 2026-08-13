@@ -127,7 +127,7 @@ flowchart LR
 |---|---|
 | [`proto/doravota/pqcauth/v1`](../../proto/doravota/pqcauth/v1) | 定义 wire format、状态、Msg、Query 和签名文档 |
 | [`types/`](types) | protobuf 生成类型之外的状态规则、canonical 编码和常量 |
-| [`crypto/`](crypto) | Cloudflare CIRCL ML-DSA-65 的最小适配层 |
+| [`crypto/`](crypto) | Cosmos SDK v0.55 原生 ML-DSA-65 的最小适配层 |
 | [`keeper/`](keeper) | KV store、MsgServer、QueryServer、invariant |
 | [`ante/`](ante) | 交易结构、策略、proof 和 ML-DSA 验证 |
 | [`client/`](client) | 在线/离线签名、bundle、simulation placeholder |
@@ -138,7 +138,7 @@ flowchart LR
 | [`app/ante.go`](../../app/ante.go) | 把 PQC 校验接入全局 Ante 链 |
 | [`app/app.go`](../../app/app.go) | store、keeper、module manager 和服务装配 |
 | [`app/proposal.go`](../../app/proposal.go) | 提案阶段重新执行 Ante，并限制区块资源 |
-| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | 已有链升级时增加 store 和固定 network ID |
+| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | 校验 bridge 状态、变更 store 和固定 network ID |
 
 一个常见误区是：只注册 `AppModule` 就能保护所有交易。
 
@@ -401,20 +401,22 @@ accumulator
 ### 6.1 为什么单独放在 `crypto/`
 
 [`crypto/mldsa65.go`](crypto/mldsa65.go) 是对
-`github.com/cloudflare/circl/sign/mldsa/mldsa65` 的薄封装。
+`github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65` 的薄封装；固定长度和严格
+解析使用 CometBFT 的 `crypto/mldsa65` API。Cloudflare CIRCL 仍是 SDK/CometBFT
+的间接密码学实现，不再是 pqcauth 直接导入的共识 API。
 
 它只负责：
 
 - 获取固定 public key/private key/signature 长度；
 - 生成 ML-DSA-65 密钥；
 - 从私钥导出公钥；
-- 使用 FIPS 204 context 签名；
+- 把协议 context 编入 canonical message envelope 后签名；
 - 验证 detached signature；
-- 在进入 CIRCL 之前严格检查长度。
+- 在进入 SDK/CometBFT 密码学实现之前严格检查长度。
 
 把适配层做小的原因是：
 
-- 共识代码不需要依赖 CIRCL 的具体 Go key 类型；
+- 共识代码不需要依赖 SDK、CometBFT 或 CIRCL 的具体 Go key 类型；
 - 算法枚举到实现的映射集中在一个位置；
 - 输入长度检查不会散落在各调用方；
 - 将来增加算法时，可以明确增加新的 wire algorithm ID，而不是改变旧 ID 的含义；
@@ -422,7 +424,9 @@ accumulator
 
 ### 6.2 为什么使用固定 context
 
-ML-DSA 支持 context string。当前实现为不同用途使用不同 context：
+ML-DSA 支持 context string，但 Cosmos SDK v0.55 的原生 key API 固定使用 pure
+mode（空 FIPS context）。当前实现把下面的用途 context 编入
+`0x00 || uint8(len(context)) || context || message`，再交给 SDK 原生 API 签名：
 
 | 用途 | Context |
 |---|---|
@@ -791,7 +795,7 @@ protobuf 表达，避免客户端和节点对“相同逻辑消息”的签名�
 构造 canonical transaction
 为每个 entry 构造 signer-specific PQCSignDocV1
 先扣固定 gas
-调用 CIRCL ML-DSA Verify
+调用 Cosmos SDK 原生 ML-DSA Verify
 
 如为生命周期消息:
   在 Context 写入 exact-message authorization
@@ -1225,10 +1229,18 @@ transaction bytes 放进 proposal。
 
 [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0)：
 
-- 增加 pqcauth store；
+- 要求来源状态已经通过 SDK v0.53 / IBC-Go v10 bridge；
+- 在迁移前校验关键 module version，拒绝 v0.47 直接跳转；
+- 增加 sponsor、pqcauth store，移除 params、capability、feeibc store；
 - 运行 module migration；
 - 写入 launch-specific network ID；
 - 对历史无限 block gas/bytes 设置有限值。
+
+这是双阶段生产升级的第二阶段。第一阶段 bridge 必须在独立 release 中保留
+v0.47→v0.53 所需的旧参数、IBC 与 Wasm 迁移代码；本仓库的 v0.55 目标 binary
+不能替代 bridge。旧链的 `group` store 由
+[`third_party/cosmos-sdk-x-group-v055-compat`](../../third_party/cosmos-sdk-x-group-v055-compat)
+继续挂载、迁移、查询和导出，不能与 retired stores 一起删除。
 
 PQC 签名验证会增加 CPU 成本，所以有限区块资源是生产安全模型的一部分。
 

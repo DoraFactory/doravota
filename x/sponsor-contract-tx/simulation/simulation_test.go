@@ -1,14 +1,16 @@
 package simulation_test
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"fmt"
 	"math/rand"
 	"testing"
 
+	"cosmossdk.io/math"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log/v2"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -98,7 +100,7 @@ func TestSponsorModuleSimulation(t *testing.T) {
 	}
 	require.Positive(t, successes)
 
-	var totalUsed sdk.Int = sdk.ZeroInt()
+	var totalUsed math.Int = math.ZeroInt()
 	k.IterateUserGrantUsages(ctx, func(usage types.UserGrantUsage) bool {
 		for _, coin := range usage.TotalGrantUsed {
 			if coin != nil && coin.Denom == types.SponsorshipDenom {
@@ -134,7 +136,7 @@ func TestInvariants(t *testing.T) {
 				address.Derive(accounts[0].Address, []byte("sponsor")),
 			).String(),
 			IsSponsored:     true,
-			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
+			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))),
 		},
 		// Non-sponsored contract with max grant
 		{
@@ -144,7 +146,7 @@ func TestInvariants(t *testing.T) {
 				address.Derive(accounts[2].Address, []byte("sponsor")),
 			).String(),
 			IsSponsored:     false,
-			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500000)))),
+			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(500000)))),
 		},
 		// Non-sponsored contract without max grant
 		{
@@ -177,7 +179,7 @@ func TestInvariants(t *testing.T) {
 			usage := types.UserGrantUsage{
 				UserAddress:     userAddr,
 				ContractAddress: sponsor.ContractAddress,
-				TotalGrantUsed:  testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50000)))),
+				TotalGrantUsed:  testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(50000)))),
 				LastUsedTime:    0,
 			}
 			k.SetUserGrantUsage(ctx, usage)
@@ -305,7 +307,7 @@ func BenchmarkSimulationOperations(b *testing.B) {
 				address.Derive(accounts[i].Address, []byte("sponsor")),
 			).String(),
 			IsSponsored:     true,
-			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))),
+			MaxGrantPerUser: testutil.CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))),
 		}
 		err := k.SetSponsor(ctx, sponsor)
 		require.NoError(b, err)

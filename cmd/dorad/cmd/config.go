@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	sdkmath "cosmossdk.io/math"
+
+	"github.com/DoraFactory/doravota/app"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
-	"github.com/DoraFactory/doravota/app"
 )
 
 const (
@@ -29,11 +31,11 @@ func initSDKConfig() {
 	config.SetBech32PrefixForValidator(validatorAddressPrefix, validatorPubKeyPrefix)
 	config.SetBech32PrefixForConsensusNode(consNodeAddressPrefix, consNodePubKeyPrefix)
 
-	err := sdk.RegisterDenom(HumanCoinUnit, sdk.OneDec())
+	err := sdk.RegisterDenom(HumanCoinUnit, sdkmath.LegacyOneDec())
 	if err != nil {
 		panic(err)
 	}
-	err = sdk.RegisterDenom(BaseCoinUnit, sdk.NewDecWithPrec(1, DoraExponent))
+	err = sdk.RegisterDenom(BaseCoinUnit, sdkmath.LegacyNewDecWithPrec(1, DoraExponent))
 	if err != nil {
 		panic(err)
 	}
@@ -44,11 +46,10 @@ func initSDKConfig() {
 	config.Seal()
 }
 
-
 const (
-	name = "doravota"
+	name     = "doravota"
 	app_name = "dorad"
-    Version  = "v1.0.0"
+	Version  = "v1.0.0"
 )
 
 func setVersionInfo() {

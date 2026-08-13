@@ -17,6 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdkaddress "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
@@ -27,6 +28,8 @@ import (
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	sdksigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -347,7 +350,7 @@ func cliTestClientContext(
 	output *bytes.Buffer,
 ) client.Context {
 	t.Helper()
-	registry := codectypes.NewInterfaceRegistry()
+	registry := newCLIInterfaceRegistry(t)
 	std.RegisterInterfaces(registry)
 	banktypes.RegisterInterfaces(registry)
 	types.RegisterInterfaces(registry)
@@ -365,6 +368,23 @@ func cliTestClientContext(
 		WithGRPCClient(connection).
 		WithOutput(output).
 		WithOutputFormat("json")
+}
+
+func newCLIInterfaceRegistry(t testing.TB) codectypes.InterfaceRegistry {
+	t.Helper()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: sdksigning.Options{
+			AddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
+			},
+			ValidatorAddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
+			},
+		},
+	})
+	require.NoError(t, err)
+	return registry
 }
 
 func attachClientContext(commandContext context.Context, clientCtx *client.Context) context.Context {
@@ -459,7 +479,7 @@ func TestTransactionCommandsGenerateOnlyAndRejectMalformedArguments(t *testing.T
 }
 
 func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
-	registry := codectypes.NewInterfaceRegistry()
+	registry := newCLIInterfaceRegistry(t)
 	std.RegisterInterfaces(registry)
 	types.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)

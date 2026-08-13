@@ -39,7 +39,7 @@ func TestAppModuleProductionWiring(t *testing.T) {
 	require.Contains(t, invariants.routes, types.ModuleName+"/"+keeper.LifecycleInvariantRoute)
 	require.Contains(t, invariants.routes, types.ModuleName+"/"+keeper.ParamsInvariantRoute)
 
-	storeDecoders := make(sdk.StoreDecoderRegistry)
+	storeDecoders := make(simtypes.StoreDecoderRegistry)
 	am.RegisterStoreDecoder(storeDecoders)
 	require.Contains(t, storeDecoders, types.StoreKey)
 	params := types.DefaultParams()

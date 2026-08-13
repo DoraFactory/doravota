@@ -3,7 +3,7 @@ package v1_0_0
 import (
 	"crypto/sha256"
 
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 
 	pqcauthtypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	sponsortypes "github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -27,6 +27,7 @@ func PQCNetworkID(chainID string) []byte {
 // StoreUpgrades declares the stores introduced by the v1.0.0 upgrade.
 func StoreUpgrades() storetypes.StoreUpgrades {
 	return storetypes.StoreUpgrades{
-		Added: []string{sponsortypes.StoreKey, pqcauthtypes.StoreKey},
+		Added:   []string{sponsortypes.StoreKey, pqcauthtypes.StoreKey},
+		Deleted: []string{"params"},
 	}
 }

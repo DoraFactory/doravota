@@ -98,6 +98,9 @@ type AppModule struct {
 	authKeeper types.AuthKeeper
 }
 
+func (AppModule) IsOnePerModuleType() {}
+func (AppModule) IsAppModule()        {}
+
 // NewAppModule creates a new AppModule object
 func NewAppModule(
 	cdc codec.Codec,
@@ -158,22 +161,24 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 func (AppModule) ConsensusVersion() uint64 { return 1 }
 
 // BeginBlock executes all ABCI BeginBlock logic respective to the sponsor module
-func (am AppModule) BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) {
+func (am AppModule) BeginBlock(goCtx context.Context) error {
+	ctx := sdk.UnwrapSDKContext(goCtx)
 	// Opportunistic GC: inspect a bounded number of expiry-index entries per block.
 	params := am.keeper.GetParams(ctx)
 	n := params.TicketGcPerBlock
 	if n == 0 {
-		return
+		return nil
 	}
 	if n > types.MaxTicketGCPerBlock {
 		n = types.MaxTicketGCPerBlock
 	}
 	am.keeper.GarbageCollectByExpiry(ctx, int(n))
+	return nil
 }
 
 // EndBlock executes all ABCI EndBlock logic respective to the sponsor module
-func (am AppModule) EndBlock(ctx sdk.Context, req abci.RequestEndBlock) []abci.ValidatorUpdate {
-	return []abci.ValidatorUpdate{}
+func (am AppModule) EndBlock(context.Context) error {
+	return nil
 }
 
 // GenerateGenesisState creates a randomized GenState of the sponsor module
@@ -197,7 +202,7 @@ func (am AppModule) RandomizedParams(r *rand.Rand) []simtypes.LegacyParamChange 
 }
 
 // RegisterStoreDecoder registers a decoder for sponsor module's types
-func (am AppModule) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
+func (am AppModule) RegisterStoreDecoder(sdr simtypes.StoreDecoderRegistry) {
 	sdr[types.StoreKey] = sponsorsimulation.NewDecodeStore(am.keeper.Cdc())
 }
 

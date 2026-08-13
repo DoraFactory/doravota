@@ -86,8 +86,11 @@ func DecodeUnsignedTxJSONForPQCBundle(
 		return nil, fmt.Errorf("unsigned transaction must contain at least one message")
 	}
 	for _, message := range decodedTx.GetMsgs() {
-		if err := message.ValidateBasic(); err != nil {
-			return nil, fmt.Errorf("unsigned transaction message failed basic validation: %w", err)
+		validator, ok := message.(sdk.HasValidateBasic)
+		if ok {
+			if err := validator.ValidateBasic(); err != nil {
+				return nil, fmt.Errorf("unsigned transaction message failed basic validation: %w", err)
+			}
 		}
 	}
 	provider, ok := decodedTx.(protoTxProvider)
@@ -399,8 +402,10 @@ func ValidatePQCSignBundle(
 	if !ok || provider.GetProtoTx() == nil {
 		return PQCSignBundleSummary{}, fmt.Errorf("protobuf transaction is required")
 	}
-	if err := decodedTx.ValidateBasic(); err != nil {
-		return PQCSignBundleSummary{}, fmt.Errorf("bundled unsigned transaction failed basic validation: %w", err)
+	if validator, ok := decodedTx.(sdk.HasValidateBasic); ok {
+		if err := validator.ValidateBasic(); err != nil {
+			return PQCSignBundleSummary{}, fmt.Errorf("bundled unsigned transaction failed basic validation: %w", err)
+		}
 	}
 	protoTx := provider.GetProtoTx()
 	if err := validateUnsignedSingleSignerTx(protoTx, decodedTx, signer, signDoc.Sequence); err != nil {
@@ -515,7 +520,14 @@ func validateUnsignedSingleSignerTx(
 	if !ok {
 		return fmt.Errorf("bundled transaction does not expose signers")
 	}
-	signers := signatureTx.GetSigners()
+	rawSigners, err := signatureTx.GetSigners()
+	if err != nil {
+		return fmt.Errorf("extract bundled transaction signers: %w", err)
+	}
+	signers := make([]sdk.AccAddress, len(rawSigners))
+	for index := range rawSigners {
+		signers[index] = sdk.AccAddress(rawSigners[index])
+	}
 	if len(signers) != 1 || !signers[0].Equals(expectedSigner) {
 		return fmt.Errorf("bundled transaction signer does not match sign document")
 	}

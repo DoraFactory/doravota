@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -21,7 +22,7 @@ const (
 func RandomizedGenState(simState *module.SimulationState) {
 	var sponsorshipEnabled bool
 	simState.AppParams.GetOrGenerate(
-		simState.Cdc, SponsorshipEnabled, &sponsorshipEnabled, simState.Rand,
+		SponsorshipEnabled, &sponsorshipEnabled, simState.Rand,
 		func(r *rand.Rand) { sponsorshipEnabled = r.Intn(2) == 1 },
 	)
 
@@ -93,7 +94,7 @@ func generateRandomSponsors(r *rand.Rand, accounts []simtypes.Account, numSponso
 		var maxGrantPerUser []*sdk.Coin
 		if isSponsored || r.Intn(3) == 0 { // 1/3 chance for non-sponsored to have max grant
 			// Generate random grant amount in peaka
-			amount := sdk.NewInt(int64(r.Intn(10000000) + 1000)) // 1000 to 10,001,000
+			amount := sdkmath.NewInt(int64(r.Intn(10000000) + 1000)) // 1000 to 10,001,000
 			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}
@@ -152,11 +153,11 @@ func RandomGenesisSponsors(r *rand.Rand, accounts []simtypes.Account, numSponsor
 		var maxGrantPerUser []*sdk.Coin
 
 		if isSponsored {
-			amount := sdk.NewInt(int64(r.Intn(5000000) + 1000))
+			amount := sdkmath.NewInt(int64(r.Intn(5000000) + 1000))
 			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		} else if r.Intn(4) == 0 { // 25% chance for non-sponsored to have max grant
-			amount := sdk.NewInt(int64(r.Intn(1000000) + 500))
+			amount := sdkmath.NewInt(int64(r.Intn(1000000) + 500))
 			coin := sdk.NewCoin(types.SponsorshipDenom, amount)
 			maxGrantPerUser = []*sdk.Coin{&coin}
 		}

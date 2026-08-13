@@ -1,6 +1,7 @@
 package types
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -21,7 +22,7 @@ func validSponsorStateFixture() ContractSponsor {
 		MaxGrantPerUser: []*sdk.Coin{
 			{
 				Denom:  SponsorshipDenom,
-				Amount: sdk.NewInt(100),
+				Amount: sdkmath.NewInt(100),
 			},
 		},
 		Generation: 1,
@@ -85,7 +86,7 @@ func TestValidateUserGrantUsageState(t *testing.T) {
 		TotalGrantUsed: []*sdk.Coin{
 			{
 				Denom:  SponsorshipDenom,
-				Amount: sdk.NewInt(100),
+				Amount: sdkmath.NewInt(100),
 			},
 		},
 		Generation: 1,

@@ -1,20 +1,21 @@
 package testutil
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"testing"
 
+	"cosmossdk.io/log/v2"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
-	dbm "github.com/cometbft/cometbft-db"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -42,11 +43,11 @@ func SetupBasicKeeper(t *testing.T) (keeper.Keeper, sdk.Context, *MockWasmKeeper
 	cdc := codec.NewProtoCodec(registry)
 
 	// Create store
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 
 	// Create an in-memory database for testing
 	db := dbm.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
+	ms := store.NewCommitMultiStore(db, log.NewNopLogger())
 	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 
 	// Load the stores
@@ -127,7 +128,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 		ContractAddress: suite.Contract.String(),
 		CreatorAddress:  suite.Admin.String(),
 		IsSponsored:     true,
-        MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(1000000)))),
+		MaxGrantPerUser: CoinsToProtoCoins(sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(1000000)))),
 	}
 
 	err := suite.Keeper.SetSponsor(suite.Ctx, sponsor)
@@ -138,7 +139,7 @@ func (suite *TestSuite) SetupDefaultSponsor() {
 
 // SetupKeeperTestParams sets default parameters for testing
 func (suite *TestSuite) SetupKeeperTestParams() {
-    params := types.DefaultParams()
-    params.SponsorshipEnabled = true
-    suite.Keeper.SetParams(suite.Ctx, params)
+	params := types.DefaultParams()
+	params.SponsorshipEnabled = true
+	suite.Keeper.SetParams(suite.Ctx, params)
 }

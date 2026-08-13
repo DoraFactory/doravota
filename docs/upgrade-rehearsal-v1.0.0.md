@@ -1,8 +1,34 @@
 # v1.0.0 Upgrade Rehearsal
 
-`scripts/rehearse-v1.0.0-upgrade.sh` performs a production-shaped,
-single-validator rehearsal of the upgrade that introduces the Sponsor module.
-It is an operator-run tool and is not executed by CI.
+> **Current status:** this original single-hop rehearsal predates the SDK v0.55
+> target and must not be used as production evidence for a v0.47 → v0.55 jump.
+> The production path is now two upgrades: v0.47 → SDK v0.53/IBC-Go v10 bridge,
+> then bridge → SDK v0.55/IBC-Go v11 target. The target handler deliberately
+> rejects the old v0.47 module version map.
+
+The executable two-stage harness is
+`scripts/rehearse-two-stage-pqcauth-upgrade.sh`. It accepts three prebuilt
+binaries and uses one unchanged node home/database across both governance
+halts. A successful local run on 2026-08-13 is recorded in
+`docs/pqcauth/two-stage-upgrade-rehearsal-2026-08-13.md`.
+
+```bash
+scripts/rehearse-two-stage-pqcauth-upgrade.sh \
+  --old-bin /absolute/path/to/dorad-v0.4.4 \
+  --bridge-bin /absolute/path/to/dorad-sdk-v0.53-bridge \
+  --target-bin /absolute/path/to/dorad-v1.0.0 \
+  --work-dir /safe/new/rehearsal-directory
+```
+
+The bridge binary must include Doravota's legacy consensus-parameter
+migration. In v0.4.x the consensus keeper was constructed with the `upgrade`
+store key, so the source record is `upgrade/Consensus`; it is not the standard
+legacy `baseapp` x/params layout. The harness checks that block, evidence and
+validator consensus parameters survive both upgrades, export and restart.
+
+`scripts/rehearse-v1.0.0-upgrade.sh` performs a historical, production-shaped,
+single-validator rehearsal of the upgrade that introduced the Sponsor module.
+It is retained as a lower-level regression tool and is not executed by CI.
 
 ## What it exercises
 
@@ -105,3 +131,9 @@ This script intentionally covers one validator. Release approval should also
 include a separate four-validator rehearsal, delayed-validator catch-up,
 rolling restarts, app-hash comparison across validators, and an isolated
 production-snapshot rehearsal.
+
+For the SDK v0.55/PQC release, this list is mandatory for both upgrade heights.
+The bridge rehearsal must prove the old params, IBC capability/fee and Wasm
+migrations have completed. The target rehearsal must prove removal of
+`params`/`capability`/`feeibc`, retention of `group`, initialization of
+`pqcauth`, cumulative SDK migrations, IBC v11 operation and stable app hashes.

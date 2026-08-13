@@ -3,7 +3,6 @@ package pqcauth
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/rand"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -79,6 +78,9 @@ func NewAppModule(moduleKeeper keeper.Keeper) AppModule {
 	return AppModule{keeper: moduleKeeper}
 }
 
+func (AppModule) IsOnePerModuleType() {}
+func (AppModule) IsAppModule()        {}
+
 func (am AppModule) RegisterServices(configurator module.Configurator) {
 	types.RegisterMsgServer(configurator.MsgServer(), keeper.NewMsgServer(am.keeper))
 	types.RegisterQueryServer(configurator.QueryServer(), keeper.NewQueryServer(am.keeper))
@@ -106,20 +108,16 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 }
 
 func (AppModule) ConsensusVersion() uint64 { return 1 }
-func (am AppModule) BeginBlock(ctx sdk.Context, _ abci.RequestBeginBlock) {
-	if _, err := am.keeper.NormalizeParams(ctx); err != nil {
-		panic(fmt.Errorf("normalize pqcauth params: %w", err))
-	}
-}
-func (AppModule) EndBlock(sdk.Context, abci.RequestEndBlock) []abci.ValidatorUpdate {
-	return nil
+func (am AppModule) BeginBlock(ctx context.Context) error {
+	_, err := am.keeper.NormalizeParams(sdk.UnwrapSDKContext(ctx))
+	return err
 }
 func (AppModule) GenerateGenesisState(*module.SimulationState) {}
 func (AppModule) ProposalContents(module.SimulationState) []simtypes.WeightedProposalContent {
 	return nil
 }
 func (AppModule) RandomizedParams(*rand.Rand) []simtypes.LegacyParamChange { return nil }
-func (AppModule) RegisterStoreDecoder(sdk.StoreDecoderRegistry)            {}
+func (AppModule) RegisterStoreDecoder(simtypes.StoreDecoderRegistry)       {}
 func (AppModule) WeightedOperations(module.SimulationState) []simtypes.WeightedOperation {
 	return nil
 }

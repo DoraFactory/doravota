@@ -5,7 +5,8 @@ import (
 	"math"
 
 	errorsmod "cosmossdk.io/errors"
-	"github.com/cosmos/cosmos-sdk/store/prefix"
+	"github.com/cosmos/cosmos-sdk/store/v2/prefix"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 
@@ -30,7 +31,7 @@ func (k Keeper) IterateSponsorGenerations(
 	cb func(contractAddr string, generation uint64) (stop bool),
 ) error {
 	store := prefix.NewStore(ctx.KVStore(k.storeKey), types.SponsorGenerationKeyPrefix)
-	iterator := sdk.KVStorePrefixIterator(store, nil)
+	iterator := storetypes.KVStorePrefixIterator(store, nil)
 	defer iterator.Close()
 
 	for ; iterator.Valid(); iterator.Next() {

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log/v2"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
@@ -24,9 +24,9 @@ func setupGenesisTest(t testing.TB, height int64) (sdk.Context, keeper.Keeper) {
 	registry := codectypes.NewInterfaceRegistry()
 	types.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 	database := dbm.NewMemDB()
-	multiStore := store.NewCommitMultiStore(database)
+	multiStore := store.NewCommitMultiStore(database, log.NewNopLogger())
 	multiStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 	require.NoError(t, multiStore.LoadLatestVersion())
 	ctx := sdk.NewContext(

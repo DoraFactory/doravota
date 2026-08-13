@@ -6,6 +6,8 @@ release
 
 scripts/*
 !scripts/rehearse-v1.0.0-upgrade.sh
+!scripts/rehearse-two-stage-pqcauth-upgrade.sh
+!scripts/rehearse-multinode-pqc-upgrade.sh
 !scripts/check-pqcauth-coverage.sh
 .rehearsal/
 .e2e/

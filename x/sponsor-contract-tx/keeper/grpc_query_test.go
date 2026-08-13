@@ -1,13 +1,14 @@
 package keeper
 
 import (
-    "fmt"
-    "testing"
+	sdkmath "cosmossdk.io/math"
+	"fmt"
+	"testing"
 
-    sdk "github.com/cosmos/cosmos-sdk/types"
-    "github.com/cosmos/cosmos-sdk/types/query"
-    "github.com/cosmos/cosmos-sdk/types/address"
-    "github.com/stretchr/testify/suite"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
+	"github.com/cosmos/cosmos-sdk/types/query"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -42,7 +43,7 @@ func (suite *GRPCQueryTestSuite) SetupTest() {
 	suite.contractAddr = sdk.AccAddress("contract____________")
 	suite.admin = sdk.AccAddress("admin_______________")
 	suite.user = sdk.AccAddress("user________________")
-	suite.maxGrant = sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	suite.maxGrant = sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 }
 
 // Helper function to convert sdk.Coins to []*sdk.Coin for protobuf
@@ -207,7 +208,7 @@ func (suite *GRPCQueryTestSuite) TestQueryAllSponsors() {
 						ContractAddress: contractAddr,
 						CreatorAddress:  "dora1admin_____________",
 						IsSponsored:     i%2 == 0, // Alternate sponsored status
-						MaxGrantPerUser: coinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))),
+						MaxGrantPerUser: coinsToProtoCoins(sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))),
 					}
 					err := keeper.SetSponsor(freshCtx, sponsor)
 					suite.Require().NoError(err)
@@ -281,185 +282,185 @@ func (suite *GRPCQueryTestSuite) TestQueryAllSponsors() {
 }
 
 func (suite *GRPCQueryTestSuite) TestQuerySponsorEffectiveTTL() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    queryServer := NewQueryServer(keeper)
-    // Set params with default TTL 30 and cap 60
-    params := types.DefaultParams()
-    params.PolicyTicketTtlBlocks = 30
-    params.MaxMethodTicketUsesPerIssue = 3
-    // removed ttl max param
-    suite.Require().NoError(keeper.SetParams(freshCtx, params))
-    // Sponsor without override
-    contract := sdk.AccAddress([]byte("contract_ttlq_______________")).String()
-    suite.Require().NoError(keeper.SetSponsor(freshCtx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
-    resp, err := queryServer.Sponsor(sdk.WrapSDKContext(freshCtx), &types.QuerySponsorRequest{ContractAddress: contract})
-    suite.Require().NoError(err)
-    suite.Require().Equal(uint32(30), resp.EffectiveTicketTtlBlocks)
-    // Update module default TTL to 50 -> expect 50
-    params.PolicyTicketTtlBlocks = 50
-    suite.Require().NoError(keeper.SetParams(freshCtx, params))
-    resp, err = queryServer.Sponsor(sdk.WrapSDKContext(freshCtx), &types.QuerySponsorRequest{ContractAddress: contract})
-    suite.Require().NoError(err)
-    suite.Require().Equal(uint32(50), resp.EffectiveTicketTtlBlocks)
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	queryServer := NewQueryServer(keeper)
+	// Set params with default TTL 30 and cap 60
+	params := types.DefaultParams()
+	params.PolicyTicketTtlBlocks = 30
+	params.MaxMethodTicketUsesPerIssue = 3
+	// removed ttl max param
+	suite.Require().NoError(keeper.SetParams(freshCtx, params))
+	// Sponsor without override
+	contract := sdk.AccAddress([]byte("contract_ttlq_______________")).String()
+	suite.Require().NoError(keeper.SetSponsor(freshCtx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true}))
+	resp, err := queryServer.Sponsor(sdk.WrapSDKContext(freshCtx), &types.QuerySponsorRequest{ContractAddress: contract})
+	suite.Require().NoError(err)
+	suite.Require().Equal(uint32(30), resp.EffectiveTicketTtlBlocks)
+	// Update module default TTL to 50 -> expect 50
+	params.PolicyTicketTtlBlocks = 50
+	suite.Require().NoError(keeper.SetParams(freshCtx, params))
+	resp, err = queryServer.Sponsor(sdk.WrapSDKContext(freshCtx), &types.QuerySponsorRequest{ContractAddress: contract})
+	suite.Require().NoError(err)
+	suite.Require().Equal(uint32(50), resp.EffectiveTicketTtlBlocks)
 }
 
 func (suite *GRPCQueryTestSuite) TestQueryPolicyTicketAndNegativeProbeAndWindow() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    queryServer := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	queryServer := NewQueryServer(keeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
 
-    // Prepare data
-    contract := sdk.AccAddress([]byte("contract_ticket______________")).String()
-    user := sdk.AccAddress([]byte("user_ticket___________________")).String()
-    // Ticket
-    tkt := types.PolicyTicket{
-        ContractAddress: contract,
-        UserAddress:     user,
-        Digest:          "abcd",
-        ExpiryHeight:    100,
-        Consumed:        false,
-        IssuedHeight:    1,
-        UsesRemaining:   1,
-    }
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, tkt))
-    // Negative probe cache
-    // negative probe removed
-    // Probe window usage
-    // probe window removed
-    // Params for window
-    // window params removed
+	// Prepare data
+	contract := sdk.AccAddress([]byte("contract_ticket______________")).String()
+	user := sdk.AccAddress([]byte("user_ticket___________________")).String()
+	// Ticket
+	tkt := types.PolicyTicket{
+		ContractAddress: contract,
+		UserAddress:     user,
+		Digest:          "abcd",
+		ExpiryHeight:    100,
+		Consumed:        false,
+		IssuedHeight:    1,
+		UsesRemaining:   1,
+	}
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, tkt))
+	// Negative probe cache
+	// negative probe removed
+	// Probe window usage
+	// probe window removed
+	// Params for window
+	// window params removed
 
-    // PolicyTicket query
-    respT, err := queryServer.PolicyTicket(ctx, &types.QueryPolicyTicketRequest{ContractAddress: contract, UserAddress: user, Digest: "abcd"})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(respT.Ticket)
-    suite.Require().Equal(uint64(100), respT.Ticket.ExpiryHeight)
-    suite.Require().Equal(uint64(100-uint64(freshCtx.BlockHeight())), respT.TtlLeft)
+	// PolicyTicket query
+	respT, err := queryServer.PolicyTicket(ctx, &types.QueryPolicyTicketRequest{ContractAddress: contract, UserAddress: user, Digest: "abcd"})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(respT.Ticket)
+	suite.Require().Equal(uint64(100), respT.Ticket.ExpiryHeight)
+	suite.Require().Equal(uint64(100-uint64(freshCtx.BlockHeight())), respT.TtlLeft)
 
-    // Removed negative probe status and probe window usage queries
+	// Removed negative probe status and probe window usage queries
 }
 
 func (suite *GRPCQueryTestSuite) TestQueryPolicyTicketByMethod() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    queryServer := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	queryServer := NewQueryServer(keeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
 
-    contract := sdk.AccAddress([]byte("contract_by_method__________")).String()
-    user := sdk.AccAddress([]byte("user_by_method______________")).String()
-    method := "inc"
-    // Insert ticket for method digest
-    md := keeper.ComputeMethodDigest(contract, []string{method})
-    tkt := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: md, ExpiryHeight: uint64(freshCtx.BlockHeight()+50), UsesRemaining: 1}
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, tkt))
+	contract := sdk.AccAddress([]byte("contract_by_method__________")).String()
+	user := sdk.AccAddress([]byte("user_by_method______________")).String()
+	method := "inc"
+	// Insert ticket for method digest
+	md := keeper.ComputeMethodDigest(contract, []string{method})
+	tkt := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: md, ExpiryHeight: uint64(freshCtx.BlockHeight() + 50), UsesRemaining: 1}
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, tkt))
 
-    // Success case
-    resp, err := queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: method})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(resp.Ticket)
-    suite.Require().Equal(md, resp.Ticket.Digest)
+	// Success case
+	resp, err := queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: method})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(resp.Ticket)
+	suite.Require().Equal(md, resp.Ticket.Digest)
 
-    // Not found case (different method)
-    resp2, err := queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: "dec"})
-    suite.Require().NoError(err)
-    suite.Require().Nil(resp2.Ticket)
+	// Not found case (different method)
+	resp2, err := queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: "dec"})
+	suite.Require().NoError(err)
+	suite.Require().Nil(resp2.Ticket)
 
-    // Invalid inputs
-    _, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: "invalid", UserAddress: user, Method: method})
-    suite.Require().Error(err)
-    _, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: "invalid", Method: method})
-    suite.Require().Error(err)
-    _, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: ""})
-    suite.Require().Error(err)
+	// Invalid inputs
+	_, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: "invalid", UserAddress: user, Method: method})
+	suite.Require().Error(err)
+	_, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: "invalid", Method: method})
+	suite.Require().Error(err)
+	_, err = queryServer.PolicyTicketByMethod(ctx, &types.QueryPolicyTicketByMethodRequest{ContractAddress: contract, UserAddress: user, Method: ""})
+	suite.Require().Error(err)
 }
 
 // Dedicated tests for PolicyTickets pagination behavior
 func (suite *GRPCQueryTestSuite) TestPolicyTicketsQuery_Pagination() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    q := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
-    contract := sdk.AccAddress([]byte("contract_pag______________")).String()
-    user := sdk.AccAddress([]byte("user_pag___________________")).String()
-    // Insert 3 tickets
-    for i := 0; i < 3; i++ {
-        d := fmt.Sprintf("d%d", i+1)
-        t := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: d, ExpiryHeight: uint64(freshCtx.BlockHeight()+100), UsesRemaining: 1}
-        suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t))
-    }
-    // Page 1: limit 1
-    resp1, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Limit: 1}})
-    suite.Require().NoError(err)
-    suite.Require().Len(resp1.Tickets, 1)
-    // Page 2 using page key
-    resp2, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Key: resp1.Pagination.NextKey, Limit: 1}})
-    suite.Require().NoError(err)
-    suite.Require().Len(resp2.Tickets, 1)
-    suite.Require().NotEqual(resp1.Tickets[0].Digest, resp2.Tickets[0].Digest)
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	q := NewQueryServer(keeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
+	contract := sdk.AccAddress([]byte("contract_pag______________")).String()
+	user := sdk.AccAddress([]byte("user_pag___________________")).String()
+	// Insert 3 tickets
+	for i := 0; i < 3; i++ {
+		d := fmt.Sprintf("d%d", i+1)
+		t := types.PolicyTicket{ContractAddress: contract, UserAddress: user, Digest: d, ExpiryHeight: uint64(freshCtx.BlockHeight() + 100), UsesRemaining: 1}
+		suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t))
+	}
+	// Page 1: limit 1
+	resp1, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Limit: 1}})
+	suite.Require().NoError(err)
+	suite.Require().Len(resp1.Tickets, 1)
+	// Page 2 using page key
+	resp2, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Key: resp1.Pagination.NextKey, Limit: 1}})
+	suite.Require().NoError(err)
+	suite.Require().Len(resp2.Tickets, 1)
+	suite.Require().NotEqual(resp1.Tickets[0].Digest, resp2.Tickets[0].Digest)
 }
 
 // Dedicated tests for PolicyTickets user filter behavior
 func (suite *GRPCQueryTestSuite) TestPolicyTicketsQuery_UserFilter() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    q := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
-    contract := sdk.AccAddress([]byte("contract_flt______________")).String()
-    u1 := sdk.AccAddress([]byte("user_flt_1_________________")).String()
-    u2 := sdk.AccAddress([]byte("user_flt_2_________________")).String()
-    // Insert tickets for two users
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u1, Digest: "a", ExpiryHeight: 100, UsesRemaining: 1}))
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u1, Digest: "b", ExpiryHeight: 100, UsesRemaining: 1}))
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u2, Digest: "c", ExpiryHeight: 100, UsesRemaining: 1}))
-    // Query for user1 only
-    resp, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: u1})
-    suite.Require().NoError(err)
-    suite.Require().Len(resp.Tickets, 2)
-    for _, t := range resp.Tickets {
-        suite.Require().Equal(u1, t.UserAddress)
-    }
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	q := NewQueryServer(keeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
+	contract := sdk.AccAddress([]byte("contract_flt______________")).String()
+	u1 := sdk.AccAddress([]byte("user_flt_1_________________")).String()
+	u2 := sdk.AccAddress([]byte("user_flt_2_________________")).String()
+	// Insert tickets for two users
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u1, Digest: "a", ExpiryHeight: 100, UsesRemaining: 1}))
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u1, Digest: "b", ExpiryHeight: 100, UsesRemaining: 1}))
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, types.PolicyTicket{ContractAddress: contract, UserAddress: u2, Digest: "c", ExpiryHeight: 100, UsesRemaining: 1}))
+	// Query for user1 only
+	resp, err := q.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: u1})
+	suite.Require().NoError(err)
+	suite.Require().Len(resp.Tickets, 2)
+	for _, t := range resp.Tickets {
+		suite.Require().Equal(u1, t.UserAddress)
+	}
 }
 
 // TestQueryPolicyTickets tests listing tickets with and without user filter, and pagination bounds
 func (suite *GRPCQueryTestSuite) TestQueryPolicyTickets() {
-    keeper, freshCtx, _ := setupKeeper(suite.T())
-    queryServer := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
+	keeper, freshCtx, _ := setupKeeper(suite.T())
+	queryServer := NewQueryServer(keeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
 
-    // Prepare data under one contract
-    contract := sdk.AccAddress([]byte("contract_list______________")).String()
-    user1 := sdk.AccAddress([]byte("user_list_1________________")).String()
-    user2 := sdk.AccAddress([]byte("user_list_2________________")).String()
-    // Insert several tickets
-    t1 := types.PolicyTicket{ContractAddress: contract, UserAddress: user1, Digest: "d1", ExpiryHeight: 100, UsesRemaining: 1}
-    t2 := types.PolicyTicket{ContractAddress: contract, UserAddress: user1, Digest: "d2", ExpiryHeight: 100, UsesRemaining: 2}
-    t3 := types.PolicyTicket{ContractAddress: contract, UserAddress: user2, Digest: "d3", ExpiryHeight: 100, UsesRemaining: 3}
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t1))
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t2))
-    suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t3))
+	// Prepare data under one contract
+	contract := sdk.AccAddress([]byte("contract_list______________")).String()
+	user1 := sdk.AccAddress([]byte("user_list_1________________")).String()
+	user2 := sdk.AccAddress([]byte("user_list_2________________")).String()
+	// Insert several tickets
+	t1 := types.PolicyTicket{ContractAddress: contract, UserAddress: user1, Digest: "d1", ExpiryHeight: 100, UsesRemaining: 1}
+	t2 := types.PolicyTicket{ContractAddress: contract, UserAddress: user1, Digest: "d2", ExpiryHeight: 100, UsesRemaining: 2}
+	t3 := types.PolicyTicket{ContractAddress: contract, UserAddress: user2, Digest: "d3", ExpiryHeight: 100, UsesRemaining: 3}
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t1))
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t2))
+	suite.Require().NoError(keeper.SetPolicyTicket(freshCtx, t3))
 
-    // 1) List by contract only: expect at least 3 items
-    respAll, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(respAll)
-    suite.Require().GreaterOrEqual(len(respAll.Tickets), 3)
+	// 1) List by contract only: expect at least 3 items
+	respAll, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(respAll)
+	suite.Require().GreaterOrEqual(len(respAll.Tickets), 3)
 
-    // 2) List by contract + user1: expect exactly 2 items
-    respU1, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: user1})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(respU1)
-    suite.Require().Equal(2, len(respU1.Tickets))
+	// 2) List by contract + user1: expect exactly 2 items
+	respU1, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: user1})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(respU1)
+	suite.Require().Equal(2, len(respU1.Tickets))
 
-    // 3) Pagination: limit 1 should return at most 1 item
-    respPage, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Limit: 1}})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(respPage)
-    suite.Require().LessOrEqual(len(respPage.Tickets), 1)
+	// 3) Pagination: limit 1 should return at most 1 item
+	respPage, err := queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, Pagination: &query.PageRequest{Limit: 1}})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(respPage)
+	suite.Require().LessOrEqual(len(respPage.Tickets), 1)
 
-    // 4) Invalid contract address -> error
-    _, err = queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: "invalid"})
-    suite.Require().Error(err)
+	// 4) Invalid contract address -> error
+	_, err = queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: "invalid"})
+	suite.Require().Error(err)
 
-    // 5) Invalid user address -> error
-    _, err = queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: "invalid"})
-    suite.Require().Error(err)
+	// 5) Invalid user address -> error
+	_, err = queryServer.PolicyTickets(ctx, &types.QueryPolicyTicketsRequest{ContractAddress: contract, UserAddress: "invalid"})
+	suite.Require().Error(err)
 }
 
 // Removed compute-digest query test
@@ -469,29 +470,29 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 	// Get fresh keeper and context for this test method
 	keeper, freshCtx, _ := setupKeeper(suite.T())
 	queryServer := NewQueryServer(keeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
-    // Set custom params then query via gRPC
-    custom := types.DefaultParams()
-    custom.SponsorshipEnabled = false
-    custom.PolicyTicketTtlBlocks = 77
-    custom.MaxExecMsgsPerTxForSponsor = 9
-    custom.MaxPolicyExecMsgBytes = 8192
-    custom.MaxMethodTicketUsesPerIssue = 5
-    custom.TicketGcPerBlock = 123
-    custom.MaxMethodNameBytes = 40
-    custom.MaxMethodJsonDepth = 33
-    suite.Require().NoError(keeper.SetParams(freshCtx, custom))
-    resp, err := queryServer.Params(ctx, &types.QueryParamsRequest{})
-    suite.Require().NoError(err)
-    suite.Require().NotNil(resp)
-    suite.Require().False(resp.Params.SponsorshipEnabled)
-    suite.Require().Equal(uint32(77), resp.Params.PolicyTicketTtlBlocks)
-    suite.Require().Equal(uint32(9), resp.Params.MaxExecMsgsPerTxForSponsor)
-    suite.Require().Equal(uint32(8192), resp.Params.MaxPolicyExecMsgBytes)
-    suite.Require().Equal(uint32(5), resp.Params.MaxMethodTicketUsesPerIssue)
-    suite.Require().Equal(uint32(123), resp.Params.TicketGcPerBlock)
-    suite.Require().Equal(uint32(40), resp.Params.MaxMethodNameBytes)
-    suite.Require().Equal(uint32(33), resp.Params.MaxMethodJsonDepth)
+	ctx := sdk.WrapSDKContext(freshCtx)
+	// Set custom params then query via gRPC
+	custom := types.DefaultParams()
+	custom.SponsorshipEnabled = false
+	custom.PolicyTicketTtlBlocks = 77
+	custom.MaxExecMsgsPerTxForSponsor = 9
+	custom.MaxPolicyExecMsgBytes = 8192
+	custom.MaxMethodTicketUsesPerIssue = 5
+	custom.TicketGcPerBlock = 123
+	custom.MaxMethodNameBytes = 40
+	custom.MaxMethodJsonDepth = 33
+	suite.Require().NoError(keeper.SetParams(freshCtx, custom))
+	resp, err := queryServer.Params(ctx, &types.QueryParamsRequest{})
+	suite.Require().NoError(err)
+	suite.Require().NotNil(resp)
+	suite.Require().False(resp.Params.SponsorshipEnabled)
+	suite.Require().Equal(uint32(77), resp.Params.PolicyTicketTtlBlocks)
+	suite.Require().Equal(uint32(9), resp.Params.MaxExecMsgsPerTxForSponsor)
+	suite.Require().Equal(uint32(8192), resp.Params.MaxPolicyExecMsgBytes)
+	suite.Require().Equal(uint32(5), resp.Params.MaxMethodTicketUsesPerIssue)
+	suite.Require().Equal(uint32(123), resp.Params.TicketGcPerBlock)
+	suite.Require().Equal(uint32(40), resp.Params.MaxMethodNameBytes)
+	suite.Require().Equal(uint32(33), resp.Params.MaxMethodJsonDepth)
 
 	testCases := []struct {
 		name        string
@@ -515,28 +516,28 @@ func (suite *GRPCQueryTestSuite) TestQueryParams() {
 				keeper.SetParams(freshCtx, params)
 			},
 			expectError: false,
-            postCheck: func(resp *types.QueryParamsResponse) {
-                suite.Require().NotNil(resp.Params, "Params should not be nil")
-                suite.Require().True(resp.Params.SponsorshipEnabled, "Default should have sponsorship enabled")
-                suite.Require().Equal(uint32(30), resp.Params.PolicyTicketTtlBlocks, "Should have default ticket TTL")
-            },
+			postCheck: func(resp *types.QueryParamsResponse) {
+				suite.Require().NotNil(resp.Params, "Params should not be nil")
+				suite.Require().True(resp.Params.SponsorshipEnabled, "Default should have sponsorship enabled")
+				suite.Require().Equal(uint32(30), resp.Params.PolicyTicketTtlBlocks, "Should have default ticket TTL")
+			},
 		},
 		{
 			name:    "custom params",
 			request: &types.QueryParamsRequest{},
-            preRun: func() {
-                // Set custom params
-                params := types.DefaultParams()
-                params.SponsorshipEnabled = false
-                params.PolicyTicketTtlBlocks = 42
-                suite.Require().NoError(keeper.SetParams(freshCtx, params))
-            },
+			preRun: func() {
+				// Set custom params
+				params := types.DefaultParams()
+				params.SponsorshipEnabled = false
+				params.PolicyTicketTtlBlocks = 42
+				suite.Require().NoError(keeper.SetParams(freshCtx, params))
+			},
 			expectError: false,
-            postCheck: func(resp *types.QueryParamsResponse) {
-                suite.Require().NotNil(resp.Params, "Params should not be nil")
-                suite.Require().False(resp.Params.SponsorshipEnabled, "Should reflect custom setting")
-                suite.Require().Equal(uint32(42), resp.Params.PolicyTicketTtlBlocks, "Should reflect custom TTL")
-            },
+			postCheck: func(resp *types.QueryParamsResponse) {
+				suite.Require().NotNil(resp.Params, "Params should not be nil")
+				suite.Require().False(resp.Params.SponsorshipEnabled, "Should reflect custom setting")
+				suite.Require().Equal(uint32(42), resp.Params.PolicyTicketTtlBlocks, "Should reflect custom TTL")
+			},
 		},
 	}
 
@@ -685,7 +686,6 @@ func (suite *GRPCQueryTestSuite) TestQueryUserGrantUsage() {
 	}
 }
 
-
 // TestQueryServerInterface tests that QueryServer implements the required interface
 func (suite *GRPCQueryTestSuite) TestQueryServerInterface() {
 	// Get fresh keeper and context for this test method
@@ -721,39 +721,39 @@ func (suite *GRPCQueryTestSuite) TestQueryServerInterface() {
 }
 
 func (suite *GRPCQueryTestSuite) TestQuerySponsorBalance() {
-    // Use setup with dependencies to have bank keeper
-    keeper, freshCtx, _, accountKeeper, bankKeeper := setupKeeperWithDeps(suite.T())
-    // create query server with deps
-    queryServer := NewQueryServerWithDeps(keeper, bankKeeper)
-    ctx := sdk.WrapSDKContext(freshCtx)
+	// Use setup with dependencies to have bank keeper
+	keeper, freshCtx, _, accountKeeper, bankKeeper := setupKeeperWithDeps(suite.T())
+	// create query server with deps
+	queryServer := NewQueryServerWithDeps(keeper, bankKeeper)
+	ctx := sdk.WrapSDKContext(freshCtx)
 
-    // Prepare contract and sponsor
-    contract := sdk.AccAddress([]byte("contract_bal________________")).String()
-    admin := sdk.AccAddress([]byte("admin_bal___________________")).String()
-    // Wire a sponsor record
-    suite.Require().NoError(keeper.SetSponsor(freshCtx, types.ContractSponsor{ContractAddress: contract, CreatorAddress: admin, IsSponsored: true}))
-    // Derive sponsor address and create account
-    ca, _ := sdk.AccAddressFromBech32(contract)
-    sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor")))
-    // ensure account exists (optional)
-    if accountKeeper.GetAccount(freshCtx, sponsorAddr) == nil {
-        accountKeeper.SetAccount(freshCtx, accountKeeper.NewAccountWithAddress(freshCtx, sponsorAddr))
-    }
-    // Fund sponsor with 123 peaka spendable
-    coins := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(123)))
-    suite.Require().NoError(bankKeeper.MintCoins(freshCtx, types.ModuleName, coins))
-    suite.Require().NoError(bankKeeper.SendCoinsFromModuleToAccount(freshCtx, types.ModuleName, sponsorAddr, coins))
+	// Prepare contract and sponsor
+	contract := sdk.AccAddress([]byte("contract_bal________________")).String()
+	admin := sdk.AccAddress([]byte("admin_bal___________________")).String()
+	// Wire a sponsor record
+	suite.Require().NoError(keeper.SetSponsor(freshCtx, types.ContractSponsor{ContractAddress: contract, CreatorAddress: admin, IsSponsored: true}))
+	// Derive sponsor address and create account
+	ca, _ := sdk.AccAddressFromBech32(contract)
+	sponsorAddr := sdk.AccAddress(address.Derive(ca, []byte("sponsor")))
+	// ensure account exists (optional)
+	if accountKeeper.GetAccount(freshCtx, sponsorAddr) == nil {
+		accountKeeper.SetAccount(freshCtx, accountKeeper.NewAccountWithAddress(freshCtx, sponsorAddr))
+	}
+	// Fund sponsor with 123 peaka spendable
+	coins := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(123)))
+	suite.Require().NoError(bankKeeper.MintCoins(freshCtx, types.ModuleName, coins))
+	suite.Require().NoError(bankKeeper.SendCoinsFromModuleToAccount(freshCtx, types.ModuleName, sponsorAddr, coins))
 
-    // Query balance
-    resp, err := queryServer.SponsorBalance(ctx, &types.QuerySponsorBalanceRequest{ContractAddress: contract})
-    suite.Require().NoError(err)
-    suite.Require().Equal(sponsorAddr.String(), resp.SponsorAddress)
-    suite.Require().Equal(types.SponsorshipDenom, resp.Spendable.Denom)
-    suite.Require().Equal("123", resp.Spendable.Amount.String())
+	// Query balance
+	resp, err := queryServer.SponsorBalance(ctx, &types.QuerySponsorBalanceRequest{ContractAddress: contract})
+	suite.Require().NoError(err)
+	suite.Require().Equal(sponsorAddr.String(), resp.SponsorAddress)
+	suite.Require().Equal(types.SponsorshipDenom, resp.Spendable.Denom)
+	suite.Require().Equal("123", resp.Spendable.Amount.String())
 
-    // Invalid contract
-    _, err = queryServer.SponsorBalance(ctx, &types.QuerySponsorBalanceRequest{ContractAddress: "invalid"})
-    suite.Require().Error(err)
+	// Invalid contract
+	_, err = queryServer.SponsorBalance(ctx, &types.QuerySponsorBalanceRequest{ContractAddress: "invalid"})
+	suite.Require().Error(err)
 }
 
 // TestQueryErrorHandling tests comprehensive error handling in queries

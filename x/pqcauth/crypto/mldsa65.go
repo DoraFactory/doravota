@@ -1,12 +1,12 @@
 package pqccrypto
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
+	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 )
 
 // Algorithm is the wire-level identifier of a post-quantum signature algorithm.
@@ -32,7 +32,7 @@ var (
 func Sizes(algorithm Algorithm) (publicKeySize int, signatureSize int, err error) {
 	switch algorithm {
 	case AlgorithmMLDSA65:
-		return mldsa65.PublicKeySize, mldsa65.SignatureSize, nil
+		return cmtmldsa65.PubKeySize, cmtmldsa65.SignatureSize, nil
 	default:
 		return 0, 0, fmt.Errorf("%w: %d", ErrUnsupportedAlgorithm, algorithm)
 	}
@@ -42,7 +42,7 @@ func Sizes(algorithm Algorithm) (publicKeySize int, signatureSize int, err error
 func PrivateKeySize(algorithm Algorithm) (int, error) {
 	switch algorithm {
 	case AlgorithmMLDSA65:
-		return mldsa65.PrivateKeySize, nil
+		return cmtmldsa65.PrivKeySize, nil
 	default:
 		return 0, fmt.Errorf("%w: %d", ErrUnsupportedAlgorithm, algorithm)
 	}
@@ -65,77 +65,114 @@ func Verify(algorithm Algorithm, publicKey, message, context, signature []byte) 
 }
 
 func verifyMLDSA65(publicKey, message, context, signature []byte) error {
-	if len(publicKey) != mldsa65.PublicKeySize {
+	if len(publicKey) != cmtmldsa65.PubKeySize {
 		return fmt.Errorf("%w: ML-DSA-65 public key length %d, want %d",
-			ErrInvalidPublicKey, len(publicKey), mldsa65.PublicKeySize)
+			ErrInvalidPublicKey, len(publicKey), cmtmldsa65.PubKeySize)
 	}
-	if len(signature) != mldsa65.SignatureSize {
+	if len(signature) != cmtmldsa65.SignatureSize {
 		return fmt.Errorf("%w: ML-DSA-65 signature length %d, want %d",
-			ErrInvalidSignature, len(signature), mldsa65.SignatureSize)
+			ErrInvalidSignature, len(signature), cmtmldsa65.SignatureSize)
 	}
 
-	var key mldsa65.PublicKey
-	if err := key.UnmarshalBinary(publicKey); err != nil {
+	key := sdkmldsa65.PubKey{Key: append([]byte(nil), publicKey...)}
+	if _, err := cmtmldsa65.NewPubKeyFromBytes(key.Key); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidPublicKey, err)
 	}
-	if !mldsa65.Verify(&key, message, context, signature) {
+	if !key.VerifySignature(domainSeparatedMessage(message, context), signature) {
 		return ErrInvalidSignature
 	}
 	return nil
 }
 
-// GenerateMLDSA65Key generates an encoded ML-DSA-65 key pair. A nil entropy
-// source selects crypto/rand.Reader.
+// GenerateMLDSA65Key creates a new ML-DSA-65 key pair. A nil entropy source
+// uses the SDK's OS-random key generator. A non-nil source is read into the
+// fixed-size seed accepted by the SDK to support reproducible test vectors.
 func GenerateMLDSA65Key(entropy io.Reader) (publicKey, privateKey []byte, err error) {
 	if entropy == nil {
-		entropy = rand.Reader
+		key, err := sdkmldsa65.GenPrivKey()
+		if err != nil {
+			return nil, nil, fmt.Errorf("generate ML-DSA-65 key: %w", err)
+		}
+		return encodedKeyPair(key)
 	}
 
-	pk, sk, err := mldsa65.GenerateKey(entropy)
+	seed := make([]byte, cmtmldsa65.SeedSize)
+	if _, err := io.ReadFull(entropy, seed); err != nil {
+		return nil, nil, fmt.Errorf("generate ML-DSA-65 seed: %w", err)
+	}
+	key, err := sdkmldsa65.GenPrivKeyFromSeed(seed)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate ML-DSA-65 key: %w", err)
 	}
-	return append([]byte(nil), pk.Bytes()...), append([]byte(nil), sk.Bytes()...), nil
+	return encodedKeyPair(key)
 }
 
-// SignMLDSA65 signs message with the FIPS 204 context string. randomized
-// should normally be true for wallets; deterministic signing is retained for
-// reproducible test vectors and hardware implementations that require it.
+// SignMLDSA65 signs a domain-separated message with the SDK's deterministic
+// ML-DSA-65 implementation. randomized is retained for source compatibility
+// but ignored because the native SDK API intentionally exposes pure mode.
 func SignMLDSA65(privateKey, message, context []byte, randomized bool) ([]byte, error) {
 	if len(context) > MaxContextSize {
 		return nil, ErrContextTooLarge
 	}
-	if len(privateKey) != mldsa65.PrivateKeySize {
+	if len(privateKey) != cmtmldsa65.PrivKeySize {
 		return nil, fmt.Errorf("%w: ML-DSA-65 private key length %d, want %d",
-			ErrInvalidPrivateKey, len(privateKey), mldsa65.PrivateKeySize)
+			ErrInvalidPrivateKey, len(privateKey), cmtmldsa65.PrivKeySize)
 	}
 
-	var key mldsa65.PrivateKey
-	if err := key.UnmarshalBinary(privateKey); err != nil {
+	key, err := sdkmldsa65.NewPrivateKeyFromBytes(privateKey)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPrivateKey, err)
 	}
 
-	signature := make([]byte, mldsa65.SignatureSize)
-	if err := mldsa65.SignTo(&key, message, context, randomized, signature); err != nil {
+	// The SDK wrapper intentionally exposes deterministic pure-mode signing.
+	// PQCAuth preserves explicit domain separation by signing a canonical
+	// envelope containing the former FIPS 204 context and the message. The
+	// randomized flag remains in the public API for backward compatibility;
+	// signatures produced through the native SDK path are deterministic.
+	_ = randomized
+	signature, err := key.Sign(domainSeparatedMessage(message, context))
+	if err != nil {
 		return nil, fmt.Errorf("sign with ML-DSA-65: %w", err)
 	}
 	return signature, nil
 }
 
 // MLDSA65PublicKeyFromPrivate derives the encoded public key from an encoded
-// private key without exposing CIRCL key types to callers.
+// private key without exposing implementation-specific key types to callers.
 func MLDSA65PublicKeyFromPrivate(privateKey []byte) ([]byte, error) {
-	if len(privateKey) != mldsa65.PrivateKeySize {
+	if len(privateKey) != cmtmldsa65.PrivKeySize {
 		return nil, fmt.Errorf("%w: ML-DSA-65 private key length %d, want %d",
-			ErrInvalidPrivateKey, len(privateKey), mldsa65.PrivateKeySize)
+			ErrInvalidPrivateKey, len(privateKey), cmtmldsa65.PrivKeySize)
 	}
-	var key mldsa65.PrivateKey
-	if err := key.UnmarshalBinary(privateKey); err != nil {
+	key, err := sdkmldsa65.NewPrivateKeyFromBytes(privateKey)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidPrivateKey, err)
 	}
-	publicKey, ok := key.Public().(*mldsa65.PublicKey)
+	publicKey, ok := key.PubKey().(*sdkmldsa65.PubKey)
 	if !ok {
 		return nil, ErrInvalidPrivateKey
 	}
 	return append([]byte(nil), publicKey.Bytes()...), nil
+}
+
+func encodedKeyPair(privateKey sdkmldsa65.PrivKey) ([]byte, []byte, error) {
+	publicKey, ok := privateKey.PubKey().(*sdkmldsa65.PubKey)
+	if !ok || publicKey == nil {
+		return nil, nil, ErrInvalidPrivateKey
+	}
+	return append([]byte(nil), publicKey.Bytes()...),
+		append([]byte(nil), privateKey.Bytes()...), nil
+}
+
+// domainSeparatedMessage returns PQCAuth's canonical SDK-native envelope:
+// version || len(ctx) || ctx || M. CometBFT and the SDK wrapper expose the
+// FIPS 204 pure mode (empty context), so the module binds its protocol domain
+// into the message passed to that API. This is a coordinated consensus change
+// and is not byte-for-byte compatible with pre-v0.55 contextual signatures.
+func domainSeparatedMessage(message, context []byte) []byte {
+	encoded := make([]byte, 0, 2+len(context)+len(message))
+	encoded = append(encoded, 0, byte(len(context)))
+	encoded = append(encoded, context...)
+	encoded = append(encoded, message...)
+	return encoded
 }

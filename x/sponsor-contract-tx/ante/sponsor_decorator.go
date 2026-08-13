@@ -111,7 +111,7 @@ func (safd SponsorAwareDeductFeeDecorator) handleSponsorFeePayment(
 
 	feeGranter := feeTx.FeeGranter()
 	// Priority: feegrant > sponsor - when FeeGranter is set, use standard fee handling
-	if feeGranter != nil && !feeGranter.Empty() {
+	if len(feeGranter) != 0 {
 		// Delegate to standard fee decorator to handle feegrant properly
 		return safd.standardDecorator.AnteHandle(ctx, tx, simulate, next)
 	}

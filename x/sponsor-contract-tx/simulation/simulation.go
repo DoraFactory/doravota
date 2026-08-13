@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
@@ -52,7 +53,7 @@ func (AppModuleSimulation) RandomizedParams(r *rand.Rand) []simtypes.LegacyParam
 }
 
 // RegisterStoreDecoder registers a decoder for sponsor module's types
-func (am AppModuleSimulation) RegisterStoreDecoder(sdr sdk.StoreDecoderRegistry) {
+func (am AppModuleSimulation) RegisterStoreDecoder(sdr simtypes.StoreDecoderRegistry) {
 	sdr[types.StoreKey] = NewDecodeStore(am.keeper.Cdc())
 }
 
@@ -283,7 +284,7 @@ func (sm *SimulationManager) TestInvariantsWithRandomData(
 				TotalGrantUsed: []*sdk.Coin{
 					{
 						Denom:  types.SponsorshipDenom,
-						Amount: sdk.NewInt(int64(r.Intn(100000) + 1000)),
+						Amount: sdkmath.NewInt(int64(r.Intn(100000) + 1000)),
 					},
 				},
 				LastUsedTime: lastUsedTime,

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	sdkmath "cosmossdk.io/math"
 
 	errorsmod "cosmossdk.io/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -233,7 +234,7 @@ func (q QueryServer) SponsorBalance(goCtx context.Context, req *types.QuerySpons
 		sponsorAddrStr = sdk.AccAddress(address.Derive(ca, []byte("sponsor"))).String()
 	}
 	// If bankKeeper not wired, return zero balance gracefully
-	amount := sdk.NewInt(0)
+	amount := sdkmath.ZeroInt()
 	if q.bankKeeper != nil {
 		sAddr, err := sdk.AccAddressFromBech32(sponsorAddrStr)
 		if err != nil {

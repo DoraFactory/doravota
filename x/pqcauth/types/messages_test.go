@@ -12,6 +12,8 @@ import (
 
 type legacyMessage interface {
 	sdk.Msg
+	sdk.HasValidateBasic
+	sdk.LegacyMsg
 	Route() string
 	Type() string
 	GetSignBytes() []byte
@@ -120,7 +122,10 @@ func TestLifecycleMessageValidateBasicRejectsMalformedInputs(t *testing.T) {
 
 	testCases := []struct {
 		name    string
-		message sdk.Msg
+		message interface {
+			sdk.Msg
+			sdk.HasValidateBasic
+		}
 	}{
 		{"register owner", &MsgRegisterKey{Owner: "invalid"}},
 		{"register id", &MsgRegisterKey{Owner: owner}},

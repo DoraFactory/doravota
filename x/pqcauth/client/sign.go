@@ -12,6 +12,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -316,7 +317,13 @@ func prepareSingleDirectSigner(
 ) (sdk.AccAddress, error) {
 	signMode := txf.SignMode()
 	if signMode == txsigning.SignMode_SIGN_MODE_UNSPECIFIED {
-		signMode = clientCtx.TxConfig.SignModeHandler().DefaultMode()
+		var err error
+		signMode, err = authsigning.APISignModeToInternal(
+			clientCtx.TxConfig.SignModeHandler().DefaultMode(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("resolve default sign mode: %w", err)
+		}
 	}
 	if signMode != txsigning.SignMode_SIGN_MODE_DIRECT {
 		return nil, types.ErrUnsupportedSignMode

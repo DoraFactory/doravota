@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log/v2"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
+	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
+	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
@@ -26,9 +27,9 @@ func setupKeeper(t testing.TB, height int64) (Keeper, sdk.Context) {
 	registry := codectypes.NewInterfaceRegistry()
 	types.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 	database := dbm.NewMemDB()
-	multiStore := store.NewCommitMultiStore(database)
+	multiStore := store.NewCommitMultiStore(database, log.NewNopLogger())
 	multiStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 	require.NoError(t, multiStore.LoadLatestVersion())
 	ctx := sdk.NewContext(
@@ -42,12 +43,15 @@ func setupKeeper(t testing.TB, height int64) (Keeper, sdk.Context) {
 }
 
 func keyPair(seedByte byte) ([]byte, []byte) {
-	var seed [mldsa65.SeedSize]byte
+	seed := make([]byte, cmtmldsa65.SeedSize)
 	for i := range seed {
 		seed[i] = seedByte + byte(i)
 	}
-	publicKey, privateKey := mldsa65.NewKeyFromSeed(&seed)
-	return publicKey.Bytes(), privateKey.Bytes()
+	privateKey, err := sdkmldsa65.GenPrivKeyFromSeed(seed)
+	if err != nil {
+		panic(err)
+	}
+	return privateKey.PubKey().Bytes(), privateKey.Bytes()
 }
 
 func keyProof(

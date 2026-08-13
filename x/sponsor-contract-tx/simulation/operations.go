@@ -1,18 +1,24 @@
 package simulation
 
 import (
+	"context"
 	"encoding/json"
 	"math/rand"
+
+	sdkmath "cosmossdk.io/math"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
+	txsigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -44,7 +50,7 @@ const (
 // it local avoids expanding the Sponsor keeper's runtime dependency solely for
 // simulations.
 type contractInfoIterator interface {
-	IterateContractInfo(ctx sdk.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool)
+	IterateContractInfo(ctx context.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool)
 }
 
 type managedContract struct {
@@ -56,7 +62,6 @@ type managedContract struct {
 // randomized operations.
 type simulationMsg interface {
 	sdk.Msg
-	Type() string
 }
 
 func deliverSimulationMsg(
@@ -70,10 +75,23 @@ func deliverSimulationMsg(
 	coinsSpent sdk.Coins,
 ) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 	if app == nil || ak == nil || bk == nil {
-		return simtypes.NoOpMsg(types.ModuleName, msg.Type(), "simulation dependencies are not configured"), nil, nil
+		return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "simulation dependencies are not configured"), nil, nil
 	}
 
-	registry := codectypes.NewInterfaceRegistry()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: txsigning.Options{
+			AddressCodec: address.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
+			},
+			ValidatorAddressCodec: address.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
+			},
+		},
+	})
+	if err != nil {
+		return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), "create simulation interface registry"), nil, err
+	}
 	types.RegisterInterfaces(registry)
 	wasmtypes.RegisterInterfaces(registry)
 	banktypes.RegisterInterfaces(registry)
@@ -85,7 +103,6 @@ func deliverSimulationMsg(
 		TxGen:           authtx.NewTxConfig(protoCodec, authtx.DefaultSignModes),
 		Cdc:             protoCodec,
 		Msg:             msg,
-		MsgType:         msg.Type(),
 		CoinsSpentInMsg: coinsSpent,
 		Context:         ctx,
 		SimAccount:      simAccount,
@@ -169,7 +186,7 @@ func availableManagedContracts(
 func randomGrant(r *rand.Rand, max int64) sdk.Coins {
 	return sdk.NewCoins(sdk.NewCoin(
 		types.SponsorshipDenom,
-		sdk.NewInt(r.Int63n(max)+1),
+		sdkmath.NewInt(r.Int63n(max)+1),
 	))
 }
 
@@ -206,37 +223,37 @@ func WeightedOperations(appParams simtypes.AppParams, cdc codec.JSONCodec, k kee
 		weightUserGrantUsage   int
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightMsgSetSponsor, &weightMsgSetSponsor, nil,
+	appParams.GetOrGenerate(OpWeightMsgSetSponsor, &weightMsgSetSponsor, nil,
 		func(_ *rand.Rand) {
 			weightMsgSetSponsor = DefaultWeightMsgSetSponsor
 		},
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightMsgUpdateSponsor, &weightMsgUpdateSponsor, nil,
+	appParams.GetOrGenerate(OpWeightMsgUpdateSponsor, &weightMsgUpdateSponsor, nil,
 		func(_ *rand.Rand) {
 			weightMsgUpdateSponsor = DefaultWeightMsgUpdateSponsor
 		},
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightMsgDeleteSponsor, &weightMsgDeleteSponsor, nil,
+	appParams.GetOrGenerate(OpWeightMsgDeleteSponsor, &weightMsgDeleteSponsor, nil,
 		func(_ *rand.Rand) {
 			weightMsgDeleteSponsor = DefaultWeightMsgDeleteSponsor
 		},
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightSponsoredTx, &weightSponsoredTx, nil,
+	appParams.GetOrGenerate(OpWeightSponsoredTx, &weightSponsoredTx, nil,
 		func(_ *rand.Rand) {
 			weightSponsoredTx = DefaultWeightSponsoredTx
 		},
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightPolicyCheck, &weightPolicyCheck, nil,
+	appParams.GetOrGenerate(OpWeightPolicyCheck, &weightPolicyCheck, nil,
 		func(_ *rand.Rand) {
 			weightPolicyCheck = DefaultWeightPolicyCheck
 		},
 	)
 
-	appParams.GetOrGenerate(cdc, OpWeightUserGrantUsage, &weightUserGrantUsage, nil,
+	appParams.GetOrGenerate(OpWeightUserGrantUsage, &weightUserGrantUsage, nil,
 		func(_ *rand.Rand) {
 			weightUserGrantUsage = DefaultWeightUserGrantUsage
 		},
@@ -291,7 +308,7 @@ func SimulateMsgSetSponsor(ak types.AccountKeeper, bk types.BankKeeper, k keeper
 			maxGrantPerUser,
 		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), err.Error()), nil, nil
 		}
 
 		operationMsg, _, err := deliverSimulationMsg(
@@ -347,7 +364,7 @@ func SimulateMsgUpdateSponsor(ak types.AccountKeeper, bk types.BankKeeper, k kee
 			maxGrantPerUser,
 		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), err.Error()), nil, nil
 		}
 
 		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
@@ -407,7 +424,7 @@ func SimulateMsgDeleteSponsor(ak types.AccountKeeper, bk types.BankKeeper, k kee
 			selected.sponsor.ContractAddress,
 		)
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), err.Error()), nil, nil
 		}
 		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
 	}
@@ -528,7 +545,7 @@ func SimulatePolicyCheck(ak types.AccountKeeper, bk types.BankKeeper, k keeper.K
 			Uses:            uint32(r.Intn(3) + 1),
 		}
 		if err := msg.ValidateBasic(); err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msg.Type(), err.Error()), nil, nil
+			return simtypes.NoOpMsg(types.ModuleName, sdk.MsgTypeURL(msg), err.Error()), nil, nil
 		}
 		return deliverSimulationMsg(r, app, ctx, msg, selected.manager, ak, bk, nil)
 	}
@@ -540,7 +557,7 @@ func SimulateUserGrantUsage(ak types.AccountKeeper, bk types.BankKeeper, k keepe
 		type candidate struct {
 			sponsor   types.ContractSponsor
 			user      simtypes.Account
-			remaining sdk.Int
+			remaining sdkmath.Int
 		}
 		candidates := make([]candidate, 0)
 		for _, sponsor := range k.GetAllSponsors(ctx) {
@@ -575,10 +592,10 @@ func SimulateUserGrantUsage(ak types.AccountKeeper, bk types.BankKeeper, k keepe
 		}
 		selected := candidates[r.Intn(len(candidates))]
 		upper := selected.remaining
-		if upper.GT(sdk.NewInt(100_000)) {
-			upper = sdk.NewInt(100_000)
+		if upper.GT(sdkmath.NewInt(100_000)) {
+			upper = sdkmath.NewInt(100_000)
 		}
-		amount := sdk.NewInt(r.Int63n(upper.Int64()) + 1)
+		amount := sdkmath.NewInt(r.Int63n(upper.Int64()) + 1)
 		consumed := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 		if err := k.CheckUserGrantLimit(
 			ctx,
@@ -640,18 +657,18 @@ func fundSpecificSponsor(
 			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "bank keeper is not configured"), nil, nil
 		}
 		available := bk.SpendableCoins(ctx, funder.Address).AmountOf(types.SponsorshipDenom)
-		if available.LTE(sdk.OneInt()) {
+		if available.LTE(sdkmath.OneInt()) {
 			return simtypes.NoOpMsg(types.ModuleName, fundSponsorType, "admin has no funds available for sponsor"), nil, nil
 		}
 
 		upper := available.QuoRaw(4)
 		if upper.IsZero() {
-			upper = sdk.OneInt()
+			upper = sdkmath.OneInt()
 		}
-		if upper.GT(sdk.NewInt(1_000_000)) {
-			upper = sdk.NewInt(1_000_000)
+		if upper.GT(sdkmath.NewInt(1_000_000)) {
+			upper = sdkmath.NewInt(1_000_000)
 		}
-		amount := sdk.NewInt(r.Int63n(upper.Int64()) + 1)
+		amount := sdkmath.NewInt(r.Int63n(upper.Int64()) + 1)
 		funds := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, amount))
 		msg := banktypes.NewMsgSend(funder.Address, sponsorAddress, funds)
 		return deliverSimulationMsg(r, app, ctx, msg, funder, ak, bk, funds)

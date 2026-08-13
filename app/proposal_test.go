@@ -3,16 +3,16 @@ package app
 import (
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
+	"cosmossdk.io/log/v2"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 )
 
 func TestProposalLimitsRemainFiniteForLegacyUnlimitedConsensusParams(t *testing.T) {
-	ctx := sdk.Context{}.WithConsensusParams(&tmproto.ConsensusParams{
+	ctx := sdk.Context{}.WithConsensusParams(tmproto.ConsensusParams{
 		Block: &tmproto.BlockParams{MaxBytes: -1, MaxGas: -1},
 	})
 	require.Equal(t, fallbackProposalGasLimit, effectiveProposalGasLimit(ctx))
@@ -20,7 +20,7 @@ func TestProposalLimitsRemainFiniteForLegacyUnlimitedConsensusParams(t *testing.
 }
 
 func TestProposalLimitsHonorStricterConsensusAndRequestLimits(t *testing.T) {
-	ctx := sdk.Context{}.WithConsensusParams(&tmproto.ConsensusParams{
+	ctx := sdk.Context{}.WithConsensusParams(tmproto.ConsensusParams{
 		Block: &tmproto.BlockParams{MaxBytes: 10_000, MaxGas: 20_000},
 	})
 	require.Equal(t, uint64(20_000), effectiveProposalGasLimit(ctx))
@@ -44,6 +44,25 @@ func TestEnsureFiniteBlockLimitsPreservesExplicitLimits(t *testing.T) {
 	require.Equal(t, int64(fallbackProposalGasLimit), unlimited.Block.MaxGas)
 }
 
+func TestCompleteConsensusParamsSeedsMissingMigratedRecord(t *testing.T) {
+	observed := tmproto.ConsensusParams{
+		Block:     &tmproto.BlockParams{MaxBytes: 10_000, MaxGas: 20_000},
+		Evidence:  &tmproto.EvidenceParams{MaxAgeNumBlocks: 100},
+		Validator: &tmproto.ValidatorParams{PubKeyTypes: []string{"ed25519"}},
+		Version:   &tmproto.VersionParams{App: 7},
+		Abci:      &tmproto.ABCIParams{VoteExtensionsEnableHeight: 9},
+		Authority: &tmproto.AuthorityParams{Authority: "dora1authority"},
+	}
+
+	completed, changed := completeConsensusParams(tmproto.ConsensusParams{}, observed)
+	require.True(t, changed)
+	require.Equal(t, observed, completed)
+
+	unchanged, changed := completeConsensusParams(completed, observed)
+	require.False(t, changed)
+	require.Equal(t, completed, unchanged)
+}
+
 func TestProcessProposalRejectsMalformedTransaction(t *testing.T) {
 	db := dbm.NewMemDB()
 	t.Cleanup(func() {
@@ -62,9 +81,10 @@ func TestProcessProposalRejectsMalformedTransaction(t *testing.T) {
 		nil,
 	)
 
-	response := chainApp.ProcessProposal(abci.RequestProcessProposal{
+	response, err := chainApp.ProcessProposal(&abci.RequestProcessProposal{
 		Height: 1,
 		Txs:    [][]byte{{0xff}},
 	})
+	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_REJECT, response.Status)
 }

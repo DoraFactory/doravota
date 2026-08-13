@@ -1,19 +1,22 @@
 package sponsor
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"fmt"
 	"math"
 	"reflect"
 	"sort"
 	"testing"
 
+	"cosmossdk.io/log/v2"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/runtime"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
@@ -21,8 +24,9 @@ import (
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/stretchr/testify/suite"
+	protov2 "google.golang.org/protobuf/proto"
 
-	dbm "github.com/cometbft/cometbft-db"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/keeper"
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
@@ -52,7 +56,7 @@ type SponsorDecoratorTestSuite struct {
 
 // MockTxFeeChecker implements ante.TxFeeChecker for testing
 func mockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
-	minFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100)))
+	minFee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100)))
 	feeTx, ok := tx.(sdk.FeeTx)
 	if !ok {
 		return nil, 0, fmt.Errorf("tx must implement FeeTx")
@@ -131,12 +135,12 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 	db := dbm.NewMemDB()
 
 	// Create multi-store
-	cms := store.NewCommitMultiStore(db)
+	cms := store.NewCommitMultiStore(db, log.NewNopLogger())
 
 	// Create store keys
-	sponsorStoreKey := sdk.NewKVStoreKey(types.StoreKey)
-	authStoreKey := sdk.NewKVStoreKey(authtypes.StoreKey)
-	bankStoreKey := sdk.NewKVStoreKey(banktypes.StoreKey)
+	sponsorStoreKey := storetypes.NewKVStoreKey(types.StoreKey)
+	authStoreKey := storetypes.NewKVStoreKey(authtypes.StoreKey)
+	bankStoreKey := storetypes.NewKVStoreKey(banktypes.StoreKey)
 
 	// Mount stores
 	cms.MountStoreWithDB(sponsorStoreKey, storetypes.StoreTypeIAVL, db)
@@ -159,22 +163,25 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 		authtypes.FeeCollectorName: nil,
 		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
 	}
+	authority := sdk.MustBech32ifyAddressBytes("dora", authtypes.NewModuleAddress("gov"))
 
 	suite.accountKeeper = authkeeper.NewAccountKeeper(
 		codec,
-		authStoreKey,
+		runtime.NewKVStoreService(authStoreKey),
 		authtypes.ProtoBaseAccount,
 		maccPerms,
+		addresscodec.NewBech32Codec("dora"),
 		"dora",
-		authtypes.NewModuleAddress("gov").String(),
+		authority,
 	)
 
 	suite.bankKeeper = bankkeeper.NewBaseKeeper(
 		codec,
-		bankStoreKey,
+		runtime.NewKVStoreService(bankStoreKey),
 		suite.accountKeeper,
 		nil,
-		authtypes.NewModuleAddress("gov").String(),
+		authority,
+		log.NewNopLogger(),
 	)
 
 	// Create sponsor keeper
@@ -182,7 +189,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 		codec,
 		sponsorStoreKey,
 		suite.wasmKeeper,
-		"cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn", // mock authority for tests
+		authority,
 	)
 
 	// Create sponsor decorator with nil feegranter for simplicity
@@ -211,13 +218,10 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 	suite.accountKeeper.SetAccount(suite.ctx, contractAcc)
 	suite.accountKeeper.SetAccount(suite.ctx, feeGranterAcc)
 
-	// Create fee collector module account
-	feeCollectorAcc := authtypes.NewEmptyModuleAccount(authtypes.FeeCollectorName)
-	suite.accountKeeper.SetAccount(suite.ctx, feeCollectorAcc)
-
-	// Create sponsor module account for minting coins
-	sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
-	suite.accountKeeper.SetAccount(suite.ctx, sponsorModuleAcc)
+	// Create module accounts through the keeper so v0.55 assigns unique,
+	// deterministic account IDs.
+	suite.accountKeeper.GetModuleAccount(suite.ctx, authtypes.FeeCollectorName)
+	suite.accountKeeper.GetModuleAccount(suite.ctx, types.ModuleName)
 
 	// Set up default module parameters
 	params := types.DefaultParams()
@@ -227,7 +231,7 @@ func (suite *SponsorDecoratorTestSuite) SetupTest() {
 // TestStandardDecoratorFallback tests that transactions without sponsor context use standard decorator
 // This ensures non-sponsored transactions are processed normally
 func (suite *SponsorDecoratorTestSuite) TestStandardDecoratorFallback() {
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))) // Use minimum fee
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100))) // Use minimum fee
 
 	// Give user enough balance to pay fee
 	err := suite.bankKeeper.MintCoins(suite.ctx, types.ModuleName, fee)
@@ -258,8 +262,8 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 
 	// Create and fund sponsor properly
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
@@ -298,7 +302,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorContextDetection() {
 // TestFeegrantPriorityOverSponsor tests that feegrant takes priority over sponsor payment
 // This ensures proper fee payment hierarchy: feegrant > sponsor > standard
 func (suite *SponsorDecoratorTestSuite) TestFeegrantPriorityOverSponsor() {
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Create sponsor payment info
 	// Use a dummy sponsor address for this test since we're testing feegrant priority
@@ -341,10 +345,10 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
 	// Test case 1: Fee meets minimum requirement (should succeed)
-	validFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200))) // Above 100peaka minimum
+	validFee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200))) // Above 100peaka minimum
 
 	// Create and fund sponsor properly
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, validFee)
 
 	// Get the sponsor info to get the correct sponsor address
@@ -373,7 +377,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerValidation() {
 	suite.Require().NoError(err)
 
 	// Test case 2: Fee below minimum requirement (should fail)
-	invalidFee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(50))) // Below 100peaka minimum
+	invalidFee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(50))) // Below 100peaka minimum
 
 	sponsorPaymentInvalid := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
@@ -398,11 +402,11 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Fund the sponsor account with more than fee amount
-	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	// Create and fund sponsor properly
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, initialBalance)
 
@@ -441,7 +445,7 @@ func (suite *SponsorDecoratorTestSuite) TestSponsorFeeDeduction() {
 	finalFeeCollectorBalance := suite.bankKeeper.GetBalance(suite.ctx, suite.accountKeeper.GetModuleAddress(authtypes.FeeCollectorName), "peaka")
 
 	// Sponsor should have less balance
-	minRequiredFee := sdk.NewCoin("peaka", sdk.NewInt(100))
+	minRequiredFee := sdk.NewCoin("peaka", sdkmath.NewInt(100))
 	expectedSponsorBalance := initialSponsorBalance.Sub(minRequiredFee)
 	suite.Require().True(finalSponsorBalance.IsEqual(expectedSponsorBalance))
 
@@ -457,8 +461,8 @@ func (suite *SponsorDecoratorTestSuite) TestPerDigestTicketEventsDeterministicOr
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
 	// Create sponsor and fund sufficiently
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000_000)))
-	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000_000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000_000)))
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000_000)))
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, fund)
 
 	// Issue tickets for three methods in arbitrary order
@@ -497,7 +501,7 @@ func (suite *SponsorDecoratorTestSuite) TestPerDigestTicketEventsDeterministicOr
 	suite.Require().NoError(err)
 
 	// Prepare sponsor payment with digest counts
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(500)))
 	sp := SponsorPaymentInfo{
 		ContractAddr: suite.contract,
 		SponsorAddr:  sponsorAddr,
@@ -572,11 +576,11 @@ func (suite *SponsorDecoratorTestSuite) TestSimulationModeNoDeduction() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Fund the sponsor account
-	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	initialBalance := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	// Create and fund sponsor properly
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, initialBalance)
 
@@ -621,12 +625,12 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Set up contract sponsorship
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	// Create and fund sponsor properly
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee.MulInt(sdk.NewInt(2)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee.MulInt(sdkmath.NewInt(2)))
 
 	// Get the sponsor info to get the correct sponsor address
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
@@ -694,10 +698,10 @@ func (suite *SponsorDecoratorTestSuite) TestCheckTxVsDeliverTxBehavior() {
 // This ensures proper error handling when sponsor cannot pay fees
 func (suite *SponsorDecoratorTestSuite) TestInsufficientSponsorBalance() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Register sponsor without funding the derived sponsor address
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
@@ -737,10 +741,10 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 	// Set up contract info first
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Set up contract sponsorship
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10000)))
 	// Create and fund sponsor properly
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, fee)
 
@@ -793,11 +797,11 @@ func (suite *SponsorDecoratorTestSuite) TestUserGrantUsageUpdate() {
 // and reflect uses_remaining and expiry from the ticket state before consumption.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_EventIncludesDigestType() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200)))
 
 	// Create sponsor and fund sufficiently
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5_000))))
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	suite.Require().True(found)
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
@@ -856,11 +860,11 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_EventIncludesDigestType() {
 // should decrement uses accordingly and mark consumed when reaching 0.
 func (suite *SponsorDecoratorTestSuite) TestBulkConsumption_ExactExhaustion() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200)))
 
 	// Create sponsor and fund sufficiently
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5_000))))
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	suite.Require().True(found)
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
@@ -896,11 +900,11 @@ func (suite *SponsorDecoratorTestSuite) TestBulkConsumption_ExactExhaustion() {
 // consume the ticket accordingly.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_SingleDigest_EmitsUsesAndExpiry() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200)))
 
 	// Create sponsor and fund sufficiently
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
-	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000)))
+	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5_000))))
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	suite.Require().True(found)
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
@@ -961,9 +965,9 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_SingleDigest_EmitsUsesAndExp
 // Multiple digests in DigestCounts: all should be consumed atomically upon success.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigestCounts_ConsumesAll() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(300)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(300)))
 
-	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))))
+	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000))))
 	sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 
@@ -993,10 +997,10 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigestCounts_ConsumesAl
 // (minimum uses_remaining and minimum expiry_height) prior to consumption.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigest_EmitsMinUsesAndExpiry() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(250)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(250)))
 
 	// Create sponsor and fund sufficiently
-	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5_000))))
+	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5_000))))
 	sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 
@@ -1081,8 +1085,8 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_MultiDigest_EmitsMinUsesAndE
 // Sponsored fee payment must never proceed without a corresponding ticket.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_FailsClosed() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(150)))
-	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000))))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(150)))
+	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1_000))))
 	sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 
@@ -1117,8 +1121,8 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_DigestCountsAbsent_FailsClos
 // Bulk consumption failure should not partially consume any ticket.
 func (suite *SponsorDecoratorTestSuite) TestDeliver_BulkConsumption_Failure_NoPartialConsume() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
-	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1_000))))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200)))
+	suite.createAndFundSponsor(suite.contract, true, sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000))), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1_000))))
 	sponsor, _ := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	sponsorAddr, _ := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 
@@ -1142,10 +1146,10 @@ func (suite *SponsorDecoratorTestSuite) TestDeliver_BulkConsumption_Failure_NoPa
 // DeliverTx: If sponsor account does not exist, decorator should return unknown address error.
 func (suite *SponsorDecoratorTestSuite) TestUnknownSponsorAccount_Error() {
 	suite.wasmKeeper.SetContractInfo(suite.contract, suite.admin.String())
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(200)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(200)))
 
 	// Create sponsor entry without funding (and without creating the account)
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10_000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10_000)))
 	suite.createAndFundSponsor(suite.contract, true, maxGrant, sdk.Coins{})
 	sponsor, found := suite.keeper.GetSponsor(suite.ctx, suite.contract.String())
 	suite.Require().True(found)
@@ -1212,7 +1216,7 @@ func (suite *SponsorDecoratorTestSuite) createTx(msgs []sdk.Msg, signers []sdk.A
 }
 
 func (suite *SponsorDecoratorTestSuite) TestFeeCheckerRejectsInvalidGasWithoutPanic() {
-	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(100)))
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(100)))
 	for _, gas := range []uint64{0, uint64(math.MaxInt64) + 1} {
 		tx := MockTx{fee: fee, gasLimit: gas}
 		suite.Require().NotPanics(func() {
@@ -1223,7 +1227,7 @@ func (suite *SponsorDecoratorTestSuite) TestFeeCheckerRejectsInvalidGasWithoutPa
 }
 
 func (suite *SponsorDecoratorTestSuite) TestGetTxPriorityDefensivelyHandlesNonPositiveGas() {
-	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdk.NewInt(100)))
+	fee := sdk.NewCoins(sdk.NewCoin(types.SponsorshipDenom, sdkmath.NewInt(100)))
 	suite.Require().Zero(getTxPriority(fee, 0))
 	suite.Require().Zero(getTxPriority(fee, -1))
 }
@@ -1244,7 +1248,7 @@ func (suite *SponsorDecoratorTestSuite) TestNonFeeTxInterface() {
 		ContractAddr: suite.contract,
 		SponsorAddr:  suite.user, // Dummy for this test
 		UserAddr:     suite.user,
-		Fee:          sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000))),
+		Fee:          sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000))),
 		IsSponsored:  true,
 	}
 	ctxWithSponsor := suite.ctx.WithValue(sponsorPaymentKey{}, sponsorPayment)
@@ -1277,7 +1281,7 @@ func (suite *SponsorDecoratorTestSuite) TestTxFeeCheckerError() {
 		errorTxFeeChecker,
 	)
 
-	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	fee := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 
 	// Create sponsor payment info
 	sponsorPayment := SponsorPaymentInfo{
@@ -1316,5 +1320,6 @@ type MockNonFeeTxForDecorator struct {
 	msgs []sdk.Msg
 }
 
-func (tx *MockNonFeeTxForDecorator) GetMsgs() []sdk.Msg   { return tx.msgs }
-func (tx *MockNonFeeTxForDecorator) ValidateBasic() error { return nil }
+func (tx *MockNonFeeTxForDecorator) GetMsgs() []sdk.Msg                    { return tx.msgs }
+func (tx *MockNonFeeTxForDecorator) GetMsgsV2() ([]protov2.Message, error) { return nil, nil }
+func (tx *MockNonFeeTxForDecorator) ValidateBasic() error                  { return nil }

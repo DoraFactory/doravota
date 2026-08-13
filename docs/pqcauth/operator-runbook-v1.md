@@ -2,17 +2,20 @@
 
 ## Rollout order
 
-1. Deploy the binary and add the `pqcauth` store through the `v1.0.0` upgrade.
-2. Keep module enforcement in `OPTIONAL` while users register keys.
-3. Publish the chain ID, base64 `network_id`, registration cutoff, supported
+1. Rehearse and deploy an SDK v0.53 / IBC-Go v10 bridge release for the
+   currently deployed SDK v0.47 state.
+2. After the bridge state is stable, deploy the SDK v0.55 / IBC-Go v11 target
+   binary and add the `pqcauth` store through the `v1.0.0` upgrade.
+3. Keep module enforcement in `OPTIONAL` while users register keys.
+4. Publish the chain ID, base64 `network_id`, registration cutoff, supported
    algorithm, proof contexts, and activation heights through independent
    channels.
-4. Require users to verify their queried key, effective height, and policy
+5. Require users to verify their queried key, effective height, and policy
    version before moving funds.
-5. Set an irreversible registration cutoff. A cutoff at height `C` rejects
+6. Set an irreversible registration cutoff. A cutoff at height `C` rejects
    first registration at every height `>= C`; it does not block rotation or
    recovery of existing accounts.
-6. Activate `REQUIRED_FOR_REGISTERED` before considering global `REQUIRED`.
+7. Activate `REQUIRED_FOR_REGISTERED` before considering global `REQUIRED`.
 
 The v1.0.0 binary commits distinct launch-specific `network_id` values for
 `vota-ash` and `vota-testnet`. A custom chain derives a chain-specific
@@ -203,41 +206,86 @@ authenticated transport, request timeout, approval policy, and audit log.
 Before production, rehearse both modes on a fork and confirm identical results
 on amd64 and arm64.
 
-## Release dependency gate
+## Release dependency and migration gate
 
-The application currently remains on the Cosmos SDK 0.47 compatibility family.
-The PQC implementation does not make the full node production-ready while the
-following upstream findings remain reachable:
+The target application now builds on Cosmos SDK v0.55.0, CometBFT v0.40.0,
+IBC-Go v11.2.0 and Wasmd v0.70.3 compatibility source. pqcauth calls the SDK's
+native ML-DSA-65 key API; CIRCL is an indirect dependency of CometBFT rather
+than a direct pqcauth API.
 
-- gRPC 1.79.3 has reachable xDS RBAC and HTTP/2 transport findings; the
-  advisory fixes them in 1.82.1.
-- CometBFT 0.37 has peer-driven blocksync and block-part denial-of-service
-  findings. Their upstream advisories do not share a single compatible minimum
-  fix version for this application line.
-- Wasmd still has simulation and unbounded-address validation findings whose
-  fixes require the 0.52/0.53 line.
-- Cosmos SDK `x/crisis` has unresolved fee and halt semantics findings.
-- The Cosmos keyring dependency still brings in the unmaintained
-  `x/crypto/openpgp` package, for which no patched release exists.
+The production chain is still an SDK v0.47 / IBC-Go v7 chain. Directly loading
+that state with this target is unsupported: SDK v0.55 no longer contains the
+legacy `x/params` migrations, and IBC-Go v11 cannot start its migration graph
+from the old IBC v7 module versions. The v1.0.0 handler therefore validates the
+module version map and rejects a direct jump before changing state.
 
-Do not activate production enforcement until an application-wide migration has
-been rehearsed with at least Cosmos SDK 0.50.14, a compatible CometBFT release
-for which both findings are cleared by the exact-release security scan, Wasmd
-0.53.2 or newer, and a keyring/backend decision that removes or explicitly
-contains OpenPGP. Run `govulncheck ./...` on the exact release toolchain and
-treat any reachable Critical or High result as a release blocker.
-These are application dependency gates, not weaknesses in ML-DSA verification,
-but they affect the security of the node that enforces it.
+Production approval requires two independently versioned releases:
 
-The 2026-08-02 UTC release-candidate scan used Go 1.25.12 and
-`govulncheck` 1.6.0. It found eight called vulnerabilities in five modules:
-GO-2026-6061 (gRPC), GO-2026-5932 (OpenPGP), GO-2025-3443 and GO-2025-3442
-(CometBFT), GO-2024-3319 and GO-2024-3059 (Wasmd), and GO-2023-1881 and
-GO-2023-1821 (Cosmos SDK `x/crisis`). It also found two vulnerabilities in
-imported packages and one in a required module for which no call path was
-identified. Re-run the scan for every release: vulnerability-database results
-change over time, so this count is evidence for that build, not a permanent
-allowlist.
+- bridge: SDK v0.53.x, IBC-Go v10.x and a compatible Wasmd v0.61.x line;
+- target: this SDK v0.55 / IBC-Go v11 / pqcauth release.
+
+Run both upgrades in sequence against an exact production-state snapshot.
+Compare app hashes across all validators after each height and exercise bank,
+staking, governance, IBC, ICA, Wasm, authz, feegrant and group state before
+moving to the next stage. The target removes `params`, `capability` and
+`feeibc`, but preserves the historical `group` store through a pinned v0.53.6
+compatibility implementation.
+
+Wasmd v0.70.3 officially targets SDK v0.54, so the target currently carries a
+pinned compatibility snapshot and a fail-fast stub for the no-longer-supported
+Wasm v2→v3 legacy params migration. The bridge must bring Wasm to consensus
+version 4 first; the target refuses older Wasm state.
+
+The 2026-08-02 scan in the historical E2E report was for the SDK v0.47
+candidate and is not evidence for this dependency graph. On 2026-08-13 the
+target was rescanned with Go 1.26.5 and govulncheck 1.6.0:
+
+```text
+GOTOOLCHAIN=go1.26.5 go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 \
+  -show verbose ./...
+```
+
+The scanner reported four symbol-reachable IDs. Manual triage is required
+because the vulnerability database did not yet model all 2026 branches and
+backports correctly:
+
+- `GO-2026-4513` and duplicate `GO-2026-4740` identify the same malformed
+  MessagePack extension-frame panic reached through WasmVM metrics decoding.
+  This target pins the upstream v2 security backport commit
+  `04a026e9ac24` merged in `shamaton/msgpack#66`. The upstream public API is
+  unchanged, and `TestMsgpackRejectsTruncatedExtensionFrames` asserts that all
+  fixext markers return an error instead of panicking. Govulncheck continues to
+  report the IDs because the Go vulnerability database still says that no v2
+  fixed version exists. Replace the pseudo-version with the first tagged v2
+  release containing that commit when one is published.
+- `GO-2024-2584` is a scanner range false positive for SDK v0.55.0. The Cosmos
+  advisory lists only releases through v0.47.9 and v0.50.4 as affected; the
+  patched releases were v0.47.10 and v0.50.5. Preserve a link to that advisory
+  in release evidence rather than suppressing the ID without explanation.
+- `GO-2026-5932` remains an unresolved upstream finding. SDK v0.55.0 uses the
+  unmaintained `x/crypto/openpgp/armor` package only as the ASCII-armour framing
+  layer for local SDK keyring records; private-key confidentiality and
+  integrity use Argon2 plus ChaCha20-Poly1305. This path is not driven by a
+  transaction or consensus message, but processing a malicious local keyring
+  record remains outside the production trust boundary. Validator and relayer
+  production signers must therefore use an OS-backed keyring, HSM, or remote
+  signer with protected local files, and must not import untrusted armour. A
+  maintained SDK armour replacement or an explicit, reviewed release exception
+  is required before final production approval.
+
+The scanner additionally reported three module-level IDs without a vulnerable
+symbol call from this application. `GO-2025-3442` is a CometBFT blocksync range
+false positive: v0.40.0's `BlockPool.SetPeerRange` already bans a peer that
+lowers its previously reported range and includes the malicious-peer regression
+tests from the advisory fix. The two `x/crisis` IDs are not reachable because
+this application does not mount or execute `x/crisis`.
+
+This triage is evidence for this exact target dependency graph only. Run the
+same scan independently on the bridge and final target commits with the release
+toolchain. Vulnerability database results change over time; never use the count
+or the false-positive decisions as a permanent allowlist. New reachable
+Critical or High findings remain release blockers until fixed or reviewed with
+equivalent source-level and behavioral evidence.
 
 ## Observability
 

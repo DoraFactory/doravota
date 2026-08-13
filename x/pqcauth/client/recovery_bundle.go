@@ -686,7 +686,14 @@ func validateUnsignedRecoverySigner(
 	if !ok {
 		return fmt.Errorf("bundled recovery transaction does not expose signers")
 	}
-	signers := signatureTx.GetSigners()
+	rawSigners, err := signatureTx.GetSigners()
+	if err != nil {
+		return fmt.Errorf("extract bundled recovery transaction signers: %w", err)
+	}
+	signers := make([]sdk.AccAddress, len(rawSigners))
+	for index := range rawSigners {
+		signers[index] = sdk.AccAddress(rawSigners[index])
+	}
 	if len(signers) != 1 || !signers[0].Equals(expectedSigner) {
 		return fmt.Errorf("bundled recovery signer does not match sign document")
 	}

@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"testing"
 
-	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -88,7 +87,7 @@ func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 	params.Pending = &pending
 	params.PendingActivationHeight = uint64(ctx.BlockHeight())
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
-	appModule.BeginBlock(ctx, abci.RequestBeginBlock{})
+	require.NoError(t, appModule.BeginBlock(ctx))
 	require.Nil(t, moduleKeeper.GetParams(ctx).Pending)
 
 	paused := moduleKeeper.GetParams(ctx)
@@ -96,11 +95,10 @@ func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 	paused.EmergencyExpiresHeight = uint64(ctx.BlockHeight() + 1)
 	require.NoError(t, moduleKeeper.SetParams(ctx, paused))
 	expiryCtx := ctx.WithBlockHeight(ctx.BlockHeight() + 1)
-	appModule.BeginBlock(expiryCtx, abci.RequestBeginBlock{})
+	require.NoError(t, appModule.BeginBlock(expiryCtx))
 	normalized := moduleKeeper.GetParams(expiryCtx)
 	require.Equal(t, types.EmergencyMode_EMERGENCY_MODE_NORMAL, normalized.EmergencyMode)
 	require.Zero(t, normalized.EmergencyExpiresHeight)
-	require.Empty(t, appModule.EndBlock(ctx, abci.RequestEndBlock{}))
 
 	invariants := &moduleInvariantRegistryStub{}
 	appModule.RegisterInvariants(invariants)

@@ -2,16 +2,19 @@ package keeper
 
 import (
 	"bytes"
+	sdkmath "cosmossdk.io/math"
 	"strings"
 	"testing"
 
+	"cosmossdk.io/log/v2"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	"github.com/cometbft/cometbft/libs/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/codec"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/runtime"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -20,7 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	dbm "github.com/cometbft/cometbft-db"
+	dbm "github.com/cosmos/cosmos-db"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"
 )
@@ -38,12 +41,12 @@ func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, au
 	cdc := codec.NewProtoCodec(interfaceRegistry)
 
 	// Stores
-	sponsorStoreKey := sdk.NewKVStoreKey(types.StoreKey)
-	authStoreKey := sdk.NewKVStoreKey(authtypes.StoreKey)
-	bankStoreKey := sdk.NewKVStoreKey(banktypes.StoreKey)
+	sponsorStoreKey := storetypes.NewKVStoreKey(types.StoreKey)
+	authStoreKey := storetypes.NewKVStoreKey(authtypes.StoreKey)
+	bankStoreKey := storetypes.NewKVStoreKey(banktypes.StoreKey)
 
 	db := dbm.NewMemDB()
-	cms := store.NewCommitMultiStore(db)
+	cms := store.NewCommitMultiStore(db, log.NewNopLogger())
 	cms.MountStoreWithDB(sponsorStoreKey, storetypes.StoreTypeIAVL, db)
 	cms.MountStoreWithDB(authStoreKey, storetypes.StoreTypeIAVL, db)
 	cms.MountStoreWithDB(bankStoreKey, storetypes.StoreTypeIAVL, db)
@@ -58,30 +61,33 @@ func setupKeeperWithDeps(t *testing.T) (Keeper, sdk.Context, *MockWasmKeeper, au
 		authtypes.FeeCollectorName: nil,
 		types.ModuleName:           {authtypes.Minter, authtypes.Burner},
 	}
+	authority := sdk.MustBech32ifyAddressBytes("dora", authtypes.NewModuleAddress("gov"))
 
 	accountKeeper := authkeeper.NewAccountKeeper(
 		cdc,
-		authStoreKey,
+		runtime.NewKVStoreService(authStoreKey),
 		authtypes.ProtoBaseAccount,
 		maccPerms,
+		addresscodec.NewBech32Codec("dora"),
 		"dora",
-		authtypes.NewModuleAddress("gov").String(),
+		authority,
 	)
 
 	bankKeeper := bankkeeper.NewBaseKeeper(
 		cdc,
-		bankStoreKey,
+		runtime.NewKVStoreService(bankStoreKey),
 		accountKeeper,
 		nil,
-		authtypes.NewModuleAddress("gov").String(),
+		authority,
+		log.NewNopLogger(),
 	)
 
-	// Create module account for sponsor module (for minting)
-	sponsorModuleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter, authtypes.Burner)
-	accountKeeper.SetAccount(ctx, sponsorModuleAcc)
+	// Create the module account through the keeper so v0.55 initializes its
+	// deterministic account ID and secondary index.
+	accountKeeper.GetModuleAccount(ctx, types.ModuleName)
 
 	// Create keeper
-	k := NewKeeper(cdc, sponsorStoreKey, mockWasmKeeper, authtypes.NewModuleAddress("gov").String())
+	k := NewKeeper(cdc, sponsorStoreKey, mockWasmKeeper, authority)
 
 	return *k, ctx, mockWasmKeeper, accountKeeper, bankKeeper
 }
@@ -112,7 +118,7 @@ func TestMsgServerRejectsNonCanonicalStateAddresses(t *testing.T) {
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	})
 	require.Error(t, err)
@@ -124,7 +130,7 @@ func TestMsgServerRejectsNonCanonicalStateAddresses(t *testing.T) {
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	})
 	require.Error(t, err)
@@ -136,7 +142,7 @@ func TestMsgServerRejectsNonCanonicalStateAddresses(t *testing.T) {
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	})
 	require.NoError(t, err)
@@ -167,7 +173,7 @@ func TestAdminClearedDisablesManagerAndTicketIssuer(t *testing.T) {
 		IsSponsored:         true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	})
 	require.NoError(t, err)
@@ -296,7 +302,7 @@ func TestGlobalDisablePausesExecutionButAllowsLifecycleManagement(t *testing.T) 
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	})
 	require.NoError(t, err)
@@ -1226,7 +1232,7 @@ func TestMsgServerAdminPermissions(t *testing.T) {
 		mockWasmKeeper.SetContractInfo(contractAddr, adminAddr)
 
 		// Create MaxGrantPerUser since IsSponsored is true
-		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 		pbCoins := make([]*sdk.Coin, len(maxGrant))
 		for i, coin := range maxGrant {
 			newCoin := sdk.Coin{
@@ -1528,7 +1534,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 	t.Run("SetSponsor with max grant per user", func(t *testing.T) {
 		// Create message with max grant per user
 		maxGrant := sdk.NewCoins(
-			sdk.NewCoin("peaka", sdk.NewInt(1000000)),
+			sdk.NewCoin("peaka", sdkmath.NewInt(1000000)),
 		)
 		pbCoins := make([]*sdk.Coin, len(maxGrant))
 		for i, coin := range maxGrant {
@@ -1566,7 +1572,7 @@ func TestMsgServerWithMaxGrantPerUser(t *testing.T) {
 
 	t.Run("UpdateSponsor with max grant per user", func(t *testing.T) {
 		// Update with different max grant per user
-		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000000)))
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(2000000)))
 		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
 		for i, coin := range newMaxGrant {
 			newCoin := sdk.Coin{
@@ -1607,7 +1613,7 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 
 	t.Run("SetSponsor generates correct sponsor_address", func(t *testing.T) {
 		// Create message
-		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 		pbCoins := make([]*sdk.Coin, len(maxGrant))
 		for i, coin := range maxGrant {
 			newCoin := sdk.Coin{
@@ -1650,7 +1656,7 @@ func TestMsgServerSponsorAddressGeneration(t *testing.T) {
 		originalSponsorAddr := originalSponsor.SponsorAddress
 
 		// Update the sponsor
-		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(2000000)))
+		newMaxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(2000000)))
 		pbCoins := make([]*sdk.Coin, len(newMaxGrant))
 		for i, coin := range newMaxGrant {
 			newCoin := sdk.Coin{
@@ -1702,7 +1708,7 @@ func TestMsgServerSponsorAddressConsistency(t *testing.T) {
 	t.Run("Each contract gets unique sponsor_address", func(t *testing.T) {
 		// Create sponsors for all contracts
 		for i, contractAddr := range contracts {
-			maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+			maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 			pbCoins := make([]*sdk.Coin, len(maxGrant))
 			for j, coin := range maxGrant {
 				newCoin := sdk.Coin{
@@ -1748,7 +1754,7 @@ func TestMsgServerSponsorAddressConsistency(t *testing.T) {
 		require.NoError(t, err)
 
 		// Recreate the sponsor
-		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+		maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 		pbCoins := make([]*sdk.Coin, len(maxGrant))
 		for i, coin := range maxGrant {
 			newCoin := sdk.Coin{
@@ -1793,7 +1799,7 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
 	// Create sponsor via msg to generate sponsor address
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
 	require.NoError(t, err)
@@ -1804,12 +1810,12 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fund sponsor address
-	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(5000)))
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(5000)))
 	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
 	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
 
 	// Withdraw
-	withdrawAmt := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(3000)))
+	withdrawAmt := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(3000)))
 	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), withdrawAmt)
 
 	// Add event manager
@@ -1821,8 +1827,8 @@ func TestWithdrawSponsorFunds_Success(t *testing.T) {
 	// Check balances
 	balSponsor := bankKeeper.GetBalance(ctx, sponsorAddr, "peaka")
 	balRecipient := bankKeeper.GetBalance(ctx, recipient, "peaka")
-	require.Equal(t, sdk.NewInt(2000), balSponsor.Amount)   // 5000 - 3000
-	require.Equal(t, sdk.NewInt(3000), balRecipient.Amount) // 0 + 3000
+	require.Equal(t, sdkmath.NewInt(2000), balSponsor.Amount)   // 5000 - 3000
+	require.Equal(t, sdkmath.NewInt(3000), balRecipient.Amount) // 0 + 3000
 
 	// Verify event emission and attributes
 	var withdrawEvent sdk.Event
@@ -1864,7 +1870,7 @@ func TestDeleteSponsorFailsWhenBalanceExists(t *testing.T) {
 
 	wasmMock.SetContractInfo(contract.String(), admin.String())
 
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
 	require.NoError(t, err)
@@ -1875,7 +1881,7 @@ func TestDeleteSponsorFailsWhenBalanceExists(t *testing.T) {
 	sponsorAddr, err := sdk.AccAddressFromBech32(sponsor.SponsorAddress)
 	require.NoError(t, err)
 
-	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(500)))
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(500)))
 	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
 	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
 
@@ -1901,13 +1907,13 @@ func TestWithdrawSponsorFunds_NotAdmin(t *testing.T) {
 	wasmMock.SetContractInfo(contract.String(), admin.String())
 	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
 	require.NoError(t, err)
 
 	// Try withdraw as non-admin
-	wMsg := types.NewMsgWithdrawSponsorFunds(nonAdmin.String(), contract.String(), nonAdmin.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1))))
+	wMsg := types.NewMsgWithdrawSponsorFunds(nonAdmin.String(), contract.String(), nonAdmin.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1))))
 	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
 	require.Error(t, err)
 }
@@ -1921,7 +1927,7 @@ func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
 	wasmMock.SetContractInfo(contract.String(), admin.String())
 	msgServer := NewMsgServerImplWithDeps(keeper, bankKeeper, authKeeper)
 
-	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(1000000)))
+	maxGrant := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(1000000)))
 	setMsg := types.NewMsgSetSponsor(admin.String(), contract.String(), true, maxGrant)
 	_, err := msgServer.SetSponsor(sdk.WrapSDKContext(ctx), setMsg)
 	require.NoError(t, err)
@@ -1932,12 +1938,12 @@ func TestWithdrawSponsorFunds_InsufficientFunds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Fund with small amount
-	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(10)))
+	fund := sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(10)))
 	require.NoError(t, bankKeeper.MintCoins(ctx, types.ModuleName, fund))
 	require.NoError(t, bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, sponsorAddr, fund))
 
 	// Try withdraw larger amount
-	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdk.NewInt(100))))
+	wMsg := types.NewMsgWithdrawSponsorFunds(admin.String(), contract.String(), recipient.String(), sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100))))
 	_, err = msgServer.WithdrawSponsorFunds(sdk.WrapSDKContext(ctx), wMsg)
 	require.Error(t, err)
 }
@@ -2193,7 +2199,7 @@ func TestUpdateSponsor_DisableRetainsGrantButUnused(t *testing.T) {
 	mockWasmKeeper.SetContractInfo(contract, admin)
 
 	// initial enabled sponsor with grant
-	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(100)}}
+	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(100)}}
 	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
 
 	// disable sponsorship without touching grant
@@ -2219,7 +2225,7 @@ func TestUpdateSponsor_EnableUsesExistingGrantWhenOmitted(t *testing.T) {
 	mockWasmKeeper.SetContractInfo(contract, admin)
 
 	// initial enabled sponsor with grant
-	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdk.NewInt(200)}}
+	grant := []*sdk.Coin{{Denom: "peaka", Amount: sdkmath.NewInt(200)}}
 	require.NoError(t, keeper.SetSponsor(ctx, types.ContractSponsor{ContractAddress: contract, IsSponsored: true, CreatorAddress: admin, MaxGrantPerUser: grant}))
 
 	// partial update: keep enabled and omit grant -> should preserve previous grant
@@ -2231,7 +2237,7 @@ func TestUpdateSponsor_EnableUsesExistingGrantWhenOmitted(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, max, 1)
 	require.Equal(t, "peaka", max[0].Denom)
-	require.Equal(t, sdk.NewInt(200), max[0].Amount)
+	require.Equal(t, sdkmath.NewInt(200), max[0].Amount)
 }
 
 func TestGarbageCollect_ExpiredTicketReissue(t *testing.T) {

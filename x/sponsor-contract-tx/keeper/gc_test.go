@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/cosmos/cosmos-sdk/store/prefix"
+	"github.com/cosmos/cosmos-sdk/store/v2/prefix"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/x/sponsor-contract-tx/types"

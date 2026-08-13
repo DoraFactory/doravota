@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log/v2"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server"
@@ -44,6 +44,7 @@ func TestSponsorSimulationExecutesStateTransitions(t *testing.T) {
 	config := simtypes.Config{
 		ParamsFile:         paramsPath,
 		Seed:               7,
+		GenesisTime:        1_700_000_000,
 		InitialBlockHeight: 1,
 		NumBlocks:          12,
 		BlockSize:          12,

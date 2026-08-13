@@ -1,6 +1,7 @@
 package sponsor_test
 
 import (
+	sdkmath "cosmossdk.io/math"
 	"math"
 	"testing"
 
@@ -49,7 +50,7 @@ func TestInitGenesisDoesNotMutateInputGenerations(t *testing.T) {
 		IsSponsored:     true,
 		MaxGrantPerUser: []*sdk.Coin{{
 			Denom:  types.SponsorshipDenom,
-			Amount: sdk.NewInt(100),
+			Amount: sdkmath.NewInt(100),
 		}},
 	}
 	usageState := &types.UserGrantUsage{

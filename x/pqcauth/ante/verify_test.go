@@ -2,23 +2,29 @@ package ante
 
 import (
 	"bytes"
+	"context"
 	"testing"
+	"time"
 
-	dbm "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	coreaddress "cosmossdk.io/core/address"
+	"cosmossdk.io/log/v2"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	sdkaddress "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
-	"github.com/cosmos/cosmos-sdk/store"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
+	sdksigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
@@ -41,7 +47,7 @@ type recordingGasMeter struct {
 }
 
 func newRecordingGasMeter() *recordingGasMeter {
-	return &recordingGasMeter{GasMeter: sdk.NewInfiniteGasMeter()}
+	return &recordingGasMeter{GasMeter: storetypes.NewInfiniteGasMeter()}
 }
 
 func (m *recordingGasMeter) ConsumeGas(amount storetypes.Gas, descriptor string) {
@@ -64,29 +70,52 @@ func (m *recordingGasMeter) chargesFor(descriptor string) []gasCharge {
 
 var _ authante.AccountKeeper = accountKeeperMock{}
 
-func (m accountKeeperMock) GetParams(sdk.Context) authtypes.Params { return authtypes.DefaultParams() }
-func (m accountKeeperMock) GetAccount(_ sdk.Context, address sdk.AccAddress) authtypes.AccountI {
+func (m accountKeeperMock) GetParams(context.Context) authtypes.Params {
+	return authtypes.DefaultParams()
+}
+func (m accountKeeperMock) GetAccount(_ context.Context, address sdk.AccAddress) sdk.AccountI {
 	if m.account != nil && m.account.GetAddress().Equals(address) {
 		return m.account
 	}
 	return nil
 }
-func (m accountKeeperMock) SetAccount(sdk.Context, authtypes.AccountI) {}
-func (m accountKeeperMock) GetModuleAddress(string) sdk.AccAddress     { return nil }
+func (m accountKeeperMock) SetAccount(context.Context, sdk.AccountI) {}
+func (m accountKeeperMock) GetModuleAddress(string) sdk.AccAddress   { return nil }
+func (m accountKeeperMock) AddressCodec() coreaddress.Codec {
+	return sdkaddress.NewBech32Codec(sdk.GetConfig().GetBech32AccountAddrPrefix())
+}
+func (m accountKeeperMock) UnorderedTransactionsEnabled() bool { return false }
+func (m accountKeeperMock) RemoveExpiredUnorderedNonces(sdk.Context) error {
+	return nil
+}
+func (m accountKeeperMock) TryAddUnorderedNonce(sdk.Context, []byte, time.Time) error {
+	return nil
+}
 
 func setupAnteTest(
 	t testing.TB,
 ) (sdk.Context, pqckeeper.Keeper, accountKeeperMock, client.TxConfig, []byte) {
 	t.Helper()
-	registry := codectypes.NewInterfaceRegistry()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: sdksigning.Options{
+			AddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
+			},
+			ValidatorAddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
+			},
+		},
+	})
+	require.NoError(t, err)
 	types.RegisterInterfaces(registry)
 	authz.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)
 	txConfig := authtx.NewTxConfig(cdc, authtx.DefaultSignModes)
 
-	storeKey := sdk.NewKVStoreKey(types.StoreKey)
+	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
 	database := dbm.NewMemDB()
-	multiStore := store.NewCommitMultiStore(database)
+	multiStore := store.NewCommitMultiStore(database, log.NewNopLogger())
 	multiStore.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, nil)
 	require.NoError(t, multiStore.LoadLatestVersion())
 	ctx := sdk.NewContext(
@@ -266,7 +295,7 @@ func TestSimulationWithoutExtensionConsumesRequiredSignatureGas(t *testing.T) {
 	}}, charges)
 
 	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
-		ctx.WithGasMeter(sdk.NewInfiniteGasMeter()),
+		ctx.WithGasMeter(storetypes.NewInfiniteGasMeter()),
 		builder.GetTx(),
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
@@ -317,7 +346,7 @@ func TestSimulationSkipsPQCSignatureCryptoButDeliveryRejectsPlaceholder(t *testi
 	}}, charges)
 
 	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
-		ctx.WithGasMeter(sdk.NewInfiniteGasMeter()),
+		ctx.WithGasMeter(storetypes.NewInfiniteGasMeter()),
 		tx,
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
@@ -380,7 +409,7 @@ func TestLifecycleSimulationChargesProofAndRequiredSignatureGas(t *testing.T) {
 	}}, gasMeter.chargesFor("simulated pqcauth signature verification"))
 
 	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
-		ctx.WithGasMeter(sdk.NewInfiniteGasMeter()),
+		ctx.WithGasMeter(storetypes.NewInfiniteGasMeter()),
 		builder.GetTx(),
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
@@ -461,7 +490,7 @@ func TestRecoverySimulationChargesProofsWithoutSubstitutedTransactionSignature(t
 	require.Empty(t, gasMeter.chargesFor("simulated pqcauth signature verification"))
 
 	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
-		ctx.WithGasMeter(sdk.NewInfiniteGasMeter()),
+		ctx.WithGasMeter(storetypes.NewInfiniteGasMeter()),
 		builder.GetTx(),
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {

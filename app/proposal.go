@@ -26,7 +26,7 @@ func (app *App) setProposalHandlers(txConfig client.TxConfig) {
 }
 
 func (app *App) prepareProposalHandler(txConfig client.TxConfig) sdk.PrepareProposalHandler {
-	return func(ctx sdk.Context, request abci.RequestPrepareProposal) abci.ResponsePrepareProposal {
+	return func(ctx sdk.Context, request *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
 		maxBytes := effectiveProposalMaxBytes(ctx, request.MaxTxBytes)
 		maxGas := effectiveProposalGasLimit(ctx)
 		selected := make([][]byte, 0, len(request.Txs))
@@ -56,12 +56,12 @@ func (app *App) prepareProposalHandler(txConfig client.TxConfig) sdk.PrepareProp
 			totalBytes += int64(len(verifiedBytes))
 			totalGas += txGas
 		}
-		return abci.ResponsePrepareProposal{Txs: selected}
+		return &abci.ResponsePrepareProposal{Txs: selected}, nil
 	}
 }
 
 func (app *App) processProposalHandler() sdk.ProcessProposalHandler {
-	return func(ctx sdk.Context, request abci.RequestProcessProposal) abci.ResponseProcessProposal {
+	return func(ctx sdk.Context, request *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		maxBytes := effectiveProposalMaxBytes(ctx, 0)
 		maxGas := effectiveProposalGasLimit(ctx)
 		var totalBytes int64
@@ -69,28 +69,28 @@ func (app *App) processProposalHandler() sdk.ProcessProposalHandler {
 
 		for _, rawTx := range request.Txs {
 			if int64(len(rawTx)) > maxBytes-totalBytes {
-				return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
 			decodedTx, err := app.txConfig.TxDecoder()(rawTx)
 			if err != nil {
-				return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
 			txGas, ok := declaredGas(decodedTx)
 			if !ok || exceedsUint64(totalGas, txGas) || totalGas+txGas > maxGas {
-				return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
-			tx, err := app.ProcessProposalVerifyTx(rawTx)
+			tx, gasWanted, err := app.ProcessProposalVerifyTx(rawTx)
 			if err != nil {
-				return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
 			verifiedGas, ok := declaredGas(tx)
-			if !ok || verifiedGas != txGas {
-				return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}
+			if !ok || verifiedGas != txGas || gasWanted == 0 {
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
 			totalBytes += int64(len(rawTx))
 			totalGas += txGas
 		}
-		return abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}
+		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 	}
 }
 
@@ -144,4 +144,42 @@ func ensureFiniteBlockLimits(params *tmproto.ConsensusParams) bool {
 		changed = true
 	}
 	return changed
+}
+
+// completeConsensusParams fills fields that may be absent from the persisted
+// x/consensus record with the parameters observed by CometBFT for the current
+// block. Doravota v0.4.x stored these parameters in x/upgrade; SDK v0.53+
+// stores them in the dedicated consensus store, so the bridge upgrade must
+// explicitly seed the new location.
+func completeConsensusParams(
+	stored tmproto.ConsensusParams,
+	observed tmproto.ConsensusParams,
+) (tmproto.ConsensusParams, bool) {
+	changed := false
+	if stored.Block == nil && observed.Block != nil {
+		stored.Block = observed.Block
+		changed = true
+	}
+	if stored.Evidence == nil && observed.Evidence != nil {
+		stored.Evidence = observed.Evidence
+		changed = true
+	}
+	if stored.Validator == nil && observed.Validator != nil {
+		stored.Validator = observed.Validator
+		changed = true
+	}
+	if stored.Version == nil && observed.Version != nil {
+		stored.Version = observed.Version
+		changed = true
+	}
+	if stored.Abci == nil && observed.Abci != nil {
+		stored.Abci = observed.Abci
+		changed = true
+	}
+	if stored.Authority == nil && observed.Authority != nil {
+		stored.Authority = observed.Authority
+		changed = true
+	}
+
+	return stored, changed
 }

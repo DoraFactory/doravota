@@ -1,8 +1,11 @@
 package testutil
 
 import (
+	"context"
 	"fmt"
 	"sort"
+
+	sdkmath "cosmossdk.io/math"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -25,13 +28,13 @@ func NewMockWasmKeeper() *MockWasmKeeper {
 }
 
 // GetContractInfo returns contract info for the given address
-func (m *MockWasmKeeper) GetContractInfo(ctx sdk.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
+func (m *MockWasmKeeper) GetContractInfo(ctx context.Context, contractAddress sdk.AccAddress) *wasmtypes.ContractInfo {
 	return m.contracts[contractAddress.String()]
 }
 
 // IterateContractInfo exposes deterministic contract iteration for module
 // simulation tests, matching the production Wasm keeper's ordering contract.
-func (m *MockWasmKeeper) IterateContractInfo(ctx sdk.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool) {
+func (m *MockWasmKeeper) IterateContractInfo(ctx context.Context, cb func(sdk.AccAddress, wasmtypes.ContractInfo) bool) {
 	keys := make([]string, 0, len(m.contracts))
 	for contractAddress := range m.contracts {
 		keys = append(keys, contractAddress)
@@ -49,10 +52,10 @@ func (m *MockWasmKeeper) IterateContractInfo(ctx sdk.Context, cb func(sdk.AccAdd
 }
 
 // QuerySmart executes a smart contract query
-func (m *MockWasmKeeper) QuerySmart(ctx sdk.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
+func (m *MockWasmKeeper) QuerySmart(ctx context.Context, contractAddr sdk.AccAddress, req []byte) ([]byte, error) {
 	// Simulate gas consumption for policy queries
 	if m.gasUsed > 0 {
-		ctx.GasMeter().ConsumeGas(m.gasUsed, "mock query gas")
+		sdk.UnwrapSDKContext(ctx).GasMeter().ConsumeGas(m.gasUsed, "mock query gas")
 	}
 
 	// Check if this should return an error
@@ -125,7 +128,7 @@ func (m *MockWasmKeeper) Reset() {
 // MockTxFeeChecker implements ante.TxFeeChecker for testing
 func MockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
 	// Return minimum fee for testing
-	minFee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(100)))
+	minFee := sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(100)))
 	priority := int64(1)
 	return minFee, priority, nil
 }
@@ -133,7 +136,7 @@ func MockTxFeeChecker(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
 // MockTxFeeCheckerHighFee implements ante.TxFeeChecker with higher required fees
 func MockTxFeeCheckerHighFee(ctx sdk.Context, tx sdk.Tx) (sdk.Coins, int64, error) {
 	// Return higher minimum fee for testing fee validation
-	minFee := sdk.NewCoins(sdk.NewCoin("stake", sdk.NewInt(1000)))
+	minFee := sdk.NewCoins(sdk.NewCoin("stake", sdkmath.NewInt(1000)))
 	priority := int64(1)
 	return minFee, priority, nil
 }
