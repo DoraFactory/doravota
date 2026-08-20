@@ -1,111 +1,138 @@
-# x/pqcauth：交易级混合抗量子认证模块
+# x/pqcauth: Transaction-Level Hybrid Post-Quantum Authentication
 
-`x/pqcauth` 为 Cosmos SDK 交易增加一个独立的后量子认证因子。v1
-使用 Cosmos SDK v0.55 原生的 ML-DSA-65 key implementation（底层由
-CometBFT/CIRCL 实现），授权条件是：
+`x/pqcauth` adds an independent post-quantum authentication factor to Cosmos
+SDK transactions. Version 1 uses the native ML-DSA-65 key implementation in
+Cosmos SDK v0.55, backed by CometBFT and CIRCL. Authorization requires:
 
 ```text
-现有 Cosmos 账户签名有效 AND 账户的 ML-DSA-65 签名有效
+A valid existing Cosmos account signature
+AND
+A valid ML-DSA-65 signature registered for that account
 ```
 
-它不会替换 `BaseAccount` 的经典公钥，也不会改变账户地址派生方式。PQC
-签名作为交易级第二因子，通过一个 critical transaction extension 携带，并在
-AnteHandler 中与经典签名共同验证。
+The module does not replace the classic public key in `BaseAccount` and does
+not change account address derivation. The PQC signature is carried as a
+transaction-level second factor in a critical transaction extension and is
+verified together with the classic signature in the AnteHandler.
 
-该模块保护的是账户发起的 Cosmos SDK 交易。它不保护：
+The module protects Cosmos SDK transactions initiated by accounts. It does not
+protect:
 
-- 验证人共识签名；
-- CometBFT P2P 节点身份；
-- IBC 轻客户端或对端签名；
-- 智能合约内部自行定义的授权；
-- 历史上已经完成的经典签名；
-- 已经由账户主动授予的业务权限本身。
+- validator consensus signatures;
+- CometBFT P2P node identities;
+- IBC light clients or counterparty signatures;
+- authorization implemented independently inside smart contracts;
+- classic signatures that were completed in the past; or
+- business permissions that an account has already granted intentionally.
 
-模块的核心安全原则是 fail-closed：只要账户当前策略要求 PQC，任何解析错误、
-状态不一致、未知算法、签名错误或紧急暂停都只能拒绝交易，不能降级为
-classic-only。
+The core security rule is fail-closed. Once an account's effective policy
+requires PQC authorization, parse failures, inconsistent state, unknown
+algorithms, invalid signatures, and emergency pauses may only reject a
+transaction. They must never downgrade it to classic-only authorization.
 
-## 1. 模块提供的功能
+## 1. Features
 
-### 1.1 交易认证
+### 1.1 Transaction authentication
 
-- 当前只支持 ML-DSA-65。
-- 保留 Cosmos SDK 原有签名验证，PQC 是第二认证因子。
-- 支持一个交易中的多个 signer，PQC entry 通过 `signer_index` 与
-  `AuthInfo.signer_infos` 一一对应。
-- 携带 PQC extension 或要求 PQC 的交易只允许 `SIGN_MODE_DIRECT`。
-- PQC 签名绑定完整交易意图、费用、gas、fee payer/granter、账户号、sequence、
-  signer 顺序、key ID、算法和 policy version。
+- Version 1 supports ML-DSA-65 only.
+- Existing Cosmos SDK signature verification remains in place; PQC is an
+  additional authentication factor.
+- A transaction may have multiple signers. Each PQC entry is bound to the
+  corresponding `AuthInfo.signer_infos` entry through `signer_index`.
+- Transactions that carry a PQC extension, or whose signers require PQC, must
+  use `SIGN_MODE_DIRECT`.
+- A PQC signature binds the complete transaction intent, fee, gas, fee payer
+  and granter, account number, sequence, signer order, key ID, algorithm, and
+  policy version.
 
-### 1.2 密钥和账户策略
+### 1.2 Keys and account policies
 
-每个账户可以维护：
+Each account may maintain:
 
-- 一个当前交易签名密钥；
-- 一个必须存在且与交易签名密钥不同的离线恢复密钥；
-- 每个角色最近若干条完整历史记录，以及更早记录的哈希链承诺；
-- 当前及 H+1 待生效的账户保护策略；
-- 单调递增、永不复用的 key ID 序列。
+- one current transaction-signing key;
+- one mandatory offline recovery key that must differ from the signing key;
+- a bounded number of recent complete historical records per role, plus a hash
+  chain commitment to older records;
+- the current account protection policy and an H+1 pending policy; and
+- a monotonically increasing key ID sequence whose IDs are never reused.
 
-支持的生命周期操作：
+Supported lifecycle operations are:
 
-- 原子注册一对不同的交易签名密钥和恢复密钥，并在 H+1 开启自保护；
-- 轮换交易签名密钥；
-- 轮换离线恢复密钥；
-- 开启或关闭账户级自保护；
-- 永久吊销已经不再活跃的历史密钥；
-- 使用离线恢复密钥替换丢失的交易签名密钥；
-- 由治理更新有界的模块参数。
+- atomically register distinct signing and recovery keys and enable
+  self-protection at H+1;
+- rotate the transaction-signing key;
+- rotate the offline recovery key;
+- enable or disable account-level self-protection;
+- permanently revoke an inactive historical key;
+- use the offline recovery key to replace a lost signing key; and
+- update bounded module parameters through governance.
 
-### 1.3 离线签名
+### 1.3 Offline signing
 
-模块提供两种离线 bundle：
+The module defines two offline bundle formats:
 
-- `doravota.pqcauth/sign-bundle/v1`：普通受保护交易的离线 ML-DSA 签名；
-- `doravota.pqcauth/recovery-sign-bundle/v1`：交易绑定的离线恢复签名。
+- `doravota.pqcauth/sign-bundle/v1` for offline ML-DSA signing of ordinary
+  protected transactions; and
+- `doravota.pqcauth/recovery-sign-bundle/v1` for transaction-bound offline
+  recovery signatures.
 
-在线端在广播前会重新查询账户、sequence、key、policy、network ID
-并重建 sign document。任何链上状态变化都会让旧 bundle 失效。
+Before broadcast, the online side re-queries the account, sequence, key,
+policy, and network ID, then reconstructs the sign document. Any relevant
+on-chain state change invalidates an old bundle.
 
-### 1.4 查询、治理和运维
+### 1.4 Queries, governance, and operations
 
-查询接口提供：
+Query endpoints expose:
 
-- 当前有效参数；
-- 账户当前有效策略及活跃交易签名公钥；
-- 指定 key ID；
-- 账户保留的完整 key records，以及按 signing/recovery 角色划分的压缩历史摘要。
+- the currently effective parameters;
+- an account's effective policy and active signing public key;
+- a key by ID; and
+- the account's retained complete key records and compressed history summaries
+  for the signing and recovery roles.
 
-治理可以更新 enforcement mode、允许算法、验证 gas、大小/数量上限、
-registration cutoff 和 emergency mode。参数始终以完整 bundle 原子生效；会让当前
-合法交易失效的收紧操作必须等待创世固定的 `governance_safety_delay_blocks`，放宽
-操作和单独的紧急暂停在 H+1 生效。紧急暂停由创世固定的
-`max_emergency_duration_blocks` 自动限时。治理不能替账户更换密钥，`network_id`
-及两个安全时长在 genesis 后不可修改，registration cutoff 一旦安排或生效也不可回退。
+Governance may update the enforcement mode, allowed algorithms, verification
+gas, size and count limits, registration cutoff, and emergency mode. Parameter
+updates are activated atomically as complete bundles. Tightening changes that
+would invalidate currently valid transactions must wait for the immutable
+`governance_safety_delay_blocks` configured at genesis. Relaxations and
+standalone emergency pauses activate at H+1.
 
-## 2. 共识状态模型
+Emergency pauses automatically expire after the immutable
+`max_emergency_duration_blocks`. Governance cannot replace keys for an
+account. The `network_id` and both safety durations are immutable after
+genesis, and a registration cutoff cannot be rolled back after it has been
+scheduled or activated.
 
-模块 KV store 中有五类状态：
+## 2. Consensus state model
 
-| 状态 | 作用 |
+The module KV store contains five state categories:
+
+| State | Purpose |
 |---|---|
-| `Params` | 全局 enforcement、network ID、允许算法、gas、资源上限、cutoff、emergency mode、治理安全延迟、暂停期限和 pending 参数 |
-| `AccountPolicy` | 当前/待生效 signing key、recovery key、自保护开关和 policy version |
-| `PQCKeyRecord` | 当前、待生效和近期历史公钥记录，包含 owner、key ID、算法、角色、状态及生效高度区间 |
-| `AccountKeySequence` | 为账户分配单调递增的 key ID，已经停用或吊销的 ID 不会回收 |
-| `AccountKeyHistory` | 按 signing/recovery 角色记录已压缩条数、最后压缩 ID 和确定性哈希链承诺 |
+| `Params` | Global enforcement, network ID, allowed algorithms, gas, resource limits, cutoff, emergency mode, governance safety delay, pause duration, and pending parameters |
+| `AccountPolicy` | Current and pending signing key, recovery key, self-protection flag, and policy version |
+| `PQCKeyRecord` | Current, pending, and recent historical public-key records, including owner, key ID, algorithm, role, status, and effective height range |
+| `AccountKeySequence` | Allocates monotonically increasing key IDs; inactive and revoked IDs are never recycled |
+| `AccountKeyHistory` | Records the compressed count, last compressed ID, and deterministic hash-chain commitment separately for signing and recovery roles |
 
-key ID 没有小额终身配额，始终单调递增且永不复用。默认每个账户、每个角色保留
-最近 16 条完整的 terminal key records（参数硬上限 64）；更早的记录按 key ID
-递增顺序写入独立的 SHA-256 哈希链后删除完整记录。当前 signing、当前 recovery、
-pending signing 和 pending recovery 四类 policy 引用永远被 pin，不计入历史保留数，
-所以频繁轮换 recovery key 不会删除仍在使用的 signing key。
+Key IDs do not have a small lifetime quota. They increase monotonically and
+are never reused. By default, the module retains the most recent 16 terminal
+key records per account and per role, with a parameter hard cap of 64. Older
+records are appended to an independent SHA-256 hash chain in key-ID order
+before their complete records are deleted.
 
-当前实现按“模块首次启用时没有旧 PQC policy”设计，不包含 signing-only PQC 状态的
-兼容迁移。普通 Cosmos 账户不需要预迁移：它通过 `MsgRegisterKey` 一次性登记两把
-不同的 key，随后在 H+1 成为受保护账户。
+Keys referenced by the current signing, current recovery, pending signing, or
+pending recovery policy are always pinned and do not count toward the
+historical retention limit. Repeated recovery-key rotation therefore cannot
+delete a signing key that is still in use.
 
-`PQCKeyRecord` 的有效区间为：
+The current implementation assumes that no legacy PQC policy exists when the
+module is first enabled. It does not include a compatibility migration for a
+signing-only PQC state. Ordinary Cosmos accounts require no pre-migration:
+they atomically register two distinct keys with `MsgRegisterKey` and become
+protected at H+1.
+
+A `PQCKeyRecord` is effective when:
 
 ```text
 status == LIVE
@@ -113,368 +140,431 @@ AND height >= effective_height
 AND (inactive_from_height == 0 OR height < inactive_from_height)
 ```
 
-## 3. 模块从启动到运行的生命周期
+## 3. Lifecycle from application startup to normal operation
 
-### 3.1 应用装配
+### 3.1 Application wiring
 
-链应用启动时：
+When the chain application starts:
 
-1. `app/app.go` 创建 `pqcauth` KV store key。
-2. 创建 `keeper.Keeper`，治理模块地址作为 authority。
-3. 将 `AppModuleBasic` 和 `AppModule` 注册到 ModuleManager。
-4. 注册 Msg service、Query service、gRPC-Gateway、CLI 和 invariant。
-5. 将 `pqcauth` 放入 InitGenesis、BeginBlock 和 EndBlock 顺序。
-6. `app/ante.go` 把结构检查和 PQC 验证插入全局 AnteHandler。
-7. `app/proposal.go` 在 PrepareProposal 和 ProcessProposal 中重新执行 Ante
-   验证，防止 proposer 绕开 CheckTx 直接放入无效交易。
+1. `app/app.go` creates the `pqcauth` KV store key.
+2. The application creates `keeper.Keeper` with the governance module address
+   as its authority.
+3. `AppModuleBasic` and `AppModule` are registered with the ModuleManager.
+4. Msg services, Query services, gRPC-Gateway routes, CLI commands, and the
+   invariant are registered.
+5. `pqcauth` is added to InitGenesis, BeginBlock, and EndBlock ordering.
+6. `app/ante.go` inserts structural validation and PQC verification into the
+   global AnteHandler.
+7. `app/proposal.go` runs Ante verification again in PrepareProposal and
+   ProcessProposal so a proposer cannot bypass CheckTx and insert invalid
+   transactions directly.
 
-对于当前运行在 Cosmos SDK v0.47 / IBC-Go v7 的已有链，不能把 v1.0.0
-目标二进制直接放到升级高度。受支持的生产路径是：
+An existing chain currently running Cosmos SDK v0.47 and IBC-Go v7 cannot
+place the v1.0.0 target binary directly at the upgrade height. The supported
+production path is:
 
-1. 先用独立的 bridge release 从 SDK v0.47 升到 SDK v0.53 / IBC-Go v10，
-   完成仍然依赖旧 `x/params`、IBC capability 和 Wasm 迁移代码的历史迁移；
-2. 在 bridge 高度后持续出块并核对 app hash、IBC、Wasm、group 和账户状态；
-3. 再升级到本分支的 SDK v0.55 / IBC-Go v11 目标二进制；
-4. 目标 store loader 增加 `sponsor`、`pqcauth` store，并移除已经完成迁移的
-   `params`、`capability`、`feeibc` store；
-5. v1.0.0 handler 在运行任何迁移前检查 module version map。若仍是 v0.47
-   状态，会 fail closed 拒绝升级；
-6. ModuleManager 执行 v0.53 到 v0.55 的累计迁移并初始化 pqcauth 默认状态；
-7. 写入 mainnet、testnet 或 rehearsal chain 专属的 `network_id`；
-8. 对历史上无限制的 consensus block gas/bytes 设置有限上限。
+1. use a separate bridge release to upgrade from SDK v0.47 to SDK v0.53 and
+   IBC-Go v10, completing historical migrations that still depend on legacy
+   `x/params`, IBC capability, and Wasm migration code;
+2. continue producing blocks after the bridge height and verify the app hash,
+   IBC, Wasm, group, and account state;
+3. upgrade to the SDK v0.55 and IBC-Go v11 target binary from this branch;
+4. have the target store loader add the `sponsor` and `pqcauth` stores and
+   remove the fully migrated `params`, `capability`, and `feeibc` stores;
+5. have the v1.0.0 handler inspect the module version map before running any
+   migration and fail closed if the chain is still in the v0.47 state;
+6. let the ModuleManager execute cumulative v0.53-to-v0.55 migrations and
+   initialize the default pqcauth state;
+7. write the launch-specific `network_id` for mainnet, testnet, or a rehearsal
+   chain; and
+8. replace historically unlimited consensus block gas and byte limits with
+   finite bounds.
 
-旧链的 `group` store 不会删除。SDK v0.55 已移除内置 `x/group` 源码，因此应用
-固定维护一份从 SDK v0.53.6 移植的兼容实现，用于保持原有 group 消息、查询、
-状态和 consensus version 2。
+The legacy chain's `group` store is not deleted. Cosmos SDK v0.55 removed the
+built-in `x/group` source, so the application maintains a compatibility
+implementation ported from SDK v0.53.6 to preserve existing group messages,
+queries, state, and consensus version 2.
 
 ### 3.2 InitGenesis
 
-`InitGenesis` 会：
+`InitGenesis`:
 
-1. 严格验证 params、keys、policies 和 key sequences 的一致性；
-2. 对新链从 chain ID 派生 network ID，升级链使用发布时固定的 launch ID；
-3. 写入参数、密钥、策略和序列；
-4. 如果 genesis 没有显式 key sequence，则从账户最大 key ID 推导
-   `next_key_id`；
-5. 状态不合法时直接 panic，拒绝以不一致的 PQC 状态启动。
+1. strictly validates consistency across parameters, keys, policies, and key
+   sequences;
+2. derives the network ID from the chain ID for a new chain, while an upgraded
+   chain uses a launch ID fixed by the release;
+3. writes parameters, keys, policies, and sequences;
+4. derives `next_key_id` from the account's maximum key ID if genesis does not
+   contain an explicit key sequence; and
+5. panics on invalid state, refusing to start with inconsistent PQC state.
 
 ### 3.3 BeginBlock
 
-每个区块开始时，模块调用 `NormalizeParams`：
+At the beginning of each block, the module calls `NormalizeParams`:
 
-- 尚未到 activation height 的 pending params 原样保留；
-- 已经到达 activation height 的完整参数 bundle 原子切换为 current；
-- 已生效 pending 字段会从 store 中清除。
+- pending parameters remain unchanged until their activation height;
+- at the activation height, the complete pending parameter bundle atomically
+  replaces the current bundle; and
+- activated pending fields are cleared from the store.
 
-账户 policy 不需要在 BeginBlock 全量遍历。所有读取路径都会调用
-`AccountPolicy.Effective(height)`，因此节点在目标高度立即看到相同的有效状态；
-账户下一次执行生命周期操作时，再将已生效状态规范化写回 store。
+Account policies do not require a full-store scan during BeginBlock. Every
+read path calls `AccountPolicy.Effective(height)`, so all nodes observe the
+same effective state immediately at the target height. The stored policy is
+normalized when that account next performs a lifecycle operation.
 
 ### 3.4 EndBlock
 
-当前版本 EndBlock 不产生额外状态变更。模块提供 state-consistency invariant，
-用于验证 params、key records、policies 和 sequences 是否仍可组成合法 genesis
-状态。
+The current EndBlock implementation does not produce additional state
+changes. The module exposes a state-consistency invariant that verifies
+whether the parameters, key records, policies, and sequences still form a
+valid genesis state.
 
-## 4. 账户密钥和策略生命周期
+## 4. Account key and policy lifecycle
 
-所有会改变认证边界的操作都遵循 H+1：
+Every operation that changes the authentication boundary follows H+1
+activation:
 
 ```mermaid
 stateDiagram-v2
     [*] --> Unregistered
-    Unregistered --> RegistrationPending: H 提交 RegisterKey
-    RegistrationPending --> Protected: H+1 signing/recovery key 与 policy 生效
-    Protected --> RotationPending: H 提交 RotateKey 或 RotateRecoveryKey
-    RotationPending --> Protected: H+1 新旧 key 原子切换
-    Protected --> PolicyPending: H 提交 SetProtection
-    PolicyPending --> Protected: H+1 self_enforced 切换
-    Protected --> RecoveryPending: H 提交 RecoverKey
-    RecoveryPending --> Protected: H+1 新 signing key 生效
-    Protected --> Protected: RevokeKey 立即吊销非活跃历史 key
+    Unregistered --> RegistrationPending: Submit RegisterKey at H
+    RegistrationPending --> Protected: Signing/recovery keys and policy activate at H+1
+    Protected --> RotationPending: Submit RotateKey or RotateRecoveryKey at H
+    RotationPending --> Protected: Old/new keys switch atomically at H+1
+    Protected --> PolicyPending: Submit SetProtection at H
+    PolicyPending --> Protected: self_enforced switches at H+1
+    Protected --> RecoveryPending: Submit RecoverKey at H
+    RecoveryPending --> Protected: New signing key activates at H+1
+    Protected --> Protected: RevokeKey immediately revokes an inactive historical key
 ```
 
-H+1 的原因不是 UI 延迟，而是共识一致性要求：PrepareProposal/ProcessProposal
-会执行 Ante，但不会执行模块消息。如果密钥在同一高度立即生效，提案验证和
-DeliverTx 可能看到不同的认证状态。
+H+1 is a consensus-safety boundary, not a UI delay. PrepareProposal and
+ProcessProposal execute Ante but do not execute module messages. If a key
+became effective immediately in the same height, proposal verification and
+DeliverTx could observe different authentication states.
 
-### 4.1 生命周期消息的授权条件
+### 4.1 Authorization requirements for lifecycle messages
 
-| 操作 | 需要的授权 | 状态结果 |
+| Operation | Required authorization | State result |
 |---|---|---|
-| `MsgRegisterKey` | 经典账户签名 + 不同的 signing/recovery key 各自的 proof | 两把 key 与 `self_enforced=true` 在 H+1 原子生效 |
-| `MsgRotateKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 + 新 signing key proof | 旧 key 在 H+1 失活，新 key 在 H+1 生效 |
-| `MsgRotateRecoveryKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 + 新 recovery key proof | recovery key 在 H+1 原子切换 |
-| `MsgSetProtection` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 | 开启和关闭都在 H+1 生效；关闭也不能绕开当前 PQC |
-| `MsgRevokeKey` | 经典账户签名 + 当前 signing key 的 PQC 交易签名 | 立即永久吊销非活跃历史 key；active/pending/recovery key 不允许直接吊销 |
-| `MsgRecoverKey` | 经典账户签名 + 当前 recovery key 对完整恢复交易的签名 + 新 signing key proof | 当前 signing key 在 H+1 失活，新 key 在 H+1 生效 |
-| `MsgUpdateParams` | 治理 authority | 完整 bundle 在共识计算的高度生效；收紧认证边界要经过安全延迟，紧急暂停 H+1 生效且自动到期 |
+| `MsgRegisterKey` | Classic account signature plus separate proofs from distinct signing and recovery keys | Both keys and `self_enforced=true` activate atomically at H+1 |
+| `MsgRotateKey` | Classic account signature, current signing key's PQC transaction signature, and new signing-key proof | Old key becomes inactive and new key activates at H+1 |
+| `MsgRotateRecoveryKey` | Classic account signature, current signing key's PQC transaction signature, and new recovery-key proof | Recovery key switches atomically at H+1 |
+| `MsgSetProtection` | Classic account signature plus current signing key's PQC transaction signature | Enable and disable both activate at H+1; disabling cannot bypass the currently effective PQC requirement |
+| `MsgRevokeKey` | Classic account signature plus current signing key's PQC transaction signature | Immediately and permanently revokes an inactive historical key; active, pending, and recovery keys cannot be directly revoked |
+| `MsgRecoverKey` | Classic account signature, current recovery key's signature over the complete recovery transaction, and new signing-key proof | Current signing key becomes inactive and new key activates at H+1 |
+| `MsgUpdateParams` | Governance authority | Complete bundle activates at the consensus-computed height; tighter authentication waits for the safety delay, while an emergency pause activates at H+1 and expires automatically |
 
-proof of possession 签名绑定：
+A proof-of-possession signature binds:
 
-- network ID 和 chain ID；
-- owner；
-- proposed key ID；
-- 算法、公钥和 key role；
-- register/rotate/recover purpose；
-- 当前 policy version。
+- network ID and chain ID;
+- owner;
+- proposed key ID;
+- algorithm, public key, and key role;
+- register, rotate, or recover purpose; and
+- current policy version.
 
-因此同一个 proof 不能跨链、跨账户、跨角色或跨生命周期目的复用。
+The same proof therefore cannot be reused across chains, accounts, roles, or
+lifecycle purposes.
 
-### 4.2 首次注册的 bootstrap 边界
+### 4.2 Bootstrap boundary for first registration
 
-首次注册时账户还没有链上 PQC key，所以只能依靠：
+At first registration, the account has no on-chain PQC key. Authorization can
+therefore only rely on:
 
 ```text
-经典账户签名 + 新 PQC key 的 proof of possession
+Classic account signature
++
+Proof of possession from each new PQC key
 ```
 
-这只能在经典签名仍可信的迁移窗口内完成。如果未来攻击者已经可以伪造经典
-签名，他也可以生成自己的 ML-DSA key 并抢先注册。因此模块支持不可逆的
-`registration_cutoff_height`；cutoff 后不能再靠经典签名 bootstrap
-未注册账户，治理也不能替某个地址直接分配 key。
+This is safe only while the classic signature remains trustworthy. If an
+attacker can already forge classic signatures, the attacker can generate an
+ML-DSA key and front-run registration. The module therefore supports an
+irreversible `registration_cutoff_height`. After the cutoff, an unregistered
+account can no longer bootstrap using only its classic signature, and
+governance cannot assign a key directly to a specific address.
 
-### 4.3 恢复签名不是“只签新公钥”
+### 4.3 A recovery signature does not merely sign the new public key
 
-`RecoverySignDocV1` 绑定完整恢复交易：
+`RecoverySignDocV1` binds the complete recovery transaction:
 
-- owner、recovery key ID；
-- replacement signing key ID、算法和公钥；
-- 当前 policy version；
-- network ID、chain ID、account number、sequence；
-- signer address 和 signer index；
-- 完整 `AuthInfo`；
-- 除 PQC extension 和 recovery signature 自身外的完整 canonical `TxBody`。
+- owner and recovery key ID;
+- replacement signing key ID, algorithm, and public key;
+- current policy version;
+- network ID, chain ID, account number, and sequence;
+- signer address and signer index;
+- complete `AuthInfo`; and
+- the complete canonical `TxBody`, excluding the PQC extension and the
+  recovery signature field itself.
 
-构造 sign document 时只清空 `MsgRecoverKey.recovery_signature`
-以消除循环依赖。独立签一个 replacement public key 的旧式恢复签名不会被接受。
+Sign-document construction clears only
+`MsgRecoverKey.recovery_signature` to eliminate the circular dependency. A
+legacy-style recovery signature over only the replacement public key is not
+accepted.
 
-## 5. 普通受保护交易的端到端生命周期
+## 5. End-to-end lifecycle of an ordinary protected transaction
 
-### 5.1 客户端构造和签名
+### 5.1 Client construction and signing
 
-客户端必须先冻结会进入 `AuthInfo` 的 signer info、sequence、fee 和 gas，再做
-PQC 签名；PQC extension 附加完成后，最后再做经典签名。
+The client must freeze signer information, sequence, fee, and gas in
+`AuthInfo` before creating the PQC signature. It appends the PQC extension and
+only then produces the classic signature.
 
 ```mermaid
 sequenceDiagram
-    participant U as 钱包/调用方
+    participant U as Wallet/caller
     participant C as x/pqcauth/client
     participant Q as pqcauth Query
     participant K as ML-DSA signer/HSM
     participant N as BaseApp + Ante
-    participant M as 目标模块 MsgServer
+    participant M as Target module MsgServer
 
-    U->>C: 构造 TxBody、fee、gas、SIGN_MODE_DIRECT signer info
-    C->>Q: 查询 Params、AccountPolicy、ActiveSigningKey
-    Q-->>C: network/key/policy/version
-    C->>C: 去除 PQC extension，构造 canonical PQCSignDocV1
+    U->>C: Build TxBody, fee, gas, and SIGN_MODE_DIRECT signer info
+    C->>Q: Query Params, AccountPolicy, and ActiveSigningKey
+    Q-->>C: Return network/key/policy/version
+    C->>C: Remove PQC extension and build canonical PQCSignDocV1
     C->>K: Sign(sign_doc, "doravota/pqcauth/tx/v1")
-    K-->>C: ML-DSA-65 signature
-    C->>C: 本地验签并把 ExtensionPQCAuth 追加为最后一个 critical extension
-    U->>C: 对最终交易执行经典 SIGN_MODE_DIRECT 签名
-    C->>N: 广播交易
-    N->>N: 结构/size/fee/经典签名/PQC 签名/sequence 校验
-    N->>M: 执行消息
-    M-->>N: 写状态并发事件
+    K-->>C: Return ML-DSA-65 signature
+    C->>C: Verify locally and append ExtensionPQCAuth as the last critical extension
+    U->>C: Apply classic SIGN_MODE_DIRECT signature to final transaction
+    C->>N: Broadcast transaction
+    N->>N: Validate structure/size/fee/classic signature/PQC signature/sequence
+    N->>M: Execute messages
+    M-->>N: Write state and emit events
 ```
 
-客户端生成的 `PQCSignDocV1` 包含：
+The client-generated `PQCSignDocV1` contains:
 
-- `format_version`；
-- immutable `network_id` 和 `chain_id`；
-- account number、sequence；
-- signer index 和 signer address；
-- active key ID、algorithm、policy version；
-- 去掉唯一 PQC extension 后的 deterministic `TxBody`；
-- 完整 deterministic `AuthInfo`。
+- `format_version`;
+- immutable `network_id` and `chain_id`;
+- account number and sequence;
+- signer index and signer address;
+- active key ID, algorithm, and policy version;
+- deterministic `TxBody` bytes with the unique PQC extension removed; and
+- complete deterministic `AuthInfo` bytes.
 
-PQC sign document 不包含经典 signature bytes，也不包含 PQC signature 本身，
-从而避免循环签名。经典签名是在 PQC extension 附加后生成的，所以经典签名也会
-绑定最终 extension。
+The PQC sign document contains neither classic signature bytes nor the PQC
+signature itself, avoiding a circular signature dependency. The classic
+signature is produced after the PQC extension is appended, so it also binds
+the final extension.
 
-### 5.2 Extension 的 wire 约束
+### 5.2 Extension wire constraints
 
-`ExtensionPQCAuth` 必须：
+`ExtensionPQCAuth` must:
 
-- 出现在 critical extension options 中；
-- 最多出现一次；
-- 是最后一个 critical extension；
-- 使用 format version 1；
-- protobuf 解码后重新编码必须与原始 bytes 完全一致；
-- 不超过治理参数和代码绝对大小上限；
-- signer entries 按 `signer_index` 严格递增；
-- entry 数量不超过上限；
-- signer、key ID、algorithm、policy version 和 signature 长度完整。
+- appear in critical extension options;
+- appear at most once;
+- be the last critical extension;
+- use format version 1;
+- re-encode to exactly the same bytes after protobuf decoding;
+- remain within governance-configured limits and absolute code limits;
+- contain signer entries in strictly increasing `signer_index` order;
+- remain within the entry-count limit; and
+- include complete signer, key ID, algorithm, policy version, and signature
+  length fields.
 
-其他已有 critical/non-critical extensions 会被保留并纳入 sign document。
+Other existing critical and non-critical extensions are preserved and bound
+into the sign document.
 
-### 5.3 节点收到交易后的 Ante 顺序
+### 5.3 Ante order after a node receives the transaction
 
-同一套 Ante 逻辑会用于 CheckTx、ReCheckTx、PrepareProposal、
-ProcessProposal 和最终 DeliverTx/FinalizeBlock 验证。应用中的关键顺序是：
+The same Ante logic is used for CheckTx, ReCheckTx, PrepareProposal,
+ProcessProposal, and final DeliverTx/FinalizeBlock verification. The important
+application order is:
 
-| 顺序 | 阶段 | PQC 相关行为 |
+| Order | Stage | PQC behavior |
 |---:|---|---|
-| 1 | SetUpContext / simulation gas limit / tx counter | 建立 gas meter 和执行上下文 |
-| 2 | ExtensionOptionChecker | 只允许已知 PQC critical extension，其余交给应用 fallback checker |
-| 3 | ValidateBasic / timeout / memo | 先执行 Cosmos SDK 基础检查 |
-| 4 | ConsumeGasForTxSize | 在 protobuf PQC 解析和 canonical 重编码前先按交易大小收费 |
-| 5 | `ValidatePQCStructureDecorator` | 检查 extension 唯一性、位置、canonical encoding、大小、entry 顺序和 DIRECT sign mode，并缓存解析结果 |
-| 6 | sponsor authorization / fee deduction | 处理 sponsor、fee payer、fee granter 和费用规则 |
-| 7 | SetPubKey / sig count / classic sig gas / classic verify | 完成原有 Cosmos 经典签名验证 |
-| 8 | `VerifyPQCDecorator` | 检查生命周期 proof、有效策略、PQC 是否必需、entry 与 signer/key/policy 是否一致，重建 sign doc、扣 gas 并执行 ML-DSA 验签 |
-| 9 | IncrementSequence | 只有两类签名都通过后才递增 sequence |
-| 10 | IBC redundant relay check | 继续执行应用剩余 Ante 规则 |
+| 1 | SetUpContext / simulation gas limit / tx counter | Establish gas meter and execution context |
+| 2 | ExtensionOptionChecker | Accept only the known PQC critical extension; delegate other options to the application's fallback checker |
+| 3 | ValidateBasic / timeout / memo | Run Cosmos SDK baseline checks first |
+| 4 | ConsumeGasForTxSize | Charge by transaction size before protobuf PQC parsing and canonical re-encoding |
+| 5 | `ValidatePQCStructureDecorator` | Check extension uniqueness, position, canonical encoding, size, entry ordering, and DIRECT sign mode; cache the parsed extension |
+| 6 | Sponsor authorization / fee deduction | Process sponsor, fee payer, fee granter, and fee rules |
+| 7 | SetPubKey / sig count / classic sig gas / classic verify | Complete the original Cosmos classic-signature checks |
+| 8 | `VerifyPQCDecorator` | Check lifecycle proofs, effective policy, whether PQC is required, entry-to-signer/key/policy consistency, reconstruct the sign document, charge gas, and run ML-DSA verification |
+| 9 | IncrementSequence | Increment sequence only after both signature classes pass |
+| 10 | IBC redundant relay check | Continue with the remaining application Ante rules |
 
-把 ML-DSA 验证放在经典签名之后，可以避免一个完全没有有效经典签名的攻击者直接
-消耗 ML-DSA 验证 CPU。
+Placing ML-DSA verification after classic signature verification prevents an
+attacker with no valid classic signature from directly consuming ML-DSA
+verification CPU.
 
-### 5.4 `VerifyPQCDecorator` 的决策过程
+### 5.4 `VerifyPQCDecorator` decision process
 
-对交易中的每个 signer，节点执行：
+For each transaction signer, the node:
 
-1. 读取当前高度的 effective params 和 effective account policy。
-2. 如果 policy 指向一个不存在、已吊销或当前高度无效的 signing key，
-   返回 `ErrInconsistentState`，即使全局 mode 是 optional/disabled 也不会降级。
-3. 根据全局 enforcement mode、账户 `self_enforced` 和生命周期消息类型，
-   判断该 signer 是否必须有 PQC 授权。
-4. 将 extension entry 的 signer index/address/key ID/algorithm/policy version
-   与交易 signer 和链上状态逐项匹配。
-5. 使用节点自己的 protobuf transaction 重建 canonical sign document。
-6. 每次验证先消耗固定、受治理上下界约束的 verification gas。
-7. 使用 SDK 原生 ML-DSA-65 验证带协议域分离 envelope 的消息。
-8. 任意一个 required signer 缺少 entry，或任意提供的 entry 无效，整笔交易失败。
+1. reads the effective parameters and account policy at the current height;
+2. returns `ErrInconsistentState` if the policy references a missing, revoked,
+   or height-invalid signing key, even when the global mode is OPTIONAL or
+   DISABLED;
+3. determines whether that signer requires PQC authorization from the global
+   enforcement mode, account `self_enforced` setting, and lifecycle-message
+   type;
+4. matches the extension entry's signer index, address, key ID, algorithm, and
+   policy version against the transaction and on-chain state;
+5. reconstructs the canonical sign document from the node's own decoded
+   protobuf transaction;
+6. consumes a fixed verification-gas charge bounded by governance and hard
+   code limits before each verification;
+7. verifies the protocol-domain-separated message with the SDK-native
+   ML-DSA-65 implementation; and
+8. rejects the entire transaction if any required signer lacks an entry or any
+   provided entry is invalid.
 
-全局 enforcement mode 的含义：
+Global enforcement modes behave as follows:
 
-| Mode | 行为 |
+| Mode | Behavior |
 |---|---|
-| `DISABLED` | 不从全局要求 PQC，但已经设置 `self_enforced=true` 的账户仍然必须使用 PQC |
-| `OPTIONAL` | 允许账户注册和试用；提供了 extension 就必须完整验证，自保护账户仍强制 |
-| `REQUIRED_FOR_REGISTERED` | 所有已经有有效 signing key 的账户都必须使用 PQC |
-| `REQUIRED` | 交易的所有 signer 都必须提供有效 PQC 授权；尚未注册的账户除受控注册流程外无法正常发交易 |
+| `DISABLED` | Does not impose a global PQC requirement, but accounts with `self_enforced=true` still require PQC |
+| `OPTIONAL` | Allows registration and trial use; a provided extension must verify completely, and self-protected accounts remain enforced |
+| `REQUIRED_FOR_REGISTERED` | Every account with an effective signing key must use PQC |
+| `REQUIRED` | Every transaction signer must provide valid PQC authorization; unregistered accounts cannot send ordinary transactions except through the controlled registration path |
 
-## 6. 生命周期消息执行时还会经历什么
+## 6. Additional processing for lifecycle messages
 
-普通业务交易在 Ante 通过后直接交给 bank、staking、wasm 等目标模块，
-`pqcauth` 不改写业务消息。
+After Ante succeeds, an ordinary business transaction proceeds directly to
+its target module, such as bank, staking, or wasm. `pqcauth` does not rewrite
+business messages.
 
-如果是 `MsgRegisterKey`、`MsgRotateKey`、`MsgRotateRecoveryKey`、
-`MsgSetProtection`、`MsgRevokeKey` 或 `MsgRecoverKey`，则有额外边界：
+`MsgRegisterKey`, `MsgRotateKey`, `MsgRotateRecoveryKey`,
+`MsgSetProtection`, `MsgRevokeKey`, and `MsgRecoverKey` have additional
+boundaries:
 
-1. 生命周期消息必须是交易中唯一的 top-level message，不能 batch。
-2. Ante 阶段完成 key proof、recovery signature 和所需 PQC transaction
-   signature 的验证。
-3. Ante 对“消息 type URL + canonical message bytes”计算 SHA-256 fingerprint，
-   使用私有 context key 标记这一个精确消息已被授权。
-4. pqcauth MsgServer 再调用 `RequireLifecycleMessage`，要求收到的消息 fingerprint
-   与 Ante 标记完全一致。
-5. 通过 `x/authz MsgExec`、group proposal、wasm、governance 或其他模块嵌套执行的
-   lifecycle message 没有该标记，因此返回 `ErrNestedLifecycle`。
-6. MsgServer 重复执行基础、权限、pending change 和有效 key 检查，然后写入状态。
-7. 产生固定字段的 lifecycle event，供索引和运维监控。
+1. A lifecycle message must be the transaction's only top-level message and
+   cannot be batched.
+2. Ante verifies key proofs, the recovery signature, and any required PQC
+   transaction signature.
+3. Ante computes a SHA-256 fingerprint over the message type URL and canonical
+   message bytes, then uses a private context key to mark that exact message as
+   authorized.
+4. The pqcauth MsgServer calls `RequireLifecycleMessage` and requires the
+   received message fingerprint to match the Ante marker exactly.
+5. A lifecycle message nested through `x/authz MsgExec`, a group proposal,
+   wasm, governance, or another module has no such marker and returns
+   `ErrNestedLifecycle`.
+6. MsgServer repeats baseline, authorization, pending-change, and effective-key
+   checks before writing state.
+7. It emits lifecycle events with fixed fields for indexing and operational
+   monitoring.
 
-该设计避免“普通外层交易通过 Ante，但内层生命周期消息绕过 key proof 或 recovery
-signature”的授权继承漏洞。
+This prevents an authorization-inheritance bug in which an outer transaction
+passes Ante while an inner lifecycle message bypasses a key proof or recovery
+signature.
 
-## 7. CheckTx、提案和区块执行生命周期
+## 7. CheckTx, proposal, and block-execution lifecycle
 
-一笔广播交易可能经历：
+A broadcast transaction may pass through:
 
 ```text
-客户端广播
-  -> CheckTx：mempool 准入，执行完整 Ante
-  -> ReCheckTx：新区块后按新 sequence/policy 重新检查
-  -> PrepareProposal：proposer 再执行 Ante，仅选择合法且满足 block bytes/gas 的交易
-  -> ProcessProposal：其他验证人再执行 Ante，任一非法交易会使 proposal 被拒绝
-  -> DeliverTx/FinalizeBlock：再次执行 Ante，通过后执行 MsgServer
-  -> Commit：提交业务状态、PQC policy/key/sequence 变化
-  -> 调度高度：H+1 key/policy 或治理计算的 pending params 成为 effective
+Client broadcast
+  -> CheckTx: mempool admission with full Ante
+  -> ReCheckTx: recheck against the new sequence and policy after a block
+  -> PrepareProposal: proposer reruns Ante and selects only transactions within block byte/gas limits
+  -> ProcessProposal: other validators rerun Ante and reject a proposal containing any invalid transaction
+  -> DeliverTx/FinalizeBlock: rerun Ante, then execute MsgServer
+  -> Commit: commit business state and PQC policy/key/sequence changes
+  -> Scheduled height: H+1 key/policy or governance-computed pending parameters become effective
 ```
 
-PrepareProposal 和 ProcessProposal 不执行消息，所以模块不依赖同高度消息产生的
-PQC 状态。H+1 key/policy 边界和确定的 params activation height 保证同一个高度中的
-提议者、验证者和 DeliverTx 都按照同一组认证状态验证。
+PrepareProposal and ProcessProposal do not execute messages, so the module
+does not depend on PQC state produced by a message in the same height. H+1
+key/policy boundaries and deterministic parameter activation heights ensure
+that the proposer, validators, and DeliverTx all verify against the same
+authentication state at a given height.
 
-## 8. Gas simulation 生命周期
+## 8. Gas simulation lifecycle
 
-经典 Cosmos SDK simulation 会跳过真实经典签名验证。PQC simulation 与它保持
-相同语义：
+Standard Cosmos SDK simulation skips real classic-signature verification. PQC
+simulation follows the same semantics:
 
-1. 客户端查询真实 active key 和 policy；
-2. 构造 signer/key/algorithm/policy version 都正确、signature 长度也正确的
-   全零 placeholder extension；
-3. 节点仍执行 extension canonical/size/order、effective policy、key 状态、
-   required signer、lifecycle message 和 proof 结构检查；
-4. 节点不调用真实 ML-DSA Verify，但按真实次数消耗
-   `signature_verification_gas` / `proof_verification_gas`；
-5. 返回可用于最终交易的 gas estimate。
+1. The client queries the real active key and policy.
+2. It constructs an all-zero placeholder extension with correct signer, key,
+   algorithm, policy version, and signature length.
+3. The node still validates extension canonical encoding, size, ordering,
+   effective policy, key state, required signers, lifecycle-message rules, and
+   proof structure.
+4. The node does not call real ML-DSA verification, but consumes
+   `signature_verification_gas` or `proof_verification_gas` for the real
+   number of expected operations.
+5. It returns a gas estimate suitable for the final transaction.
 
-simulation 的 placeholder 在非 simulation 路径中不是合法签名，因此不能广播后
-绕过认证。
+The simulation placeholder is not a valid signature outside simulation and
+cannot be broadcast to bypass authentication.
 
-## 9. 离线普通签名 lifecycle
+## 9. Offline ordinary-signing lifecycle
 
-普通离线签名流程是：
+The ordinary offline-signing flow is:
 
 ```text
-在线 prepare
-  -> 冻结 unsigned protobuf tx、PQCSignDocV1、链上公钥和两个 SHA-256
-离线 review/sign
-  -> 严格解码、canonical 重编码、重建 sign doc、核对 hash 和私钥对应公钥
-在线 attach/broadcast
-  -> 重新查询 chain/account/sequence/network/key/policy
-  -> sign doc 必须逐字节相同
-  -> 本地验 ML-DSA
-  -> 附加 critical extension
-  -> 经典签名
-  -> broadcast
+Online prepare
+  -> Freeze unsigned protobuf tx, PQCSignDocV1, on-chain public key, and two SHA-256 hashes
+Offline review/sign
+  -> Strictly decode, canonically re-encode, reconstruct sign document, verify hashes and private-key/public-key match
+Online attach/broadcast
+  -> Re-query chain/account/sequence/network/key/policy
+  -> Require byte-for-byte identical sign document
+  -> Verify ML-DSA locally
+  -> Append critical extension
+  -> Apply classic signature
+  -> Broadcast
 ```
 
-bundle 当前只支持单 signer index 0。共识 extension 和 Ante 可以验证多个 signer，
-但多 signer 钱包/硬件编排还需要在客户端层补充。
+The current bundle format supports signer index 0 only. The consensus
+extension and Ante can verify multiple signers, but multi-signer wallet and
+hardware orchestration still require additional client work.
 
-## 10. 离线恢复 lifecycle
+## 10. Offline recovery lifecycle
 
-恢复流程与普通 bundle 分离：
+Recovery uses a separate bundle:
 
-1. 在线端创建仅包含一个 top-level `MsgRecoverKey` 的 unsigned transaction。
-2. `recovery_signature` 先放入正确长度的全零 placeholder。
-3. 查询 effective policy 和 recovery key，生成交易绑定的
-   `RecoverySignDocV1`。
-4. 离线恢复设备核对完整交易、hash、chain/network/account/sequence、旧 recovery
-   key 和 replacement key 后签名。
-5. 在线端重新查询全部可变状态；policy/key/sequence/network 任一变化都会拒绝。
-6. 在线端把 recovery signature 写回消息，再重建 sign document，确认清空该字段后
-   与离线签名的 bytes 完全相同。
-7. 最后才做经典账户签名并广播。
-8. Ante 验证 recovery signature 和新 key proof；MsgServer 安排新 signing key
-   在 H+1 生效。
+1. The online side creates an unsigned transaction containing exactly one
+   top-level `MsgRecoverKey`.
+2. It fills `recovery_signature` with an all-zero placeholder of the correct
+   length.
+3. It queries the effective policy and recovery key and creates a
+   transaction-bound `RecoverySignDocV1`.
+4. The offline recovery device reviews the complete transaction, hashes,
+   chain, network, account, sequence, old recovery key, and replacement key
+   before signing.
+5. The online side re-queries all mutable state and rejects the bundle if the
+   policy, key, sequence, or network has changed.
+6. It writes the recovery signature back into the message, reconstructs the
+   sign document, and confirms that clearing the same field produces bytes
+   identical to those signed offline.
+7. Only then does it apply the classic account signature and broadcast.
+8. Ante verifies the recovery signature and new-key proof; MsgServer schedules
+   the new signing key for H+1 activation.
 
-恢复是唯一允许在 policy 指向的 current signing key 缺失、已吊销或失效时继续执行的
-逃生路径。Ante 必须先完整验证 recovery signature 和新 signing key proof，之后才会
-豁免 current signing key 的一致性错误；普通交易和其他生命周期消息仍然 fail-closed。
+Recovery is the only escape path allowed when the policy's current signing key
+is missing, revoked, or ineffective. Ante must fully verify the recovery
+signature and new signing-key proof before exempting the inconsistent current
+signing key. Ordinary transactions and all other lifecycle messages remain
+fail-closed.
 
-## 11. Emergency mode
+## 11. Emergency modes
 
-| Mode | 行为 |
+| Mode | Behavior |
 |---|---|
-| `NORMAL` | 正常运行 |
-| `PAUSE_NEW_KEYS` | 暂停注册和普通 signing/recovery key 轮换；已有 protected transaction 继续要求并验证 PQC |
-| `PAUSE_PQC_TRANSACTIONS` | 暂停携带 PQC extension 的交易以及普通的、需要 PQC 的账户交易 |
+| `NORMAL` | Normal operation |
+| `PAUSE_NEW_KEYS` | Pause registration and ordinary signing/recovery-key rotations; existing protected transactions continue to require and verify PQC |
+| `PAUSE_PQC_TRANSACTIONS` | Pause transactions carrying a PQC extension and ordinary account transactions that require PQC |
 
-紧急模式不会把 protected account 降级为 classic-only。
-`PAUSE_PQC_TRANSACTIONS` 的含义是暂停，而不是绕开第二因子。两种 pause 都在
-`emergency_expires_height` 自动恢复为 `NORMAL`；该高度由模块按不可变的最大持续
-blocks 计算，治理不能自选或无限续期。
+Emergency mode never downgrades a protected account to classic-only.
+`PAUSE_PQC_TRANSACTIONS` means pause, not bypass. Both pause modes
+automatically return to `NORMAL` at `emergency_expires_height`. The module
+computes this height from an immutable maximum duration, and governance cannot
+choose or extend it indefinitely.
 
-`MsgRecoverKey` 是 pause 期间唯一保留的账户生命周期逃生口。它必须是交易中唯一的
-top-level message，不能带普通 PQC extension，也不能通过 authz/group/wasm 嵌套；
-Ante 仍完整验证经典账户签名、已登记 recovery key 对完整交易的签名，以及 replacement
-signing key 的 PoP。注册、普通轮换、策略修改和已保护业务交易仍然 fail-closed。
+`MsgRecoverKey` is the only account-lifecycle escape hatch retained during a
+pause. It must be the transaction's only top-level message, cannot carry an
+ordinary PQC extension, and cannot be nested through authz, group, or wasm.
+Ante still fully verifies the classic account signature, the registered
+recovery key's signature over the complete transaction, and the replacement
+signing key's proof of possession. Registration, ordinary rotation, policy
+changes, and protected business transactions remain fail-closed.
 
-## 12. `x/pqcauth` 目录说明
+## 12. Directory guide
 
 ```text
 x/pqcauth/
@@ -493,190 +583,229 @@ x/pqcauth/
 
 ### `ante/`
 
-共识关键的交易前置验证：
+Consensus-critical pre-transaction validation:
 
 - `structure.go`
-  - 接受 PQC critical extension；
-  - 做有界、状态无关的 extension 结构与 canonical encoding 检查；
-  - 要求 PQC extension 唯一且位于 critical options 最后；
-  - 校验 signer entry 顺序、数量、字段和 signature 长度；
-  - 要求 `SIGN_MODE_DIRECT`；
-  - 缓存已验证 extension，避免后续重复 unmarshal/marshal。
+  - accepts the PQC critical extension;
+  - performs bounded, state-independent structural and canonical-encoding
+    checks;
+  - requires the PQC extension to be unique and last among critical options;
+  - validates signer-entry order, count, fields, and signature length;
+  - requires `SIGN_MODE_DIRECT`; and
+  - caches the validated extension to avoid repeated unmarshal/marshal work.
 - `verify.go`
-  - 读取 effective params、policy 和 active signing key；
-  - 计算每个 signer 是否 required；
-  - 匹配 signer/key/algorithm/policy version；
-  - 重建 `PQCSignDocV1`；
-  - 计 gas、调用 ML-DSA Verify；
-  - 为精确的 top-level lifecycle message 创建执行授权。
+  - reads effective parameters, policy, and active signing key;
+  - determines whether each signer requires PQC;
+  - matches signer, key, algorithm, and policy version;
+  - reconstructs `PQCSignDocV1`;
+  - charges gas and calls ML-DSA verification; and
+  - creates execution authorization for an exact top-level lifecycle message.
 - `lifecycle.go`
-  - 验证注册/轮换/恢复 key proof；
-  - 验证 transaction-bound recovery signature；
-  - 禁止 lifecycle message batch；
-  - 检查 registration cutoff、emergency mode、pending change 和 key ID 配额。
+  - verifies registration, rotation, and recovery key proofs;
+  - verifies the transaction-bound recovery signature;
+  - forbids lifecycle-message batching; and
+  - checks the registration cutoff, emergency mode, pending changes, and key
+    ID constraints.
 - `*_test.go`
-  - 覆盖结构、策略矩阵、H+1、模拟、生命周期 proof、嵌套执行、
-    malformed extension 和 gas 行为。
+  - covers structure, policy matrices, H+1, simulation, lifecycle proofs,
+    nested execution, malformed extensions, and gas behavior.
 
 ### `client/`
 
-不进入共识的客户端构造和签名工具：
+Non-consensus client construction and signing tools:
 
 - `sign.go`
-  - 定义可由本地文件、远程 signer、HSM 或硬件钱包实现的 `PQCSigner`；
-  - 查询链上 key/policy；
-  - 构造 canonical sign document；
-  - 本地验证 signer 返回的公钥和签名；
-  - 附加 `ExtensionPQCAuth`；
-  - 构造 simulation placeholder。
+  - defines `PQCSigner`, which can be implemented by a local file, remote
+    signer, HSM, or hardware wallet;
+  - queries the on-chain key and policy;
+  - builds the canonical sign document;
+  - verifies the returned public key and signature locally;
+  - appends `ExtensionPQCAuth`; and
+  - builds simulation placeholders.
 - `bundle.go`
-  - 普通交易 offline bundle 的 prepare、strict validation、sign、online
-    revalidation 和 attach；
-  - 绑定 unsigned tx 和 sign doc 的 SHA-256；
-  - 防止过期 bundle、交易替换和 key/policy 替换。
+  - prepares, strictly validates, signs, revalidates online, and attaches an
+    ordinary offline bundle;
+  - binds the unsigned transaction and sign document through SHA-256; and
+  - prevents stale bundles and transaction, key, or policy substitution.
 - `recovery_bundle.go`
-  - recovery bundle 的 prepare、offline sign、online revalidation 和 attach；
-  - 验证全零 placeholder；
-  - 确保恢复签名绑定完整交易，而不是只绑定新公钥。
+  - prepares, signs offline, revalidates online, and attaches a recovery
+    bundle;
+  - validates the all-zero placeholder; and
+  - ensures the recovery signature binds the complete transaction rather than
+    only the new public key.
 - `*_test.go`
-  - 测试 bundle round-trip、stale state、mutation、错误 key、文件权限和签名流程。
+  - covers bundle round trips, stale state, mutation, wrong keys, file
+    permissions, and signing flows.
 
 ### `client/cli/`
 
-`dorad tx pqcauth` / `dorad query pqcauth` 命令实现：
+Implementation of `dorad tx pqcauth` and `dorad query pqcauth`:
 
-- `tx.go`：register、rotate、rotate-recovery、set-protection、revoke、recover；
-- `query.go`：params、account、key、keys；
-- `offline.go`：ML-DSA-65 keygen 和 key proof 创建；
-- `broadcast.go`：在线 protected tx 的 gas simulation、PQC attach、经典签名和广播；
-- `bundle.go`：普通 offline bundle 的 prepare/sign/broadcast；
-- `recovery.go`：transaction-bound recovery bundle 的 prepare/sign/broadcast；
-- `*_test.go`：CLI 参数冲突、文件安全、mutation flags 和输出格式测试。
+- `tx.go`: register, rotate, rotate-recovery, set-protection, revoke, recover;
+- `query.go`: params, account, key, keys;
+- `offline.go`: ML-DSA-65 key generation and key-proof construction;
+- `broadcast.go`: gas simulation, PQC attachment, classic signing, and
+  broadcast for an online protected transaction;
+- `bundle.go`: prepare, sign, and broadcast an ordinary offline bundle;
+- `recovery.go`: prepare, sign, and broadcast a transaction-bound recovery
+  bundle; and
+- `*_test.go`: CLI flag conflicts, file safety, mutation flags, and output
+  formats.
 
 ### `crypto/`
 
-ML-DSA-65 的最小密码学适配层：
+Minimal ML-DSA-65 cryptographic adapter:
 
-- 基于 `github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65`；
-- 固定长度取自 CometBFT 的 `crypto/mldsa65` 常量；
-- 严格检查 public/private key 和 signature 固定长度；
-- 封装 key generation、public key derivation、sign 和 verify；
-- 将最大 255 bytes 的协议 context 编码进 canonical message envelope；
-- 使用 SDK/CometBFT 提供的 deterministic pure-mode ML-DSA；
-- 不把 SDK、CometBFT 或 CIRCL 的具体 key 类型暴露给模块其他层。
+- uses `github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65`;
+- takes fixed lengths from CometBFT `crypto/mldsa65` constants;
+- strictly checks fixed public-key, private-key, and signature lengths;
+- wraps key generation, public-key derivation, signing, and verification;
+- encodes a protocol context of up to 255 bytes into a canonical message
+  envelope;
+- uses the deterministic pure-mode ML-DSA implementation from SDK/CometBFT;
+  and
+- does not expose concrete SDK, CometBFT, or CIRCL key types to other module
+  layers.
 
-SDK 原生实现使用空 FIPS 204 context。为保留交易、key proof 和 recovery 之间的
-域隔离，适配层实际签名 `version || context_length || context || message`。这与早期直接
-把 context 传给 CIRCL 的签名字节不兼容，属于共识格式变化。它只适用于 PQC 尚未
-部署的升级；如果网络已经接受过旧格式 PQC 交易，则必须使用显式版本迁移或同时
-验证两个 wire version，不能静默替换。
+The SDK-native implementation uses an empty FIPS 204 context. To preserve
+domain separation among transactions, key proofs, and recovery, the adapter
+actually signs `version || context_length || context || message`. This is
+signature-byte incompatible with the earlier implementation that passed the
+context directly to CIRCL, and therefore constitutes a consensus-format
+change.
+
+This replacement is safe only before PQC deployment. If a network has already
+accepted transactions using the old format, it must use an explicit versioned
+migration or verify both wire versions. It must not replace the format
+silently.
 
 ### `internal/execution/`
 
-生命周期消息的 Ante-to-MsgServer 授权桥：
+Ante-to-MsgServer authorization bridge for lifecycle messages:
 
-- 对 exact top-level lifecycle message 计算 fingerprint；
-- 使用不可由其他 Go package 构造的私有 context key；
-- MsgServer 要求 fingerprint 完全匹配；
-- 阻止 `authz`、group、wasm、governance 等嵌套路径继承外层交易的授权结果。
+- fingerprints the exact top-level lifecycle message;
+- uses a private context key that other Go packages cannot construct;
+- requires an exact fingerprint match in MsgServer; and
+- prevents nested authz, group, wasm, governance, and similar paths from
+  inheriting the outer transaction's authorization result.
 
-之所以放在 `internal/`，是为了让 Go 编译器限制可调用边界，减少其他模块伪造
-“已由 Ante 验证”标记的可能。
+The code lives under `internal/` so the Go compiler constrains its call
+boundary, reducing the possibility that another module can forge an
+"Ante-verified" marker.
 
 ### `keeper/`
 
-共识状态和服务实现：
+Consensus state and service implementation:
 
 - `keeper.go`
-  - params、policy、key record、key history、key sequence 的 KV 读写；
-  - effective/normalize 逻辑；
-  - active signing key 查询；
-  - 不复用、无小额终身上限的单调 key ID 分配；
-  - genesis/export/invariant 使用的安全迭代。
+  - reads and writes parameters, policies, key records, key history, and key
+    sequences;
+  - implements effective and normalization logic;
+  - queries active signing keys;
+  - allocates monotonic, non-reused key IDs without a small lifetime cap; and
+  - safely iterates state for genesis, export, and invariants.
 - `key_history.go`
-  - 按 signing/recovery 角色独立压缩 terminal records；
-  - 永久 pin 当前与 pending policy key；
-  - 为 H+1 即将退休的 key 预留历史槽位；
-  - 写入可审计的确定性哈希链承诺。
+  - compacts terminal records independently by signing and recovery role;
+  - permanently pins current and pending policy keys;
+  - reserves history capacity for keys that will retire at H+1; and
+  - writes an auditable deterministic hash-chain commitment.
 - `msg_server.go`
-  - 所有 lifecycle Msg service；
-  - 重复关键权限和状态检查；
-  - 安排 H+1 key/policy，以及带安全延迟和自动到期的治理 params；
-  - 验证 key proof；
-  - 限制 authority、immutable network ID 和 irreversible cutoff；
-  - 发出 lifecycle events。
+  - implements all lifecycle Msg services;
+  - repeats critical authorization and state checks;
+  - schedules H+1 key/policy changes and governance parameters with safety
+    delays and automatic expiry;
+  - validates key proofs;
+  - constrains authority, immutable network ID, and irreversible cutoff; and
+  - emits lifecycle events.
 - `query_server.go`
-  - params、account、key、keys gRPC 查询；account 查询同时返回压缩历史摘要。
+  - implements params, account, key, and keys gRPC queries; account queries
+    also return compressed history summaries.
 - `invariants.go`
-  - 将当前共识状态重新组织为 genesis 并执行完整一致性验证。
+  - reconstructs genesis from the current consensus state and performs full
+    consistency validation.
 - `*_test.go`
-  - 覆盖 store、Msg/Query、H+1、历史压缩/pinning、治理边界、revoke、恢复逃生口和 invariant。
+  - covers store, Msg and Query services, H+1, history compaction and pinning,
+    governance boundaries, revoke, the recovery escape hatch, and invariants.
 
 ### `types/`
 
-共识 wire type、状态规则和 canonical signing 定义：
+Consensus wire types, state rules, and canonical signing definitions:
 
-- `canonical_tx.go`：构造普通和恢复交易的 canonical body/AuthInfo；
-- `signing.go`：固定 format、purpose、domain-separation context 和 sign-doc 校验；
-- `params.go`：默认值、绝对上限、gas 下限、enforcement/emergency、治理安全延迟、暂停自动到期和 pending params；
-- `policy.go`：账户 policy 的 H+1 effective 计算和 key 有效区间；
-- `messages.go`：所有 Msg 的 signer、ValidateBasic 和 legacy SDK 接口；
-- `keys.go`：KV key prefixes 和 owner/key ID 编码；
-- `codec.go`：Amino/interface registry；
-- `errors.go`：稳定的模块错误码；
-- `genesis.go`：跨 params、keys、policies、sequences 的严格 genesis 验证；
-- `telemetry.go`：固定 cardinality 的验证耗时与成功/失败指标；
-- `*.pb.go` / `*.pb.gw.go`：由 `proto/doravota/pqcauth/v1` 生成的 protobuf
-  和 gRPC-Gateway 代码，不应手工修改；
-- `*_test.go`：canonical binding、golden vector、params、policy、message 和 genesis 测试。
+- `canonical_tx.go`: constructs canonical bodies and AuthInfo for ordinary and
+  recovery transactions;
+- `signing.go`: validates fixed formats, purposes, domain-separation contexts,
+  and sign documents;
+- `params.go`: defines defaults, hard limits, gas floors, enforcement and
+  emergency modes, governance safety delay, automatic pause expiry, and
+  pending parameters;
+- `policy.go`: computes H+1-effective account policies and key validity
+  intervals;
+- `messages.go`: implements signers, ValidateBasic, and legacy SDK interfaces
+  for all messages;
+- `keys.go`: defines KV key prefixes and owner/key-ID encoding;
+- `codec.go`: registers Amino and interface types;
+- `errors.go`: defines stable module error codes;
+- `genesis.go`: strictly validates parameters, keys, policies, and sequences
+  together;
+- `telemetry.go`: records fixed-cardinality verification latency and
+  success/failure metrics;
+- `*.pb.go` and `*.pb.gw.go`: generated protobuf and gRPC-Gateway code from
+  `proto/doravota/pqcauth/v1`; do not edit manually; and
+- `*_test.go`: covers canonical bindings, golden vectors, parameters, policy,
+  messages, and genesis.
 
-### 根目录文件
+### Root files
 
 - `module.go`
-  - Cosmos SDK `AppModuleBasic` / `AppModule`；
-  - 注册 codec、Msg、Query、CLI、gateway 和 invariant；
-  - Init/ExportGenesis；
-  - BeginBlock params normalization；
-  - 当前 EndBlock no-op；
-  - consensus version。
+  - implements Cosmos SDK `AppModuleBasic` and `AppModule`;
+  - registers codecs, Msg and Query services, CLI, gateway, and invariant;
+  - implements InitGenesis and ExportGenesis;
+  - normalizes parameters in BeginBlock;
+  - keeps the current EndBlock as a no-op; and
+  - declares the consensus version.
 - `genesis.go`
-  - genesis 状态落库、network ID 派生、sequence 推导和 export。
+  - writes genesis state, derives the network ID and key sequences, and exports
+    state.
 - `*_test.go`
-  - module wiring、genesis round-trip 和错误状态测试。
+  - covers module wiring, genesis round trips, and invalid-state handling.
 
-## 13. 模块之外的集成点
+## 13. Integration points outside `x/pqcauth`
 
-`x/pqcauth` 不是只靠注册 AppModule 就能保护交易，还依赖应用层集成：
+Registering only the AppModule is not sufficient to protect transactions.
+`x/pqcauth` depends on application-level integration:
 
-| 路径 | 作用 |
+| Path | Purpose |
 |---|---|
-| [`proto/doravota/pqcauth/v1`](../../proto/doravota/pqcauth/v1) | protobuf source of truth：state、extension、signing docs、Msg 和 Query |
-| [`app/ante.go`](../../app/ante.go) | 把结构检查和 PQC Verify 放入经典签名流程的正确位置 |
-| [`app/app.go`](../../app/app.go) | store、keeper、ModuleManager、genesis/block order、service 和 v1 handler 装配 |
-| [`app/proposal.go`](../../app/proposal.go) | PrepareProposal/ProcessProposal 的 Ante 重验和 block gas/bytes 上限 |
-| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | 校验 bridge 状态、变更 store、写入 launch-specific network ID |
-| [`docs/pqcauth`](../../docs/pqcauth) | threat model、wire/signing spec、rollout plan 和 operator runbook |
-| [`scripts/check-pqcauth-coverage.sh`](../../scripts/check-pqcauth-coverage.sh) | 手写代码覆盖率门禁 |
+| [`proto/doravota/pqcauth/v1`](../../proto/doravota/pqcauth/v1) | Protobuf source of truth for state, extension, signing documents, Msg, and Query |
+| [`app/ante.go`](../../app/ante.go) | Places structural validation and PQC verification correctly within the classic-signature flow |
+| [`app/app.go`](../../app/app.go) | Wires stores, keeper, ModuleManager, genesis/block order, services, and the v1 handler |
+| [`app/proposal.go`](../../app/proposal.go) | Reruns Ante in PrepareProposal/ProcessProposal and enforces block gas/byte limits |
+| [`app/upgrades/v1_0_0`](../../app/upgrades/v1_0_0) | Validates bridge state, changes stores, and writes the launch-specific network ID |
+| [`docs/pqcauth`](../../docs/pqcauth) | Threat model, wire/signing specification, rollout plan, and operator runbook |
+| [`scripts/check-pqcauth-coverage.sh`](../../scripts/check-pqcauth-coverage.sh) | Coverage gate for handwritten code |
 
-只复制 `x/pqcauth` 而没有 Ante、proposal、store upgrade 和 network ID
-集成，不能得到同等的交易认证安全性。
+Copying `x/pqcauth` without the Ante, proposal, store-upgrade, and network-ID
+integration does not provide equivalent transaction-authentication security.
 
-## 14. 当前 v1 限制
+## 14. Current v1 limitations
 
-- 只支持 ML-DSA-65。
-- 只支持 `SIGN_MODE_DIRECT`。
-- 共识层支持多 signer，但当前普通/recovery offline bundle 和 CLI
-  只编排单 signer index 0。
-- 不支持 threshold ML-DSA 或 Legacy Amino multisig。
-- recovery key 可以恢复 PQC signing key，但不能在保持同一账户地址的同时替换丢失的
-  经典 BaseAccount 私钥。
-- `WeightedOperations` 目前为空；长期随机 simulation 覆盖仍可继续补充。
-- 模块安全不等于整条链依赖安全，生产发布还需要处理 CometBFT、Wasmd、
-  Cosmos SDK 等应用级依赖门禁。
-- 当前仓库包含 v0.55 目标 binary，不包含可直接发布的 v0.47→v0.53 bridge
-  binary；bridge release 及真实生产快照双阶段演练仍是上线阻断项。
+- ML-DSA-65 is the only supported PQC algorithm.
+- `SIGN_MODE_DIRECT` is the only supported sign mode.
+- Consensus verification supports multiple signers, but the ordinary and
+  recovery offline bundles and CLI currently orchestrate signer index 0 only.
+- Threshold ML-DSA and Legacy Amino multisig are not supported.
+- The recovery key can restore a PQC signing key, but it cannot replace a lost
+  classic `BaseAccount` private key while preserving the same account address.
+- `WeightedOperations` is currently empty; long-running randomized simulation
+  coverage can be expanded.
+- Module security does not imply dependency security for the whole chain.
+  Production releases must still gate application-level dependencies such as
+  CometBFT, Wasmd, and Cosmos SDK.
+- The repository contains the v0.55 target binary source, but not a directly
+  releasable v0.47-to-v0.53 bridge binary. The bridge release and a two-stage
+  rehearsal against a real production snapshot remain release blockers.
 
-## 15. 相关规范
+## 15. Related specifications
 
 - [Threat model](../../docs/pqcauth/threat-model-v1.md)
 - [Signing and wire specification](../../docs/pqcauth/signing-spec-v1.md)
