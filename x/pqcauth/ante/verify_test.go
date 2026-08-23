@@ -103,22 +103,7 @@ func setupAnteTest(
 	t testing.TB,
 ) (sdk.Context, pqckeeper.Keeper, accountKeeperMock, client.TxConfig, []byte) {
 	t.Helper()
-	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
-		ProtoFiles: proto.HybridResolver,
-		SigningOptions: sdksigning.Options{
-			AddressCodec: sdkaddress.Bech32Codec{
-				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
-			},
-			ValidatorAddressCodec: sdkaddress.Bech32Codec{
-				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
-			},
-		},
-	})
-	require.NoError(t, err)
-	types.RegisterInterfaces(registry)
-	authz.RegisterInterfaces(registry)
-	banktypes.RegisterInterfaces(registry)
-	cdc := codec.NewProtoCodec(registry)
+	cdc := newAnteTestCodec(t)
 	txConfig := authtx.NewTxConfig(cdc, authtx.DefaultSignModes)
 
 	storeKey := storetypes.NewKVStoreKey(types.StoreKey)
@@ -182,6 +167,27 @@ func setupAnteTest(
 		NextKeyId: 3,
 	}))
 	return ctx, moduleKeeper, accountKeeper, txConfig, privateKey
+}
+
+func newAnteTestCodec(t testing.TB) codec.Codec {
+	t.Helper()
+	registry, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		ProtoFiles: proto.HybridResolver,
+		SigningOptions: sdksigning.Options{
+			AddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32AccountAddrPrefix(),
+			},
+			ValidatorAddressCodec: sdkaddress.Bech32Codec{
+				Bech32Prefix: sdk.GetConfig().GetBech32ValidatorAddrPrefix(),
+			},
+		},
+	})
+	require.NoError(t, err)
+	types.RegisterInterfaces(registry)
+	authz.RegisterInterfaces(registry)
+	banktypes.RegisterInterfaces(registry)
+	cdc := codec.NewProtoCodec(registry)
+	return cdc
 }
 
 func buildProtectedTx(

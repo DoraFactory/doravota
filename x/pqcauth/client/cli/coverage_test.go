@@ -63,7 +63,7 @@ func TestCommandTreesExposeAllPQCOperations(t *testing.T) {
 	}
 
 	queryCommand := GetQueryCmd()
-	for _, name := range []string{"params", "account", "key", "keys"} {
+	for _, name := range []string{"params", "account", "key", "keys", "estimate-verification-gas"} {
 		command, _, err := queryCommand.Find([]string{name})
 		require.NoError(t, err)
 		require.Equal(t, name, command.Name())
@@ -402,6 +402,11 @@ func TestQueryCommandsRoundTripOverGRPC(t *testing.T) {
 		{name: "account", args: []string{owner}, new: queryAccountCommand},
 		{name: "key", args: []string{owner, "1"}, new: queryKeyCommand},
 		{name: "keys", args: []string{owner}, new: queryKeysCommand},
+		{
+			name: "estimate-verification-gas",
+			args: []string{"--signatures", "2", "--proofs", "3"},
+			new:  estimateVerificationGasCommand,
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			var output bytes.Buffer
@@ -411,6 +416,11 @@ func TestQueryCommandsRoundTripOverGRPC(t *testing.T) {
 			command.SetArgs(testCase.args)
 			require.NoError(t, command.Execute())
 			require.NotEmpty(t, output.Bytes())
+			if testCase.name == "estimate-verification-gas" {
+				require.Contains(t, output.String(), `"signature_gas": 500000`)
+				require.Contains(t, output.String(), `"proof_gas": 750000`)
+				require.Contains(t, output.String(), `"total": 1250000`)
+			}
 		})
 	}
 }

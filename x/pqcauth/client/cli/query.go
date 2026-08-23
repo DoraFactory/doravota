@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -24,7 +25,54 @@ func GetQueryCmd() *cobra.Command {
 		queryAccountCommand(),
 		queryKeyCommand(),
 		queryKeysCommand(),
+		estimateVerificationGasCommand(),
 	)
+	return command
+}
+
+func estimateVerificationGasCommand() *cobra.Command {
+	command := &cobra.Command{
+		Use:   "estimate-verification-gas",
+		Short: "Estimate the deterministic pqcauth cryptographic gas component",
+		Args:  cobra.NoArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			signatures, err := command.Flags().GetUint64("signatures")
+			if err != nil {
+				return err
+			}
+			proofs, err := command.Flags().GetUint64("proofs")
+			if err != nil {
+				return err
+			}
+			clientCtx, err := client.GetClientQueryContext(command)
+			if err != nil {
+				return err
+			}
+			response, err := types.NewQueryClient(clientCtx).Params(
+				context.Background(),
+				&types.QueryParamsRequest{},
+			)
+			if err != nil {
+				return err
+			}
+			estimate, err := types.EstimateVerificationGas(
+				response.Params,
+				signatures,
+				proofs,
+			)
+			if err != nil {
+				return err
+			}
+			encoded, err := json.MarshalIndent(estimate, "", "  ")
+			if err != nil {
+				return err
+			}
+			return clientCtx.PrintBytes(encoded)
+		},
+	}
+	command.Flags().Uint64("signatures", 0, "number of pqcauth transaction signature verifications")
+	command.Flags().Uint64("proofs", 0, "number of pqcauth lifecycle proof verifications")
+	flags.AddQueryFlagsToCmd(command)
 	return command
 }
 

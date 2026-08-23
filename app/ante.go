@@ -3,6 +3,7 @@ package app
 import (
 	corestore "cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
+	"github.com/cosmos/cosmos-sdk/codec"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -33,6 +34,8 @@ type HandlerOptions struct {
 	TXCounterStoreService corestore.KVStoreService
 	SponsorKeeper         sponsortypes.SponsorKeeperInterface
 	PQCAuthKeeper         pqcauthkeeper.Keeper
+	AuthzGrantReader      pqcauthante.AuthzGrantReader
+	AppCodec              codec.Codec
 	AppOptions            servertypes.AppOptions
 }
 
@@ -51,6 +54,12 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	}
 	if options.TXCounterStoreService == nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "tx counter key is required for ante builder")
+	}
+	if options.AuthzGrantReader == nil {
+		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "authz grant reader is required for ante builder")
+	}
+	if options.AppCodec == nil {
+		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "app codec is required for ante builder")
 	}
 
 	anteDecorators := []sdk.AnteDecorator{
@@ -79,6 +88,12 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewValidateSigCountDecorator(options.AccountKeeper),
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
+		pqcauthante.NewAuthzPQCDecorator(
+			options.PQCAuthKeeper,
+			options.AccountKeeper,
+			options.AuthzGrantReader,
+			options.AppCodec,
+		),
 		pqcauthante.NewVerifyPQCDecorator(options.PQCAuthKeeper, options.AccountKeeper),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),

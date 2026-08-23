@@ -127,6 +127,7 @@ import (
 
 	// pqcauth module
 	pqcauthmodule "github.com/DoraFactory/doravota/x/pqcauth"
+	pqcauthante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 	pqcauthkeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	pqcauthtypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 
@@ -860,13 +861,15 @@ func (app *App) setAnteHandler(txConfig client.TxConfig, nodeConfig wasmtypes.No
 				BankKeeper:      app.BankKeeper,
 				SignModeHandler: txConfig.SignModeHandler(),
 				FeegrantKeeper:  app.FeeGrantKeeper,
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+				SigGasConsumer:  pqcauthante.PQCSafeSigVerificationGasConsumer,
 			},
 			IBCKeeper:             app.IBCKeeper,
 			NodeConfig:            &nodeConfig,
 			TXCounterStoreService: runtime.NewKVStoreService(txCounterStoreKey),
 			SponsorKeeper:         app.SponsorKeeper,
 			PQCAuthKeeper:         app.PQCAuthKeeper,
+			AuthzGrantReader:      app.AuthzKeeper,
+			AppCodec:              app.appCodec,
 			AppOptions:            appOpts,
 		},
 	)
