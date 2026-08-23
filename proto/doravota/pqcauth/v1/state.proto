@@ -30,6 +30,15 @@ enum EmergencyMode {
   EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS = 3;
 }
 
+// RegistrationMode controls which classic accounts may bootstrap pqcauth.
+// Transitions are monotonic: OPEN -> FRESH_ACCOUNTS_ONLY -> CLOSED.
+enum RegistrationMode {
+  REGISTRATION_MODE_UNSPECIFIED = 0;
+  REGISTRATION_MODE_OPEN = 1;
+  REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY = 2;
+  REGISTRATION_MODE_CLOSED = 3;
+}
+
 // KeyRole separates transaction-signing keys from recovery keys.
 enum KeyRole {
   KEY_ROLE_UNSPECIFIED = 0;
@@ -58,6 +67,8 @@ message Params {
   // account. Current and pending policy keys are pinned and never count toward
   // this limit. Older terminal records are committed into AccountKeyHistory.
   uint32 max_retained_key_records_per_role = 8;
+  // Legacy compatibility gate. Once reached it behaves as registration_mode
+  // CLOSED. New deployments should keep this zero and use registration_mode.
   uint64 registration_cutoff_height = 9;
   EmergencyMode emergency_mode = 10;
   ScheduledParams pending = 11;
@@ -71,6 +82,9 @@ message Params {
   // Exclusive height at which the active emergency mode automatically returns
   // to NORMAL. Zero is required while emergency_mode is NORMAL.
   uint64 emergency_expires_height = 15;
+  // Controls classic-account self-registration. Native ML-DSA accounts never
+  // register pqcauth because their SDK signature already provides PQ safety.
+  RegistrationMode registration_mode = 16;
 }
 
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The
@@ -84,11 +98,13 @@ message ScheduledParams {
   uint32 max_pqc_auth_bytes = 6;
   // Scheduled replacement for terminal key-record retention per role.
   uint32 max_retained_key_records_per_role = 7;
+  // Scheduled legacy cutoff; see Params.registration_cutoff_height.
   uint64 registration_cutoff_height = 8;
   EmergencyMode emergency_mode = 9;
   // Computed by the module when an emergency is scheduled. Governance callers
   // cannot choose or extend this value directly.
   uint64 emergency_expires_height = 10;
+  RegistrationMode registration_mode = 11;
 }
 
 // PQCKeyRecord is an append-only key record. inactive_from_height is exclusive;

@@ -36,3 +36,21 @@ func TestLifecycleAuthorizationRequiresExactMessage(t *testing.T) {
 		types.ErrNestedLifecycle,
 	)
 }
+
+func TestFreshRegistrationCandidateRequiresExactMessage(t *testing.T) {
+	ctx := sdk.Context{}.WithContext(context.Background())
+	owner := sdk.AccAddress(bytes.Repeat([]byte{0x41}, 20)).String()
+	otherOwner := sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20)).String()
+	message := &types.MsgRegisterKey{Owner: owner}
+	other := &types.MsgRegisterKey{Owner: otherOwner}
+
+	require.False(t, IsFreshRegistrationCandidate(ctx, message))
+	captured, err := CaptureRegistrationCandidate(ctx, message, true)
+	require.NoError(t, err)
+	require.True(t, IsFreshRegistrationCandidate(captured, message))
+	require.False(t, IsFreshRegistrationCandidate(captured, other))
+
+	notFresh, err := CaptureRegistrationCandidate(ctx, message, false)
+	require.NoError(t, err)
+	require.False(t, IsFreshRegistrationCandidate(notFresh, message))
+}

@@ -256,16 +256,15 @@ func TestKeeperCorruptStatePanicsFailClosed(t *testing.T) {
 }
 
 func TestEmergencyModesFailClosed(t *testing.T) {
-	_, ctx := setupKeeper(t, 10)
 	params := types.DefaultParams()
 
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
-	require.ErrorIs(t, ensureKeyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.ErrorIs(t, ensureKeyChangeAllowed(params), types.ErrEmergencyPause)
 	require.NoError(t, ensurePQCTransactionAllowed(params))
 	require.NoError(t, ensureRecoveryAllowed(params))
 
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
-	require.ErrorIs(t, ensureKeyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.ErrorIs(t, ensureKeyChangeAllowed(params), types.ErrEmergencyPause)
 	require.ErrorIs(t, ensurePQCTransactionAllowed(params), types.ErrEmergencyPause)
 	require.NoError(t, ensureRecoveryAllowed(params))
 }
@@ -451,6 +450,54 @@ func TestMsgServerRejectsNativeMLDSARegistration(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrIneligibleAccount)
 	_, found := moduleKeeper.GetAccountPolicy(ctx, ownerAddress)
 	require.False(t, found)
+}
+
+func TestMsgServerEnforcesFreshAccountRegistrationMode(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	params := types.DefaultParams()
+	params.RegistrationMode =
+		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+
+	owner := sdk.AccAddress(bytes.Repeat([]byte{0x19}, 20)).String()
+	signingPublicKey, signingPrivateKey := keyPair(33)
+	recoveryPublicKey, recoveryPrivateKey := keyPair(34)
+	message := &types.MsgRegisterKey{
+		Owner:                owner,
+		ExpectedSigningKeyId: 1,
+		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
+		SigningPublicKey:     signingPublicKey,
+		SigningKeyProof: keyProof(
+			t, ctx, params, owner, 1,
+			types.Algorithm_ALGORITHM_ML_DSA_65,
+			signingPublicKey, signingPrivateKey,
+			types.KeyRole_KEY_ROLE_SIGNING,
+			types.PurposeRegisterSigning, 0,
+			[]byte(types.RegisterProofContext),
+		),
+		RecoveryAlgorithm: types.Algorithm_ALGORITHM_ML_DSA_65,
+		RecoveryPublicKey: recoveryPublicKey,
+		RecoveryKeyProof: keyProof(
+			t, ctx, params, owner, 2,
+			types.Algorithm_ALGORITHM_ML_DSA_65,
+			recoveryPublicKey, recoveryPrivateKey,
+			types.KeyRole_KEY_ROLE_RECOVERY,
+			types.PurposeRegisterRecovery, 0,
+			[]byte(types.RegisterProofContext),
+		),
+		SelfEnforce: true,
+	}
+
+	base := authorizedLifecycleContext(t, ctx, message)
+	notFresh, err := execution.CaptureRegistrationCandidate(base, message, false)
+	require.NoError(t, err)
+	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(notFresh), message)
+	require.ErrorIs(t, err, types.ErrFreshRegistrationOnly)
+
+	fresh, err := execution.CaptureRegistrationCandidate(base, message, true)
+	require.NoError(t, err)
+	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(fresh), message)
+	require.NoError(t, err)
 }
 
 func TestStateInvariantRejectsNativeMLDSAOwner(t *testing.T) {
@@ -850,6 +897,43 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRegistrationModeTransitionIsDelayedAndIrreversibleAfterActivation(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 30)
+	current := types.DefaultParams()
+	current.GovernanceSafetyDelayBlocks = 5
+	require.NoError(t, moduleKeeper.SetParams(ctx, current))
+	server := NewMsgServer(moduleKeeper)
+
+	restricted := current
+	restricted.RegistrationMode =
+		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    restricted,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(35), response.ActivationHeight)
+	require.Equal(
+		t,
+		types.RegistrationMode_REGISTRATION_MODE_OPEN,
+		moduleKeeper.GetParams(ctx).EffectiveRegistrationMode(34),
+	)
+	require.Equal(
+		t,
+		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY,
+		moduleKeeper.GetParams(ctx).EffectiveRegistrationMode(35),
+	)
+
+	activationCtx := ctx.WithBlockHeight(35)
+	_, err = moduleKeeper.NormalizeParams(activationCtx)
+	require.NoError(t, err)
+	_, err = server.UpdateParams(
+		sdk.WrapSDKContext(activationCtx),
+		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: current},
+	)
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+}
+
 func TestEmergencyOnlyUpdateActivatesAtHPlusOneAndCanBeCancelled(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
 	current := types.DefaultParams()
@@ -897,6 +981,14 @@ func TestGovernanceSafetyDelayClassification(t *testing.T) {
 			name: "registration cutoff",
 			mutate: func(requested *types.ScheduledParams) {
 				requested.RegistrationCutoffHeight = 100
+			},
+			restrictive: true,
+		},
+		{
+			name: "registration mode restriction",
+			mutate: func(requested *types.ScheduledParams) {
+				requested.RegistrationMode =
+					types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
 			},
 			restrictive: true,
 		},

@@ -15,6 +15,41 @@ func TestDefaultParamsValidate(t *testing.T) {
 	require.Equal(t, DefaultMaxEmergencyDurationBlocks, params.MaxEmergencyDurationBlocks)
 	require.True(t, params.IsAlgorithmAllowed(Algorithm_ALGORITHM_ML_DSA_65))
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(10))
+	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(10))
+}
+
+func TestRegistrationModesAndLegacyCutoff(t *testing.T) {
+	params := DefaultParams()
+	require.NoError(t, CheckRegistrationAllowed(params, 10, false))
+
+	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, false), ErrFreshRegistrationOnly)
+	require.NoError(t, CheckRegistrationAllowed(params, 10, true))
+
+	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_CLOSED
+	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, true), ErrRegistrationClosed)
+
+	legacy := DefaultParams()
+	legacy.RegistrationMode = RegistrationMode_REGISTRATION_MODE_UNSPECIFIED
+	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, legacy.EffectiveRegistrationMode(9))
+	legacy.RegistrationCutoffHeight = 10
+	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, legacy.EffectiveRegistrationMode(9))
+	require.Equal(t, RegistrationMode_REGISTRATION_MODE_CLOSED, legacy.EffectiveRegistrationMode(10))
+}
+
+func TestRegistrationModeActivatesAtomically(t *testing.T) {
+	params := DefaultParams()
+	pending := params.AsScheduled()
+	pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	params.Pending = &pending
+	params.PendingActivationHeight = 101
+
+	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(100))
+	require.Equal(
+		t,
+		RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY,
+		params.EffectiveRegistrationMode(101),
+	)
 }
 
 func TestEmergencyModeAutoExpiresAtExactHeight(t *testing.T) {
@@ -63,6 +98,7 @@ func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 		}},
 		{"short network id", func(p *Params) { p.NetworkId = []byte("short") }},
 		{"unknown algorithm", func(p *Params) { p.AllowedAlgorithms = []Algorithm{99} }},
+		{"unknown registration mode", func(p *Params) { p.RegistrationMode = RegistrationMode(99) }},
 		{"zero governance safety delay", func(p *Params) { p.GovernanceSafetyDelayBlocks = 0 }},
 		{"excessive governance safety delay", func(p *Params) {
 			p.GovernanceSafetyDelayBlocks = AbsoluteMaxGovernanceSafetyDelayBlocks + 1

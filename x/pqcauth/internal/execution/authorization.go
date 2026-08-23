@@ -10,8 +10,44 @@ import (
 )
 
 type authorizedLifecycleMessageKey struct{}
+type registrationCandidateKey struct{}
 
 type lifecycleMessageFingerprint [sha256.Size]byte
+
+type registrationCandidate struct {
+	fingerprint lifecycleMessageFingerprint
+	fresh       bool
+}
+
+// CaptureRegistrationCandidate records the owner's authentication state before
+// the SDK SetPubKeyDecorator can persist the public key carried by this tx.
+// The marker is bound to one exact top-level MsgRegisterKey.
+func CaptureRegistrationCandidate(
+	ctx sdk.Context,
+	msg sdk.Msg,
+	fresh bool,
+) (sdk.Context, error) {
+	fingerprint, err := fingerprintLifecycleMessage(msg)
+	if err != nil {
+		return ctx, err
+	}
+	return ctx.WithValue(registrationCandidateKey{}, registrationCandidate{
+		fingerprint: fingerprint,
+		fresh:       fresh,
+	}), nil
+}
+
+// IsFreshRegistrationCandidate reports whether the exact registration message
+// was captured while its owner had neither a stored public key nor a consumed
+// ordered account sequence.
+func IsFreshRegistrationCandidate(ctx sdk.Context, msg sdk.Msg) bool {
+	candidate, ok := ctx.Value(registrationCandidateKey{}).(registrationCandidate)
+	if !ok || !candidate.fresh {
+		return false
+	}
+	fingerprint, err := fingerprintLifecycleMessage(msg)
+	return err == nil && fingerprint == candidate.fingerprint
+}
 
 // AuthorizeLifecycleMessage binds the Ante authorization to one exact
 // top-level lifecycle message. The unexported context key and Go internal

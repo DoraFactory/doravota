@@ -37,12 +37,19 @@ func (m msgServer) RegisterKey(
 		return nil, err
 	}
 	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
-	if err := ensureKeyChangeAllowed(ctx, params, true); err != nil {
+	if err := ensureKeyChangeAllowed(params); err != nil {
 		return nil, err
 	}
 
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
 	if err := m.RequireClassicAccount(ctx, owner); err != nil {
+		return nil, err
+	}
+	if err := types.CheckRegistrationAllowed(
+		params,
+		ctx.BlockHeight(),
+		execution.IsFreshRegistrationCandidate(ctx, msg),
+	); err != nil {
 		return nil, err
 	}
 	if _, found := m.GetAccountPolicy(ctx, owner); found {
@@ -124,7 +131,7 @@ func (m msgServer) RotateKey(
 		return nil, err
 	}
 	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
-	if err := ensureKeyChangeAllowed(ctx, params, false); err != nil {
+	if err := ensureKeyChangeAllowed(params); err != nil {
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
@@ -228,7 +235,7 @@ func (m msgServer) RotateRecoveryKey(
 		return nil, err
 	}
 	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
-	if err := ensureKeyChangeAllowed(ctx, params, false); err != nil {
+	if err := ensureKeyChangeAllowed(params); err != nil {
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
@@ -574,6 +581,11 @@ func (m msgServer) UpdateParams(
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
+	if requestedScheduled.RegistrationMode < currentScheduled.RegistrationMode {
+		return nil, types.ErrInvalidParams.Wrap(
+			"registration mode cannot be relaxed after activation",
+		)
+	}
 	if currentScheduled.Equal(requestedScheduled) {
 		// A proposal equal to the active state is an explicit cancellation of a
 		// future schedule. This lets governance defuse a queued restrictive
@@ -610,6 +622,7 @@ func (m msgServer) UpdateParams(
 
 func requiresGovernanceSafetyDelay(current, requested types.ScheduledParams) bool {
 	if requested.EnforcementMode > current.EnforcementMode ||
+		requested.RegistrationMode > current.RegistrationMode ||
 		(current.RegistrationCutoffHeight == 0 && requested.RegistrationCutoffHeight != 0) ||
 		requested.SignatureVerificationGas > current.SignatureVerificationGas ||
 		requested.ProofVerificationGas > current.ProofVerificationGas ||
@@ -630,17 +643,12 @@ func requiresGovernanceSafetyDelay(current, requested types.ScheduledParams) boo
 	return false
 }
 
-func ensureKeyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationCutoff bool) error {
+func ensureKeyChangeAllowed(params types.Params) error {
 	if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS {
 		return types.ErrEmergencyPause
 	}
 	if err := ensurePQCTransactionAllowed(params); err != nil {
 		return err
-	}
-	if enforceRegistrationCutoff &&
-		params.RegistrationCutoffHeight != 0 &&
-		uint64(ctx.BlockHeight()) >= params.RegistrationCutoffHeight {
-		return types.ErrRegistrationClosed
 	}
 	return nil
 }

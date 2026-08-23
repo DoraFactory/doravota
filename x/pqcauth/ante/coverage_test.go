@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
@@ -575,6 +576,26 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 	)
 	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 
+	freshOnly := params
+	freshOnly.RegistrationMode =
+		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	err = decorator.validateLifecycleProofs(
+		ctx,
+		extensionOptionsTxStub{messages: []sdk.Msg{register}},
+		freshOnly,
+		true,
+	)
+	require.ErrorIs(t, err, types.ErrFreshRegistrationOnly)
+	freshCtx, err := execution.CaptureRegistrationCandidate(ctx, register, true)
+	require.NoError(t, err)
+	err = decorator.validateLifecycleProofs(
+		freshCtx,
+		extensionOptionsTxStub{messages: []sdk.Msg{register}},
+		freshOnly,
+		true,
+	)
+	require.NoError(t, err)
+
 	unexpectedID := *register
 	unexpectedID.ExpectedSigningKeyId = 2
 	err = decorator.validateLifecycleProofs(
@@ -710,12 +731,12 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 		},
 	}))
 
-	require.NoError(t, keyChangeAllowed(ctx, params, false))
+	require.NoError(t, keyChangeAllowed(params))
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
-	require.ErrorIs(t, keyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.ErrorIs(t, keyChangeAllowed(params), types.ErrEmergencyPause)
 	require.NoError(t, recoveryChangeAllowed(params))
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
-	require.ErrorIs(t, keyChangeAllowed(ctx, params, false), types.ErrEmergencyPause)
+	require.ErrorIs(t, keyChangeAllowed(params), types.ErrEmergencyPause)
 	require.NoError(t, recoveryChangeAllowed(params))
 
 	params = moduleKeeper.GetParams(ctx)

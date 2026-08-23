@@ -8,6 +8,7 @@ import (
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
@@ -27,11 +28,18 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if err := message.ValidateBasic(); err != nil {
 				return err
 			}
-			if err := keyChangeAllowed(ctx, params, true); err != nil {
+			if err := keyChangeAllowed(params); err != nil {
 				return err
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
 			if err := d.keeper.RequireClassicAccount(ctx, owner); err != nil {
+				return err
+			}
+			if err := types.CheckRegistrationAllowed(
+				params,
+				ctx.BlockHeight(),
+				execution.IsFreshRegistrationCandidate(ctx, message),
+			); err != nil {
 				return err
 			}
 			if _, found := d.keeper.GetAccountPolicy(ctx, owner); found {
@@ -85,7 +93,7 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if err := message.ValidateBasic(); err != nil {
 				return err
 			}
-			if err := keyChangeAllowed(ctx, params, false); err != nil {
+			if err := keyChangeAllowed(params); err != nil {
 				return err
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
@@ -142,7 +150,7 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if err := message.ValidateBasic(); err != nil {
 				return err
 			}
-			if err := keyChangeAllowed(ctx, params, false); err != nil {
+			if err := keyChangeAllowed(params); err != nil {
 				return err
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
@@ -450,15 +458,10 @@ func topLevelLifecycleMessage(tx sdk.Tx) sdk.Msg {
 	}
 }
 
-func keyChangeAllowed(ctx sdk.Context, params types.Params, enforceRegistrationCutoff bool) error {
+func keyChangeAllowed(params types.Params) error {
 	if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS ||
 		params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 		return types.ErrEmergencyPause
-	}
-	if enforceRegistrationCutoff &&
-		params.RegistrationCutoffHeight != 0 &&
-		uint64(ctx.BlockHeight()) >= params.RegistrationCutoffHeight {
-		return types.ErrRegistrationClosed
 	}
 	return nil
 }

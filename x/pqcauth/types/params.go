@@ -57,6 +57,7 @@ func DefaultParams() Params {
 		MaxPqcSigners:                DefaultMaxPQCSigners,
 		MaxPqcAuthBytes:              DefaultMaxPQCAuthBytes,
 		MaxRetainedKeyRecordsPerRole: DefaultMaxRetainedKeyRecordsPerRole,
+		RegistrationMode:             RegistrationMode_REGISTRATION_MODE_OPEN,
 		EmergencyMode:                EmergencyMode_EMERGENCY_MODE_NORMAL,
 		GovernanceSafetyDelayBlocks:  DefaultGovernanceSafetyDelayBlocks,
 		MaxEmergencyDurationBlocks:   DefaultMaxEmergencyDurationBlocks,
@@ -175,6 +176,9 @@ func validateScheduledParams(p ScheduledParams) error {
 			AbsoluteMaxRetainedKeyRecordsPerRole,
 		)
 	}
+	if !validRegistrationMode(normalizeRegistrationMode(p.RegistrationMode)) {
+		return fmt.Errorf("%w: invalid registration mode %d", ErrInvalidParams, p.RegistrationMode)
+	}
 	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
@@ -210,6 +214,18 @@ func (p Params) EffectiveEmergencyMode(height int64) EmergencyMode {
 	return p.Effective(height).EmergencyMode
 }
 
+// EffectiveRegistrationMode returns the active registration gate. A legacy
+// registration cutoff remains authoritative and maps to CLOSED once reached.
+func (p Params) EffectiveRegistrationMode(height int64) RegistrationMode {
+	effective := p.Effective(height)
+	if height >= 0 &&
+		effective.RegistrationCutoffHeight != 0 &&
+		uint64(height) >= effective.RegistrationCutoffHeight {
+		return RegistrationMode_REGISTRATION_MODE_CLOSED
+	}
+	return normalizeRegistrationMode(effective.RegistrationMode)
+}
+
 // Effective atomically applies the complete pending parameter bundle at its
 // activation height. The returned copy never contains an activated schedule.
 func (p Params) Effective(height int64) Params {
@@ -229,6 +245,7 @@ func (p Params) Effective(height int64) Params {
 		p.EmergencyMode = EmergencyMode_EMERGENCY_MODE_NORMAL
 		p.EmergencyExpiresHeight = 0
 	}
+	p.RegistrationMode = normalizeRegistrationMode(p.RegistrationMode)
 	return p
 }
 
@@ -242,6 +259,7 @@ func (p Params) AsScheduled() ScheduledParams {
 		MaxPqcAuthBytes:              p.MaxPqcAuthBytes,
 		MaxRetainedKeyRecordsPerRole: p.MaxRetainedKeyRecordsPerRole,
 		RegistrationCutoffHeight:     p.RegistrationCutoffHeight,
+		RegistrationMode:             normalizeRegistrationMode(p.RegistrationMode),
 		EmergencyMode:                p.EmergencyMode,
 		EmergencyExpiresHeight:       p.EmergencyExpiresHeight,
 	}
@@ -256,6 +274,7 @@ func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
 	p.MaxPqcAuthBytes = scheduled.MaxPqcAuthBytes
 	p.MaxRetainedKeyRecordsPerRole = scheduled.MaxRetainedKeyRecordsPerRole
 	p.RegistrationCutoffHeight = scheduled.RegistrationCutoffHeight
+	p.RegistrationMode = normalizeRegistrationMode(scheduled.RegistrationMode)
 	p.EmergencyMode = scheduled.EmergencyMode
 	p.EmergencyExpiresHeight = scheduled.EmergencyExpiresHeight
 }
@@ -301,6 +320,20 @@ func (p Params) EffectiveProofVerificationGas() uint64 {
 func validEnforcementMode(mode EnforcementMode) bool {
 	return mode >= EnforcementMode_ENFORCEMENT_MODE_DISABLED &&
 		mode <= EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+}
+
+func normalizeRegistrationMode(mode RegistrationMode) RegistrationMode {
+	// Zero was the wire value written before registration modes existed. Treat
+	// it as OPEN so upgrades preserve the historical registration behavior.
+	if mode == RegistrationMode_REGISTRATION_MODE_UNSPECIFIED {
+		return RegistrationMode_REGISTRATION_MODE_OPEN
+	}
+	return mode
+}
+
+func validRegistrationMode(mode RegistrationMode) bool {
+	return mode >= RegistrationMode_REGISTRATION_MODE_OPEN &&
+		mode <= RegistrationMode_REGISTRATION_MODE_CLOSED
 }
 
 func CryptoAlgorithm(algorithm Algorithm) (pqccrypto.Algorithm, error) {
