@@ -14,6 +14,25 @@ func InitGenesis(ctx sdk.Context, moduleKeeper keeper.Keeper, genesis types.Gene
 	if err := types.ValidateGenesis(genesis); err != nil {
 		panic(fmt.Errorf("invalid pqcauth genesis: %w", err))
 	}
+	owners := make(map[string]struct{})
+	for _, key := range genesis.Keys {
+		owners[key.Owner] = struct{}{}
+	}
+	for _, history := range genesis.KeyHistories {
+		owners[history.Owner] = struct{}{}
+	}
+	for _, policy := range genesis.Policies {
+		owners[policy.Owner] = struct{}{}
+	}
+	for _, sequence := range genesis.KeySequences {
+		owners[sequence.Owner] = struct{}{}
+	}
+	for owner := range owners {
+		address := sdk.MustAccAddressFromBech32(owner)
+		if err := moduleKeeper.RequireClassicAccount(ctx, address); err != nil {
+			panic(fmt.Errorf("invalid pqcauth genesis owner %s: %w", owner, err))
+		}
+	}
 	if types.UsesLegacyDefaultNetworkID(genesis.Params.NetworkId) {
 		if ctx.ChainID() == "" {
 			panic("initialize pqcauth genesis: chain ID is required to derive network ID")

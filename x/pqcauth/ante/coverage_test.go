@@ -7,10 +7,12 @@ import (
 	protov2 "google.golang.org/protobuf/proto"
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
@@ -344,37 +346,37 @@ func TestPQCStateContextUsesLatestCommittedHeightOnlyForSimulation(t *testing.T)
 }
 
 func TestPQCRequirementDecisionMatrix(t *testing.T) {
-	require.False(t, pqcRequired(
+	require.False(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		types.AccountPolicy{},
 		false,
 	))
-	require.False(t, pqcRequired(
+	require.False(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
 		types.AccountPolicy{},
 		true,
 	))
-	require.False(t, pqcRequired(
+	require.False(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED,
 		types.AccountPolicy{},
 		false,
 	))
-	require.True(t, pqcRequired(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED,
 		types.AccountPolicy{},
 		true,
 	))
-	require.True(t, pqcRequired(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED,
 		types.AccountPolicy{},
 		false,
 	))
-	require.True(t, pqcRequired(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode(99),
 		types.AccountPolicy{},
 		false,
 	))
-	require.True(t, pqcRequired(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		types.AccountPolicy{SelfEnforced: true},
 		true,
@@ -496,7 +498,15 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 	require.NoError(t, err)
 	_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
 	require.NoError(t, err)
-	unregistered := sdk.AccAddress(make([]byte, 20)).String()
+	unregisteredPrivateKey := secp256k1.GenPrivKey()
+	unregisteredAddress := sdk.AccAddress(unregisteredPrivateKey.PubKey().Address())
+	accountKeeper.accounts[unregisteredAddress.String()] = authtypes.NewBaseAccount(
+		unregisteredAddress,
+		unregisteredPrivateKey.PubKey(),
+		10,
+		0,
+	)
+	unregistered := unregisteredAddress.String()
 	register := &types.MsgRegisterKey{
 		Owner:                unregistered,
 		ExpectedSigningKeyId: 1,

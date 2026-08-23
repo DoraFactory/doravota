@@ -31,6 +31,9 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				return err
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
+			if err := d.keeper.RequireClassicAccount(ctx, owner); err != nil {
+				return err
+			}
 			if _, found := d.keeper.GetAccountPolicy(ctx, owner); found {
 				return types.ErrAlreadyRegistered
 			}

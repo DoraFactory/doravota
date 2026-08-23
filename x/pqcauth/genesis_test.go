@@ -2,6 +2,7 @@ package pqcauth
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"cosmossdk.io/log/v2"
@@ -9,9 +10,12 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/store/v2"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
@@ -19,7 +23,29 @@ import (
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
+type genesisAccountKeeperStub struct {
+	account sdk.AccountI
+}
+
+func (stub genesisAccountKeeperStub) GetAccount(
+	_ context.Context,
+	address sdk.AccAddress,
+) sdk.AccountI {
+	if stub.account != nil && stub.account.GetAddress().Equals(address) {
+		return stub.account
+	}
+	return authtypes.NewBaseAccount(address, secp256k1.GenPrivKey().PubKey(), 0, 0)
+}
+
 func setupGenesisTest(t testing.TB, height int64) (sdk.Context, keeper.Keeper) {
+	return setupGenesisTestWithAccountKeeper(t, height, genesisAccountKeeperStub{})
+}
+
+func setupGenesisTestWithAccountKeeper(
+	t testing.TB,
+	height int64,
+	accountKeeper keeper.AccountKeeper,
+) (sdk.Context, keeper.Keeper) {
 	t.Helper()
 	registry := codectypes.NewInterfaceRegistry()
 	types.RegisterInterfaces(registry)
@@ -36,7 +62,7 @@ func setupGenesisTest(t testing.TB, height int64) (sdk.Context, keeper.Keeper) {
 		log.NewNopLogger(),
 	)
 	authority := sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20)).String()
-	return ctx, keeper.NewKeeper(cdc, storeKey, authority)
+	return ctx, keeper.NewKeeper(cdc, storeKey, authority, accountKeeper)
 }
 
 func TestExportGenesisNormalizesActivatedParamsAndPolicies(t *testing.T) {
@@ -184,6 +210,31 @@ func TestInitGenesisImportsStateAndDerivesMissingSequence(t *testing.T) {
 	require.Len(t, exported.Policies, 2)
 	require.Len(t, exported.KeySequences, 2)
 	require.Equal(t, genesis.KeyHistories, exported.KeyHistories)
+}
+
+func TestInitGenesisRejectsNativeMLDSAOwner(t *testing.T) {
+	privateKey, err := mldsa65.GenPrivKey()
+	require.NoError(t, err)
+	owner := sdk.AccAddress(privateKey.PubKey().Address())
+	account := authtypes.NewBaseAccount(owner, privateKey.PubKey(), 1, 0)
+	ctx, moduleKeeper := setupGenesisTestWithAccountKeeper(
+		t,
+		1,
+		genesisAccountKeeperStub{account: account},
+	)
+
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		InitGenesis(ctx, moduleKeeper, types.GenesisState{
+			Params: types.DefaultParams(),
+			KeySequences: []types.AccountKeySequence{{
+				Owner:     owner.String(),
+				NextKeyId: 1,
+			}},
+		})
+	}()
+	require.ErrorIs(t, recovered.(error), types.ErrIneligibleAccount)
 }
 
 func TestInitGenesisPanicsOnInvalidState(t *testing.T) {

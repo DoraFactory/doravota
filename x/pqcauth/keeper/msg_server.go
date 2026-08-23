@@ -42,6 +42,9 @@ func (m msgServer) RegisterKey(
 	}
 
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
+	if err := m.RequireClassicAccount(ctx, owner); err != nil {
+		return nil, err
+	}
 	if _, found := m.GetAccountPolicy(ctx, owner); found {
 		return nil, types.ErrAlreadyRegistered
 	}

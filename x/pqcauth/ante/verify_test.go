@@ -8,12 +8,14 @@ import (
 
 	coreaddress "cosmossdk.io/core/address"
 	"cosmossdk.io/log/v2"
+	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdkaddress "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/store/v2"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
@@ -23,6 +25,7 @@ import (
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	sdksigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
@@ -33,7 +36,8 @@ import (
 )
 
 type accountKeeperMock struct {
-	account authtypes.AccountI
+	account  authtypes.AccountI
+	accounts map[string]sdk.AccountI
 }
 
 type gasCharge struct {
@@ -77,6 +81,9 @@ func (m accountKeeperMock) GetAccount(_ context.Context, address sdk.AccAddress)
 	if m.account != nil && m.account.GetAddress().Equals(address) {
 		return m.account
 	}
+	if account, found := m.accounts[address.String()]; found {
+		return account
+	}
 	return nil
 }
 func (m accountKeeperMock) SetAccount(context.Context, sdk.AccountI) {}
@@ -110,6 +117,7 @@ func setupAnteTest(
 	require.NoError(t, err)
 	types.RegisterInterfaces(registry)
 	authz.RegisterInterfaces(registry)
+	banktypes.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)
 	txConfig := authtx.NewTxConfig(cdc, authtx.DefaultSignModes)
 
@@ -132,7 +140,13 @@ func setupAnteTest(
 	require.NoError(t, account.SetAccountNumber(9))
 	require.NoError(t, account.SetSequence(7))
 
-	moduleKeeper := pqckeeper.NewKeeper(cdc, storeKey, address.String())
+	accountKeeper := accountKeeperMock{
+		account: account,
+		accounts: map[string]sdk.AccountI{
+			address.String(): account,
+		},
+	}
+	moduleKeeper := pqckeeper.NewKeeper(cdc, storeKey, address.String(), accountKeeper)
 	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
 	publicKey, privateKey, err := pqccrypto.GenerateMLDSA65Key(nil)
 	require.NoError(t, err)
@@ -167,7 +181,7 @@ func setupAnteTest(
 		Owner:     address.String(),
 		NextKeyId: 3,
 	}))
-	return ctx, moduleKeeper, accountKeeperMock{account: account}, txConfig, privateKey
+	return ctx, moduleKeeper, accountKeeper, txConfig, privateKey
 }
 
 func buildProtectedTx(
@@ -253,6 +267,239 @@ func TestVerifyPQCDecoratorAcceptsValidHybridAuthorization(t *testing.T) {
 		called = true
 		return nextCtx, nil
 	})
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
+func TestNativeMLDSAAccountSatisfiesGlobalRequiredWithoutPQCAuth(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
+	params := moduleKeeper.GetParams(ctx)
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+
+	privateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	address := sdk.AccAddress(privateKey.PubKey().Address())
+	account := authtypes.NewBaseAccount(address, privateKey.PubKey(), 10, 3)
+	accountKeeper.accounts[address.String()] = account
+
+	builder := txConfig.NewTxBuilder()
+	require.NoError(t, builder.SetMsgs(&banktypes.MsgSend{
+		FromAddress: address.String(),
+		ToAddress:   address.String(),
+		Amount:      sdk.NewCoins(),
+	}))
+	builder.SetGasLimit(1_000_000)
+	require.NoError(t, builder.SetSignatures(txsigning.SignatureV2{
+		PubKey: account.GetPubKey(),
+		Data: &txsigning.SingleSignatureData{
+			SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+			Signature: make([]byte, cmtmldsa65.SignatureSize),
+		},
+		Sequence: account.GetSequence(),
+	}))
+
+	called := false
+	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+		ctx,
+		builder.GetTx(),
+		false,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			called = true
+			return nextCtx, nil
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
+func TestNativeMLDSAAccountCannotUsePQCAuthExtension(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
+	privateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	address := sdk.AccAddress(privateKey.PubKey().Address())
+	account := authtypes.NewBaseAccount(address, privateKey.PubKey(), 10, 3)
+	accountKeeper.accounts[address.String()] = account
+
+	builder := txConfig.NewTxBuilder()
+	require.NoError(t, builder.SetMsgs(&banktypes.MsgSend{
+		FromAddress: address.String(),
+		ToAddress:   address.String(),
+		Amount:      sdk.NewCoins(),
+	}))
+	builder.SetGasLimit(1_000_000)
+	require.NoError(t, builder.SetSignatures(txsigning.SignatureV2{
+		PubKey: account.GetPubKey(),
+		Data: &txsigning.SingleSignatureData{
+			SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+			Signature: make([]byte, cmtmldsa65.SignatureSize),
+		},
+		Sequence: account.GetSequence(),
+	}))
+	extension, err := codectypes.NewAnyWithValue(&types.ExtensionPQCAuth{
+		FormatVersion: types.FormatVersionV1,
+		Signatures: []types.SignerPQCSignature{{
+			Signer:        address.String(),
+			SignerIndex:   0,
+			KeyId:         1,
+			Algorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
+			PolicyVersion: 1,
+			Signature:     make([]byte, cmtmldsa65.SignatureSize),
+		}},
+	})
+	require.NoError(t, err)
+	builder.(authtx.ExtensionOptionsTxBuilder).SetExtensionOptions(extension)
+
+	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+		ctx,
+		builder.GetTx(),
+		false,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			return nextCtx, nil
+		},
+	)
+	require.ErrorIs(t, err, types.ErrIneligibleAccount)
+}
+
+func TestNativeMLDSAAccountCannotRegisterPQCAuth(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	privateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	address := sdk.AccAddress(privateKey.PubKey().Address())
+	accountKeeper.accounts[address.String()] = authtypes.NewBaseAccount(
+		address,
+		privateKey.PubKey(),
+		10,
+		3,
+	)
+
+	signingPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
+	_, proofSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
+	require.NoError(t, err)
+	message := &types.MsgRegisterKey{
+		Owner:                address.String(),
+		ExpectedSigningKeyId: 1,
+		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
+		SigningPublicKey:     signingPublicKey,
+		SigningKeyProof:      make([]byte, proofSize),
+		RecoveryAlgorithm:    types.Algorithm_ALGORITHM_ML_DSA_65,
+		RecoveryPublicKey:    recoveryPublicKey,
+		RecoveryKeyProof:     make([]byte, proofSize),
+		SelfEnforce:          true,
+	}
+
+	err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).validateLifecycleProofs(
+		ctx,
+		extensionOptionsTxStub{messages: []sdk.Msg{message}},
+		moduleKeeper.GetParams(ctx),
+		true,
+	)
+	require.ErrorIs(t, err, types.ErrIneligibleAccount)
+}
+
+func TestRequiredModeAcceptsMixedNativeAndProtectedClassicSigners(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, txConfig, pqcPrivateKey := setupAnteTest(t)
+	params := moduleKeeper.GetParams(ctx)
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+
+	nativePrivateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	nativeAddress := sdk.AccAddress(nativePrivateKey.PubKey().Address())
+	nativeAccount := authtypes.NewBaseAccount(
+		nativeAddress,
+		nativePrivateKey.PubKey(),
+		10,
+		3,
+	)
+	accountKeeper.accounts[nativeAddress.String()] = nativeAccount
+	classicAccount := accountKeeper.account
+
+	builder := txConfig.NewTxBuilder()
+	require.NoError(t, builder.SetMsgs(
+		&banktypes.MsgSend{
+			FromAddress: classicAccount.GetAddress().String(),
+			ToAddress:   classicAccount.GetAddress().String(),
+			Amount:      sdk.NewCoins(),
+		},
+		&banktypes.MsgSend{
+			FromAddress: nativeAddress.String(),
+			ToAddress:   nativeAddress.String(),
+			Amount:      sdk.NewCoins(),
+		},
+	))
+	builder.SetGasLimit(2_000_000)
+	require.NoError(t, builder.SetSignatures(
+		txsigning.SignatureV2{
+			PubKey: classicAccount.GetPubKey(),
+			Data: &txsigning.SingleSignatureData{
+				SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+				Signature: make([]byte, 64),
+			},
+			Sequence: classicAccount.GetSequence(),
+		},
+		txsigning.SignatureV2{
+			PubKey: nativeAccount.GetPubKey(),
+			Data: &txsigning.SingleSignatureData{
+				SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+				Signature: make([]byte, cmtmldsa65.SignatureSize),
+			},
+			Sequence: nativeAccount.GetSequence(),
+		},
+	))
+
+	provider := builder.GetTx().(protoTxProvider)
+	key, policy, active := moduleKeeper.GetActiveSigningKey(ctx, classicAccount.GetAddress())
+	require.True(t, active)
+	signDoc, err := types.NewPQCSignDocV1(
+		provider.GetProtoTx(),
+		params.NetworkId,
+		ctx.ChainID(),
+		classicAccount.GetAccountNumber(),
+		classicAccount.GetSequence(),
+		0,
+		classicAccount.GetAddress().String(),
+		key.KeyId,
+		key.Algorithm,
+		policy.PolicyVersion,
+	)
+	require.NoError(t, err)
+	signBytes, err := types.MarshalPQCSignDocV1(signDoc)
+	require.NoError(t, err)
+	pqcSignature, err := pqccrypto.SignMLDSA65(
+		pqcPrivateKey,
+		signBytes,
+		[]byte(types.TxSignatureContext),
+		false,
+	)
+	require.NoError(t, err)
+	extension, err := codectypes.NewAnyWithValue(&types.ExtensionPQCAuth{
+		FormatVersion: types.FormatVersionV1,
+		Signatures: []types.SignerPQCSignature{{
+			Signer:        classicAccount.GetAddress().String(),
+			SignerIndex:   0,
+			KeyId:         key.KeyId,
+			Algorithm:     key.Algorithm,
+			PolicyVersion: policy.PolicyVersion,
+			Signature:     pqcSignature,
+		}},
+	})
+	require.NoError(t, err)
+	builder.(authtx.ExtensionOptionsTxBuilder).SetExtensionOptions(extension)
+
+	called := false
+	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+		ctx,
+		builder.GetTx(),
+		false,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			called = true
+			return nextCtx, nil
+		},
+	)
 	require.NoError(t, err)
 	require.True(t, called)
 }
@@ -630,7 +877,7 @@ func TestValidatedExtensionCacheIsBoundToExtensionOptions(t *testing.T) {
 
 func TestSelfEnforcementAndLifecycleCannotBeDisabledByGlobalOptionalMode(t *testing.T) {
 	selfPolicy := types.AccountPolicy{SelfEnforced: true}
-	require.True(t, pqcRequired(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		selfPolicy,
 		true,

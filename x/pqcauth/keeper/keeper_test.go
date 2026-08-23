@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"cosmossdk.io/log/v2"
@@ -9,9 +10,11 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/store/v2"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
 
 	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
@@ -21,6 +24,29 @@ import (
 	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
+
+type classicAccountKeeperStub struct{}
+
+func (classicAccountKeeperStub) GetAccount(
+	_ context.Context,
+	address sdk.AccAddress,
+) sdk.AccountI {
+	return authtypes.NewBaseAccount(address, secp256k1.GenPrivKey().PubKey(), 0, 0)
+}
+
+type fixedAccountKeeperStub struct {
+	account sdk.AccountI
+}
+
+func (stub fixedAccountKeeperStub) GetAccount(
+	_ context.Context,
+	address sdk.AccAddress,
+) sdk.AccountI {
+	if stub.account != nil && stub.account.GetAddress().Equals(address) {
+		return stub.account
+	}
+	return nil
+}
 
 func setupKeeper(t testing.TB, height int64) (Keeper, sdk.Context) {
 	t.Helper()
@@ -39,7 +65,7 @@ func setupKeeper(t testing.TB, height int64) (Keeper, sdk.Context) {
 		log.NewNopLogger(),
 	)
 	authority := sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20)).String()
-	return NewKeeper(cdc, storeKey, authority), ctx
+	return NewKeeper(cdc, storeKey, authority, classicAccountKeeperStub{}), ctx
 }
 
 func keyPair(seedByte byte) ([]byte, []byte) {
@@ -361,6 +387,120 @@ func TestRegisterAndRotateActivateAtHPlusOne(t *testing.T) {
 	oldKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 1)
 	require.True(t, found)
 	require.False(t, oldKey.IsEffective(ctx.BlockHeight()))
+}
+
+func TestMsgServerRejectsNativeMLDSARegistration(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
+
+	nativePrivateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	ownerAddress := sdk.AccAddress(nativePrivateKey.PubKey().Address())
+	moduleKeeper.accountKeeper = fixedAccountKeeperStub{account: authtypes.NewBaseAccount(
+		ownerAddress,
+		nativePrivateKey.PubKey(),
+		1,
+		0,
+	)}
+
+	signingPublicKey, signingPrivateKey := keyPair(31)
+	recoveryPublicKey, recoveryPrivateKey := keyPair(32)
+	params := moduleKeeper.GetParams(ctx)
+	message := &types.MsgRegisterKey{
+		Owner:                ownerAddress.String(),
+		ExpectedSigningKeyId: 1,
+		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
+		SigningPublicKey:     signingPublicKey,
+		SigningKeyProof: keyProof(
+			t,
+			ctx,
+			params,
+			ownerAddress.String(),
+			1,
+			types.Algorithm_ALGORITHM_ML_DSA_65,
+			signingPublicKey,
+			signingPrivateKey,
+			types.KeyRole_KEY_ROLE_SIGNING,
+			types.PurposeRegisterSigning,
+			0,
+			[]byte(types.RegisterProofContext),
+		),
+		RecoveryAlgorithm: types.Algorithm_ALGORITHM_ML_DSA_65,
+		RecoveryPublicKey: recoveryPublicKey,
+		RecoveryKeyProof: keyProof(
+			t,
+			ctx,
+			params,
+			ownerAddress.String(),
+			2,
+			types.Algorithm_ALGORITHM_ML_DSA_65,
+			recoveryPublicKey,
+			recoveryPrivateKey,
+			types.KeyRole_KEY_ROLE_RECOVERY,
+			types.PurposeRegisterRecovery,
+			0,
+			[]byte(types.RegisterProofContext),
+		),
+		SelfEnforce: true,
+	}
+
+	_, err = NewMsgServer(moduleKeeper).RegisterKey(
+		authorizedLifecycleContext(t, ctx, message),
+		message,
+	)
+	require.ErrorIs(t, err, types.ErrIneligibleAccount)
+	_, found := moduleKeeper.GetAccountPolicy(ctx, ownerAddress)
+	require.False(t, found)
+}
+
+func TestStateInvariantRejectsNativeMLDSAOwner(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
+	nativePrivateKey, err := sdkmldsa65.GenPrivKey()
+	require.NoError(t, err)
+	owner := sdk.AccAddress(nativePrivateKey.PubKey().Address())
+	moduleKeeper.accountKeeper = fixedAccountKeeperStub{account: authtypes.NewBaseAccount(
+		owner,
+		nativePrivateKey.PubKey(),
+		1,
+		0,
+	)}
+
+	signingPublicKey, _ := keyPair(41)
+	recoveryPublicKey, _ := keyPair(42)
+	require.NoError(t, moduleKeeper.SetKey(ctx, owner, types.PQCKeyRecord{
+		Owner:           owner.String(),
+		KeyId:           1,
+		Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
+		PublicKey:       signingPublicKey,
+		Role:            types.KeyRole_KEY_ROLE_SIGNING,
+		Status:          types.KeyStatus_KEY_STATUS_LIVE,
+		EffectiveHeight: 1,
+	}))
+	require.NoError(t, moduleKeeper.SetKey(ctx, owner, types.PQCKeyRecord{
+		Owner:           owner.String(),
+		KeyId:           2,
+		Algorithm:       types.Algorithm_ALGORITHM_ML_DSA_65,
+		PublicKey:       recoveryPublicKey,
+		Role:            types.KeyRole_KEY_ROLE_RECOVERY,
+		Status:          types.KeyStatus_KEY_STATUS_LIVE,
+		EffectiveHeight: 1,
+	}))
+	require.NoError(t, moduleKeeper.SetAccountPolicy(ctx, owner, types.AccountPolicy{
+		Owner:               owner.String(),
+		CurrentSigningKeyId: 1,
+		RecoveryKeyId:       2,
+		SelfEnforced:        true,
+		PolicyVersion:       1,
+	}))
+	require.NoError(t, moduleKeeper.SetKeySequence(ctx, owner, types.AccountKeySequence{
+		Owner:     owner.String(),
+		NextKeyId: 3,
+	}))
+
+	message, broken := StateInvariant(moduleKeeper)(ctx)
+	require.True(t, broken)
+	require.Contains(t, message, "ineligible pqcauth state owner")
 }
 
 func TestRegisterRejectsProofBoundToWrongChain(t *testing.T) {

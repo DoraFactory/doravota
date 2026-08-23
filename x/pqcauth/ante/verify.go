@@ -96,6 +96,59 @@ func (d VerifyPQCDecorator) AnteHandle(
 	requiredCount := 0
 	missingRequiredCount := 0
 	for index, signer := range signers {
+		account := d.accountKeeper.GetAccount(stateCtx, signer)
+		if account == nil {
+			return ctx, errorsmod.Wrapf(
+				types.ErrUnauthorized,
+				"account not found for signer index %d",
+				index,
+			)
+		}
+		authentication := types.ClassifyAccountAuthentication(account.GetPubKey())
+		_, hasEntry := entries[uint32(index)]
+		storedPolicy, hasStoredPolicy := d.keeper.GetEffectiveAccountPolicy(stateCtx, signer)
+
+		if authentication == types.AccountAuthenticationNativePQC {
+			if hasStoredPolicy {
+				return ctx, errorsmod.Wrapf(
+					types.ErrInconsistentState,
+					"native ML-DSA signer index %d has pqcauth policy version %d",
+					index,
+					storedPolicy.PolicyVersion,
+				)
+			}
+			if hasEntry {
+				return ctx, errorsmod.Wrapf(
+					types.ErrIneligibleAccount,
+					"native ML-DSA signer index %d cannot use pqcauth extension",
+					index,
+				)
+			}
+			// The SDK signature decorator immediately before this decorator has
+			// already verified the native ML-DSA signature. That satisfies the
+			// global post-quantum requirement without a second-factor extension.
+			continue
+		}
+
+		if authentication == types.AccountAuthenticationUnsupported {
+			if hasStoredPolicy {
+				return ctx, errorsmod.Wrapf(
+					types.ErrInconsistentState,
+					"unsupported signer index %d has pqcauth policy version %d",
+					index,
+					storedPolicy.PolicyVersion,
+				)
+			}
+			if hasEntry || params.EnforcementMode == types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED {
+				return ctx, errorsmod.Wrapf(
+					types.ErrIneligibleAccount,
+					"signer index %d does not use an approved classic or native post-quantum public key",
+					index,
+				)
+			}
+			continue
+		}
+
 		_, policy, hasActiveKey := d.keeper.GetActiveSigningKey(stateCtx, signer)
 		policyExpectsActiveKey := policy.CurrentSigningKeyId != 0
 		substituted := d.lifecycleProofSubstitutesPQC(stateCtx, tx, signer, hasActiveKey)
@@ -107,14 +160,17 @@ func (d VerifyPQCDecorator) AnteHandle(
 				policy.CurrentSigningKeyId,
 			)
 		}
-		required := pqcRequired(params.EnforcementMode, policy, policyExpectsActiveKey)
+		required := pqcRequiredForClassicAccount(
+			params.EnforcementMode,
+			policy,
+			policyExpectsActiveKey,
+		)
 		if hasActiveKey && lifecycleRequiresActivePQC(tx, signer) {
 			required = true
 		}
 		if required {
 			requiredCount++
 		}
-		_, hasEntry := entries[uint32(index)]
 		if required && !hasEntry && !substituted {
 			if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
 				return ctx, types.ErrEmergencyPause
@@ -274,7 +330,7 @@ func continueWithLifecycleAuthorization(
 	return next(ctx, tx, simulate)
 }
 
-func pqcRequired(
+func pqcRequiredForClassicAccount(
 	mode types.EnforcementMode,
 	policy types.AccountPolicy,
 	registered bool,

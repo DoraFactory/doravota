@@ -25,4 +25,5 @@ var (
 	ErrDuplicateAuthorization = errorsmod.Register(ModuleName, 20, "duplicate PQC signer authorization")
 	ErrNestedLifecycle        = errorsmod.Register(ModuleName, 21, "PQC lifecycle messages must be executed directly")
 	ErrInconsistentState      = errorsmod.Register(ModuleName, 22, "inconsistent PQC authorization state")
+	ErrIneligibleAccount      = errorsmod.Register(ModuleName, 23, "account is not eligible for pqcauth")
 )

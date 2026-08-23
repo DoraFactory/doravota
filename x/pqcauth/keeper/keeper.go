@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"context"
 	"fmt"
 	"math"
 
@@ -14,17 +15,31 @@ import (
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
-type Keeper struct {
-	cdc       codec.BinaryCodec
-	storeKey  storetypes.StoreKey
-	authority string
+type AccountKeeper interface {
+	GetAccount(context.Context, sdk.AccAddress) sdk.AccountI
 }
 
-func NewKeeper(cdc codec.BinaryCodec, storeKey storetypes.StoreKey, authority string) Keeper {
+type Keeper struct {
+	cdc           codec.BinaryCodec
+	storeKey      storetypes.StoreKey
+	authority     string
+	accountKeeper AccountKeeper
+}
+
+func NewKeeper(
+	cdc codec.BinaryCodec,
+	storeKey storetypes.StoreKey,
+	authority string,
+	accountKeeper AccountKeeper,
+) Keeper {
+	if accountKeeper == nil {
+		panic("pqcauth account keeper is required")
+	}
 	return Keeper{
-		cdc:       cdc,
-		storeKey:  storeKey,
-		authority: authority,
+		cdc:           cdc,
+		storeKey:      storeKey,
+		authority:     authority,
+		accountKeeper: accountKeeper,
 	}
 }
 

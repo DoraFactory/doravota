@@ -603,6 +603,7 @@ func New(
 		appCodec,
 		keys[pqcauthtypes.StoreKey],
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
+		app.AccountKeeper,
 	)
 
 	// The gov proposal types can be individually enabled
