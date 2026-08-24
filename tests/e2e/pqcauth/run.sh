@@ -373,6 +373,24 @@ wait_for_height() {
   die "node$index timed out at height $current waiting for $target"
 }
 
+wait_for_node_synced() {
+  local index="$1"
+  local deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+  local status=""
+  local height=0
+  while (( $(date +%s) < deadline )); do
+    if status="$(rpc_status "$index" 2>/dev/null)"; then
+      height="$(jq -r '.result.sync_info.latest_block_height | tonumber' <<<"$status")"
+      if [[ "$(jq -r '.result.sync_info.catching_up' <<<"$status")" == "false" ]]; then
+        printf '%s' "$status"
+        return 0
+      fi
+    fi
+    sleep 1
+  done
+  die "node$index remained in catching_up state at height $height"
+}
+
 query_tx_to_file() {
   local tx_hash="$1"
   local output_file="$2"
@@ -1502,9 +1520,10 @@ run_scenarios() {
     catchup_target="$(rpc_height 0)"
     wait_for_height "$catchup_target" 3
     local node3_status="$REPORT_DIR/node3-rejoined-status.json"
-    rpc_status 3 >"$node3_status"
-    [[ "$(jq -r '.result.sync_info.catching_up' "$node3_status")" == "false" ]] || die "restarted node3 is still catching up"
-    pass "stopped validator rejoins and catches up" "height=$catchup_target"
+    wait_for_node_synced 3 >"$node3_status"
+    local rejoined_height
+    rejoined_height="$(jq -r '.result.sync_info.latest_block_height | tonumber' "$node3_status")"
+    pass "stopped validator rejoins and catches up" "height=$rejoined_height"
   fi
 
   run_governance_scenarios
