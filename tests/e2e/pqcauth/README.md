@@ -43,14 +43,21 @@ queries, transaction responses and rejection evidence remain beside it.
 - transaction-bound offline signing-key recovery;
 - H+1 self-protection changes;
 - simulation gas estimation without real ML-DSA verification;
+- deterministic cryptographic gas estimation against the effective on-chain
+  verification parameters;
+- native ML-DSA direct transactions in both `OPTIONAL` and `REQUIRED`, plus
+  rejection of redundant `pqcauth` registration for native accounts;
 - real CheckTx rejection of invalid signature, signer, key, policy, algorithm,
   signer index, canonical encoding, size, placement and extension ordering;
 - a cryptographically valid raw transaction rejected by Ante during the
   `PAUSE_PQC_TRANSACTIONS` emergency state (bypassing wallet preflight);
 - nested `authz.MsgExec` lifecycle execution rejected in DeliverTx without a
   state change;
-- all eight default lifetime key slots, H+1 rotations, and permanent rejection
-  of a ninth key record;
+- rejection of protection activation with a pre-existing authz grant;
+- protected-granter delegation restricted to PQC-enforced classic or native
+  grantees, including runtime rejection after a grantee drops protection;
+- unbounded monotonic key IDs with bounded per-role terminal history, including
+  preservation of active signing and recovery records;
 - governance proposal submission, bonded-validator voting and H+1 activation
   for `OPTIONAL`, `DISABLED`, `REQUIRED_FOR_REGISTERED`, and final `REQUIRED`;
 - both emergency modes, including existing-key continuity during

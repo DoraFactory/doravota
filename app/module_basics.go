@@ -6,6 +6,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	vesting "github.com/cosmos/cosmos-sdk/x/auth/vesting"
 	vestingcli "github.com/cosmos/cosmos-sdk/x/auth/vesting/client/cli"
+	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
+	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/distribution"
@@ -37,6 +39,12 @@ type bankAppModuleBasic struct{ bank.AppModuleBasic }
 
 func (bankAppModuleBasic) GetTxCmd() *cobra.Command {
 	return bankcli.NewTxCmd(accountAddressCodec())
+}
+
+type authzAppModuleBasic struct{ authzmodule.AppModuleBasic }
+
+func (authzAppModuleBasic) GetTxCmd() *cobra.Command {
+	return authzcli.GetTxCmd(accountAddressCodec())
 }
 
 type stakingAppModuleBasic struct{ staking.AppModuleBasic }

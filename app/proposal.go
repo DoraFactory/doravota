@@ -7,6 +7,8 @@ import (
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	pqcauthante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 )
 
 const (
@@ -21,11 +23,12 @@ type proposalGasTx interface {
 }
 
 func (app *App) setProposalHandlers(txConfig client.TxConfig) {
-	app.SetPrepareProposal(app.prepareProposalHandler(txConfig))
-	app.SetProcessProposal(app.processProposalHandler())
+	txDecoder := pqcauthante.CanonicalPQCAuthTxDecoder(txConfig.TxDecoder())
+	app.SetPrepareProposal(app.prepareProposalHandler(txDecoder))
+	app.SetProcessProposal(app.processProposalHandler(txDecoder))
 }
 
-func (app *App) prepareProposalHandler(txConfig client.TxConfig) sdk.PrepareProposalHandler {
+func (app *App) prepareProposalHandler(txDecoder sdk.TxDecoder) sdk.PrepareProposalHandler {
 	return func(ctx sdk.Context, request *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
 		maxBytes := effectiveProposalMaxBytes(ctx, request.MaxTxBytes)
 		maxGas := effectiveProposalGasLimit(ctx)
@@ -37,7 +40,7 @@ func (app *App) prepareProposalHandler(txConfig client.TxConfig) sdk.PrepareProp
 			if int64(len(rawTx)) > maxBytes-totalBytes {
 				break
 			}
-			tx, err := txConfig.TxDecoder()(rawTx)
+			tx, err := txDecoder(rawTx)
 			if err != nil {
 				continue
 			}
@@ -60,7 +63,7 @@ func (app *App) prepareProposalHandler(txConfig client.TxConfig) sdk.PrepareProp
 	}
 }
 
-func (app *App) processProposalHandler() sdk.ProcessProposalHandler {
+func (app *App) processProposalHandler(txDecoder sdk.TxDecoder) sdk.ProcessProposalHandler {
 	return func(ctx sdk.Context, request *abci.RequestProcessProposal) (*abci.ResponseProcessProposal, error) {
 		maxBytes := effectiveProposalMaxBytes(ctx, 0)
 		maxGas := effectiveProposalGasLimit(ctx)
@@ -71,7 +74,7 @@ func (app *App) processProposalHandler() sdk.ProcessProposalHandler {
 			if int64(len(rawTx)) > maxBytes-totalBytes {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
-			decodedTx, err := app.txConfig.TxDecoder()(rawTx)
+			decodedTx, err := txDecoder(rawTx)
 			if err != nil {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}

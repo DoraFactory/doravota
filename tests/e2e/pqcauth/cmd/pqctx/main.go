@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"flag"
@@ -18,6 +19,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 
 	"github.com/DoraFactory/doravota/app"
@@ -31,6 +33,10 @@ type extensionOptionsBuilder interface {
 	sdkclient.TxBuilder
 	SetExtensionOptions(...*codectypes.Any)
 	SetNonCriticalExtensionOptions(...*codectypes.Any)
+}
+
+type protoTxProvider interface {
+	GetProtoTx() *txtypes.Tx
 }
 
 func main() {
@@ -101,12 +107,28 @@ func main() {
 	case "not-last":
 		extended.SetExtensionOptions(extensionAny, cloneAny(extensionAny))
 	case "noncanonical":
-		extensionAny.Value = append(extensionAny.Value, 0x08, 0x01)
 		extended.SetExtensionOptions(extensionAny)
 	case "oversized":
 		extended.SetExtensionOptions(extensionAny)
 	default:
 		extended.SetExtensionOptions(extensionAny)
+	}
+	if variant == "noncanonical" {
+		// SetExtensionOptions caches the decoded Any and its marshaler can repair
+		// malformed bytes. Mutate the concrete protobuf body after attachment so
+		// the classical signature covers the intentionally non-canonical payload.
+		provider, ok := builder.GetTx().(protoTxProvider)
+		if !ok || provider.GetProtoTx() == nil || provider.GetProtoTx().Body == nil ||
+			len(provider.GetProtoTx().Body.ExtensionOptions) == 0 {
+			fail("transaction builder does not expose the attached protobuf extension")
+		}
+		option := provider.GetProtoTx().Body.ExtensionOptions[0]
+		nonCanonical := append([]byte(nil), option.Value...)
+		nonCanonical = append(nonCanonical, 0x08, 0x01)
+		provider.GetProtoTx().Body.ExtensionOptions[0] = &codectypes.Any{
+			TypeUrl: option.TypeUrl,
+			Value:   nonCanonical,
+		}
 	}
 
 	keybase, err := keyring.New(
@@ -145,6 +167,9 @@ func main() {
 	if err != nil {
 		fail("encode adversarial transaction: %v", err)
 	}
+	if variant == "noncanonical" {
+		assertNonCanonicalExtension(encoded)
+	}
 	encodedBase64 := base64.StdEncoding.EncodeToString(encoded)
 	file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -156,6 +181,32 @@ func main() {
 	}
 	if err := file.Close(); err != nil {
 		fail("close output: %v", err)
+	}
+}
+
+func assertNonCanonicalExtension(encoded []byte) {
+	var raw txtypes.TxRaw
+	if err := raw.Unmarshal(encoded); err != nil {
+		fail("decode non-canonical raw transaction self-check: %v", err)
+	}
+	var body txtypes.TxBody
+	if err := body.Unmarshal(raw.BodyBytes); err != nil {
+		fail("decode non-canonical body self-check: %v", err)
+	}
+	if len(body.ExtensionOptions) == 0 {
+		fail("non-canonical transaction self-check cannot access extension")
+	}
+	encodedExtension := body.ExtensionOptions[0].Value
+	var extension types.ExtensionPQCAuth
+	if err := extension.Unmarshal(encodedExtension); err != nil {
+		fail("non-canonical transaction self-check cannot decode extension: %v", err)
+	}
+	canonical, err := extension.Marshal()
+	if err != nil {
+		fail("non-canonical transaction self-check cannot marshal extension: %v", err)
+	}
+	if bytes.Equal(canonical, encodedExtension) {
+		fail("SDK normalized the non-canonical extension before broadcast")
 	}
 }
 

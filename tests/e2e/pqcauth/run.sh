@@ -662,9 +662,17 @@ prepare_and_sign_bank_bundle() {
   local amount="$4"
   local bundle_label="$5"
   local unsigned="$WORK_DIR/tx/${bundle_label}.unsigned.json"
+  generate_unsigned_bank_send "$account" "$recipient" "$amount" "$unsigned"
+  prepare_and_sign_unsigned_bundle "$account" "$key_label" "$unsigned" "$bundle_label"
+}
+
+prepare_and_sign_unsigned_bundle() {
+  local account="$1"
+  local key_label="$2"
+  local unsigned="$3"
+  local bundle_label="$4"
   local prepared="$WORK_DIR/tx/${bundle_label}.prepared.json"
   local signed="$WORK_DIR/tx/${bundle_label}.signed.json"
-  generate_unsigned_bank_send "$account" "$recipient" "$amount" "$unsigned"
   "$DORAD_BIN" tx pqcauth prepare-bundle "$unsigned" "$prepared" \
     --from "$account" \
     --keyring-backend test \
@@ -769,7 +777,7 @@ submit_params_update() {
   local authority_json="$WORK_DIR/tx/${name}.gov-authority.json"
   "$DORAD_BIN" query auth module-account gov --node "$RPC_URL" --output json >"$authority_json"
   local authority
-  authority="$(jq -r '.account.base_account.address // .account.baseAccount.address // empty' "$authority_json")"
+  authority="$(jq -r '.account.base_account.address // .account.baseAccount.address // .account.value.address // empty' "$authority_json")"
   [[ -n "$authority" ]] || die "cannot resolve governance module authority"
   jq -n \
     --arg authority "$authority" \
@@ -842,13 +850,22 @@ initialize_network() {
     sed -i.e2e 's/^pprof_laddr = .*/pprof_laddr = ""/' "$home/config/config.toml"
   done
 
-  local accounts=(alice bob carol dave eve grantee quota receiver)
+  local classic_accounts=(alice bob carol dave eve grantee quota receiver)
   local account
-  for account in "${accounts[@]}"; do
+  for account in "${classic_accounts[@]}"; do
     "$DORAD_BIN" keys add "$account" \
       --keyring-backend test --home "$CLIENT_HOME" --output json \
       >"$WORK_DIR/secrets/account-$account.json"
   done
+  "$DORAD_BIN" keys add native --key-type ml_dsa_65 \
+    --keyring-backend test --home "$CLIENT_HOME" --output json \
+    >"$WORK_DIR/secrets/account-native.json"
+  "$DORAD_BIN" keys show native --pubkey \
+    --keyring-backend test --home "$CLIENT_HOME" \
+    >"$REPORT_DIR/native-mldsa-pubkey.json"
+  jq -e '.. | strings | ascii_downcase | select(contains("mldsa65") or contains("ml_dsa_65"))' \
+    "$REPORT_DIR/native-mldsa-pubkey.json" >/dev/null \
+    || die "native account does not use an ML-DSA-65 public key"
 
   local coordinator
   coordinator="$(node_home 0)"
@@ -856,10 +873,10 @@ initialize_network() {
   local genesis_tmp="$coordinator/config/genesis.e2e.json"
   jq '
     walk(if type == "string" and . == "stake" then "peaka" else . end)
-    | .consensus_params.block.max_gas = "100000000"
     | .app_state.gov.params.min_deposit = [{"denom":"peaka","amount":"1000000"}]
     | .app_state.gov.params.max_deposit_period = "10s"
     | .app_state.gov.params.voting_period = "10s"
+    | .app_state.gov.params.expedited_voting_period = "5s"
     | .app_state.pqcauth.params.governance_safety_delay_blocks = "4"
     | .app_state.pqcauth.params.max_emergency_duration_blocks = "20"
     | .app_state.pqcauth.params.emergency_expires_height = "0"
@@ -871,7 +888,7 @@ initialize_network() {
     validator_address="$(jq -r '.address' "$WORK_DIR/secrets/validator-$index.json")"
     "$DORAD_BIN" add-genesis-account "$validator_address" "$GENESIS_BALANCE" --home "$coordinator"
   done
-  for account in "${accounts[@]}"; do
+  for account in "${classic_accounts[@]}" native; do
     "$DORAD_BIN" add-genesis-account "$(account_address "$account")" "$GENESIS_BALANCE" --home "$coordinator"
   done
 
@@ -894,6 +911,21 @@ initialize_network() {
   "$DORAD_BIN" collect-gentxs --home "$coordinator" \
     >"$WORK_DIR/logs/collect-gentxs.stdout" \
     2>"$WORK_DIR/logs/collect-gentxs.stderr"
+  # collect-gentxs rewrites the GenesisDoc using legacy numeric encodings.
+  # Normalize the final document only after it has inserted every gentx so the
+  # CometBFT v0.40 JSON decoder sees strings for all 64-bit consensus fields.
+  jq '
+    .initial_height = ((.initial_height // 1) | tostring)
+    | .consensus_params = {
+        block:{max_bytes:"22020096",max_gas:"100000000"},
+        evidence:{max_age_num_blocks:"100000",max_age_duration:"172800000000000",max_bytes:"1048576"},
+        validator:{pub_key_types:["ed25519","ml_dsa_65"]},
+        version:{app:"0"},
+        abci:{vote_extensions_enable_height:"0"},
+        authority:{authority:""}
+      }
+  ' "$genesis" >"$genesis_tmp"
+  mv "$genesis_tmp" "$genesis"
   "$DORAD_BIN" validate-genesis --home "$coordinator" \
     >"$REPORT_DIR/validate-genesis.txt" \
     2>"$REPORT_DIR/validate-genesis.stderr"
@@ -992,9 +1024,88 @@ assert_same_app_hash() {
   pass "$label" "height=$target app_hash=$expected"
 }
 
+prepare_protected_authz_grant() {
+  local granter="$1"
+  local grantee="$2"
+  local message_type="$3"
+  local label="$4"
+  local unsigned="$WORK_DIR/tx/${label}.unsigned.json"
+  "$DORAD_BIN" tx authz grant "$(account_address "$grantee")" generic \
+    --msg-type "$message_type" \
+    --from "$granter" --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --note "$label" --generate-only --output json >"$unsigned"
+  prepare_and_sign_unsigned_bundle "$granter" signing1 "$unsigned" "$label"
+}
+
+run_authz_security_scenarios() {
+  local bob_flags=()
+  while IFS= read -r -d '' item; do bob_flags+=("$item"); done < <(common_tx_flags bob)
+  broadcast_ok "unprotected account creates a pre-existing authz grant" \
+    "$DORAD_BIN" tx authz grant "$(account_address grantee)" generic \
+      --msg-type /cosmos.bank.v1beta1.MsgSend "${bob_flags[@]}"
+
+  create_pqc_key bob signing1
+  create_pqc_key bob recovery2
+  create_key_proof bob signing1 1 signing register-signing 0
+  create_key_proof bob recovery2 2 recovery register-recovery 0
+  broadcast_rejected "pre-existing authz grant blocks pqcauth registration" \
+    "must revoke all existing authz grants" \
+    "$DORAD_BIN" tx pqcauth register-key 1 \
+      "$(jq -r '.public_key_base64' "$(key_json_file bob signing1)")" \
+      "$(jq -r '.proof_base64' "$(proof_json_file bob signing1 register-signing)")" \
+      --recovery-public-key-base64 "$(jq -r '.public_key_base64' "$(key_json_file bob recovery2)")" \
+      --recovery-proof-base64 "$(jq -r '.proof_base64' "$(proof_json_file bob recovery2 register-recovery)")" \
+      --self-enforce=true "${bob_flags[@]}"
+
+  prepare_protected_authz_grant carol grantee /cosmos.bank.v1beta1.MsgSend carol-unsafe-grantee
+  broadcast_rejected "protected granter rejects a non-PQC grantee" \
+    "cannot delegate to non-PQC grantee" \
+    "$DORAD_BIN" tx pqcauth broadcast-bundle "$WORK_DIR/tx/carol-unsafe-grantee.signed.json" \
+      --from carol --keyring-backend test --home "$CLIENT_HOME" \
+      --chain-id "$CHAIN_ID" --node "$RPC_URL" --broadcast-mode sync --output json --yes
+
+  register_pqc_account grantee
+  prepare_protected_authz_grant carol grantee /cosmos.bank.v1beta1.MsgSend carol-safe-grantee
+  broadcast_signed_bundle "protected granter delegates to a PQC-enforced grantee" carol \
+    "$WORK_DIR/tx/carol-safe-grantee.signed.json"
+
+  local inner="$WORK_DIR/tx/authz-inner-protected-bank-send.json"
+  jq -n \
+    --arg from "$(account_address carol)" \
+    --arg to "$(account_address receiver)" \
+    --arg amount "301" \
+    '{body:{messages:[{"@type":"/cosmos.bank.v1beta1.MsgSend",from_address:$from,to_address:$to,amount:[{denom:"peaka",amount:$amount}]}],memo:"",timeout_height:"0",extension_options:[],non_critical_extension_options:[]},auth_info:{signer_infos:[],fee:{amount:[],gas_limit:"0",payer:"",granter:""}},signatures:[]}' \
+    >"$inner"
+  local exec_unsigned="$WORK_DIR/tx/grantee-protected-exec.unsigned.json"
+  "$DORAD_BIN" tx authz exec "$inner" \
+    --from grantee --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --generate-only --output json >"$exec_unsigned"
+  prepare_and_sign_unsigned_bundle grantee signing1 "$exec_unsigned" grantee-protected-exec
+  broadcast_signed_bundle "PQC-enforced grantee executes for a protected granter" grantee \
+    "$WORK_DIR/tx/grantee-protected-exec.signed.json"
+
+  local grantee_flags=()
+  while IFS= read -r -d '' item; do grantee_flags+=("$item"); done < <(common_tx_flags grantee)
+  broadcast_ok "grantee disables its own PQC enforcement" \
+    "$DORAD_BIN" tx pqcauth set-protection false \
+      --pqc-private-key-file "$(key_private_file grantee signing1)" \
+      "${grantee_flags[@]}"
+  wait_for_height $((LAST_TX_HEIGHT + 1))
+  wait_for_policy "$(account_address grantee)" 1 2 2 "grantee protection disable activates at H+1"
+
+  local downgraded_inner="$WORK_DIR/tx/authz-inner-after-grantee-downgrade.json"
+  jq --arg amount "302" \
+    '.body.messages[0].amount[0].amount = $amount' "$inner" >"$downgraded_inner"
+  broadcast_rejected "old grant stops after the grantee drops PQC enforcement" \
+    "cannot be executed by non-PQC grantee" \
+    "$DORAD_BIN" tx authz exec "$downgraded_inner" "${grantee_flags[@]}"
+}
+
 run_nested_authz_scenario() {
   local grant_unsigned="$WORK_DIR/tx/carol-authz-grant.unsigned.json"
-  "$DORAD_BIN" tx authz grant "$(account_address grantee)" generic \
+  "$DORAD_BIN" tx authz grant "$(account_address native)" generic \
     --msg-type /doravota.pqcauth.v1.MsgSetProtection \
     --from carol --keyring-backend test --home "$CLIENT_HOME" \
     --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
@@ -1015,10 +1126,10 @@ run_nested_authz_scenario() {
   jq -n --arg owner "$(account_address carol)" \
     '{body:{messages:[{"@type":"/doravota.pqcauth.v1.MsgSetProtection",owner:$owner,enabled:true}],memo:"",timeout_height:"0",extension_options:[],non_critical_extension_options:[]},auth_info:{signer_infos:[],fee:{amount:[],gas_limit:"0",payer:"",granter:""}},signatures:[]}' \
     >"$inner"
-  local grantee_flags=()
-  while IFS= read -r -d '' item; do grantee_flags+=("$item"); done < <(common_tx_flags grantee)
+  local native_flags=()
+  while IFS= read -r -d '' item; do native_flags+=("$item"); done < <(common_tx_flags native)
   broadcast_rejected "authz cannot nest a pqcauth lifecycle message" "executed directly" \
-    "$DORAD_BIN" tx authz exec "$inner" "${grantee_flags[@]}"
+    "$DORAD_BIN" tx authz exec "$inner" "${native_flags[@]}"
 
   local account="$WORK_DIR/tx/carol-after-authz-rejection.account.json"
   query_account_to_file "$(account_address carol)" "$account"
@@ -1175,6 +1286,14 @@ run_governance_scenarios() {
   command_fails "unregistered account is rejected in required mode" "PQC authorization" \
     "$DORAD_BIN" tx bank send "$(account_address bob)" "$(account_address receiver)" "209${DENOM}" \
       "${bob_flags[@]}"
+  local native_flags=()
+  while IFS= read -r -d '' item; do native_flags+=("$item"); done < <(common_tx_flags native)
+  broadcast_ok "native ML-DSA account remains usable in required mode" \
+    "$DORAD_BIN" tx bank send "$(account_address native)" "$(account_address receiver)" "210${DENOM}" \
+      "${native_flags[@]}"
+  prepare_and_sign_bank_bundle carol signing1 "$(account_address receiver)" "211${DENOM}" carol-final-required
+  broadcast_signed_bundle "registered classic account remains usable with hybrid authorization in required mode" \
+    carol "$WORK_DIR/tx/carol-final-required.signed.json"
 }
 
 run_scenarios() {
@@ -1186,11 +1305,36 @@ run_scenarios() {
   [[ "$(jq -r '.effective_enforcement_mode' "$params_file")" == "ENFORCEMENT_MODE_OPTIONAL" ]] || die "unexpected initial enforcement mode"
   pass "query chain-derived pqcauth network identity" "$NETWORK_ID"
 
+  local gas_estimate="$REPORT_DIR/verification-gas-estimate.json"
+  "$DORAD_BIN" query pqcauth estimate-verification-gas \
+    --signatures 8 --proofs 2 --node "$RPC_URL" --output json >"$gas_estimate"
+  jq -e '.signature_verifications == 8 and .proof_verifications == 2 and .signature_gas == 2000000 and .proof_gas == 500000 and .total == 2500000' \
+    "$gas_estimate" >/dev/null || die "deterministic PQC verification gas estimate is incorrect"
+  pass "deterministic gas estimator matches on-chain verification parameters" "total=2500000"
+
   local bob_flags=()
   while IFS= read -r -d '' item; do bob_flags+=("$item"); done < <(common_tx_flags bob)
   broadcast_ok "classic unregistered account remains compatible" \
     "$DORAD_BIN" tx bank send "$(account_address bob)" "$(account_address receiver)" "101${DENOM}" \
       "${bob_flags[@]}"
+
+  local native_flags=()
+  while IFS= read -r -d '' item; do native_flags+=("$item"); done < <(common_tx_flags native)
+  broadcast_ok "native ML-DSA account signs directly without pqcauth" \
+    "$DORAD_BIN" tx bank send "$(account_address native)" "$(account_address receiver)" "100${DENOM}" \
+      "${native_flags[@]}"
+  create_pqc_key native secondary1
+  create_pqc_key native recovery2
+  create_key_proof native secondary1 1 signing register-signing 0
+  create_key_proof native recovery2 2 recovery register-recovery 0
+  broadcast_rejected "native ML-DSA account cannot register a pqcauth second factor" \
+    "cannot register pqcauth" \
+    "$DORAD_BIN" tx pqcauth register-key 1 \
+      "$(jq -r '.public_key_base64' "$(key_json_file native secondary1)")" \
+      "$(jq -r '.proof_base64' "$(proof_json_file native secondary1 register-signing)")" \
+      --recovery-public-key-base64 "$(jq -r '.public_key_base64' "$(key_json_file native recovery2)")" \
+      --recovery-proof-base64 "$(jq -r '.proof_base64' "$(proof_json_file native recovery2 register-recovery)")" \
+      --self-enforce=true "${native_flags[@]}"
 
   create_pqc_key eve invalid1
   create_key_proof eve invalid1 2 signing register-signing 0
@@ -1341,6 +1485,7 @@ run_scenarios() {
   forge_and_reject oversized "exceeds size limit" "$adversarial_bundle"
   broadcast_signed_bundle "valid transaction succeeds after adversarial rejection matrix" alice "$adversarial_bundle"
 
+  run_authz_security_scenarios
   run_nested_authz_scenario
   run_history_compaction_scenario
 

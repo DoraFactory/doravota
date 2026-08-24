@@ -198,7 +198,7 @@ var (
 	// and genesis verification.
 	ModuleBasics = module.NewBasicManager(
 		auth.AppModuleBasic{},
-		authzmodule.AppModuleBasic{},
+		authzAppModuleBasic{},
 		genutil.NewAppModuleBasic(genutiltypes.DefaultMessageValidator),
 		bankAppModuleBasic{},
 		stakingAppModuleBasic{},
@@ -345,12 +345,13 @@ func New(
 	cdc := encodingConfig.Amino
 	interfaceRegistry := encodingConfig.InterfaceRegistry
 	txConfig := encodingConfig.TxConfig
+	txDecoder := pqcauthante.CanonicalPQCAuthTxDecoder(txConfig.TxDecoder())
 
 	bApp := baseapp.NewBaseApp(
 		Name,
 		logger,
 		db,
-		encodingConfig.TxConfig.TxDecoder(),
+		txDecoder,
 		baseAppOptions...,
 	)
 	// Commit-store tracing was removed together with the legacy SDK store in
