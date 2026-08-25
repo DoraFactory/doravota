@@ -183,6 +183,41 @@ func TestBuildPQCAuthSimulationExtensionRejectsUnavailablePolicyState(t *testing
 	_, err = BuildPQCAuthSimulationExtension(context.Background(), clientCtx)
 	require.ErrorIs(t, err, types.ErrEmergencyPause)
 
+	cancelRecovery := &types.MsgCancelRecovery{
+		Owner:                        signer.String(),
+		ExpectedPendingSigningKeyId:  2,
+		ExpectedPendingPolicyVersion: 2,
+	}
+	_, err = BuildPQCAuthSimulationExtension(
+		context.Background(),
+		clientCtx,
+		cancelRecovery,
+	)
+	require.NoError(t, err)
+
+	_, err = BuildPQCAuthSimulationExtension(
+		context.Background(),
+		clientCtx,
+		&types.MsgCancelRecovery{
+			Owner:                        sdk.AccAddress(bytes.Repeat([]byte{0x73}, 20)).String(),
+			ExpectedPendingSigningKeyId:  2,
+			ExpectedPendingPolicyVersion: 2,
+		},
+	)
+	require.ErrorIs(t, err, types.ErrEmergencyPause)
+
+	_, err = BuildPQCAuthSimulationExtension(
+		context.Background(),
+		clientCtx,
+		cancelRecovery,
+		banktypes.NewMsgSend(
+			signer,
+			sdk.AccAddress(make([]byte, 20)),
+			sdk.NewCoins(sdk.NewInt64Coin("udora", 1)),
+		),
+	)
+	require.ErrorIs(t, err, types.ErrEmergencyPause)
+
 	queryServer.params.EffectiveEmergencyMode =
 		types.EmergencyMode_EMERGENCY_MODE_NORMAL
 	queryServer.account.ActiveSigningKey.Algorithm = types.Algorithm(99)
@@ -269,6 +304,31 @@ func TestAttachPQCAuthSignerBoundarySuccessAndFailures(t *testing.T) {
 	require.NoError(t, AttachPQCAuth(clientCtx, txf, builder, pqcPrivateKey))
 	provider := builder.GetTx().(protoTxProvider)
 	require.Len(t, provider.GetProtoTx().Body.ExtensionOptions, 1)
+
+	queryServer.params.EffectiveEmergencyMode =
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	require.ErrorIs(
+		t,
+		AttachPQCAuth(clientCtx, txf, newBuilder(), pqcPrivateKey),
+		types.ErrEmergencyPause,
+	)
+	cancelBuilder := txConfig.NewTxBuilder()
+	require.NoError(t, cancelBuilder.SetMsgs(&types.MsgCancelRecovery{
+		Owner:                        signer.String(),
+		ExpectedPendingSigningKeyId:  10,
+		ExpectedPendingPolicyVersion: 5,
+	}))
+	cancelBuilder.SetGasLimit(200_000)
+	require.NoError(t, AttachPQCAuth(
+		clientCtx,
+		txf,
+		cancelBuilder,
+		pqcPrivateKey,
+	))
+	provider = cancelBuilder.GetTx().(protoTxProvider)
+	require.Len(t, provider.GetProtoTx().Body.ExtensionOptions, 1)
+	queryServer.params.EffectiveEmergencyMode =
+		types.EmergencyMode_EMERGENCY_MODE_NORMAL
 
 	builderWithExistingExtension := newBuilder()
 	existingExtension := &codectypes.Any{

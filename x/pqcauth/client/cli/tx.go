@@ -45,6 +45,7 @@ func GetTxCmd() *cobra.Command {
 		setProtectionCommand(),
 		revokeKeyCommand(),
 		recoverKeyCommand(),
+		cancelRecoveryCommand(),
 	)
 	return command
 }
@@ -271,6 +272,42 @@ func recoverKeyCommand() *cobra.Command {
 		"write a transaction-bound recovery sign bundle for offline signing",
 	)
 	flags.AddTxFlagsToCmd(command)
+	return command
+}
+
+func cancelRecoveryCommand() *cobra.Command {
+	command := &cobra.Command{
+		Use:   "cancel-recovery [pending-signing-key-id] [pending-policy-version]",
+		Short: "Cancel a delayed recovery with the current PQC signing key",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			pendingKeyID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil || pendingKeyID == 0 {
+				return fmt.Errorf("pending signing key id must be a positive integer")
+			}
+			pendingPolicyVersion, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil || pendingPolicyVersion == 0 {
+				return fmt.Errorf("pending policy version must be a positive integer")
+			}
+			clientCtx, err := client.GetClientTxContext(command)
+			if err != nil {
+				return err
+			}
+			privateKeyPath, _ := command.Flags().GetString(flagPQCPrivateKey)
+			return generateOrBroadcastProtectedTx(
+				command.Context(),
+				clientCtx,
+				command.Flags(),
+				privateKeyPath,
+				&types.MsgCancelRecovery{
+					Owner:                        clientCtx.GetFromAddress().String(),
+					ExpectedPendingSigningKeyId:  pendingKeyID,
+					ExpectedPendingPolicyVersion: pendingPolicyVersion,
+				},
+			)
+		},
+	}
+	addProtectedTxFlags(command)
 	return command
 }
 

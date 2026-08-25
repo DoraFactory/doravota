@@ -897,6 +897,7 @@ initialize_network() {
     | .app_state.gov.params.expedited_voting_period = "5s"
     | .app_state.pqcauth.params.governance_safety_delay_blocks = "4"
     | .app_state.pqcauth.params.max_emergency_duration_blocks = "20"
+    | .app_state.pqcauth.params.recovery_delay_blocks = "12"
     | .app_state.pqcauth.params.emergency_expires_height = "0"
   ' "$genesis" >"$genesis_tmp"
   mv "$genesis_tmp" "$genesis"
@@ -1238,7 +1239,7 @@ run_governance_scenarios() {
   signing5_public="$(jq -r '.public_key_base64' "$(key_json_file alice signing5)")"
   signing5_proof="$(jq -r '.proof_base64' "$(proof_json_file alice signing5 rotate-signing)")"
   submit_params_update "pause creation and rotation of PQC keys" "$optional" "$pause_keys" 0
-  prepare_and_sign_bank_bundle dave signing3 "$(account_address receiver)" "206${DENOM}" dave-existing-during-key-pause
+  prepare_and_sign_bank_bundle dave signing4 "$(account_address receiver)" "206${DENOM}" dave-existing-during-key-pause
   broadcast_signed_bundle "existing PQC authorization works while new keys are paused" dave "$WORK_DIR/tx/dave-existing-during-key-pause.signed.json"
   broadcast_rejected "key rotation is blocked by emergency pause" "paused" \
     "$DORAD_BIN" tx pqcauth rotate-key 5 "$signing5_public" "$signing5_proof" \
@@ -1257,14 +1258,14 @@ run_governance_scenarios() {
     "$DORAD_BIN" tx bank send "$(account_address bob)" "$(account_address receiver)" "208${DENOM}" \
       "${bob_flags[@]}"
 
-  create_pqc_key dave signing4
-  create_key_proof dave signing4 4 signing recover-signing 2
-  local dave_signing4_public dave_signing4_proof
-  dave_signing4_public="$(jq -r '.public_key_base64' "$(key_json_file dave signing4)")"
-  dave_signing4_proof="$(jq -r '.proof_base64' "$(proof_json_file dave signing4 recover-signing)")"
+  create_pqc_key dave signing5
+  create_key_proof dave signing5 5 signing recover-signing 2
+  local dave_signing5_public dave_signing5_proof
+  dave_signing5_public="$(jq -r '.public_key_base64' "$(key_json_file dave signing5)")"
+  dave_signing5_proof="$(jq -r '.proof_base64' "$(proof_json_file dave signing5 recover-signing)")"
   local paused_recovery_prepared="$WORK_DIR/tx/dave-paused-recovery.prepared.json"
   local paused_recovery_signed="$WORK_DIR/tx/dave-paused-recovery.signed.json"
-  "$DORAD_BIN" tx pqcauth recover-key 2 4 "$dave_signing4_public" "$dave_signing4_proof" \
+  "$DORAD_BIN" tx pqcauth recover-key 2 5 "$dave_signing5_public" "$dave_signing5_proof" \
     --recovery-sign-bundle-output "$paused_recovery_prepared" \
     --from dave --keyring-backend test --home "$CLIENT_HOME" \
     --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
@@ -1277,8 +1278,8 @@ run_governance_scenarios() {
     "$DORAD_BIN" tx pqcauth broadcast-recovery-bundle "$paused_recovery_signed" \
       --from dave --keyring-backend test --home "$CLIENT_HOME" \
       --chain-id "$CHAIN_ID" --node "$RPC_URL" --broadcast-mode sync --output json --yes
-  wait_for_height $((LAST_TX_HEIGHT + 1))
-  wait_for_policy "$(account_address dave)" 4 2 3 "paused recovery signing key activates at H+1"
+  wait_for_height $((LAST_TX_HEIGHT + 12))
+  wait_for_policy "$(account_address dave)" 5 2 3 "paused recovery signing key activates after challenge delay"
 
   wait_for_param_state "$optional" "$normal" "full PQC pause expires automatically"
   broadcast_signed_bundle "protected transaction succeeds again after automatic pause expiry" alice \
@@ -1455,13 +1456,51 @@ run_scenarios() {
       --from dave --keyring-backend test --home "$CLIENT_HOME" \
       --chain-id "$CHAIN_ID" --node "$RPC_URL" \
       --broadcast-mode sync --output json --yes
-  wait_for_height $((LAST_TX_HEIGHT + 1))
-  wait_for_policy "$(account_address dave)" 3 2 2 "recovered signing key activates at H+1"
+  prepare_and_sign_bank_bundle dave signing1 "$(account_address receiver)" "107${DENOM}" dave-recovery-challenge-window
+  broadcast_signed_bundle "current signing key remains active during recovery challenge window" dave \
+    "$WORK_DIR/tx/dave-recovery-challenge-window.signed.json"
+  local dave_flags=()
+  while IFS= read -r -d '' item; do dave_flags+=("$item"); done < <(common_tx_flags dave)
+  broadcast_ok "current signing key cancels pending recovery" \
+    "$DORAD_BIN" tx pqcauth cancel-recovery 3 2 \
+      --pqc-private-key-file "$(key_private_file dave signing1)" \
+      "${dave_flags[@]}"
+  wait_for_policy "$(account_address dave)" 1 2 1 "cancelled recovery preserves the current signing key"
+  local cancelled_recovery_key="$REPORT_DIR/dave-cancelled-recovery-key3.json"
+  "$DORAD_BIN" query pqcauth key "$(account_address dave)" 3 \
+    --node "$RPC_URL" --output json >"$cancelled_recovery_key"
+  [[ "$(jq -r '.key.status' "$cancelled_recovery_key")" == "KEY_STATUS_REVOKED" ]] || \
+    die "cancelled recovery key was not permanently revoked"
+  pass "cancelled recovery consumes and revokes the proposed key identifier"
+
+  create_pqc_key dave signing4
+  create_key_proof dave signing4 4 signing recover-signing 1
+  local dave_signing4_public dave_signing4_proof
+  dave_signing4_public="$(jq -r '.public_key_base64' "$(key_json_file dave signing4)")"
+  dave_signing4_proof="$(jq -r '.proof_base64' "$(proof_json_file dave signing4 recover-signing)")"
+  local recovery2_prepared="$WORK_DIR/tx/dave-recovery2.prepared.json"
+  local recovery2_signed="$WORK_DIR/tx/dave-recovery2.signed.json"
+  "$DORAD_BIN" tx pqcauth recover-key 2 4 "$dave_signing4_public" "$dave_signing4_proof" \
+    --recovery-sign-bundle-output "$recovery2_prepared" \
+    --from dave --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" \
+    --gas "$TX_GAS" --fees "$TX_FEE" --output json --yes \
+    >"$WORK_DIR/tx/dave-recovery2.prepare-result.json"
+  "$DORAD_BIN" tx pqcauth sign-recovery-bundle \
+    "$recovery2_prepared" "$(key_private_file dave recovery2)" "$recovery2_signed" \
+    --home "$CLIENT_HOME" --yes >"$WORK_DIR/tx/dave-recovery2.sign-result.json"
+  broadcast_ok "second offline recovery request succeeds after cancellation" \
+    "$DORAD_BIN" tx pqcauth broadcast-recovery-bundle "$recovery2_signed" \
+      --from dave --keyring-backend test --home "$CLIENT_HOME" \
+      --chain-id "$CHAIN_ID" --node "$RPC_URL" \
+      --broadcast-mode sync --output json --yes
+  wait_for_height $((LAST_TX_HEIGHT + 12))
+  wait_for_policy "$(account_address dave)" 4 2 2 "recovered signing key activates after challenge delay"
   command_fails "pre-recovery signed bundle becomes stale" "stale" \
     "$DORAD_BIN" tx pqcauth broadcast-bundle "$WORK_DIR/tx/dave-stale-before-recovery.signed.json" \
       --from dave --keyring-backend test --home "$CLIENT_HOME" \
       --chain-id "$CHAIN_ID" --node "$RPC_URL" --broadcast-mode sync --output json --yes
-  prepare_and_sign_bank_bundle dave signing3 "$(account_address receiver)" "107${DENOM}" dave-bank-recovered
+  prepare_and_sign_bank_bundle dave signing4 "$(account_address receiver)" "108${DENOM}" dave-bank-recovered
   broadcast_signed_bundle "recovered signing key authorizes protected transaction" dave "$WORK_DIR/tx/dave-bank-recovered.signed.json"
 
   broadcast_ok "self-protection disable requires current PQC key" \
@@ -1512,7 +1551,7 @@ run_scenarios() {
     before_stop="$(rpc_height 0)"
     stop_one_node 3
     wait_for_height $((before_stop + 3)) 0
-    prepare_and_sign_bank_bundle dave signing3 "$(account_address receiver)" "109${DENOM}" dave-bank-node-down
+    prepare_and_sign_bank_bundle dave signing4 "$(account_address receiver)" "109${DENOM}" dave-bank-node-down
     broadcast_signed_bundle "network commits protected transaction with one validator offline" dave "$WORK_DIR/tx/dave-bank-node-down.signed.json"
     start_one_node 3
     wait_for_rpc 3

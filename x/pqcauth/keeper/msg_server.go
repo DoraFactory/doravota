@@ -102,6 +102,8 @@ func (m msgServer) RegisterKey(
 		PendingEffectiveHeight: effectiveHeight,
 		PendingSelfEnforced:    true,
 		PendingPolicyVersion:   initialPolicyVersion,
+		PendingChangeKind:      types.PolicyChangeKind_POLICY_CHANGE_KIND_REGISTRATION,
+		PendingCreatedHeight:   uint64(ctx.BlockHeight()),
 	}
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
@@ -200,6 +202,8 @@ func (m msgServer) RotateKey(
 	policy.PendingEffectiveHeight = effectiveHeight
 	policy.PendingSelfEnforced = policy.SelfEnforced
 	policy.PendingPolicyVersion = newPolicyVersion
+	policy.PendingChangeKind = types.PolicyChangeKind_POLICY_CHANGE_KIND_ROTATE_SIGNING
+	policy.PendingCreatedHeight = uint64(ctx.BlockHeight())
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
 	}
@@ -307,6 +311,8 @@ func (m msgServer) RotateRecoveryKey(
 	policy.PendingEffectiveHeight = effectiveHeight
 	policy.PendingSelfEnforced = policy.SelfEnforced
 	policy.PendingPolicyVersion = newPolicyVersion
+	policy.PendingChangeKind = types.PolicyChangeKind_POLICY_CHANGE_KIND_ROTATE_RECOVERY
+	policy.PendingCreatedHeight = uint64(ctx.BlockHeight())
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
 	}
@@ -379,6 +385,8 @@ func (m msgServer) SetProtection(
 	policy.PendingEffectiveHeight = effectiveHeight
 	policy.PendingSelfEnforced = msg.Enabled
 	policy.PendingPolicyVersion = newPolicyVersion
+	policy.PendingChangeKind = types.PolicyChangeKind_POLICY_CHANGE_KIND_SET_PROTECTION
+	policy.PendingCreatedHeight = uint64(ctx.BlockHeight())
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
 	}
@@ -458,6 +466,14 @@ func (m msgServer) RecoverKey(
 	if err := ensureRecoveryAllowed(params); err != nil {
 		return nil, err
 	}
+	recoveryDelay := params.EffectiveRecoveryDelayBlocks()
+	if msg.ExpectedRecoveryDelayBlocks != recoveryDelay {
+		return nil, types.ErrInvalidParams.Wrapf(
+			"recovery delay mismatch: message expects %d blocks, chain requires %d",
+			msg.ExpectedRecoveryDelayBlocks,
+			recoveryDelay,
+		)
+	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
 	policy, found, err := m.NormalizeAccountPolicy(ctx, owner)
 	if err != nil {
@@ -497,7 +513,11 @@ func (m msgServer) RecoverKey(
 	if newPolicyVersion == 0 {
 		return nil, types.ErrInvalidPolicyVersion.Wrap("policy version overflow")
 	}
-	effectiveHeight := uint64(ctx.BlockHeight()) + 1
+	if ctx.BlockHeight() < 0 || uint64(ctx.BlockHeight()) > math.MaxUint64-recoveryDelay {
+		return nil, types.ErrInvalidPolicyVersion.Wrap("recovery activation height overflow")
+	}
+	requestHeight := uint64(ctx.BlockHeight())
+	effectiveHeight := requestHeight + recoveryDelay
 	if oldKey, exists := m.GetKey(ctx, owner, policy.CurrentSigningKeyId); exists {
 		oldKey.InactiveFromHeight = effectiveHeight
 		if err := m.SetKey(ctx, owner, oldKey); err != nil {
@@ -521,6 +541,8 @@ func (m msgServer) RecoverKey(
 	policy.PendingEffectiveHeight = effectiveHeight
 	policy.PendingSelfEnforced = policy.SelfEnforced
 	policy.PendingPolicyVersion = newPolicyVersion
+	policy.PendingChangeKind = types.PolicyChangeKind_POLICY_CHANGE_KIND_RECOVER_SIGNING
+	policy.PendingCreatedHeight = requestHeight
 	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
 		return nil, err
 	}
@@ -541,6 +563,86 @@ func (m msgServer) RecoverKey(
 		NewSigningKeyId: newKey.KeyId,
 		EffectiveHeight: effectiveHeight,
 		PolicyVersion:   newPolicyVersion,
+		RequestHeight:   requestHeight,
+	}, nil
+}
+
+func (m msgServer) CancelRecovery(
+	goCtx context.Context,
+	msg *types.MsgCancelRecovery,
+) (*types.MsgCancelRecoveryResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+	if err := msg.ValidateBasic(); err != nil {
+		return nil, err
+	}
+	if err := execution.RequireLifecycleMessage(ctx, msg); err != nil {
+		return nil, err
+	}
+	params := m.GetParams(ctx).Effective(ctx.BlockHeight())
+	if err := ensureRecoveryAllowed(params); err != nil {
+		return nil, err
+	}
+
+	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
+	policy, found := m.GetAccountPolicy(ctx, owner)
+	if !found || !policy.HasPendingRecovery(ctx.BlockHeight()) {
+		return nil, types.ErrNoPendingRecovery
+	}
+	if policy.PendingSigningKeyId != msg.ExpectedPendingSigningKeyId ||
+		policy.PendingPolicyVersion != msg.ExpectedPendingPolicyVersion {
+		return nil, types.ErrNoPendingRecovery.Wrap("pending recovery identifiers do not match")
+	}
+	if policy.CurrentSigningKeyId == 0 || policy.PendingSigningKeyId == policy.CurrentSigningKeyId {
+		return nil, types.ErrInconsistentState.Wrap("recovery does not replace an active signing key")
+	}
+
+	currentKey, found := m.GetKey(ctx, owner, policy.CurrentSigningKeyId)
+	if !found || currentKey.Role != types.KeyRole_KEY_ROLE_SIGNING ||
+		!currentKey.IsEffective(ctx.BlockHeight()) ||
+		currentKey.InactiveFromHeight != policy.PendingEffectiveHeight {
+		return nil, types.ErrInconsistentState.Wrap("current signing key cannot cancel pending recovery")
+	}
+	pendingKey, found := m.GetKey(ctx, owner, policy.PendingSigningKeyId)
+	if !found || pendingKey.Role != types.KeyRole_KEY_ROLE_SIGNING ||
+		pendingKey.Status != types.KeyStatus_KEY_STATUS_LIVE ||
+		pendingKey.EffectiveHeight != policy.PendingEffectiveHeight ||
+		pendingKey.CreatedHeight != policy.PendingCreatedHeight {
+		return nil, types.ErrInconsistentState.Wrap("pending recovery signing key is unavailable")
+	}
+
+	currentKey.InactiveFromHeight = 0
+	if err := m.SetKey(ctx, owner, currentKey); err != nil {
+		return nil, err
+	}
+	pendingKey.Status = types.KeyStatus_KEY_STATUS_REVOKED
+	if err := m.SetKey(ctx, owner, pendingKey); err != nil {
+		return nil, err
+	}
+	cancelledKeyID := policy.PendingSigningKeyId
+	policy.ClearPendingChange()
+	if err := m.SetAccountPolicy(ctx, owner, policy); err != nil {
+		return nil, err
+	}
+	if err := m.CompactTerminalKeyHistory(
+		ctx,
+		owner,
+		policy,
+		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+	); err != nil {
+		return nil, err
+	}
+
+	emitPolicyEvent(
+		ctx,
+		"pqc_cancel_recovery",
+		msg.Owner,
+		cancelledKeyID,
+		uint64(ctx.BlockHeight()),
+		policy.PolicyVersion,
+	)
+	return &types.MsgCancelRecoveryResponse{
+		CancelledSigningKeyId: cancelledKeyID,
+		PolicyVersion:         policy.PolicyVersion,
 	}, nil
 }
 
@@ -568,6 +670,11 @@ func (m msgServer) UpdateParams(
 	if current.MaxEmergencyDurationBlocks != msg.Params.MaxEmergencyDurationBlocks {
 		return nil, types.ErrInvalidParams.Wrap(
 			"max_emergency_duration_blocks is immutable after genesis",
+		)
+	}
+	if current.EffectiveRecoveryDelayBlocks() != msg.Params.EffectiveRecoveryDelayBlocks() {
+		return nil, types.ErrInvalidParams.Wrap(
+			"recovery_delay_blocks is immutable after genesis",
 		)
 	}
 	requested := msg.Params
@@ -660,9 +767,9 @@ func ensurePQCTransactionAllowed(params types.Params) error {
 	return nil
 }
 
-// Recovery is the sole lifecycle escape hatch that remains open during either
-// emergency mode. Ante still requires exactly one top-level MsgRecoverKey and
-// verifies both the registered recovery signature and the replacement key PoP.
+// Recovery operations are the only lifecycle escape hatches that remain open
+// during either emergency mode. Ante still requires exactly one top-level
+// recovery message and verifies its operation-specific authorization.
 func ensureRecoveryAllowed(params types.Params) error {
 	switch params.EmergencyMode {
 	case types.EmergencyMode_EMERGENCY_MODE_NORMAL,

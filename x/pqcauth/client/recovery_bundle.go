@@ -49,6 +49,7 @@ type RecoverySignBundleSummary struct {
 	RecoveryAlgorithm    types.Algorithm
 	ProposedAlgorithm    types.Algorithm
 	PolicyVersion        uint64
+	RecoveryDelayBlocks  uint64
 	TxSHA256             []byte
 	SignDocSHA256        []byte
 	Signed               bool
@@ -86,6 +87,13 @@ func PrepareRecoverySignBundle(
 	}
 	if err := validateRecoveryPlaceholder(message, recoveryKey.Algorithm); err != nil {
 		return nil, RecoverySignBundleSummary{}, err
+	}
+	if message.ExpectedRecoveryDelayBlocks != params.EffectiveRecoveryDelayBlocks() {
+		return nil, RecoverySignBundleSummary{}, fmt.Errorf(
+			"recovery delay mismatch: message expects %d blocks, chain requires %d",
+			message.ExpectedRecoveryDelayBlocks,
+			params.EffectiveRecoveryDelayBlocks(),
+		)
 	}
 
 	provider, ok := builder.GetTx().(protoTxProvider)
@@ -256,6 +264,7 @@ func AttachRecoverySignBundle(
 	}
 	if policy.PolicyVersion != summary.PolicyVersion ||
 		!constantTimeBytesEqual(params.NetworkId, summary.NetworkID) ||
+		message.ExpectedRecoveryDelayBlocks != params.EffectiveRecoveryDelayBlocks() ||
 		recoveryKey.Algorithm != bundle.RecoveryAlgorithm ||
 		!constantTimeBytesEqual(recoveryKey.PublicKey, bundle.OnChainRecoveryPublicKey) {
 		return nil, RecoverySignBundleSummary{}, fmt.Errorf(
@@ -579,6 +588,7 @@ func ValidateRecoverySignBundle(
 		RecoveryAlgorithm:    bundle.RecoveryAlgorithm,
 		ProposedAlgorithm:    signDoc.ProposedAlgorithm,
 		PolicyVersion:        signDoc.CurrentPolicyVersion,
+		RecoveryDelayBlocks:  message.ExpectedRecoveryDelayBlocks,
 		TxSHA256:             append([]byte(nil), txHash[:]...),
 		SignDocSHA256:        append([]byte(nil), signDocHash[:]...),
 		Signed:               len(bundle.RecoverySignature) != 0,

@@ -126,6 +126,15 @@ func (m MsgRecoverKey) ValidateBasic() error {
 	if m.RecoveryKeyId == 0 || m.ExpectedNewSigningKeyId == 0 {
 		return errorsmod.Wrap(ErrInvalidKey, "recovery and expected signing key ids must be non-zero")
 	}
+	if m.ExpectedRecoveryDelayBlocks < MinimumRecoveryDelayBlocks ||
+		m.ExpectedRecoveryDelayBlocks > AbsoluteMaxRecoveryDelayBlocks {
+		return errorsmod.Wrapf(
+			ErrInvalidParams,
+			"expected recovery delay must be in [%d,%d] blocks",
+			MinimumRecoveryDelayBlocks,
+			AbsoluteMaxRecoveryDelayBlocks,
+		)
+	}
 	if err := ValidatePublicKeyAndProofLengths(
 		m.NewSigningAlgorithm,
 		m.NewSigningPublicKey,
@@ -143,6 +152,23 @@ func (m MsgRecoverKey) ValidateBasic() error {
 	}
 	if len(m.RecoverySignature) != signatureSize {
 		return errorsmod.Wrapf(ErrInvalidKeyProof, "recovery signature length %d, want %d", len(m.RecoverySignature), signatureSize)
+	}
+	return nil
+}
+
+func (m MsgCancelRecovery) Route() string                { return RouterKey }
+func (m MsgCancelRecovery) Type() string                 { return "cancel_recovery" }
+func (m MsgCancelRecovery) GetSigners() []sdk.AccAddress { return getSigners(m.Owner) }
+func (m MsgCancelRecovery) GetSignBytes() []byte         { return signBytes(&m) }
+func (m MsgCancelRecovery) ValidateBasic() error {
+	if err := validateOwner(m.Owner); err != nil {
+		return err
+	}
+	if m.ExpectedPendingSigningKeyId == 0 || m.ExpectedPendingPolicyVersion == 0 {
+		return errorsmod.Wrap(
+			ErrInvalidKey,
+			"expected pending signing key and policy version must be non-zero",
+		)
 	}
 	return nil
 }

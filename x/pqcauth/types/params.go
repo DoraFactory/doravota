@@ -16,6 +16,7 @@ const (
 	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
 	DefaultGovernanceSafetyDelayBlocks  uint64 = 17_280
 	DefaultMaxEmergencyDurationBlocks   uint64 = 17_280
+	DefaultRecoveryDelayBlocks          uint64 = 17_280
 
 	AbsoluteMaxPQCSigners                  uint32 = 32
 	AbsoluteMaxPQCAuthBytes                uint32 = 256 * 1024
@@ -23,8 +24,10 @@ const (
 	AbsoluteMaxVerificationGas             uint64 = 10_000_000
 	AbsoluteMaxGovernanceSafetyDelayBlocks uint64 = 2_000_000
 	AbsoluteMaxEmergencyDurationBlocks     uint64 = 172_800
+	AbsoluteMaxRecoveryDelayBlocks         uint64 = 2_000_000
 	MinimumGovernanceSafetyDelayBlocks     uint64 = 2
 	MinimumEmergencyDurationBlocks         uint64 = 2
+	MinimumRecoveryDelayBlocks             uint64 = 2
 
 	// Consensus gas floors prevent governance from making ML-DSA verification
 	// effectively free. They must only be lowered through a coordinated binary
@@ -61,6 +64,7 @@ func DefaultParams() Params {
 		EmergencyMode:                EmergencyMode_EMERGENCY_MODE_NORMAL,
 		GovernanceSafetyDelayBlocks:  DefaultGovernanceSafetyDelayBlocks,
 		MaxEmergencyDurationBlocks:   DefaultMaxEmergencyDurationBlocks,
+		RecoveryDelayBlocks:          DefaultRecoveryDelayBlocks,
 	}
 }
 
@@ -84,6 +88,16 @@ func (p Params) Validate() error {
 			ErrInvalidParams,
 			MinimumEmergencyDurationBlocks,
 			AbsoluteMaxEmergencyDurationBlocks,
+		)
+	}
+	recoveryDelay := p.EffectiveRecoveryDelayBlocks()
+	if recoveryDelay < MinimumRecoveryDelayBlocks ||
+		recoveryDelay > AbsoluteMaxRecoveryDelayBlocks {
+		return fmt.Errorf(
+			"%w: recovery delay must be in [%d,%d] blocks",
+			ErrInvalidParams,
+			MinimumRecoveryDelayBlocks,
+			AbsoluteMaxRecoveryDelayBlocks,
 		)
 	}
 	if err := validateScheduledParams(p.AsScheduled()); err != nil {
@@ -229,6 +243,7 @@ func (p Params) EffectiveRegistrationMode(height int64) RegistrationMode {
 // Effective atomically applies the complete pending parameter bundle at its
 // activation height. The returned copy never contains an activated schedule.
 func (p Params) Effective(height int64) Params {
+	p.RecoveryDelayBlocks = p.EffectiveRecoveryDelayBlocks()
 	if height < 0 {
 		return p
 	}
@@ -315,6 +330,17 @@ func (p Params) EffectiveProofVerificationGas() uint64 {
 		return DefaultProofVerificationGas
 	}
 	return p.ProofVerificationGas
+}
+
+// EffectiveRecoveryDelayBlocks maps the zero value written by pre-v2 state to
+// the v2 default. The delay is immutable after genesis and deliberately lives
+// outside ScheduledParams so governance cannot shorten an active challenge
+// period.
+func (p Params) EffectiveRecoveryDelayBlocks() uint64 {
+	if p.RecoveryDelayBlocks == 0 {
+		return DefaultRecoveryDelayBlocks
+	}
+	return p.RecoveryDelayBlocks
 }
 
 func validEnforcementMode(mode EnforcementMode) bool {

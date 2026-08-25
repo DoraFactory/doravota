@@ -208,3 +208,36 @@ func TestGenesisAllowsUnboundedHistoricalKeyIdentifiers(t *testing.T) {
 	genesis.KeySequences[0].NextKeyId = 101
 	require.NoError(t, ValidateGenesis(genesis))
 }
+
+func TestGenesisValidatesRecoveryV2PendingAndCancelledStates(t *testing.T) {
+	genesis := validGenesisForTest(t)
+	createdHeight := uint64(100)
+	effectiveHeight := createdHeight + genesis.Params.EffectiveRecoveryDelayBlocks()
+	pending := genesis.Keys[0]
+	pending.KeyId = 3
+	pending.CreatedHeight = createdHeight
+	pending.EffectiveHeight = effectiveHeight
+	genesis.Keys[0].InactiveFromHeight = effectiveHeight
+	genesis.Keys = append(genesis.Keys, pending)
+	genesis.Policies[0].PendingSigningKeyId = 3
+	genesis.Policies[0].PendingEffectiveHeight = effectiveHeight
+	genesis.Policies[0].PendingSelfEnforced = genesis.Policies[0].SelfEnforced
+	genesis.Policies[0].PendingPolicyVersion = 2
+	genesis.Policies[0].PendingChangeKind = PolicyChangeKind_POLICY_CHANGE_KIND_RECOVER_SIGNING
+	genesis.Policies[0].PendingCreatedHeight = createdHeight
+	genesis.KeySequences[0].NextKeyId = 4
+	require.NoError(t, ValidateGenesis(genesis))
+
+	wrongDelay := genesis
+	wrongDelay.Policies = append([]AccountPolicy(nil), genesis.Policies...)
+	wrongDelay.Policies[0].PendingCreatedHeight++
+	require.ErrorIs(t, ValidateGenesis(wrongDelay), ErrInvalidKey)
+
+	cancelled := genesis
+	cancelled.Keys = append([]PQCKeyRecord(nil), genesis.Keys...)
+	cancelled.Policies = append([]AccountPolicy(nil), genesis.Policies...)
+	cancelled.Keys[0].InactiveFromHeight = 0
+	cancelled.Keys[2].Status = KeyStatus_KEY_STATUS_REVOKED
+	cancelled.Policies[0].ClearPendingChange()
+	require.NoError(t, ValidateGenesis(cancelled))
+}

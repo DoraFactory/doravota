@@ -28,4 +28,5 @@ var (
 	ErrIneligibleAccount      = errorsmod.Register(ModuleName, 23, "account is not eligible for pqcauth")
 	ErrFreshRegistrationOnly  = errorsmod.Register(ModuleName, 24, "PQC registration is limited to fresh accounts")
 	ErrUnsafeAuthorization    = errorsmod.Register(ModuleName, 25, "authz grant is not quantum-safe")
+	ErrNoPendingRecovery      = errorsmod.Register(ModuleName, 26, "no cancellable PQC recovery is pending")
 )

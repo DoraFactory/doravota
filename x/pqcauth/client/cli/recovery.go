@@ -35,6 +35,7 @@ type recoveryBundleCommandResult struct {
 	RecoveryAlgorithm    string `json:"recovery_algorithm"`
 	ProposedAlgorithm    string `json:"proposed_algorithm"`
 	PolicyVersion        uint64 `json:"policy_version"`
+	RecoveryDelayBlocks  uint64 `json:"recovery_delay_blocks"`
 	TxSHA256             string `json:"tx_sha256"`
 	SignDocSHA256        string `json:"sign_doc_sha256"`
 	Signed               bool   `json:"signed"`
@@ -59,6 +60,16 @@ func generateOrBroadcastRecoveryTx(
 		bundleOutput,
 	); err != nil {
 		return err
+	}
+	if message.ExpectedRecoveryDelayBlocks == 0 {
+		response, err := types.NewQueryClient(clientCtx).Params(
+			ctx,
+			&types.QueryParamsRequest{},
+		)
+		if err != nil {
+			return fmt.Errorf("query PQC recovery delay: %w", err)
+		}
+		message.ExpectedRecoveryDelayBlocks = response.Params.EffectiveRecoveryDelayBlocks()
 	}
 	algorithm, err := types.CryptoAlgorithm(types.Algorithm_ALGORITHM_ML_DSA_65)
 	if err != nil {
@@ -391,7 +402,7 @@ func printRecoveryBundleReview(
 ) {
 	_, _ = fmt.Fprintf(
 		writer,
-		"chain_id: %s\nnetwork_id_base64: %s\nowner: %s\naccount_number: %d\nsequence: %d\nrecovery_key_id: %d\nproposed_signing_key_id: %d\npolicy_version: %d\ntx_sha256: %s\nsign_doc_sha256: %s\ntransaction_json:\n%s\n",
+		"chain_id: %s\nnetwork_id_base64: %s\nowner: %s\naccount_number: %d\nsequence: %d\nrecovery_key_id: %d\nproposed_signing_key_id: %d\npolicy_version: %d\nrecovery_delay_blocks: %d\ntx_sha256: %s\nsign_doc_sha256: %s\ntransaction_json:\n%s\n",
 		summary.ChainID,
 		base64.StdEncoding.EncodeToString(summary.NetworkID),
 		summary.Owner,
@@ -400,6 +411,7 @@ func printRecoveryBundleReview(
 		summary.RecoveryKeyID,
 		summary.ProposedSigningKeyID,
 		summary.PolicyVersion,
+		summary.RecoveryDelayBlocks,
 		hex.EncodeToString(summary.TxSHA256),
 		hex.EncodeToString(summary.SignDocSHA256),
 		transactionJSON,
@@ -425,6 +437,7 @@ func printRecoveryBundleResult(
 		RecoveryAlgorithm:    summary.RecoveryAlgorithm.String(),
 		ProposedAlgorithm:    summary.ProposedAlgorithm.String(),
 		PolicyVersion:        summary.PolicyVersion,
+		RecoveryDelayBlocks:  summary.RecoveryDelayBlocks,
 		TxSHA256:             hex.EncodeToString(summary.TxSHA256),
 		SignDocSHA256:        hex.EncodeToString(summary.SignDocSHA256),
 		Signed:               summary.Signed,

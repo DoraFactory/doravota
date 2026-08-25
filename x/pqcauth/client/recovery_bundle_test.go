@@ -29,6 +29,7 @@ func TestRecoverySignBundleOfflineRoundTripAndTransactionTamperRejection(t *test
 	require.NoError(t, err)
 	require.False(t, summary.Signed)
 	require.Equal(t, uint64(2), summary.RecoveryKeyID)
+	require.Equal(t, types.DefaultRecoveryDelayBlocks, summary.RecoveryDelayBlocks)
 
 	encoded, err := MarshalRecoverySignBundle(txConfig, bundle, false)
 	require.NoError(t, err)
@@ -157,13 +158,14 @@ func TestRecoverySignBundleOnlinePrepareAttachAndStalePolicy(t *testing.T) {
 		WithSignMode(txsigning.SignMode_SIGN_MODE_DIRECT)
 	builder := txConfig.NewTxBuilder()
 	require.NoError(t, builder.SetMsgs(&types.MsgRecoverKey{
-		Owner:                   signer.String(),
-		RecoveryKeyId:           2,
-		RecoverySignature:       make([]byte, signatureSize),
-		ExpectedNewSigningKeyId: 3,
-		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		NewSigningPublicKey:     newPublicKey,
-		NewSigningKeyProof:      make([]byte, signatureSize),
+		Owner:                       signer.String(),
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, signatureSize),
+		ExpectedNewSigningKeyId:     3,
+		ExpectedRecoveryDelayBlocks: types.DefaultRecoveryDelayBlocks,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         newPublicKey,
+		NewSigningKeyProof:          make([]byte, signatureSize),
 	}))
 	builder.SetGasLimit(200_000)
 
@@ -220,13 +222,14 @@ func testUnsignedRecoveryBundle(
 	require.NoError(t, err)
 	builder := txConfig.NewTxBuilder()
 	require.NoError(t, builder.SetMsgs(&types.MsgRecoverKey{
-		Owner:                   signer.String(),
-		RecoveryKeyId:           2,
-		RecoverySignature:       make([]byte, signatureSize),
-		ExpectedNewSigningKeyId: 3,
-		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		NewSigningPublicKey:     newPublicKey,
-		NewSigningKeyProof:      make([]byte, signatureSize),
+		Owner:                       signer.String(),
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, signatureSize),
+		ExpectedNewSigningKeyId:     3,
+		ExpectedRecoveryDelayBlocks: types.DefaultRecoveryDelayBlocks,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         newPublicKey,
+		NewSigningKeyProof:          make([]byte, signatureSize),
 	}))
 	builder.SetGasLimit(200_000)
 	require.NoError(t, builder.SetSignatures(txsigning.SignatureV2{

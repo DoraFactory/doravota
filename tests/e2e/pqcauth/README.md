@@ -40,7 +40,10 @@ queries, transaction responses and rejection evidence remain beside it.
 - offline bundle mutation detection;
 - signing-key rotation and stale-bundle rejection;
 - recovery-key rotation and historical-key revocation;
-- transaction-bound offline signing-key recovery;
+- Recovery v2 transaction-bound offline recovery, including a delayed
+  activation challenge window, continued use of the current signing key,
+  current-key cancellation, permanent revocation of the cancelled candidate
+  key ID, and a second successful delayed recovery;
 - H+1 self-protection changes;
 - simulation gas estimation without real ML-DSA verification;
 - deterministic cryptographic gas estimation against the effective on-chain

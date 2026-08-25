@@ -713,11 +713,12 @@ func TestRotateRecoveryKeyActivatesAtHPlusOne(t *testing.T) {
 	require.Equal(t, types.KeyStatus_KEY_STATUS_REVOKED, oldRecoveryKey.Status)
 }
 
-func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *testing.T) {
+func TestRecoveryStateTransitionActivatesAfterChallengeDelay(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 20)
-	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
+	params := types.DefaultParams()
+	params.RecoveryDelayBlocks = 2
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 	server := NewMsgServer(moduleKeeper)
-	params := moduleKeeper.GetParams(ctx)
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x44}, 20)).String()
 
 	signingPublicKey, signingPrivateKey := keyPair(4)
@@ -785,13 +786,14 @@ func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *tes
 	require.NoError(t, err)
 
 	recoveryMessage := &types.MsgRecoverKey{
-		Owner:                   owner,
-		RecoveryKeyId:           2,
-		RecoverySignature:       make([]byte, recoverySignatureSize),
-		ExpectedNewSigningKeyId: 3,
-		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		NewSigningPublicKey:     newPublicKey,
-		NewSigningKeyProof:      newKeyProof,
+		Owner:                       owner,
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, recoverySignatureSize),
+		ExpectedNewSigningKeyId:     3,
+		ExpectedRecoveryDelayBlocks: params.RecoveryDelayBlocks,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         newPublicKey,
+		NewSigningKeyProof:          newKeyProof,
 	}
 	ownerAddress := sdk.MustAccAddressFromBech32(owner)
 	unavailableKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 1)
@@ -807,16 +809,127 @@ func TestRecoveryStateTransitionActivatesAtHPlusOneAfterAnteAuthorization(t *tes
 		recoveryMessage,
 	)
 	require.NoError(t, err)
-	require.Equal(t, uint64(22), response.EffectiveHeight)
+	require.Equal(t, uint64(23), response.EffectiveHeight)
 
 	_, policyBeforeActivation, active := moduleKeeper.GetActiveSigningKey(ctx, ownerAddress)
 	require.False(t, active)
 	require.Equal(t, uint64(1), policyBeforeActivation.CurrentSigningKeyId)
 	require.Equal(t, uint64(3), policyBeforeActivation.PendingSigningKeyId)
-	activeKey, policy, active := moduleKeeper.GetActiveSigningKey(ctx.WithBlockHeight(22), ownerAddress)
+	activeKey, policy, active := moduleKeeper.GetActiveSigningKey(ctx.WithBlockHeight(23), ownerAddress)
 	require.True(t, active)
 	require.Equal(t, uint64(3), activeKey.KeyId)
 	require.Equal(t, uint64(2), policy.PolicyVersion)
+}
+
+func TestRecoveryV2ChallengeWindowCanBeCancelledByCurrentSigningKey(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 100)
+	params := types.DefaultParams()
+	params.RecoveryDelayBlocks = 5
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+	server := NewMsgServer(moduleKeeper)
+	ownerAddress := sdk.AccAddress(bytes.Repeat([]byte{0x45}, 20))
+	owner := ownerAddress.String()
+
+	currentPublicKey, _ := keyPair(7)
+	recoveryPublicKey, _ := keyPair(8)
+	require.NoError(t, moduleKeeper.SetKey(ctx, ownerAddress, types.PQCKeyRecord{
+		Owner: owner, KeyId: 1, Algorithm: types.Algorithm_ALGORITHM_ML_DSA_65,
+		PublicKey: currentPublicKey, Role: types.KeyRole_KEY_ROLE_SIGNING,
+		Status: types.KeyStatus_KEY_STATUS_LIVE, CreatedHeight: 1, EffectiveHeight: 2,
+	}))
+	require.NoError(t, moduleKeeper.SetKey(ctx, ownerAddress, types.PQCKeyRecord{
+		Owner: owner, KeyId: 2, Algorithm: types.Algorithm_ALGORITHM_ML_DSA_65,
+		PublicKey: recoveryPublicKey, Role: types.KeyRole_KEY_ROLE_RECOVERY,
+		Status: types.KeyStatus_KEY_STATUS_LIVE, CreatedHeight: 1, EffectiveHeight: 2,
+	}))
+	require.NoError(t, moduleKeeper.SetAccountPolicy(ctx, ownerAddress, types.AccountPolicy{
+		Owner: owner, CurrentSigningKeyId: 1, RecoveryKeyId: 2,
+		SelfEnforced: true, PolicyVersion: 7,
+	}))
+	require.NoError(t, moduleKeeper.SetKeySequence(ctx, ownerAddress, types.AccountKeySequence{
+		Owner: owner, NextKeyId: 3,
+	}))
+
+	newPublicKey, _ := keyPair(9)
+	_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
+	require.NoError(t, err)
+	recoverMessage := &types.MsgRecoverKey{
+		Owner:                       owner,
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, signatureSize),
+		ExpectedNewSigningKeyId:     3,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         newPublicKey,
+		NewSigningKeyProof:          make([]byte, signatureSize),
+		ExpectedRecoveryDelayBlocks: params.RecoveryDelayBlocks,
+	}
+	recoveryResponse, err := server.RecoverKey(
+		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx, recoverMessage)),
+		recoverMessage,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(100), recoveryResponse.RequestHeight)
+	require.Equal(t, uint64(105), recoveryResponse.EffectiveHeight)
+
+	activeKey, pendingPolicy, active := moduleKeeper.GetActiveSigningKey(ctx.WithBlockHeight(104), ownerAddress)
+	require.True(t, active)
+	require.Equal(t, uint64(1), activeKey.KeyId)
+	require.True(t, pendingPolicy.HasPendingRecovery(104))
+	require.Equal(t, uint64(3), pendingPolicy.PendingSigningKeyId)
+	require.Equal(t, uint64(8), pendingPolicy.PendingPolicyVersion)
+
+	cancelMessage := &types.MsgCancelRecovery{
+		Owner:                        owner,
+		ExpectedPendingSigningKeyId:  3,
+		ExpectedPendingPolicyVersion: 8,
+	}
+	wrongCancel := *cancelMessage
+	wrongCancel.ExpectedPendingSigningKeyId = 4
+	_, err = server.CancelRecovery(
+		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx.WithBlockHeight(101), &wrongCancel)),
+		&wrongCancel,
+	)
+	require.ErrorIs(t, err, types.ErrNoPendingRecovery)
+	_, err = server.CancelRecovery(
+		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx.WithBlockHeight(105), cancelMessage)),
+		cancelMessage,
+	)
+	require.ErrorIs(t, err, types.ErrNoPendingRecovery)
+
+	paused := params
+	paused.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	paused.EmergencyExpiresHeight = 200
+	require.NoError(t, moduleKeeper.SetParams(ctx, paused))
+	cancelResponse, err := server.CancelRecovery(
+		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx.WithBlockHeight(102), cancelMessage)),
+		cancelMessage,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), cancelResponse.CancelledSigningKeyId)
+	require.Equal(t, uint64(7), cancelResponse.PolicyVersion)
+
+	policy, found := moduleKeeper.GetAccountPolicy(ctx, ownerAddress)
+	require.True(t, found)
+	require.False(t, policy.HasPendingChange(-1))
+	require.Equal(t, uint64(1), policy.CurrentSigningKeyId)
+	require.Equal(t, uint64(7), policy.PolicyVersion)
+	currentKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 1)
+	require.True(t, found)
+	require.Zero(t, currentKey.InactiveFromHeight)
+	cancelledKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 3)
+	require.True(t, found)
+	require.Equal(t, types.KeyStatus_KEY_STATUS_REVOKED, cancelledKey.Status)
+	sequence := moduleKeeper.GetKeySequence(ctx, ownerAddress)
+	require.Equal(t, uint64(4), sequence.NextKeyId)
+	activeKey, _, active = moduleKeeper.GetActiveSigningKey(ctx.WithBlockHeight(106), ownerAddress)
+	require.True(t, active)
+	require.Equal(t, uint64(1), activeKey.KeyId)
+
+	_, err = server.CancelRecovery(
+		sdk.WrapSDKContext(authorizedLifecycleContext(t, ctx.WithBlockHeight(103), cancelMessage)),
+		cancelMessage,
+	)
+	require.ErrorIs(t, err, types.ErrNoPendingRecovery)
 }
 
 func TestLifecycleMessagesRequireExactAnteAuthorization(t *testing.T) {

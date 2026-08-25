@@ -13,6 +13,7 @@ func TestDefaultParamsValidate(t *testing.T) {
 	require.NoError(t, params.Validate())
 	require.Equal(t, DefaultGovernanceSafetyDelayBlocks, params.GovernanceSafetyDelayBlocks)
 	require.Equal(t, DefaultMaxEmergencyDurationBlocks, params.MaxEmergencyDurationBlocks)
+	require.Equal(t, DefaultRecoveryDelayBlocks, params.RecoveryDelayBlocks)
 	require.True(t, params.IsAlgorithmAllowed(Algorithm_ALGORITHM_ML_DSA_65))
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(10))
 	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(10))
@@ -107,6 +108,10 @@ func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 		{"excessive emergency duration", func(p *Params) {
 			p.MaxEmergencyDurationBlocks = AbsoluteMaxEmergencyDurationBlocks + 1
 		}},
+		{"recovery delay below minimum", func(p *Params) { p.RecoveryDelayBlocks = 1 }},
+		{"excessive recovery delay", func(p *Params) {
+			p.RecoveryDelayBlocks = AbsoluteMaxRecoveryDelayBlocks + 1
+		}},
 	}
 
 	for _, test := range tests {
@@ -128,6 +133,8 @@ func TestAccountPolicyHPlusOne(t *testing.T) {
 		PendingEffectiveHeight: 20,
 		PendingSelfEnforced:    true,
 		PendingPolicyVersion:   4,
+		PendingChangeKind:      PolicyChangeKind_POLICY_CHANGE_KIND_RECOVER_SIGNING,
+		PendingCreatedHeight:   10,
 	}
 
 	before := policy.Effective(19)
@@ -139,6 +146,8 @@ func TestAccountPolicyHPlusOne(t *testing.T) {
 	require.True(t, atHeight.SelfEnforced)
 	require.Equal(t, uint64(4), atHeight.PolicyVersion)
 	require.Zero(t, atHeight.PendingEffectiveHeight)
+	require.Equal(t, PolicyChangeKind_POLICY_CHANGE_KIND_UNSPECIFIED, atHeight.PendingChangeKind)
+	require.Zero(t, atHeight.PendingCreatedHeight)
 }
 
 func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
@@ -148,6 +157,7 @@ func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
 	require.Equal(t, DefaultMaxRetainedKeyRecordsPerRole, params.EffectiveMaxRetainedKeyRecordsPerRole())
 	require.Equal(t, DefaultSignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, DefaultProofVerificationGas, params.EffectiveProofVerificationGas())
+	require.Equal(t, DefaultRecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
 
 	params = DefaultParams()
 	require.Equal(t, params.MaxPqcSigners, params.EffectiveMaxPQCSigners())
@@ -159,6 +169,7 @@ func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
 	)
 	require.Equal(t, params.SignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, params.ProofVerificationGas, params.EffectiveProofVerificationGas())
+	require.Equal(t, params.RecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
 	require.Equal(
 		t,
 		EmergencyMode_EMERGENCY_MODE_NORMAL,

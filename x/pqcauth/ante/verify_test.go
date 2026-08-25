@@ -701,13 +701,14 @@ func TestRecoverySimulationChargesProofsWithoutSubstitutedTransactionSignature(t
 	_, signatureSize, err := pqccrypto.Sizes(algorithm)
 	require.NoError(t, err)
 	message := &types.MsgRecoverKey{
-		Owner:                   address.String(),
-		RecoveryKeyId:           2,
-		RecoverySignature:       make([]byte, signatureSize),
-		ExpectedNewSigningKeyId: 3,
-		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		NewSigningPublicKey:     newPublicKey,
-		NewSigningKeyProof:      make([]byte, signatureSize),
+		Owner:                       address.String(),
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, signatureSize),
+		ExpectedNewSigningKeyId:     3,
+		ExpectedRecoveryDelayBlocks: types.DefaultRecoveryDelayBlocks,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         newPublicKey,
+		NewSigningKeyProof:          make([]byte, signatureSize),
 	}
 	builder := txConfig.NewTxBuilder()
 	require.NoError(t, builder.SetMsgs(message))
@@ -1194,13 +1195,14 @@ func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 			_, signatureSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
 			require.NoError(t, err)
 			message := &types.MsgRecoverKey{
-				Owner:                   address.String(),
-				RecoveryKeyId:           2,
-				RecoverySignature:       make([]byte, signatureSize),
-				ExpectedNewSigningKeyId: 3,
-				NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-				NewSigningPublicKey:     newPublicKey,
-				NewSigningKeyProof:      newKeyProof,
+				Owner:                       address.String(),
+				RecoveryKeyId:               2,
+				RecoverySignature:           make([]byte, signatureSize),
+				ExpectedNewSigningKeyId:     3,
+				ExpectedRecoveryDelayBlocks: types.DefaultRecoveryDelayBlocks,
+				NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+				NewSigningPublicKey:         newPublicKey,
+				NewSigningKeyProof:          newKeyProof,
 			}
 			builder := txConfig.NewTxBuilder()
 			require.NoError(t, builder.SetMsgs(message))

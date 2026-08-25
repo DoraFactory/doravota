@@ -16,6 +16,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgSetProtection{}, "pqcauth/MsgSetProtection")
 	legacy.RegisterAminoMsg(cdc, &MsgRevokeKey{}, "pqcauth/MsgRevokeKey")
 	legacy.RegisterAminoMsg(cdc, &MsgRecoverKey{}, "pqcauth/MsgRecoverKey")
+	legacy.RegisterAminoMsg(cdc, &MsgCancelRecovery{}, "pqcauth/MsgCancelRecovery")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "pqcauth/MsgUpdateParams")
 }
 
@@ -28,6 +29,7 @@ func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
 		&MsgSetProtection{},
 		&MsgRevokeKey{},
 		&MsgRecoverKey{},
+		&MsgCancelRecovery{},
 		&MsgUpdateParams{},
 	)
 	registry.RegisterImplementations(

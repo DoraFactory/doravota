@@ -57,6 +57,7 @@ func generateOrBroadcastProtectedTx(
 		simulationExtension, err := pqcauthclient.BuildPQCAuthSimulationExtension(
 			ctx,
 			clientCtx,
+			messages...,
 		)
 		if err != nil {
 			return err

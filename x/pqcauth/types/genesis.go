@@ -125,7 +125,9 @@ func ValidateGenesis(genesis GenesisState) error {
 		hasPending := policy.PendingSigningKeyId != 0 ||
 			policy.PendingEffectiveHeight != 0 ||
 			policy.PendingPolicyVersion != 0 ||
-			policy.PendingRecoveryKeyId != 0
+			policy.PendingRecoveryKeyId != 0 ||
+			policy.PendingChangeKind != PolicyChangeKind_POLICY_CHANGE_KIND_UNSPECIFIED ||
+			policy.PendingCreatedHeight != 0
 		if hasPending {
 			key, exists := keys[owner.String()+fmt.Sprintf("/%d", policy.PendingSigningKeyId)]
 			if !exists || key.Role != KeyRole_KEY_ROLE_SIGNING ||
@@ -156,6 +158,12 @@ func ValidateGenesis(genesis GenesisState) error {
 					)
 				}
 			}
+			if err := validatePendingPolicyChangeKind(policy, genesis.Params); err != nil {
+				return fmt.Errorf("%w for %s", err, policy.Owner)
+			}
+		} else if policy.PendingChangeKind != PolicyChangeKind_POLICY_CHANGE_KIND_UNSPECIFIED ||
+			policy.PendingCreatedHeight != 0 {
+			return fmt.Errorf("%w: pending metadata without a pending policy for %s", ErrInvalidKey, policy.Owner)
 		}
 		if policy.PendingRecoveryKeyId != 0 {
 			key, exists := keys[owner.String()+fmt.Sprintf("/%d", policy.PendingRecoveryKeyId)]
@@ -202,6 +210,62 @@ func ValidateGenesis(genesis GenesisState) error {
 			sequence.NextKeyId <= maxKnownKeyID[owner.String()] {
 			return fmt.Errorf("%w: invalid next key id for %s", ErrInvalidKey, sequence.Owner)
 		}
+	}
+	return nil
+}
+
+func validatePendingPolicyChangeKind(policy AccountPolicy, params Params) error {
+	// Pending schedules written before Recovery v2 did not identify their
+	// operation. Preserve import compatibility while requiring every v2
+	// schedule to carry a creation height and a precise kind.
+	if policy.PendingChangeKind == PolicyChangeKind_POLICY_CHANGE_KIND_UNSPECIFIED {
+		if policy.PendingCreatedHeight != 0 {
+			return fmt.Errorf("%w: legacy pending change has a creation height", ErrInvalidKey)
+		}
+		return nil
+	}
+	if policy.PendingCreatedHeight == 0 ||
+		policy.PendingCreatedHeight >= policy.PendingEffectiveHeight {
+		return fmt.Errorf("%w: invalid pending change height window", ErrInvalidKey)
+	}
+
+	switch policy.PendingChangeKind {
+	case PolicyChangeKind_POLICY_CHANGE_KIND_REGISTRATION:
+		if policy.CurrentSigningKeyId != 0 || policy.RecoveryKeyId != 0 ||
+			policy.PendingSigningKeyId == 0 || policy.PendingRecoveryKeyId == 0 {
+			return fmt.Errorf("%w: invalid pending registration", ErrInvalidKey)
+		}
+	case PolicyChangeKind_POLICY_CHANGE_KIND_ROTATE_SIGNING:
+		if policy.CurrentSigningKeyId == 0 ||
+			policy.PendingSigningKeyId == policy.CurrentSigningKeyId ||
+			policy.PendingRecoveryKeyId != 0 {
+			return fmt.Errorf("%w: invalid pending signing-key rotation", ErrInvalidKey)
+		}
+	case PolicyChangeKind_POLICY_CHANGE_KIND_ROTATE_RECOVERY:
+		if policy.CurrentSigningKeyId == 0 ||
+			policy.PendingSigningKeyId != policy.CurrentSigningKeyId ||
+			policy.RecoveryKeyId == 0 ||
+			policy.PendingRecoveryKeyId == 0 ||
+			policy.PendingRecoveryKeyId == policy.RecoveryKeyId {
+			return fmt.Errorf("%w: invalid pending recovery-key rotation", ErrInvalidKey)
+		}
+	case PolicyChangeKind_POLICY_CHANGE_KIND_SET_PROTECTION:
+		if policy.CurrentSigningKeyId == 0 ||
+			policy.PendingSigningKeyId != policy.CurrentSigningKeyId ||
+			policy.PendingRecoveryKeyId != 0 {
+			return fmt.Errorf("%w: invalid pending protection change", ErrInvalidKey)
+		}
+	case PolicyChangeKind_POLICY_CHANGE_KIND_RECOVER_SIGNING:
+		delay := params.EffectiveRecoveryDelayBlocks()
+		if policy.CurrentSigningKeyId == 0 ||
+			policy.PendingSigningKeyId == policy.CurrentSigningKeyId ||
+			policy.PendingRecoveryKeyId != 0 ||
+			policy.PendingCreatedHeight > math.MaxUint64-delay ||
+			policy.PendingCreatedHeight+delay != policy.PendingEffectiveHeight {
+			return fmt.Errorf("%w: invalid pending signing-key recovery", ErrInvalidKey)
+		}
+	default:
+		return fmt.Errorf("%w: unknown pending change kind %d", ErrInvalidKey, policy.PendingChangeKind)
 	}
 	return nil
 }

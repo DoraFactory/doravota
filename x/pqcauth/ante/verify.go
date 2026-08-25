@@ -365,6 +365,8 @@ func lifecycleRequiresActivePQC(tx sdk.Tx, signer sdk.AccAddress) bool {
 		return message.Owner == signer.String()
 	case *types.MsgRevokeKey:
 		return message.Owner == signer.String()
+	case *types.MsgCancelRecovery:
+		return message.Owner == signer.String()
 	default:
 		return false
 	}

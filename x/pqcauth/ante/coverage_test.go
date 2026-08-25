@@ -392,6 +392,7 @@ func TestLifecycleMessageClassification(t *testing.T) {
 		&types.MsgRotateRecoveryKey{Owner: owner},
 		&types.MsgSetProtection{Owner: owner},
 		&types.MsgRevokeKey{Owner: owner},
+		&types.MsgCancelRecovery{Owner: owner},
 	} {
 		require.True(t, lifecycleRequiresActivePQC(
 			extensionOptionsTxStub{messages: []sdk.Msg{message}},
@@ -681,13 +682,14 @@ func TestValidateLifecycleStateFailureMatrix(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrPolicyNotFound)
 
 	recover := &types.MsgRecoverKey{
-		Owner:                   activeOwner,
-		RecoveryKeyId:           2,
-		RecoverySignature:       make([]byte, signatureSize),
-		ExpectedNewSigningKeyId: 3,
-		NewSigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		NewSigningPublicKey:     publicKey,
-		NewSigningKeyProof:      make([]byte, signatureSize),
+		Owner:                       activeOwner,
+		RecoveryKeyId:               2,
+		RecoverySignature:           make([]byte, signatureSize),
+		ExpectedNewSigningKeyId:     3,
+		ExpectedRecoveryDelayBlocks: types.DefaultRecoveryDelayBlocks,
+		NewSigningAlgorithm:         types.Algorithm_ALGORITHM_ML_DSA_65,
+		NewSigningPublicKey:         publicKey,
+		NewSigningKeyProof:          make([]byte, signatureSize),
 	}
 	err = decorator.validateLifecycleProofs(
 		ctx,
@@ -724,6 +726,20 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 	require.Nil(t, topLevelLifecycleMessage(extensionOptionsTxStub{
 		messages: []sdk.Msg{&types.MsgUpdateParams{}},
 	}))
+	cancel := &types.MsgCancelRecovery{
+		Owner:                        accountKeeper.account.GetAddress().String(),
+		ExpectedPendingSigningKeyId:  2,
+		ExpectedPendingPolicyVersion: 2,
+	}
+	require.Same(t, cancel, topLevelLifecycleMessage(extensionOptionsTxStub{
+		messages: []sdk.Msg{cancel},
+	}))
+	require.True(t, isRecoveryCancellation(extensionOptionsTxStub{
+		messages: []sdk.Msg{cancel},
+	}))
+	require.False(t, isRecoveryCancellation(extensionOptionsTxStub{
+		messages: []sdk.Msg{cancel, cancel},
+	}))
 	require.Nil(t, topLevelLifecycleMessage(extensionOptionsTxStub{
 		messages: []sdk.Msg{
 			&types.MsgSetProtection{},
@@ -758,6 +774,48 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 		[]byte(types.RotateProofContext),
 	)
 	require.ErrorIs(t, err, types.ErrUnsupportedAlgorithm)
+}
+
+func TestFullPauseAllowsOnlyProtectedRecoveryCancellationExtension(t *testing.T) {
+	ctx, moduleKeeper, _, _, _ := setupAnteTest(t)
+	params := moduleKeeper.GetParams(ctx)
+	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
+	params.EmergencyExpiresHeight = uint64(ctx.BlockHeight()) + 100
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+	extension := encodedExtension(t, types.ExtensionPQCAuth{
+		FormatVersion: types.FormatVersionV1,
+		Signatures:    []types.SignerPQCSignature{validExtensionEntry()},
+	})
+	decorator := NewValidatePQCStructureDecorator(moduleKeeper)
+	next := func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+		return nextCtx, nil
+	}
+
+	owner := sdk.AccAddress(make([]byte, 20)).String()
+	directSignatures := []txsigning.SignatureV2{{
+		Data: &txsigning.SingleSignatureData{SignMode: txsigning.SignMode_SIGN_MODE_DIRECT},
+	}}
+	_, err := decorator.AnteHandle(ctx, sigVerifiableTxStub{
+		extensionOptionsTxStub: extensionOptionsTxStub{
+			messages: []sdk.Msg{&types.MsgSetProtection{Owner: owner, Enabled: true}},
+			critical: []*codectypes.Any{extension},
+		},
+		signatures: directSignatures,
+	}, true, next)
+	require.ErrorIs(t, err, types.ErrEmergencyPause)
+
+	_, err = decorator.AnteHandle(ctx, sigVerifiableTxStub{
+		extensionOptionsTxStub: extensionOptionsTxStub{
+			messages: []sdk.Msg{&types.MsgCancelRecovery{
+				Owner:                        owner,
+				ExpectedPendingSigningKeyId:  2,
+				ExpectedPendingPolicyVersion: 2,
+			}},
+			critical: []*codectypes.Any{extension},
+		},
+		signatures: directSignatures,
+	}, true, next)
+	require.NoError(t, err)
 }
 
 func FuzzExtractExtensionDoesNotPanic(f *testing.F) {

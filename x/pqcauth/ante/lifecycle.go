@@ -216,6 +216,13 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			if err := recoveryChangeAllowed(params); err != nil {
 				return err
 			}
+			if message.ExpectedRecoveryDelayBlocks != params.EffectiveRecoveryDelayBlocks() {
+				return types.ErrInvalidParams.Wrapf(
+					"recovery delay mismatch: message expects %d blocks, chain requires %d",
+					message.ExpectedRecoveryDelayBlocks,
+					params.EffectiveRecoveryDelayBlocks(),
+				)
+			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
 			policy, found := d.keeper.GetEffectiveAccountPolicy(ctx, owner)
 			if !found || policy.RecoveryKeyId != message.RecoveryKeyId {
@@ -299,6 +306,31 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				if verifyErr != nil {
 					return errorsmod.Wrap(types.ErrUnauthorized, "invalid recovery signature")
 				}
+			}
+		case *types.MsgCancelRecovery:
+			if len(tx.GetMsgs()) != 1 {
+				return errorsmod.Wrap(types.ErrInvalidKeyProof, "PQC lifecycle messages cannot be batched")
+			}
+			if err := message.ValidateBasic(); err != nil {
+				return err
+			}
+			if err := recoveryChangeAllowed(params); err != nil {
+				return err
+			}
+			owner := sdk.MustAccAddressFromBech32(message.Owner)
+			policy, found := d.keeper.GetAccountPolicy(ctx, owner)
+			if !found || !policy.HasPendingRecovery(ctx.BlockHeight()) {
+				return types.ErrNoPendingRecovery
+			}
+			if policy.PendingSigningKeyId != message.ExpectedPendingSigningKeyId ||
+				policy.PendingPolicyVersion != message.ExpectedPendingPolicyVersion {
+				return types.ErrNoPendingRecovery.Wrap("pending recovery identifiers do not match")
+			}
+			currentKey, found := d.keeper.GetKey(ctx, owner, policy.CurrentSigningKeyId)
+			if !found || currentKey.Role != types.KeyRole_KEY_ROLE_SIGNING ||
+				!currentKey.IsEffective(ctx.BlockHeight()) ||
+				currentKey.InactiveFromHeight != policy.PendingEffectiveHeight {
+				return types.ErrInconsistentState.Wrap("current signing key cannot cancel pending recovery")
 			}
 		case *types.MsgSetProtection, *types.MsgRevokeKey:
 			if len(tx.GetMsgs()) != 1 {
@@ -451,7 +483,8 @@ func topLevelLifecycleMessage(tx sdk.Tx) sdk.Msg {
 		*types.MsgRotateRecoveryKey,
 		*types.MsgSetProtection,
 		*types.MsgRevokeKey,
-		*types.MsgRecoverKey:
+		*types.MsgRecoverKey,
+		*types.MsgCancelRecovery:
 		return tx.GetMsgs()[0]
 	default:
 		return nil

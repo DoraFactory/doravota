@@ -49,6 +49,7 @@ type pqcSignPreparation struct {
 func BuildPQCAuthSimulationExtension(
 	ctx context.Context,
 	clientCtx sdkclient.Context,
+	messages ...sdk.Msg,
 ) (*codectypes.Any, error) {
 	signer := clientCtx.GetFromAddress()
 	if len(signer) == 0 {
@@ -69,7 +70,8 @@ func BuildPQCAuthSimulationExtension(
 		return nil, fmt.Errorf("query PQC params for simulation: %w", err)
 	}
 	if paramsResponse.EffectiveEmergencyMode ==
-		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS &&
+		!isRecoveryCancellation(messages, signer.String()) {
 		return nil, types.ErrEmergencyPause
 	}
 	key := accountResponse.ActiveSigningKey
@@ -275,7 +277,8 @@ func preparePQCSignDoc(
 	key := accountResponse.ActiveSigningKey
 	policy := accountResponse.Policy
 	if paramsResponse.EffectiveEmergencyMode ==
-		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
+		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS &&
+		!isRecoveryCancellation(builder.GetTx().GetMsgs(), signer.String()) {
 		return pqcSignPreparation{}, types.ErrEmergencyPause
 	}
 
@@ -308,6 +311,14 @@ func preparePQCSignDoc(
 		policy:    policy,
 		signBytes: signBytes,
 	}, nil
+}
+
+func isRecoveryCancellation(messages []sdk.Msg, signer string) bool {
+	if len(messages) != 1 {
+		return false
+	}
+	message, ok := messages[0].(*types.MsgCancelRecovery)
+	return ok && message != nil && message.Owner == signer
 }
 
 func prepareSingleDirectSigner(

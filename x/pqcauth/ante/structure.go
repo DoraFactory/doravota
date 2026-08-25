@@ -59,7 +59,8 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 		return ctx, err
 	}
 	if found {
-		if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
+		if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS &&
+			!isRecoveryCancellation(tx) {
 			return ctx, types.ErrEmergencyPause
 		}
 		if err := requireDirectSignMode(tx, simulate); err != nil {
@@ -68,6 +69,14 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 	}
 	ctx = withValidatedExtension(ctx, tx, extension, found)
 	return next(ctx, tx, simulate)
+}
+
+func isRecoveryCancellation(tx sdk.Tx) bool {
+	if len(tx.GetMsgs()) != 1 {
+		return false
+	}
+	_, ok := tx.GetMsgs()[0].(*types.MsgCancelRecovery)
+	return ok
 }
 
 // pqcStateContext maps the SDK's height-zero gas-simulation context to the

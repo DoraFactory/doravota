@@ -54,6 +54,18 @@ enum KeyStatus {
   KEY_STATUS_REVOKED = 2;
 }
 
+// PolicyChangeKind identifies the lifecycle operation represented by the
+// generic pending fields in AccountPolicy. It lets consensus distinguish a
+// delayed recovery request from an ordinary H+1 key rotation.
+enum PolicyChangeKind {
+  POLICY_CHANGE_KIND_UNSPECIFIED = 0;
+  POLICY_CHANGE_KIND_REGISTRATION = 1;
+  POLICY_CHANGE_KIND_ROTATE_SIGNING = 2;
+  POLICY_CHANGE_KIND_ROTATE_RECOVERY = 3;
+  POLICY_CHANGE_KIND_SET_PROTECTION = 4;
+  POLICY_CHANGE_KIND_RECOVER_SIGNING = 5;
+}
+
 // Params are bounded consensus parameters for the pqcauth module.
 message Params {
   EnforcementMode enforcement_mode = 1;
@@ -85,6 +97,10 @@ message Params {
   // Controls classic-account self-registration. Native ML-DSA accounts never
   // register pqcauth because their SDK signature already provides PQ safety.
   RegistrationMode registration_mode = 16;
+  // Immutable delay between accepting a recovery request and activating its
+  // replacement signing key. It must leave at least one complete block in
+  // which the current signing key can cancel an unauthorized request.
+  uint64 recovery_delay_blocks = 17;
 }
 
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The
@@ -133,6 +149,8 @@ message AccountPolicy {
   uint64 pending_policy_version = 8;
   uint64 recovery_key_id = 9;
   uint64 pending_recovery_key_id = 10;
+  PolicyChangeKind pending_change_kind = 11;
+  uint64 pending_created_height = 12;
 }
 
 // AccountKeySequence allocates monotonically increasing key identifiers.

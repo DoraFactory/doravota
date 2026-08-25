@@ -21,6 +21,7 @@ service Msg {
   rpc SetProtection(MsgSetProtection) returns (MsgSetProtectionResponse);
   rpc RevokeKey(MsgRevokeKey) returns (MsgRevokeKeyResponse);
   rpc RecoverKey(MsgRecoverKey) returns (MsgRecoverKeyResponse);
+  rpc CancelRecovery(MsgCancelRecovery) returns (MsgCancelRecoveryResponse);
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
 }
 
@@ -138,12 +139,35 @@ message MsgRecoverKey {
   Algorithm new_signing_algorithm = 5;
   bytes new_signing_public_key = 6;
   bytes new_signing_key_proof = 7;
+  // Binds the offline recovery authorization to the immutable challenge
+  // period expected by the signer. Ante and MsgServer reject a mismatch.
+  uint64 expected_recovery_delay_blocks = 8;
 }
 
 message MsgRecoverKeyResponse {
   uint64 new_signing_key_id = 1;
   uint64 effective_height = 2;
   uint64 policy_version = 3;
+  uint64 request_height = 4;
+}
+
+// MsgCancelRecovery cancels a delayed recovery before its activation height.
+// The normal pqcauth transaction extension must be signed by the current
+// signing key, in addition to the owner's classic SDK signature.
+message MsgCancelRecovery {
+  option (cosmos.msg.v1.signer) = "owner";
+  option (amino.name) = "pqcauth/MsgCancelRecovery";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+
+  string owner = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  uint64 expected_pending_signing_key_id = 2;
+  uint64 expected_pending_policy_version = 3;
+}
+
+message MsgCancelRecoveryResponse {
+  uint64 cancelled_signing_key_id = 1;
+  uint64 policy_version = 2;
 }
 
 // MsgUpdateParams updates bounded module parameters through governance.
