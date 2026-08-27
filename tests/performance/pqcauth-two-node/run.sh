@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_DIR="${PQC_CAPACITY_WORK_DIR:-/tmp/doravota-pqcauth-capacity-$RUN_ID}"
+PROFILE="${PQC_CAPACITY_PROFILE:-capacity}"
 RUNTIME_IMAGE="${PQC_CAPACITY_RUNTIME_IMAGE:-golang:1.26.5-bookworm}"
 NODE0_CPUS="${PQC_CAPACITY_NODE0_CPUS:-0-7}"
 NODE1_CPUS="${PQC_CAPACITY_NODE1_CPUS:-8-15}"
@@ -27,6 +28,13 @@ BLOCK_MAX_GAS="${PQC_CAPACITY_BLOCK_MAX_GAS:-100000000}"
 BLOCK_MAX_BYTES="${PQC_CAPACITY_BLOCK_MAX_BYTES:-22020096}"
 BROADCAST_CONCURRENCY="${PQC_CAPACITY_BROADCAST_CONCURRENCY:-32}"
 KEEP_RUNNING="${PQC_CAPACITY_KEEP_RUNNING:-0}"
+STRESS_TARGETS="${PQC_STRESS_TARGETS:-30,60,90}"
+STRESS_DURATION="${PQC_STRESS_DURATION:-120}"
+ADVERSARIAL_DURATION="${PQC_ADVERSARIAL_DURATION:-120}"
+ADVERSARIAL_VALID_TARGET="${PQC_ADVERSARIAL_VALID_TARGET:-60}"
+ADVERSARIAL_RATE="${PQC_ADVERSARIAL_RATE:-300}"
+VALID_WEIGHTS="${PQC_STRESS_VALID_WEIGHTS:-40,30,30}"
+ATTACK_WEIGHTS="${PQC_STRESS_ATTACK_WEIGHTS:-85,1,4,10}"
 
 BIN_DIR="$WORK_DIR/bin"
 BUILD_CACHE="${PQC_CAPACITY_BUILD_CACHE:-$WORK_DIR/build-cache}"
@@ -34,6 +42,7 @@ FIXTURE_DIR="$WORK_DIR/fixtures"
 NODE_DIR="$WORK_DIR/nodes"
 REPORT_DIR="$WORK_DIR/report"
 LOG_DIR="$WORK_DIR/logs"
+STREAM_DIR="$WORK_DIR/streams"
 PHASE_FILE="$WORK_DIR/current-phase"
 MONITOR_STOP="$WORK_DIR/monitor.stop"
 CONTAINER_PREFIX="pqcauth-capacity-${RUN_ID,,}"
@@ -60,6 +69,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 [[ ! -e "$WORK_DIR" ]] || die "work directory already exists: $WORK_DIR"
+[[ "$PROFILE" == "capacity" || "$PROFILE" == "stress" ]] || die "PQC_CAPACITY_PROFILE must be capacity or stress"
 command -v docker >/dev/null || die "docker is required"
 command -v jq >/dev/null || die "jq is required"
 command -v curl >/dev/null || die "curl is required"
@@ -67,6 +77,34 @@ command -v python3 >/dev/null || die "python3 is required"
 docker info >/dev/null 2>&1 || die "docker daemon is unavailable"
 docker image inspect "$RUNTIME_IMAGE" >/dev/null 2>&1 || docker pull "$RUNTIME_IMAGE"
 mkdir -p "$BIN_DIR" "$BUILD_CACHE/go-mod" "$BUILD_CACHE/go-build" "$NODE_DIR" "$REPORT_DIR" "$LOG_DIR"
+
+if [[ "$PROFILE" == "stress" ]]; then
+  log "planning steady-state and adversarial transaction streams"
+  python3 "$SCRIPT_DIR/build_stress_plan.py" \
+    --plan-out "$REPORT_DIR/stress-plan.json" \
+    --targets "$STRESS_TARGETS" \
+    --steady-duration "$STRESS_DURATION" \
+    --adversarial-duration "$ADVERSARIAL_DURATION" \
+    --adversarial-valid-target "$ADVERSARIAL_VALID_TARGET" \
+    --attack-rate "$ADVERSARIAL_RATE" \
+    --valid-weights "$VALID_WEIGHTS" \
+    --attack-weights "$ATTACK_WEIGHTS" \
+    --block-max-gas "$BLOCK_MAX_GAS" \
+    --classic-gas "$CLASSIC_GAS" --hybrid-gas "$HYBRID_GAS" --native-gas "$NATIVE_GAS" \
+    >"$REPORT_DIR/stress-plan.stdout.json"
+  CLASSIC_COUNT="$(jq -r '.total_counts.classic' "$REPORT_DIR/stress-plan.json")"
+  HYBRID_COUNT="$(jq -r '.total_counts.hybrid' "$REPORT_DIR/stress-plan.json")"
+  NATIVE_COUNT="$(jq -r '.total_counts.native' "$REPORT_DIR/stress-plan.json")"
+  INVALID_PQC_COUNT="$(jq -r '.total_counts["invalid-pqc"]' "$REPORT_DIR/stress-plan.json")"
+  OVERSIZED_COUNT="$(jq -r '.total_counts.oversized' "$REPORT_DIR/stress-plan.json")"
+  NONCANONICAL_COUNT="$(jq -r '.total_counts.noncanonical' "$REPORT_DIR/stress-plan.json")"
+  BAD_SEQUENCE_COUNT="$(jq -r '.total_counts["bad-sequence"]' "$REPORT_DIR/stress-plan.json")"
+else
+  INVALID_PQC_COUNT=0
+  OVERSIZED_COUNT=0
+  NONCANONICAL_COUNT=0
+  BAD_SEQUENCE_COUNT=0
+fi
 
 docker rm -f "$NODE0_NAME" "$NODE1_NAME" >/dev/null 2>&1 || true
 
@@ -170,6 +208,8 @@ initialize_network() {
   log "generating independent classic, hybrid, and native ML-DSA transactions"
   pqcload generate --out "$FIXTURE_DIR" --chain-id "$CHAIN_ID" --recipient "$recipient" \
     --classic-count "$CLASSIC_COUNT" --hybrid-count "$HYBRID_COUNT" --native-count "$NATIVE_COUNT" \
+    --invalid-pqc-count "$INVALID_PQC_COUNT" --oversized-count "$OVERSIZED_COUNT" \
+    --noncanonical-count "$NONCANONICAL_COUNT" --bad-sequence-count "$BAD_SEQUENCE_COUNT" \
     --classic-gas "$CLASSIC_GAS" --hybrid-gas "$HYBRID_GAS" --native-gas "$NATIVE_GAS" \
     >"$REPORT_DIR/fixture-manifest.json"
 
@@ -204,6 +244,12 @@ initialize_network() {
   peer1="$(cat "$WORK_DIR/node1.id")@127.0.0.1:$(node_p2p_port 1)"
   sed -i.capacity "s#^persistent_peers = .*#persistent_peers = \"$peer1\"#" "$(node_home 0)/config/config.toml"
   sed -i.capacity "s#^persistent_peers = .*#persistent_peers = \"$peer0\"#" "$(node_home 1)/config/config.toml"
+
+  if [[ "$PROFILE" == "stress" ]]; then
+    log "materializing paced transaction streams"
+    python3 "$SCRIPT_DIR/build_stress_plan.py" --materialize \
+      --plan "$REPORT_DIR/stress-plan.json" --fixtures "$FIXTURE_DIR" --output "$STREAM_DIR"
+  fi
 }
 
 start_node() {
@@ -308,10 +354,80 @@ run_mode() {
   log "$mode complete: $(jq -c '{committed_transactions,nonempty_blocks,max_transactions_in_one_block,max_gas_used_in_one_block}' "$REPORT_DIR/$mode-block-summary.json")"
 }
 
+run_stress_phase() {
+  local name="$1" expected="$2" rate="$3" start_height broadcast_exit accepted rejected timeout
+  printf '%s' "$name" >"$PHASE_FILE"
+  start_height="$(height 0)"
+  log "running $name: expected=$expected, paced_rate=$rate tx/s"
+  set +e
+  pqcload broadcast --input "$STREAM_DIR/$name.txs.jsonl" --rpc "$(node_rpc 0)" \
+    --out "$REPORT_DIR/$name-broadcast-results.jsonl" --concurrency "$BROADCAST_CONCURRENCY" \
+    --rate "$rate" --expect accepted >"$REPORT_DIR/$name-broadcast-summary.json"
+  broadcast_exit=$?
+  set -e
+  accepted="$(jq -r .accepted "$REPORT_DIR/$name-broadcast-summary.json")"
+  rejected="$(jq -r .rejected "$REPORT_DIR/$name-broadcast-summary.json")"
+  [[ "$broadcast_exit" == "0" && "$accepted" == "$expected" && "$rejected" == "0" ]] \
+    || die "$name broadcast failed: accepted=$accepted rejected=$rejected exit=$broadcast_exit"
+  timeout="$((STRESS_DURATION + 900))"
+  python3 "$SCRIPT_DIR/collect_stress.py" --rpc "$(node_rpc 0)" --phase "$name" \
+    --start-height "$start_height" --broadcast-results "$REPORT_DIR/$name-broadcast-results.jsonl" \
+    --blocks-out "$REPORT_DIR/$name-blocks.jsonl" --summary-out "$REPORT_DIR/$name-summary.json" \
+    --timeout "$timeout" >"$REPORT_DIR/$name-summary.stdout.json"
+  [[ "$(jq -r .failed_deliveries "$REPORT_DIR/$name-summary.json")" == "0" ]] \
+    || die "$name committed failed DeliverTx results"
+  log "$name complete: $(jq -c '{committed_transactions,committed_transactions_per_second,confirmation_latency_seconds,block_interval_seconds,consensus_rounds}' "$REPORT_DIR/$name-summary.json")"
+}
+
+run_adversarial_phase() {
+  local valid_name attack_name valid_expected valid_rate attack_expected attack_rate start_height
+  local valid_pid attack_pid valid_exit attack_exit valid_accepted valid_rejected attack_accepted attack_rejected
+  valid_name="$(jq -r '.adversarial_phase.concurrent_valid_phase' "$REPORT_DIR/stress-plan.json")"
+  attack_name="$(jq -r '.adversarial_phase.name' "$REPORT_DIR/stress-plan.json")"
+  valid_expected="$(jq -r --arg name "$valid_name" '.valid_phases[] | select(.name==$name) | .total_transactions' "$REPORT_DIR/stress-plan.json")"
+  valid_rate="$(jq -r --arg name "$valid_name" '.valid_phases[] | select(.name==$name) | .rate_per_second' "$REPORT_DIR/stress-plan.json")"
+  attack_expected="$(jq -r '.adversarial_phase.total_transactions' "$REPORT_DIR/stress-plan.json")"
+  attack_rate="$(jq -r '.adversarial_phase.rate_per_second' "$REPORT_DIR/stress-plan.json")"
+  printf adversarial >"$PHASE_FILE"
+  start_height="$(height 0)"
+  log "running adversarial phase: valid=$valid_expected@$valid_rate tx/s, rejected=$attack_expected@$attack_rate tx/s"
+
+  set +e
+  pqcload broadcast --input "$STREAM_DIR/$attack_name.txs.jsonl" --rpc "$(node_rpc 0)" \
+    --out "$REPORT_DIR/$attack_name-broadcast-results.jsonl" --concurrency "$BROADCAST_CONCURRENCY" \
+    --rate "$attack_rate" --expect rejected >"$REPORT_DIR/$attack_name-broadcast-summary.json" &
+  attack_pid=$!
+  pqcload broadcast --input "$STREAM_DIR/$valid_name.txs.jsonl" --rpc "$(node_rpc 0)" \
+    --out "$REPORT_DIR/$valid_name-broadcast-results.jsonl" --concurrency "$BROADCAST_CONCURRENCY" \
+    --rate "$valid_rate" --expect accepted >"$REPORT_DIR/$valid_name-broadcast-summary.json" &
+  valid_pid=$!
+  wait "$valid_pid"; valid_exit=$?
+  wait "$attack_pid"; attack_exit=$?
+  set -e
+
+  valid_accepted="$(jq -r .accepted "$REPORT_DIR/$valid_name-broadcast-summary.json")"
+  valid_rejected="$(jq -r .rejected "$REPORT_DIR/$valid_name-broadcast-summary.json")"
+  attack_accepted="$(jq -r .accepted "$REPORT_DIR/$attack_name-broadcast-summary.json")"
+  attack_rejected="$(jq -r .rejected "$REPORT_DIR/$attack_name-broadcast-summary.json")"
+  [[ "$valid_exit" == "0" && "$valid_accepted" == "$valid_expected" && "$valid_rejected" == "0" ]] \
+    || die "adversarial valid stream failed: accepted=$valid_accepted rejected=$valid_rejected exit=$valid_exit"
+  [[ "$attack_exit" == "0" && "$attack_accepted" == "0" && "$attack_rejected" == "$attack_expected" ]] \
+    || die "adversarial rejection stream failed: accepted=$attack_accepted rejected=$attack_rejected exit=$attack_exit"
+
+  python3 "$SCRIPT_DIR/collect_stress.py" --rpc "$(node_rpc 0)" --phase "$valid_name" \
+    --start-height "$start_height" --broadcast-results "$REPORT_DIR/$valid_name-broadcast-results.jsonl" \
+    --blocks-out "$REPORT_DIR/$valid_name-blocks.jsonl" --summary-out "$REPORT_DIR/$valid_name-summary.json" \
+    --timeout "$((ADVERSARIAL_DURATION + 900))" >"$REPORT_DIR/$valid_name-summary.stdout.json"
+  [[ "$(jq -r .failed_deliveries "$REPORT_DIR/$valid_name-summary.json")" == "0" ]] \
+    || die "adversarial valid stream committed failed DeliverTx results"
+  log "adversarial phase complete: $(jq -c '{committed_transactions,confirmation_latency_seconds,block_interval_seconds,consensus_rounds}' "$REPORT_DIR/$valid_name-summary.json")"
+}
+
 write_environment_report() {
   {
     printf '{\n'
     printf '  "run_id": %s,\n' "$(jq -Rn --arg value "$RUN_ID" '$value')"
+	printf '  "profile": %s,\n' "$(jq -Rn --arg value "$PROFILE" '$value')"
     printf '  "git_commit": %s,\n' "$(git -C "$REPO_ROOT" rev-parse HEAD | jq -R .)"
     printf '  "chain_id": %s,\n' "$(jq -Rn --arg value "$CHAIN_ID" '$value')"
     printf '  "runtime_image": %s,\n' "$(jq -Rn --arg value "$RUNTIME_IMAGE" '$value')"
@@ -347,16 +463,33 @@ wait_rpc 0
 wait_rpc 1
 wait_height 3 0
 write_environment_report
-run_mode classic "$CLASSIC_COUNT"
-run_mode hybrid "$HYBRID_COUNT"
-run_mode native "$NATIVE_COUNT"
+if [[ "$PROFILE" == "capacity" ]]; then
+  run_mode classic "$CLASSIC_COUNT"
+  run_mode hybrid "$HYBRID_COUNT"
+  run_mode native "$NATIVE_COUNT"
+else
+  while IFS=$'\t' read -r phase expected rate; do
+    [[ "$phase" == adversarial-valid-* ]] && continue
+    run_stress_phase "$phase" "$expected" "$rate"
+  done < <(jq -r '.valid_phases[] | [.name,.total_transactions,.rate_per_second] | @tsv' "$REPORT_DIR/stress-plan.json")
+  run_adversarial_phase
+fi
 
 printf complete >"$PHASE_FILE"
 touch "$MONITOR_STOP"
 wait "$MONITOR_PID" || true
 MONITOR_PID=""
-jq -s '{generated_at_utc:(now|todate),modes:map({key:.mode,value:.})|from_entries}' \
-  "$REPORT_DIR/classic-block-summary.json" "$REPORT_DIR/hybrid-block-summary.json" "$REPORT_DIR/native-block-summary.json" \
-  >"$REPORT_DIR/capacity-summary.json"
-log "benchmark complete: $REPORT_DIR/capacity-summary.json"
-cat "$REPORT_DIR/capacity-summary.json"
+if [[ "$PROFILE" == "capacity" ]]; then
+  jq -s '{generated_at_utc:(now|todate),modes:map({key:.mode,value:.})|from_entries}' \
+    "$REPORT_DIR/classic-block-summary.json" "$REPORT_DIR/hybrid-block-summary.json" "$REPORT_DIR/native-block-summary.json" \
+    >"$REPORT_DIR/capacity-summary.json"
+  log "benchmark complete: $REPORT_DIR/capacity-summary.json"
+  cat "$REPORT_DIR/capacity-summary.json"
+else
+  jq -n --slurpfile plan "$REPORT_DIR/stress-plan.json" \
+    --slurpfile summaries <(jq -s '.' "$REPORT_DIR"/steady-*-summary.json "$REPORT_DIR"/adversarial-valid-*-summary.json) \
+    '{generated_at_utc:(now|todate),plan:$plan[0],phases:$summaries[0]}' \
+    >"$REPORT_DIR/stress-summary.json"
+  log "stress benchmark complete: $REPORT_DIR/stress-summary.json"
+  cat "$REPORT_DIR/stress-summary.json"
+fi

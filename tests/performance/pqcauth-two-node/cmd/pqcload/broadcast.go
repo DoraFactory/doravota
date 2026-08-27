@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"sync"
 	"time"
 )
@@ -57,17 +58,35 @@ type broadcastResult struct {
 	HTTPStatus int    `json:"http_status,omitempty"`
 	Error      string `json:"error,omitempty"`
 	LatencyMS  int64  `json:"latency_ms"`
+	LatencyUS  int64  `json:"latency_us"`
+	Submitted  string `json:"submitted_at_utc"`
+	Completed  string `json:"completed_at_utc"`
 }
 
 type broadcastSummary struct {
-	Input        string `json:"input"`
-	RPC          string `json:"rpc"`
-	Concurrency  int    `json:"concurrency"`
-	Total        int    `json:"total"`
-	Accepted     int    `json:"accepted"`
-	Rejected     int    `json:"rejected"`
-	TransportErr int    `json:"transport_errors"`
-	ElapsedMS    int64  `json:"elapsed_ms"`
+	Input        string                           `json:"input"`
+	RPC          string                           `json:"rpc"`
+	Concurrency  int                              `json:"concurrency"`
+	Expected     string                           `json:"expected_outcome"`
+	RatePerSec   float64                          `json:"rate_per_second"`
+	Total        int                              `json:"total"`
+	Accepted     int                              `json:"accepted"`
+	Rejected     int                              `json:"rejected"`
+	TransportErr int                              `json:"transport_errors"`
+	ElapsedMS    int64                            `json:"elapsed_ms"`
+	LatencyP50US int64                            `json:"latency_p50_us"`
+	LatencyP95US int64                            `json:"latency_p95_us"`
+	LatencyP99US int64                            `json:"latency_p99_us"`
+	CodeCounts   map[string]int                   `json:"code_counts"`
+	ModeOutcomes map[string]*broadcastModeOutcome `json:"mode_outcomes"`
+}
+
+type broadcastModeOutcome struct {
+	Total        int            `json:"total"`
+	Accepted     int            `json:"accepted"`
+	Rejected     int            `json:"rejected"`
+	TransportErr int            `json:"transport_errors"`
+	CodeCounts   map[string]int `json:"code_counts"`
 }
 
 func broadcast(arguments []string) {
@@ -77,10 +96,13 @@ func broadcast(arguments []string) {
 	outputPath := flags.String("out", "", "new JSONL result path")
 	concurrency := flags.Int("concurrency", 32, "parallel RPC requests")
 	timeout := flags.Duration("timeout", 30*time.Second, "per-request timeout")
+	rate := flags.Float64("rate", 0, "maximum submission rate in transactions per second; zero is unlimited")
+	expected := flags.String("expect", "accepted", "expected outcome: accepted, rejected, or any")
 	if err := flags.Parse(arguments); err != nil {
 		fatalf("parse broadcast flags: %v", err)
 	}
-	if *inputPath == "" || *outputPath == "" || *rpcURL == "" || *concurrency < 1 || *concurrency > 256 {
+	if *inputPath == "" || *outputPath == "" || *rpcURL == "" || *concurrency < 1 || *concurrency > 256 || *rate < 0 ||
+		(*expected != "accepted" && *expected != "rejected" && *expected != "any") {
 		fatalf("--input, --out, --rpc and concurrency in [1,256] are required")
 	}
 	input, err := os.Open(*inputPath)
@@ -119,6 +141,12 @@ func broadcast(arguments []string) {
 		line := 0
 		for scanner.Scan() {
 			line++
+			if *rate > 0 {
+				target := started.Add(time.Duration(float64(time.Second) * float64(line-1) / *rate))
+				if delay := time.Until(target); delay > 0 {
+					time.Sleep(delay)
+				}
+			}
 			var record txRecord
 			if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
 				results <- broadcastResult{Line: line, Error: fmt.Sprintf("decode input: %v", err)}
@@ -133,7 +161,12 @@ func broadcast(arguments []string) {
 	}()
 
 	buffer := bufio.NewWriterSize(output, 1024*1024)
-	summary := broadcastSummary{Input: *inputPath, RPC: *rpcURL, Concurrency: *concurrency}
+	summary := broadcastSummary{
+		Input: *inputPath, RPC: *rpcURL, Concurrency: *concurrency,
+		Expected: *expected, RatePerSec: *rate, CodeCounts: make(map[string]int),
+		ModeOutcomes: make(map[string]*broadcastModeOutcome),
+	}
+	latencies := make([]int64, 0, 1024)
 	for result := range results {
 		encoded, err := json.Marshal(result)
 		if err != nil {
@@ -143,33 +176,70 @@ func broadcast(arguments []string) {
 			fatalf("write broadcast result: %v", err)
 		}
 		summary.Total++
+		mode := result.Mode
+		if mode == "" {
+			mode = "unknown"
+		}
+		outcome := summary.ModeOutcomes[mode]
+		if outcome == nil {
+			outcome = &broadcastModeOutcome{CodeCounts: make(map[string]int)}
+			summary.ModeOutcomes[mode] = outcome
+		}
+		outcome.Total++
 		if result.Accepted {
 			summary.Accepted++
+			outcome.Accepted++
 		} else {
 			summary.Rejected++
+			outcome.Rejected++
 		}
 		if result.Error != "" {
 			summary.TransportErr++
+			outcome.TransportErr++
 		}
+		if result.Error == "" {
+			key := fmt.Sprintf("%s/%d", result.Codespace, result.Code)
+			summary.CodeCounts[key]++
+			outcome.CodeCounts[key]++
+		}
+		latencies = append(latencies, result.LatencyUS)
 	}
 	if err := buffer.Flush(); err != nil {
 		fatalf("flush broadcast results: %v", err)
 	}
 	summary.ElapsedMS = time.Since(started).Milliseconds()
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	summary.LatencyP50US = percentileInt64(latencies, 0.50)
+	summary.LatencyP95US = percentileInt64(latencies, 0.95)
+	summary.LatencyP99US = percentileInt64(latencies, 0.99)
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(summary); err != nil {
 		fatalf("print broadcast summary: %v", err)
 	}
-	if summary.Rejected != 0 {
+	failedExpectation := summary.TransportErr != 0
+	switch *expected {
+	case "accepted":
+		failedExpectation = failedExpectation || summary.Rejected != 0
+	case "rejected":
+		failedExpectation = failedExpectation || summary.Accepted != 0
+	}
+	if failedExpectation {
 		os.Exit(2)
 	}
 }
 
-func submitTransaction(client *http.Client, rpcURL string, job broadcastJob) broadcastResult {
-	result := broadcastResult{
+func submitTransaction(client *http.Client, rpcURL string, job broadcastJob) (result broadcastResult) {
+	result = broadcastResult{
 		Line: job.line, Mode: job.record.Mode, Index: job.record.Index, Expected: job.record.Hash,
 	}
+	started := time.Now()
+	result.Submitted = started.UTC().Format(time.RFC3339Nano)
+	defer func() {
+		result.Completed = time.Now().UTC().Format(time.RFC3339Nano)
+		result.LatencyUS = time.Since(started).Microseconds()
+		result.LatencyMS = result.LatencyUS / 1_000
+	}()
 	payload, err := json.Marshal(broadcastRequest{
 		JSONRPC: "2.0", ID: job.line, Method: "broadcast_tx_sync",
 		Params: map[string]string{"tx": job.record.TxBase64},
@@ -178,9 +248,7 @@ func submitTransaction(client *http.Client, rpcURL string, job broadcastJob) bro
 		result.Error = fmt.Sprintf("encode request: %v", err)
 		return result
 	}
-	started := time.Now()
 	response, err := client.Post(rpcURL, "application/json", bytes.NewReader(payload))
-	result.LatencyMS = time.Since(started).Milliseconds()
 	if err != nil {
 		result.Error = err.Error()
 		return result
@@ -211,4 +279,18 @@ func submitTransaction(client *http.Client, rpcURL string, job broadcastJob) bro
 	result.Log = decoded.Result.Log
 	result.Accepted = response.StatusCode >= 200 && response.StatusCode < 300 && decoded.Result.Code == 0
 	return result
+}
+
+func percentileInt64(values []int64, quantile float64) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	index := int(quantile*float64(len(values)-1) + 0.5)
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(values) {
+		index = len(values) - 1
+	}
+	return values[index]
 }

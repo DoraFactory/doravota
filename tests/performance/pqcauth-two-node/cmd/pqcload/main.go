@@ -57,19 +57,23 @@ type protoTxProvider interface {
 }
 
 type fixtureConfig struct {
-	ChainID      string `json:"chain_id"`
-	Denom        string `json:"denom"`
-	Recipient    string `json:"recipient"`
-	Seed         string `json:"seed"`
-	ClassicCount int    `json:"classic_count"`
-	HybridCount  int    `json:"hybrid_count"`
-	NativeCount  int    `json:"native_count"`
-	ClassicGas   uint64 `json:"classic_gas_limit"`
-	HybridGas    uint64 `json:"hybrid_gas_limit"`
-	NativeGas    uint64 `json:"native_gas_limit"`
-	Balance      uint64 `json:"balance_per_account"`
-	Fee          int64  `json:"fee_per_transaction"`
-	Transfer     int64  `json:"transfer_per_transaction"`
+	ChainID           string `json:"chain_id"`
+	Denom             string `json:"denom"`
+	Recipient         string `json:"recipient"`
+	Seed              string `json:"seed"`
+	ClassicCount      int    `json:"classic_count"`
+	HybridCount       int    `json:"hybrid_count"`
+	NativeCount       int    `json:"native_count"`
+	InvalidPQCCount   int    `json:"invalid_pqc_count"`
+	OversizedCount    int    `json:"oversized_count"`
+	NonCanonicalCount int    `json:"noncanonical_count"`
+	BadSequenceCount  int    `json:"bad_sequence_count"`
+	ClassicGas        uint64 `json:"classic_gas_limit"`
+	HybridGas         uint64 `json:"hybrid_gas_limit"`
+	NativeGas         uint64 `json:"native_gas_limit"`
+	Balance           uint64 `json:"balance_per_account"`
+	Fee               int64  `json:"fee_per_transaction"`
+	Transfer          int64  `json:"transfer_per_transaction"`
 }
 
 type genesisPatch struct {
@@ -145,6 +149,10 @@ func generate(arguments []string) {
 	classicCount := flags.Int("classic-count", 1_250, "number of classic transactions")
 	hybridCount := flags.Int("hybrid-count", 300, "number of pqcauth hybrid transactions")
 	nativeCount := flags.Int("native-count", 480, "number of native ML-DSA transactions")
+	invalidPQCCount := flags.Int("invalid-pqc-count", 0, "number of hybrid transactions with a correct-length invalid ML-DSA signature")
+	oversizedCount := flags.Int("oversized-count", 0, "number of transactions with an oversized canonical pqcauth extension")
+	nonCanonicalCount := flags.Int("noncanonical-count", 0, "number of transactions with a non-canonical pqcauth extension encoding")
+	badSequenceCount := flags.Int("bad-sequence-count", 0, "number of validly signed transactions whose sequence does not match genesis")
 	classicGas := flags.Uint64("classic-gas", 120_000, "gas limit per classic transaction")
 	hybridGas := flags.Uint64("hybrid-gas", 400_000, "gas limit per hybrid transaction")
 	nativeGas := flags.Uint64("native-gas", 320_000, "gas limit per native transaction")
@@ -158,7 +166,9 @@ func generate(arguments []string) {
 	if *outDir == "" || *recipientText == "" {
 		fatalf("--out and --recipient are required")
 	}
-	if *classicCount <= 0 || *hybridCount <= 0 || *nativeCount <= 0 ||
+	if *classicCount < 0 || *hybridCount < 0 || *nativeCount < 0 ||
+		*invalidPQCCount < 0 || *oversizedCount < 0 || *nonCanonicalCount < 0 || *badSequenceCount < 0 ||
+		*classicCount+*hybridCount+*nativeCount+*invalidPQCCount+*oversizedCount+*nonCanonicalCount+*badSequenceCount == 0 ||
 		*classicGas == 0 || *hybridGas == 0 || *nativeGas == 0 ||
 		*balance == 0 || *fee < 0 || *transfer <= 0 ||
 		uint64(*fee)+uint64(*transfer) > *balance {
@@ -178,6 +188,8 @@ func generate(arguments []string) {
 	config := fixtureConfig{
 		ChainID: *chainID, Denom: *denom, Recipient: recipient.String(), Seed: *seed,
 		ClassicCount: *classicCount, HybridCount: *hybridCount, NativeCount: *nativeCount,
+		InvalidPQCCount: *invalidPQCCount, OversizedCount: *oversizedCount,
+		NonCanonicalCount: *nonCanonicalCount, BadSequenceCount: *badSequenceCount,
 		ClassicGas: *classicGas, HybridGas: *hybridGas, NativeGas: *nativeGas,
 		Balance: *balance, Fee: *fee, Transfer: *transfer,
 	}
@@ -186,7 +198,10 @@ func generate(arguments []string) {
 	patch := genesisPatch{
 		NetworkIDBase64: base64.StdEncoding.EncodeToString(networkID),
 		SupplyDelta: map[string]string{
-			*denom: fmt.Sprintf("%d", uint64(*classicCount+*hybridCount+*nativeCount)**balance),
+			*denom: fmt.Sprintf("%d", uint64(
+				*classicCount+*hybridCount+*nativeCount+*invalidPQCCount+
+					*oversizedCount+*nonCanonicalCount+*badSequenceCount,
+			)**balance),
 		},
 		Metadata: map[string]interface{}{
 			"test_only":                   true,
@@ -196,7 +211,9 @@ func generate(arguments []string) {
 	}
 
 	writers := map[string]*modeWriter{}
-	for _, mode := range []string{"classic", "hybrid", "native"} {
+	for _, mode := range []string{
+		"classic", "hybrid", "native", "invalid-pqc", "oversized", "noncanonical", "bad-sequence",
+	} {
 		path := filepath.Join(*outDir, mode+".txs.jsonl")
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {
@@ -211,6 +228,10 @@ func generate(arguments []string) {
 	generateMode("classic", *classicCount, *classicGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["classic"])
 	generateMode("hybrid", *hybridCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["hybrid"])
 	generateMode("native", *nativeCount, *nativeGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["native"])
+	generateMode("invalid-pqc", *invalidPQCCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["invalid-pqc"])
+	generateMode("oversized", *oversizedCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["oversized"])
+	generateMode("noncanonical", *nonCanonicalCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["noncanonical"])
+	generateMode("bad-sequence", *badSequenceCount, *classicGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["bad-sequence"])
 	closeWriters(writers)
 
 	if err := writeJSON(filepath.Join(*outDir, "genesis-patch.json"), patch, 0o600); err != nil {
@@ -262,7 +283,7 @@ func generateMode(
 		var native cryptotypes.PrivKey
 		var hybridSigning mldsa65.PrivKey
 		switch mode {
-		case "classic", "hybrid":
+		case "classic", "hybrid", "invalid-pqc", "oversized", "noncanonical", "bad-sequence":
 			classical = secp256k1.GenPrivKeyFromSecret(deriveSeed(config.Seed, mode+"-classic", index))
 		case "native":
 			key := deriveMLDSA65(config.Seed, "native", index)
@@ -270,8 +291,9 @@ func generateMode(
 		default:
 			fatalf("unsupported mode %q", mode)
 		}
-		if mode == "hybrid" {
-			hybridSigning = deriveMLDSA65(config.Seed, "hybrid-signing", index)
+		usesHybrid := mode == "hybrid" || mode == "invalid-pqc" || mode == "oversized" || mode == "noncanonical"
+		if usesHybrid {
+			hybridSigning = deriveMLDSA65(config.Seed, mode+"-signing", index)
 		}
 		privateKey := classical
 		if mode == "native" {
@@ -279,7 +301,7 @@ func generateMode(
 		}
 		address := sdk.AccAddress(privateKey.PubKey().Address())
 		var genesisPublicKey cryptotypes.PubKey
-		if mode == "hybrid" {
+		if usesHybrid {
 			// Registered pqcauth accounts have already persisted their classic
 			// public key. Genesis validation deliberately rejects an unclassified
 			// account, so mirror that state only for the hybrid fixtures.
@@ -288,8 +310,12 @@ func generateMode(
 		appendGenesisAccount(
 			patch, address, genesisPublicKey, *accountNumber, config.Denom, config.Balance,
 		)
-		if mode == "hybrid" {
+		if usesHybrid {
 			appendHybridGenesis(patch, address, hybridSigning.PubKey().Bytes(), recoveryKey.PubKey().Bytes())
+		}
+		sequence := uint64(0)
+		if mode == "bad-sequence" {
+			sequence = 1
 		}
 		raw := buildTransaction(
 			mode,
@@ -299,6 +325,7 @@ func generateMode(
 			recipient,
 			*accountNumber,
 			gasLimit,
+			sequence,
 			config,
 			networkID,
 			txConfig,
@@ -306,7 +333,7 @@ func generateMode(
 		hash := sha256.Sum256(raw)
 		record := txRecord{
 			Mode: mode, Index: index, Address: address.String(), AccountNumber: *accountNumber,
-			Sequence: 0, GasLimit: gasLimit, SizeBytes: len(raw), Hash: hex.EncodeToString(hash[:]),
+			Sequence: sequence, GasLimit: gasLimit, SizeBytes: len(raw), Hash: hex.EncodeToString(hash[:]),
 			TxBase64: base64.StdEncoding.EncodeToString(raw),
 		}
 		encoded, err := json.Marshal(record)
@@ -404,6 +431,7 @@ func buildTransaction(
 	recipient sdk.AccAddress,
 	accountNumber uint64,
 	gasLimit uint64,
+	sequence uint64,
 	config fixtureConfig,
 	networkID []byte,
 	txConfig sdkclient.TxConfig,
@@ -418,19 +446,20 @@ func buildTransaction(
 	placeholder := txsigning.SignatureV2{
 		PubKey:   privateKey.PubKey(),
 		Data:     &txsigning.SingleSignatureData{SignMode: txsigning.SignMode_SIGN_MODE_DIRECT},
-		Sequence: 0,
+		Sequence: sequence,
 	}
 	if err := builder.SetSignatures(placeholder); err != nil {
 		fatalf("set %s placeholder signature: %v", mode, err)
 	}
 
-	if mode == "hybrid" {
+	usesHybrid := mode == "hybrid" || mode == "invalid-pqc" || mode == "oversized" || mode == "noncanonical"
+	if usesHybrid {
 		provider, ok := builder.GetTx().(protoTxProvider)
 		if !ok || provider.GetProtoTx() == nil {
 			fatalf("hybrid transaction builder does not expose protobuf transaction")
 		}
 		doc, err := pqctypes.NewPQCSignDocV1(
-			provider.GetProtoTx(), networkID, config.ChainID, accountNumber, 0, 0,
+			provider.GetProtoTx(), networkID, config.ChainID, accountNumber, sequence, 0,
 			signer.String(), 1, pqctypes.Algorithm_ALGORITHM_ML_DSA_65, 1,
 		)
 		if err != nil {
@@ -446,13 +475,27 @@ func buildTransaction(
 		if err != nil {
 			fatalf("sign hybrid transaction: %v", err)
 		}
-		extension, err := codectypes.NewAnyWithValue(&pqctypes.ExtensionPQCAuth{
-			FormatVersion: pqctypes.FormatVersionV1,
-			Signatures: []pqctypes.SignerPQCSignature{{
-				Signer: signer.String(), SignerIndex: 0, KeyId: 1,
+		if mode == "invalid-pqc" {
+			pqcSignature[0] ^= 0x01
+		}
+		entryCount := 1
+		if mode == "oversized" {
+			// 32 ML-DSA-65 entries exceed the protocol extension-byte cap.
+			// The extension remains canonical so the structure size check is
+			// exercised before semantic signer validation.
+			entryCount = 32
+		}
+		entries := make([]pqctypes.SignerPQCSignature, 0, entryCount)
+		for index := 0; index < entryCount; index++ {
+			entries = append(entries, pqctypes.SignerPQCSignature{
+				Signer: signer.String(), SignerIndex: uint32(index), KeyId: 1,
 				Algorithm:     pqctypes.Algorithm_ALGORITHM_ML_DSA_65,
 				PolicyVersion: 1, Signature: pqcSignature,
-			}},
+			})
+		}
+		extension, err := codectypes.NewAnyWithValue(&pqctypes.ExtensionPQCAuth{
+			FormatVersion: pqctypes.FormatVersionV1,
+			Signatures:    entries,
 		})
 		if err != nil {
 			fatalf("encode hybrid extension: %v", err)
@@ -465,7 +508,7 @@ func buildTransaction(
 	}
 
 	signerData := authsigning.SignerData{
-		ChainID: config.ChainID, AccountNumber: accountNumber, Sequence: 0,
+		ChainID: config.ChainID, AccountNumber: accountNumber, Sequence: sequence,
 		PubKey: privateKey.PubKey(), Address: signer.String(),
 	}
 	signBytes, err := authsigning.GetSignBytesAdapter(
@@ -484,7 +527,7 @@ func buildTransaction(
 		Data: &txsigning.SingleSignatureData{
 			SignMode: txsigning.SignMode_SIGN_MODE_DIRECT, Signature: signature,
 		},
-		Sequence: 0,
+		Sequence: sequence,
 	}
 	if err := builder.SetSignatures(finalSignature); err != nil {
 		fatalf("set %s final signature: %v", mode, err)
@@ -492,6 +535,33 @@ func buildTransaction(
 	raw, err := txConfig.TxEncoder()(builder.GetTx())
 	if err != nil {
 		fatalf("encode %s transaction: %v", mode, err)
+	}
+	if mode == "noncanonical" {
+		// Append a duplicate format_version field to the embedded extension.
+		// Protobuf accepts it, but deterministic re-marshalling removes the
+		// duplicate, so CanonicalPQCAuthTxDecoder must reject the wire bytes.
+		var txRaw txtypes.TxRaw
+		if err := txRaw.Unmarshal(raw); err != nil {
+			fatalf("decode noncanonical raw transaction: %v", err)
+		}
+		var body txtypes.TxBody
+		if err := body.Unmarshal(txRaw.BodyBytes); err != nil {
+			fatalf("decode noncanonical body: %v", err)
+		}
+		if len(body.ExtensionOptions) == 0 {
+			fatalf("noncanonical transaction has no extension")
+		}
+		option := body.ExtensionOptions[len(body.ExtensionOptions)-1]
+		option.Value = append(option.Value, 0x08, byte(pqctypes.FormatVersionV1))
+		bodyBytes, err := body.Marshal()
+		if err != nil {
+			fatalf("marshal noncanonical body: %v", err)
+		}
+		txRaw.BodyBytes = bodyBytes
+		raw, err = txRaw.Marshal()
+		if err != nil {
+			fatalf("marshal noncanonical raw transaction: %v", err)
+		}
 	}
 	return raw
 }

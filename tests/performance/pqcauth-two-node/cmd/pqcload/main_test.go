@@ -14,6 +14,7 @@ import (
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	"github.com/DoraFactory/doravota/app"
+	pqcante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 )
@@ -53,7 +54,7 @@ func TestBuildTransactionSignatures(t *testing.T) {
 			signer := sdk.AccAddress(test.privateKey.PubKey().Address())
 			raw := buildTransaction(
 				test.mode, test.privateKey, test.pqcKey, signer, recipient,
-				accountNumber, test.gas, config, networkID, encoding.TxConfig,
+				accountNumber, test.gas, 0, config, networkID, encoding.TxConfig,
 			)
 			decoded, err := encoding.TxConfig.TxDecoder()(raw)
 			require.NoError(t, err)
@@ -98,6 +99,68 @@ func TestBuildTransactionSignatures(t *testing.T) {
 			require.NoError(t, pqccrypto.Verify(
 				pqccrypto.AlgorithmMLDSA65, hybridPQC.PubKey().Bytes(), pqcSignBytes,
 				[]byte(pqctypes.TxSignatureContext), entry.Signature,
+			))
+		})
+	}
+}
+
+func TestBuildAdversarialTransactionsExerciseIntendedBoundary(t *testing.T) {
+	configureSDK()
+	encoding := app.MakeEncodingConfig()
+	config := fixtureConfig{
+		ChainID: "pqcload-adversarial-1", Denom: "peaka", Seed: "adversarial-unit-test",
+		Fee: defaultFee, Transfer: defaultTransfer,
+	}
+	networkID := pqctypes.NetworkIDForChain(config.ChainID)
+	recipientKey := secp256k1.GenPrivKeyFromSecret([]byte("adversarial-recipient"))
+	recipient := sdk.AccAddress(recipientKey.PubKey().Address())
+
+	for index, mode := range []string{"invalid-pqc", "oversized", "noncanonical", "bad-sequence"} {
+		t.Run(mode, func(t *testing.T) {
+			classic := secp256k1.GenPrivKeyFromSecret(deriveSeed(config.Seed, mode+"-classic", index))
+			hybrid, err := mldsa65.GenPrivKeyFromSeed(deriveSeed(config.Seed, mode+"-signing", index))
+			require.NoError(t, err)
+			sequence := uint64(0)
+			if mode == "bad-sequence" {
+				sequence = 1
+			}
+			signer := sdk.AccAddress(classic.PubKey().Address())
+			raw := buildTransaction(
+				mode, classic, hybrid.Bytes(), signer, recipient, uint64(2_000_000+index),
+				400_000, sequence, config, networkID, encoding.TxConfig,
+			)
+
+			if mode == "noncanonical" {
+				require.Error(t, pqcante.ValidateCanonicalPQCAuthWire(raw))
+				return
+			}
+			decoded, err := encoding.TxConfig.TxDecoder()(raw)
+			require.NoError(t, err)
+			provider := decoded.(protoTxProvider)
+			if mode == "bad-sequence" {
+				require.Empty(t, provider.GetProtoTx().Body.ExtensionOptions)
+				return
+			}
+			require.NoError(t, pqcante.ValidateCanonicalPQCAuthWire(raw))
+			require.Len(t, provider.GetProtoTx().Body.ExtensionOptions, 1)
+			option := provider.GetProtoTx().Body.ExtensionOptions[0]
+			if mode == "oversized" {
+				require.Greater(t, uint32(len(option.Value)), pqctypes.DefaultParams().EffectiveMaxPQCAuthBytes())
+				return
+			}
+			var extension pqctypes.ExtensionPQCAuth
+			require.NoError(t, extension.Unmarshal(option.Value))
+			require.Len(t, extension.Signatures, 1)
+			doc, err := pqctypes.NewPQCSignDocV1(
+				provider.GetProtoTx(), networkID, config.ChainID, uint64(2_000_000+index), 0, 0,
+				signer.String(), 1, pqctypes.Algorithm_ALGORITHM_ML_DSA_65, 1,
+			)
+			require.NoError(t, err)
+			signBytes, err := pqctypes.MarshalPQCSignDocV1(doc)
+			require.NoError(t, err)
+			require.Error(t, pqccrypto.Verify(
+				pqccrypto.AlgorithmMLDSA65, hybrid.PubKey().Bytes(), signBytes,
+				[]byte(pqctypes.TxSignatureContext), extension.Signatures[0].Signature,
 			))
 		})
 	}

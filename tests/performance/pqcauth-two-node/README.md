@@ -39,3 +39,38 @@ The defaults can be changed with environment variables such as
 `PQC_CAPACITY_NATIVE_COUNT`, `PQC_CAPACITY_NODE_MEMORY`, and the three CPU-set
 variables documented at the top of `run.sh`. `PQC_CAPACITY_BUILD_CACHE` can
 point multiple disposable runs at the same Go module and compiler cache.
+
+## Steady-state and adversarial profile
+
+The same constrained network can run with both validators continuously online.
+This profile sends a 40/30/30 mix of classic, PQC Auth hybrid, and native
+ML-DSA transactions at planned 30%, 60%, and 90% block-gas utilization. It then
+runs a 60% valid stream concurrently with rejected traffic containing:
+
+- correct-length but invalid ML-DSA signatures;
+- canonical pqcauth extensions above the byte limit;
+- non-canonical protobuf encodings; and
+- validly signed transactions with a bad account sequence.
+
+The default engineering run uses two minutes per phase and 300 rejected
+transactions per second. Durations and rates are configurable; a release soak
+should use at least 1-2 hours rather than treating the short default as a
+long-running stability result.
+
+```bash
+PQC_CAPACITY_PROFILE=stress \
+PQC_CAPACITY_WORK_DIR=/root/pqcauth-stress-$(date -u +%Y%m%dT%H%M%SZ) \
+  ./tests/performance/pqcauth-two-node/run.sh
+```
+
+Use `PQC_STRESS_DURATION`, `PQC_ADVERSARIAL_DURATION`,
+`PQC_ADVERSARIAL_RATE`, `PQC_STRESS_TARGETS`,
+`PQC_STRESS_VALID_WEIGHTS`, and `PQC_STRESS_ATTACK_WEIGHTS` to change the load
+plan. The resulting `stress-summary.json` reports confirmation latency, block
+intervals, consensus rounds, throughput, gas, bytes, and delivery failures.
+The rejected-stream summary groups outcomes by attack class and ABCI error
+code. Resource samples remain in `docker-stats.csv`.
+
+This remains a single-host test. It measures validation and consensus behavior
+under controlled CPU and memory limits, but it does not replace cross-machine
+latency, packet-loss, validator-HSM, or IBC-counterparty testing.
