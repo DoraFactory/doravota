@@ -39,6 +39,12 @@ def unconfirmed(base):
 
 
 def parse_time(value):
+    # CometBFT emits RFC3339Nano while Python 3.10's fromisoformat accepts at
+    # most microseconds. Preserve the original string in records and truncate
+    # only the value used for elapsed-time arithmetic.
+    if value.endswith("Z") and "." in value:
+        head, fraction = value[:-1].split(".", 1)
+        value = f"{head}.{fraction[:6].ljust(6, '0')}+00:00"
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
