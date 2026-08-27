@@ -31,4 +31,5 @@ ML-DSA gas calibration result, validator logs, and `capacity-summary.json`.
 The defaults can be changed with environment variables such as
 `PQC_CAPACITY_CLASSIC_COUNT`, `PQC_CAPACITY_HYBRID_COUNT`,
 `PQC_CAPACITY_NATIVE_COUNT`, `PQC_CAPACITY_NODE_MEMORY`, and the three CPU-set
-variables documented at the top of `run.sh`.
+variables documented at the top of `run.sh`. `PQC_CAPACITY_BUILD_CACHE` can
+point multiple disposable runs at the same Go module and compiler cache.

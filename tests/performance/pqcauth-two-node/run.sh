@@ -29,7 +29,7 @@ BROADCAST_CONCURRENCY="${PQC_CAPACITY_BROADCAST_CONCURRENCY:-32}"
 KEEP_RUNNING="${PQC_CAPACITY_KEEP_RUNNING:-0}"
 
 BIN_DIR="$WORK_DIR/bin"
-BUILD_CACHE="$WORK_DIR/build-cache"
+BUILD_CACHE="${PQC_CAPACITY_BUILD_CACHE:-$WORK_DIR/build-cache}"
 FIXTURE_DIR="$WORK_DIR/fixtures"
 NODE_DIR="$WORK_DIR/nodes"
 REPORT_DIR="$WORK_DIR/report"
@@ -161,6 +161,7 @@ initialize_network() {
 
   local recipient
   recipient="$(jq -r .address "$WORK_DIR/validator-0.json")"
+  printf fixture-generation >"$PHASE_FILE"
   log "generating independent classic, hybrid, and native ML-DSA transactions"
   pqcload generate --out "$FIXTURE_DIR" --chain-id "$CHAIN_ID" --recipient "$recipient" \
     --classic-count "$CLASSIC_COUNT" --hybrid-count "$HYBRID_COUNT" --native-count "$NATIVE_COUNT" \
@@ -171,11 +172,10 @@ initialize_network() {
     ($patch[0]) as $p
     | .app_state.auth.accounts += $p.auth_accounts
     | .app_state.bank.balances += $p.bank_balances
-    | ($p.supply_delta.peaka | tonumber) as $delta
-    | .app_state.bank.supply |= (
-        if any(.[]; .denom == "peaka") then
-          map(if .denom == "peaka" then .amount = (((.amount | tonumber) + $delta) | tostring) else . end)
-        else . + [{"denom":"peaka","amount":($delta | tostring)}] end
+    | .app_state.bank.supply = (
+        [.app_state.bank.balances[].coins[]]
+        | group_by(.denom)
+        | map({denom:.[0].denom,amount:(map(.amount | tonumber) | add | tostring)})
       )
     | .app_state.pqcauth.params.network_id = $p.network_id_base64
     | .app_state.pqcauth.keys += $p.pqc_keys
