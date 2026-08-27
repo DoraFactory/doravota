@@ -47,6 +47,11 @@ cleanup() {
   local exit_code=$?
   touch "$MONITOR_STOP" 2>/dev/null || true
   if [[ -n "${MONITOR_PID:-}" ]]; then wait "$MONITOR_PID" 2>/dev/null || true; fi
+  if (( exit_code != 0 )); then
+    docker logs "$NODE0_NAME" >"$LOG_DIR/node0-failure.log" 2>&1 || true
+    docker logs "$NODE1_NAME" >"$LOG_DIR/node1-failure.log" 2>&1 || true
+    docker inspect "$NODE0_NAME" "$NODE1_NAME" >"$REPORT_DIR/docker-inspect-failure.json" 2>/dev/null || true
+  fi
   if [[ "$KEEP_RUNNING" != "1" || $exit_code -ne 0 ]]; then
     docker rm -f "$NODE0_NAME" "$NODE1_NAME" >/dev/null 2>&1 || true
   fi

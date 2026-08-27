@@ -278,7 +278,16 @@ func generateMode(
 			privateKey = native
 		}
 		address := sdk.AccAddress(privateKey.PubKey().Address())
-		appendGenesisAccount(patch, address, *accountNumber, config.Denom, config.Balance)
+		var genesisPublicKey cryptotypes.PubKey
+		if mode == "hybrid" {
+			// Registered pqcauth accounts have already persisted their classic
+			// public key. Genesis validation deliberately rejects an unclassified
+			// account, so mirror that state only for the hybrid fixtures.
+			genesisPublicKey = privateKey.PubKey()
+		}
+		appendGenesisAccount(
+			patch, address, genesisPublicKey, *accountNumber, config.Denom, config.Balance,
+		)
 		if mode == "hybrid" {
 			appendHybridGenesis(patch, address, hybridSigning.PubKey().Bytes(), recoveryKey.PubKey().Bytes())
 		}
@@ -319,11 +328,30 @@ func generateMode(
 	}
 }
 
-func appendGenesisAccount(patch *genesisPatch, address sdk.AccAddress, accountNumber uint64, denom string, balance uint64) {
+func appendGenesisAccount(
+	patch *genesisPatch,
+	address sdk.AccAddress,
+	publicKey cryptotypes.PubKey,
+	accountNumber uint64,
+	denom string,
+	balance uint64,
+) {
+	var encodedPublicKey any
+	if publicKey != nil {
+		switch key := publicKey.(type) {
+		case *secp256k1.PubKey:
+			encodedPublicKey = map[string]any{
+				"@type": "/cosmos.crypto.secp256k1.PubKey",
+				"key":   base64.StdEncoding.EncodeToString(key.Bytes()),
+			}
+		default:
+			fatalf("unsupported fixture genesis public key type %T", publicKey)
+		}
+	}
 	patch.AuthAccounts = append(patch.AuthAccounts, map[string]any{
 		"@type":          "/cosmos.auth.v1beta1.BaseAccount",
 		"address":        address.String(),
-		"pub_key":        nil,
+		"pub_key":        encodedPublicKey,
 		"account_number": fmt.Sprintf("%d", accountNumber),
 		"sequence":       "0",
 	})

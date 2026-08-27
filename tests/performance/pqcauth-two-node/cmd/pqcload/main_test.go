@@ -113,9 +113,9 @@ func TestGenesisPatchUsesIndependentAccountsAndHybridPolicies(t *testing.T) {
 	require.NoError(t, err)
 
 	var patch genesisPatch
-	appendGenesisAccount(&patch, sdk.AccAddress(classic.PubKey().Address()), 100, "peaka", 1_000)
+	appendGenesisAccount(&patch, sdk.AccAddress(classic.PubKey().Address()), nil, 100, "peaka", 1_000)
 	owner := sdk.AccAddress(hybrid.PubKey().Address())
-	appendGenesisAccount(&patch, owner, 101, "peaka", 1_000)
+	appendGenesisAccount(&patch, owner, hybrid.PubKey(), 101, "peaka", 1_000)
 	appendHybridGenesis(&patch, owner, signing.PubKey().Bytes(), recovery.PubKey().Bytes())
 
 	require.Len(t, patch.AuthAccounts, 2)
@@ -124,4 +124,6 @@ func TestGenesisPatchUsesIndependentAccountsAndHybridPolicies(t *testing.T) {
 	require.Len(t, patch.PQCPolicies, 1)
 	require.Len(t, patch.PQCKeySequences, 1)
 	require.NotEqual(t, patch.PQCKeys[0]["public_key"], patch.PQCKeys[1]["public_key"])
+	require.Nil(t, patch.AuthAccounts[0]["pub_key"])
+	require.NotNil(t, patch.AuthAccounts[1]["pub_key"])
 }
