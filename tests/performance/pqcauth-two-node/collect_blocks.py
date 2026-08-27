@@ -7,15 +7,26 @@ import datetime as dt
 import json
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 
 
-def rpc(base, path, params=None):
+def rpc(base, path, params=None, retry_seconds=20):
     url = base.rstrip("/") + path
     if params:
         url += "?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(url, timeout=10) as response:
-        return json.load(response)["result"]
+    deadline = time.time() + retry_seconds
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                return json.load(response)["result"]
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+            if time.time() >= deadline:
+                raise
+            # /status can expose a committed height just before its block
+            # results become queryable. Treat that short indexing gap as a
+            # transient RPC condition, not a failed benchmark.
+            time.sleep(0.25)
 
 
 def height(base):
