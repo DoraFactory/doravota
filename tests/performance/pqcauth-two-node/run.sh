@@ -356,24 +356,34 @@ run_mode() {
 
 run_stress_phase() {
   local name="$1" expected="$2" rate="$3" start_height broadcast_exit accepted rejected timeout
+  local observer_stop observer_pid observer_exit
   printf '%s' "$name" >"$PHASE_FILE"
   start_height="$(height 0)"
+  observer_stop="$WORK_DIR/$name-observer.stop"
+  timeout="$((STRESS_DURATION + 900))"
+  python3 "$SCRIPT_DIR/collect_stress.py" watch --rpc "$(node_rpc 0)" \
+    --start-height "$start_height" --stop-file "$observer_stop" \
+    --blocks-out "$REPORT_DIR/$name-blocks.jsonl" --timeout "$timeout" \
+    >"$REPORT_DIR/$name-observer.stdout" 2>"$REPORT_DIR/$name-observer.stderr" &
+  observer_pid=$!
   log "running $name: expected=$expected, paced_rate=$rate tx/s"
   set +e
   pqcload broadcast --input "$STREAM_DIR/$name.txs.jsonl" --rpc "$(node_rpc 0)" \
     --out "$REPORT_DIR/$name-broadcast-results.jsonl" --concurrency "$BROADCAST_CONCURRENCY" \
     --rate "$rate" --expect accepted >"$REPORT_DIR/$name-broadcast-summary.json"
   broadcast_exit=$?
+  touch "$observer_stop"
+  wait "$observer_pid"; observer_exit=$?
   set -e
   accepted="$(jq -r .accepted "$REPORT_DIR/$name-broadcast-summary.json")"
   rejected="$(jq -r .rejected "$REPORT_DIR/$name-broadcast-summary.json")"
   [[ "$broadcast_exit" == "0" && "$accepted" == "$expected" && "$rejected" == "0" ]] \
     || die "$name broadcast failed: accepted=$accepted rejected=$rejected exit=$broadcast_exit"
-  timeout="$((STRESS_DURATION + 900))"
-  python3 "$SCRIPT_DIR/collect_stress.py" --rpc "$(node_rpc 0)" --phase "$name" \
-    --start-height "$start_height" --broadcast-results "$REPORT_DIR/$name-broadcast-results.jsonl" \
-    --blocks-out "$REPORT_DIR/$name-blocks.jsonl" --summary-out "$REPORT_DIR/$name-summary.json" \
-    --timeout "$timeout" >"$REPORT_DIR/$name-summary.stdout.json"
+  [[ "$observer_exit" == "0" ]] || die "$name live block observer failed: exit=$observer_exit"
+  python3 "$SCRIPT_DIR/collect_stress.py" analyze --phase "$name" \
+    --broadcast-results "$REPORT_DIR/$name-broadcast-results.jsonl" \
+    --observations "$REPORT_DIR/$name-blocks.jsonl" --summary-out "$REPORT_DIR/$name-summary.json" \
+    >"$REPORT_DIR/$name-summary.stdout.json"
   [[ "$(jq -r .failed_deliveries "$REPORT_DIR/$name-summary.json")" == "0" ]] \
     || die "$name committed failed DeliverTx results"
   log "$name complete: $(jq -c '{committed_transactions,committed_transactions_per_second,confirmation_latency_seconds,block_interval_seconds,consensus_rounds}' "$REPORT_DIR/$name-summary.json")"
@@ -382,6 +392,7 @@ run_stress_phase() {
 run_adversarial_phase() {
   local valid_name attack_name valid_expected valid_rate attack_expected attack_rate start_height
   local valid_pid attack_pid valid_exit attack_exit valid_accepted valid_rejected attack_accepted attack_rejected
+  local observer_stop observer_pid observer_exit
   valid_name="$(jq -r '.adversarial_phase.concurrent_valid_phase' "$REPORT_DIR/stress-plan.json")"
   attack_name="$(jq -r '.adversarial_phase.name' "$REPORT_DIR/stress-plan.json")"
   valid_expected="$(jq -r --arg name "$valid_name" '.valid_phases[] | select(.name==$name) | .total_transactions' "$REPORT_DIR/stress-plan.json")"
@@ -390,6 +401,12 @@ run_adversarial_phase() {
   attack_rate="$(jq -r '.adversarial_phase.rate_per_second' "$REPORT_DIR/stress-plan.json")"
   printf adversarial >"$PHASE_FILE"
   start_height="$(height 0)"
+  observer_stop="$WORK_DIR/$valid_name-observer.stop"
+  python3 "$SCRIPT_DIR/collect_stress.py" watch --rpc "$(node_rpc 0)" \
+    --start-height "$start_height" --stop-file "$observer_stop" \
+    --blocks-out "$REPORT_DIR/$valid_name-blocks.jsonl" --timeout "$((ADVERSARIAL_DURATION + 900))" \
+    >"$REPORT_DIR/$valid_name-observer.stdout" 2>"$REPORT_DIR/$valid_name-observer.stderr" &
+  observer_pid=$!
   log "running adversarial phase: valid=$valid_expected@$valid_rate tx/s, rejected=$attack_expected@$attack_rate tx/s"
 
   set +e
@@ -403,6 +420,8 @@ run_adversarial_phase() {
   valid_pid=$!
   wait "$valid_pid"; valid_exit=$?
   wait "$attack_pid"; attack_exit=$?
+  touch "$observer_stop"
+  wait "$observer_pid"; observer_exit=$?
   set -e
 
   valid_accepted="$(jq -r .accepted "$REPORT_DIR/$valid_name-broadcast-summary.json")"
@@ -413,11 +432,12 @@ run_adversarial_phase() {
     || die "adversarial valid stream failed: accepted=$valid_accepted rejected=$valid_rejected exit=$valid_exit"
   [[ "$attack_exit" == "0" && "$attack_accepted" == "0" && "$attack_rejected" == "$attack_expected" ]] \
     || die "adversarial rejection stream failed: accepted=$attack_accepted rejected=$attack_rejected exit=$attack_exit"
+  [[ "$observer_exit" == "0" ]] || die "adversarial live block observer failed: exit=$observer_exit"
 
-  python3 "$SCRIPT_DIR/collect_stress.py" --rpc "$(node_rpc 0)" --phase "$valid_name" \
-    --start-height "$start_height" --broadcast-results "$REPORT_DIR/$valid_name-broadcast-results.jsonl" \
-    --blocks-out "$REPORT_DIR/$valid_name-blocks.jsonl" --summary-out "$REPORT_DIR/$valid_name-summary.json" \
-    --timeout "$((ADVERSARIAL_DURATION + 900))" >"$REPORT_DIR/$valid_name-summary.stdout.json"
+  python3 "$SCRIPT_DIR/collect_stress.py" analyze --phase "$valid_name" \
+    --broadcast-results "$REPORT_DIR/$valid_name-broadcast-results.jsonl" \
+    --observations "$REPORT_DIR/$valid_name-blocks.jsonl" --summary-out "$REPORT_DIR/$valid_name-summary.json" \
+    >"$REPORT_DIR/$valid_name-summary.stdout.json"
   [[ "$(jq -r .failed_deliveries "$REPORT_DIR/$valid_name-summary.json")" == "0" ]] \
     || die "adversarial valid stream committed failed DeliverTx results"
   log "adversarial phase complete: $(jq -c '{committed_transactions,confirmation_latency_seconds,block_interval_seconds,consensus_rounds}' "$REPORT_DIR/$valid_name-summary.json")"
@@ -486,9 +506,14 @@ if [[ "$PROFILE" == "capacity" ]]; then
   log "benchmark complete: $REPORT_DIR/capacity-summary.json"
   cat "$REPORT_DIR/capacity-summary.json"
 else
+  summary_paths=()
+  while IFS= read -r phase; do
+    summary_paths+=("$REPORT_DIR/$phase-summary.json")
+  done < <(jq -r '.valid_phases[].name' "$REPORT_DIR/stress-plan.json")
   jq -n --slurpfile plan "$REPORT_DIR/stress-plan.json" \
-    --slurpfile summaries <(jq -s '.' "$REPORT_DIR"/steady-*-summary.json "$REPORT_DIR"/adversarial-valid-*-summary.json) \
-    '{generated_at_utc:(now|todate),plan:$plan[0],phases:$summaries[0]}' \
+    --slurpfile summaries <(jq -s '.' "${summary_paths[@]}") \
+    --slurpfile adversarial "$REPORT_DIR/adversarial-rejected-broadcast-summary.json" \
+    '{generated_at_utc:(now|todate),plan:$plan[0],phases:$summaries[0],adversarial_rejections:$adversarial[0]}' \
     >"$REPORT_DIR/stress-summary.json"
   log "stress benchmark complete: $REPORT_DIR/stress-summary.json"
   cat "$REPORT_DIR/stress-summary.json"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect block, confirmation-latency, and consensus-round metrics for a load phase."""
+"""Observe live blocks and analyze confirmation metrics for a load phase."""
 
 import argparse
 import base64
@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -22,7 +23,10 @@ def rpc(base, path, params=None, retry_seconds=20):
     while True:
         try:
             with urllib.request.urlopen(url, timeout=10) as response:
-                return json.load(response)["result"]
+                payload = json.load(response)
+                if "result" not in payload:
+                    raise urllib.error.URLError(payload.get("error", "missing RPC result"))
+                return payload["result"]
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             if time.time() >= deadline:
                 raise
@@ -36,12 +40,66 @@ def parse_time(value):
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
+def utc_now():
+    return dt.datetime.now(dt.timezone.utc)
+
+
 def percentile(values, quantile):
     if not values:
         return 0.0
     ordered = sorted(values)
     index = min(len(ordered) - 1, max(0, math.ceil(quantile * len(ordered)) - 1))
     return ordered[index]
+
+
+def unconfirmed(base):
+    result = rpc(base, "/num_unconfirmed_txs")
+    return int(result.get("n_txs", result.get("total", "0")))
+
+
+def observe(args):
+    next_height = args.start_height + 1
+    previous_block_time = None
+    deadline = time.time() + args.timeout
+    with open(args.blocks_out, "x", encoding="utf-8", buffering=1) as output:
+        while time.time() < deadline:
+            latest = int(rpc(args.rpc, "/status")["sync_info"]["latest_block_height"])
+            while next_height <= latest:
+                block_response = rpc(args.rpc, "/block", {"height": next_height})
+                block = block_response["block"]
+                results = rpc(args.rpc, "/block_results", {"height": next_height})
+                commit = rpc(args.rpc, "/commit", {"height": next_height})
+                observed_at = utc_now()
+                txs = block.get("data", {}).get("txs") or []
+                tx_results = results.get("txs_results") or []
+                block_time = parse_time(block["header"]["time"])
+                interval = 0.0 if previous_block_time is None else (block_time - previous_block_time).total_seconds()
+                previous_block_time = block_time
+                record = {
+                    "height": next_height,
+                    "header_time": block["header"]["time"],
+                    "observed_at_utc": observed_at.isoformat().replace("+00:00", "Z"),
+                    "interval_seconds": interval,
+                    "consensus_round": int(commit["signed_header"]["commit"].get("round", 0)),
+                    "tx_count": len(txs),
+                    "tx_hashes": [hashlib.sha256(base64.b64decode(value)).hexdigest() for value in txs],
+                    "tx_bytes": sum(len(base64.b64decode(value)) for value in txs),
+                    "gas_wanted": sum(int(item.get("gas_wanted", "0")) for item in tx_results),
+                    "gas_used": sum(int(item.get("gas_used", "0")) for item in tx_results),
+                    "failed_deliveries": sum(1 for item in tx_results if int(item.get("code", 0)) != 0),
+                    "block_hash": block_response.get("block_id", {}).get("hash", ""),
+                }
+                output.write(json.dumps(record, separators=(",", ":")) + "\n")
+                next_height += 1
+
+            if os.path.exists(args.stop_file) and unconfirmed(args.rpc) == 0:
+                # Re-read status once after the empty-mempool observation so a
+                # just-committed height cannot be missed by the prior snapshot.
+                final_latest = int(rpc(args.rpc, "/status")["sync_info"]["latest_block_height"])
+                if next_height > final_latest:
+                    return
+            time.sleep(0.1)
+    raise SystemExit(f"observer timeout at next height {next_height}")
 
 
 def load_expected(path):
@@ -61,93 +119,47 @@ def load_expected(path):
     return expected
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--rpc", required=True)
-    parser.add_argument("--phase", required=True)
-    parser.add_argument("--start-height", required=True, type=int)
-    parser.add_argument("--broadcast-results", required=True)
-    parser.add_argument("--blocks-out", required=True)
-    parser.add_argument("--summary-out", required=True)
-    parser.add_argument("--timeout", type=int, default=1200)
-    args = parser.parse_args()
-
+def analyze(args):
     expected = load_expected(args.broadcast_results)
     if not expected:
-        raise SystemExit("no accepted transaction hashes to collect")
+        raise SystemExit("no accepted transaction hashes to analyze")
     found = {}
     records = []
-    next_height = args.start_height + 1
-    deadline = time.time() + args.timeout
-    previous_block_time = None
-
-    while time.time() < deadline:
-        status = rpc(args.rpc, "/status")
-        latest = int(status["sync_info"]["latest_block_height"])
-        while next_height <= latest:
-            block_response = rpc(args.rpc, "/block", {"height": next_height})
-            block = block_response["block"]
-            results = rpc(args.rpc, "/block_results", {"height": next_height})
-            commit = rpc(args.rpc, "/commit", {"height": next_height})
-            txs = block.get("data", {}).get("txs") or []
-            tx_results = results.get("txs_results") or []
-            block_time = parse_time(block["header"]["time"])
-            interval = 0.0 if previous_block_time is None else (block_time - previous_block_time).total_seconds()
-            previous_block_time = block_time
-            matched = 0
+    with open(args.observations, encoding="utf-8") as source:
+        for line in source:
+            record = json.loads(line)
+            observed_at = parse_time(record["observed_at_utc"])
             matched_modes = Counter()
-            latencies = []
-            for encoded in txs:
-                raw = base64.b64decode(encoded)
-                tx_hash = hashlib.sha256(raw).hexdigest()
+            matched_latencies = []
+            for tx_hash in record.pop("tx_hashes"):
                 metadata = expected.get(tx_hash)
                 if metadata is None:
                     continue
-                latency = (block_time - metadata["submitted"]).total_seconds()
+                latency = (observed_at - metadata["submitted"]).total_seconds()
+                if latency < 0:
+                    raise SystemExit(
+                        f"negative observed confirmation latency {latency} for {tx_hash}"
+                    )
                 found[tx_hash] = {
-                    "height": next_height,
-                    "block_time": block["header"]["time"],
+                    "height": record["height"],
+                    "observed_at": observed_at,
                     "latency_seconds": latency,
                     "mode": metadata["mode"],
                 }
-                matched += 1
                 matched_modes[metadata["mode"]] += 1
-                latencies.append(latency)
-            record = {
-                "phase": args.phase,
-                "height": next_height,
-                "time": block["header"]["time"],
-                "interval_seconds": interval,
-                "consensus_round": int(commit["signed_header"]["commit"].get("round", 0)),
-                "tx_count": len(txs),
-                "matched_transactions": matched,
-                "matched_modes": dict(matched_modes),
-                "tx_bytes": sum(len(base64.b64decode(value)) for value in txs),
-                "gas_wanted": sum(int(item.get("gas_wanted", "0")) for item in tx_results),
-                "gas_used": sum(int(item.get("gas_used", "0")) for item in tx_results),
-                "failed_deliveries": sum(1 for item in tx_results if int(item.get("code", 0)) != 0),
-                "matched_latency_p50_seconds": percentile(latencies, 0.50),
-                "matched_latency_p99_seconds": percentile(latencies, 0.99),
-                "block_hash": block_response.get("block_id", {}).get("hash", ""),
-            }
+                matched_latencies.append(latency)
+            record["phase"] = args.phase
+            record["matched_transactions"] = len(matched_latencies)
+            record["matched_modes"] = dict(matched_modes)
+            record["matched_latency_p50_seconds"] = percentile(matched_latencies, 0.50)
+            record["matched_latency_p99_seconds"] = percentile(matched_latencies, 0.99)
             records.append(record)
-            next_height += 1
 
-        unconfirmed = rpc(args.rpc, "/num_unconfirmed_txs")
-        pending = int(unconfirmed.get("n_txs", unconfirmed.get("total", "0")))
-        if len(found) == len(expected) and pending == 0:
-            break
-        time.sleep(0.5)
-    else:
-        missing = list(set(expected) - set(found))[:5]
+    missing = set(expected) - set(found)
+    if missing:
         raise SystemExit(
-            f"timeout: found={len(found)}, expected={len(expected)}, sample_missing={missing}"
+            f"observations missing {len(missing)} accepted transactions; sample={list(missing)[:5]}"
         )
-
-    with open(args.blocks_out, "x", encoding="utf-8") as output:
-        for record in records:
-            output.write(json.dumps(record, separators=(",", ":")) + "\n")
-
     all_latencies = [item["latency_seconds"] for item in found.values()]
     by_mode = defaultdict(list)
     for item in found.values():
@@ -155,12 +167,12 @@ def main():
     nonempty = [item for item in records if item["matched_transactions"]]
     intervals = [item["interval_seconds"] for item in records if item["interval_seconds"] > 0]
     first_submit = min(item["submitted"] for item in expected.values())
-    last_commit = max(parse_time(item["block_time"]) for item in found.values())
-    wall_seconds = max(0.0, (last_commit - first_submit).total_seconds())
+    last_observed = max(item["observed_at"] for item in found.values())
+    wall_seconds = max(0.0, (last_observed - first_submit).total_seconds())
     summary = {
         "phase": args.phase,
-        "start_height": args.start_height,
-        "last_observed_height": records[-1]["height"] if records else args.start_height,
+        "first_observed_height": records[0]["height"] if records else None,
+        "last_observed_height": records[-1]["height"] if records else None,
         "expected_transactions": len(expected),
         "committed_transactions": len(found),
         "failed_deliveries": sum(item["failed_deliveries"] for item in records),
@@ -168,6 +180,8 @@ def main():
         "wall_seconds": wall_seconds,
         "committed_transactions_per_second": len(found) / wall_seconds if wall_seconds else 0,
         "confirmation_latency_seconds": {
+            "basis": "observer_wall_clock_minus_submission_wall_clock",
+            "observer_poll_interval_seconds": 0.1,
             "p50": percentile(all_latencies, 0.50),
             "p95": percentile(all_latencies, 0.95),
             "p99": percentile(all_latencies, 0.99),
@@ -183,6 +197,7 @@ def main():
             for mode, values in sorted(by_mode.items())
         },
         "block_interval_seconds": {
+            "basis": "successive_block_header_times",
             "p50": percentile(intervals, 0.50),
             "p95": percentile(intervals, 0.95),
             "p99": percentile(intervals, 0.99),
@@ -198,6 +213,30 @@ def main():
         json.dump(summary, output, indent=2)
         output.write("\n")
     print(json.dumps(summary, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    watch = subparsers.add_parser("watch")
+    watch.add_argument("--rpc", required=True)
+    watch.add_argument("--start-height", type=int, required=True)
+    watch.add_argument("--stop-file", required=True)
+    watch.add_argument("--blocks-out", required=True)
+    watch.add_argument("--timeout", type=int, default=1800)
+
+    report = subparsers.add_parser("analyze")
+    report.add_argument("--phase", required=True)
+    report.add_argument("--broadcast-results", required=True)
+    report.add_argument("--observations", required=True)
+    report.add_argument("--summary-out", required=True)
+
+    args = parser.parse_args()
+    if args.command == "watch":
+        observe(args)
+    else:
+        analyze(args)
 
 
 if __name__ == "__main__":
