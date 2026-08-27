@@ -27,6 +27,8 @@ PQC_CAPACITY_WORK_DIR=/root/pqcauth-capacity-$(date -u +%Y%m%dT%H%M%SZ) \
 The work directory contains the genesis fixture manifest, CheckTx results,
 per-block transaction/byte/gas records, Docker CPU and memory samples, the
 ML-DSA gas calibration result, validator logs, and `capacity-summary.json`.
+Genesis bank supply is recomputed with arbitrary-precision integer arithmetic,
+so DORA's 18-decimal staking amounts are not rounded by JSON tooling.
 
 The defaults can be changed with environment variables such as
 `PQC_CAPACITY_CLASSIC_COUNT`, `PQC_CAPACITY_HYBRID_COUNT`,

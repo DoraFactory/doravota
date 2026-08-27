@@ -150,11 +150,11 @@ initialize_network() {
 
   for index in 0 1; do
     address="$(jq -r .address "$WORK_DIR/validator-$index.json")"
-    dorad add-genesis-account "$address" 1000000000000000peaka --home "$(node_home 0)"
+    dorad add-genesis-account "$address" 1000000000000000000000000peaka --home "$(node_home 0)"
   done
   cp "$genesis" "$(node_home 1)/config/genesis.json"
   for index in 0 1; do
-    dorad gentx "validator-$index" 1000000000000peaka --chain-id "$CHAIN_ID" \
+    dorad gentx "validator-$index" 1000000000000000000000peaka --chain-id "$CHAIN_ID" \
       --keyring-backend test --home "$(node_home "$index")" \
       --moniker "pqcauth-capacity-validator-$index" \
       >"$LOG_DIR/node$index-gentx.json" 2>"$LOG_DIR/node$index-gentx.stderr"
@@ -177,11 +177,6 @@ initialize_network() {
     ($patch[0]) as $p
     | .app_state.auth.accounts += $p.auth_accounts
     | .app_state.bank.balances += $p.bank_balances
-    | .app_state.bank.supply = (
-        [.app_state.bank.balances[].coins[]]
-        | group_by(.denom)
-        | map({denom:.[0].denom,amount:(map(.amount | tonumber) | add | tostring)})
-      )
     | .app_state.pqcauth.params.network_id = $p.network_id_base64
     | .app_state.pqcauth.keys += $p.pqc_keys
     | .app_state.pqcauth.policies += $p.pqc_policies
@@ -197,6 +192,7 @@ initialize_network() {
       }
   ' "$genesis" >"$temporary"
   mv "$temporary" "$genesis"
+  python3 "$SCRIPT_DIR/normalize_genesis_supply.py" "$genesis"
   dorad validate-genesis --home "$(node_home 0)" >"$REPORT_DIR/validate-genesis.log" 2>"$REPORT_DIR/validate-genesis.stderr"
   cp "$genesis" "$(node_home 1)/config/genesis.json"
 
