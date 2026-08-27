@@ -68,8 +68,13 @@ Use `PQC_STRESS_DURATION`, `PQC_ADVERSARIAL_DURATION`,
 `PQC_STRESS_VALID_WEIGHTS`, and `PQC_STRESS_ATTACK_WEIGHTS` to change the load
 plan. The resulting `stress-summary.json` reports confirmation latency, block
 intervals, consensus rounds, throughput, gas, bytes, and delivery failures.
+Confirmation latency uses a live observer's wall clock at committed-block
+observation time; block-header time is deliberately not treated as a commit
+timestamp. The observer polling interval and metric basis are embedded in each
+summary.
 The rejected-stream summary groups outcomes by attack class and ABCI error
-code. Resource samples remain in `docker-stats.csv`.
+code. Resource samples remain in `docker-stats.csv`, and validator runtime logs
+are preserved before disposable containers are removed.
 
 This remains a single-host test. It measures validation and consensus behavior
 under controlled CPU and memory limits, but it does not replace cross-machine
