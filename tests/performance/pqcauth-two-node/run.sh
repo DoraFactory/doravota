@@ -20,9 +20,9 @@ CHAIN_ID="${PQC_CAPACITY_CHAIN_ID:-pqcauth-capacity-$RUN_ID}"
 CLASSIC_COUNT="${PQC_CAPACITY_CLASSIC_COUNT:-1250}"
 HYBRID_COUNT="${PQC_CAPACITY_HYBRID_COUNT:-300}"
 NATIVE_COUNT="${PQC_CAPACITY_NATIVE_COUNT:-480}"
-CLASSIC_GAS="${PQC_CAPACITY_CLASSIC_GAS:-90000}"
+CLASSIC_GAS="${PQC_CAPACITY_CLASSIC_GAS:-120000}"
 HYBRID_GAS="${PQC_CAPACITY_HYBRID_GAS:-400000}"
-NATIVE_GAS="${PQC_CAPACITY_NATIVE_GAS:-250000}"
+NATIVE_GAS="${PQC_CAPACITY_NATIVE_GAS:-320000}"
 BLOCK_MAX_GAS="${PQC_CAPACITY_BLOCK_MAX_GAS:-100000000}"
 BLOCK_MAX_BYTES="${PQC_CAPACITY_BLOCK_MAX_BYTES:-22020096}"
 BROADCAST_CONCURRENCY="${PQC_CAPACITY_BROADCAST_CONCURRENCY:-32}"
@@ -301,6 +301,10 @@ run_mode() {
     --start-height "$start_height" --expected "$expected" \
     --blocks-out "$REPORT_DIR/$mode-blocks.jsonl" --summary-out "$REPORT_DIR/$mode-block-summary.json" \
     >"$REPORT_DIR/$mode-block-summary.stdout.json"
+  local failed_deliveries
+  failed_deliveries="$(jq -r .failed_deliveries "$REPORT_DIR/$mode-block-summary.json")"
+  [[ "$failed_deliveries" == "0" ]] \
+    || die "$mode committed $failed_deliveries failed DeliverTx results"
   log "$mode complete: $(jq -c '{committed_transactions,nonempty_blocks,max_transactions_in_one_block,max_gas_used_in_one_block}' "$REPORT_DIR/$mode-block-summary.json")"
 }
 

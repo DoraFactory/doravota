@@ -17,6 +17,10 @@ transactions from one account from being admitted before a block commits.
 Generated private keys are deterministic test fixtures and must never be used
 outside the disposable benchmark network.
 
+The default per-transaction gas limits include measured headroom for first-use
+account state writes: 120,000 classic, 400,000 hybrid, and 320,000 native
+ML-DSA. Any failed DeliverTx result makes the benchmark fail.
+
 Run on the target Linux server from the repository root:
 
 ```bash
