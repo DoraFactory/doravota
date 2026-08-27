@@ -71,6 +71,7 @@ type fixtureConfig struct {
 	ClassicGas        uint64 `json:"classic_gas_limit"`
 	HybridGas         uint64 `json:"hybrid_gas_limit"`
 	NativeGas         uint64 `json:"native_gas_limit"`
+	OversizedGas      uint64 `json:"oversized_gas_limit"`
 	Balance           uint64 `json:"balance_per_account"`
 	Fee               int64  `json:"fee_per_transaction"`
 	Transfer          int64  `json:"transfer_per_transaction"`
@@ -156,6 +157,7 @@ func generate(arguments []string) {
 	classicGas := flags.Uint64("classic-gas", 120_000, "gas limit per classic transaction")
 	hybridGas := flags.Uint64("hybrid-gas", 400_000, "gas limit per hybrid transaction")
 	nativeGas := flags.Uint64("native-gas", 320_000, "gas limit per native transaction")
+	oversizedGas := flags.Uint64("oversized-gas", 2_000_000, "gas limit for oversized-extension rejection fixtures")
 	balance := flags.Uint64("balance", defaultBalance, "genesis balance per generated account")
 	fee := flags.Int64("fee", defaultFee, "fee amount per transaction")
 	transfer := flags.Int64("transfer", defaultTransfer, "transfer amount per transaction")
@@ -169,7 +171,7 @@ func generate(arguments []string) {
 	if *classicCount < 0 || *hybridCount < 0 || *nativeCount < 0 ||
 		*invalidPQCCount < 0 || *oversizedCount < 0 || *nonCanonicalCount < 0 || *badSequenceCount < 0 ||
 		*classicCount+*hybridCount+*nativeCount+*invalidPQCCount+*oversizedCount+*nonCanonicalCount+*badSequenceCount == 0 ||
-		*classicGas == 0 || *hybridGas == 0 || *nativeGas == 0 ||
+		*classicGas == 0 || *hybridGas == 0 || *nativeGas == 0 || *oversizedGas == 0 ||
 		*balance == 0 || *fee < 0 || *transfer <= 0 ||
 		uint64(*fee)+uint64(*transfer) > *balance {
 		fatalf("invalid count, gas, balance, fee, or transfer argument")
@@ -191,7 +193,8 @@ func generate(arguments []string) {
 		InvalidPQCCount: *invalidPQCCount, OversizedCount: *oversizedCount,
 		NonCanonicalCount: *nonCanonicalCount, BadSequenceCount: *badSequenceCount,
 		ClassicGas: *classicGas, HybridGas: *hybridGas, NativeGas: *nativeGas,
-		Balance: *balance, Fee: *fee, Transfer: *transfer,
+		OversizedGas: *oversizedGas,
+		Balance:      *balance, Fee: *fee, Transfer: *transfer,
 	}
 	encoding := app.MakeEncodingConfig()
 	networkID := pqctypes.NetworkIDForChain(*chainID)
@@ -229,7 +232,7 @@ func generate(arguments []string) {
 	generateMode("hybrid", *hybridCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["hybrid"])
 	generateMode("native", *nativeCount, *nativeGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["native"])
 	generateMode("invalid-pqc", *invalidPQCCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["invalid-pqc"])
-	generateMode("oversized", *oversizedCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["oversized"])
+	generateMode("oversized", *oversizedCount, *oversizedGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["oversized"])
 	generateMode("noncanonical", *nonCanonicalCount, *hybridGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["noncanonical"])
 	generateMode("bad-sequence", *badSequenceCount, *classicGas, &accountNumber, config, networkID, recoveryKey, recipient, encoding.TxConfig, &patch, writers["bad-sequence"])
 	closeWriters(writers)

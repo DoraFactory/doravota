@@ -24,6 +24,7 @@ NATIVE_COUNT="${PQC_CAPACITY_NATIVE_COUNT:-480}"
 CLASSIC_GAS="${PQC_CAPACITY_CLASSIC_GAS:-120000}"
 HYBRID_GAS="${PQC_CAPACITY_HYBRID_GAS:-400000}"
 NATIVE_GAS="${PQC_CAPACITY_NATIVE_GAS:-320000}"
+OVERSIZED_GAS="${PQC_CAPACITY_OVERSIZED_GAS:-2000000}"
 BLOCK_MAX_GAS="${PQC_CAPACITY_BLOCK_MAX_GAS:-100000000}"
 BLOCK_MAX_BYTES="${PQC_CAPACITY_BLOCK_MAX_BYTES:-22020096}"
 BROADCAST_CONCURRENCY="${PQC_CAPACITY_BROADCAST_CONCURRENCY:-32}"
@@ -214,6 +215,7 @@ initialize_network() {
     --invalid-pqc-count "$INVALID_PQC_COUNT" --oversized-count "$OVERSIZED_COUNT" \
     --noncanonical-count "$NONCANONICAL_COUNT" --bad-sequence-count "$BAD_SEQUENCE_COUNT" \
     --classic-gas "$CLASSIC_GAS" --hybrid-gas "$HYBRID_GAS" --native-gas "$NATIVE_GAS" \
+    --oversized-gas "$OVERSIZED_GAS" \
     >"$REPORT_DIR/fixture-manifest.json"
 
   jq --slurpfile patch "$FIXTURE_DIR/genesis-patch.json" --arg max_bytes "$BLOCK_MAX_BYTES" --arg max_gas "$BLOCK_MAX_GAS" '
@@ -435,6 +437,19 @@ run_adversarial_phase() {
     || die "adversarial valid stream failed: accepted=$valid_accepted rejected=$valid_rejected exit=$valid_exit"
   [[ "$attack_exit" == "0" && "$attack_accepted" == "0" && "$attack_rejected" == "$attack_expected" ]] \
     || die "adversarial rejection stream failed: accepted=$attack_accepted rejected=$attack_rejected exit=$attack_exit"
+  jq -e '
+    def exact($mode; $code):
+      .mode_outcomes[$mode] as $out
+      | $out.accepted == 0
+      and $out.rejected == $out.total
+      and ($out.code_counts | keys) == [$code]
+      and $out.code_counts[$code] == $out.total;
+    exact("invalid-pqc"; "pqcauth/10")
+    and exact("oversized"; "pqcauth/12")
+    and exact("noncanonical"; "sdk/2")
+    and exact("bad-sequence"; "sdk/32")
+  ' "$REPORT_DIR/$attack_name-broadcast-summary.json" >/dev/null \
+    || die "adversarial fixtures did not reach their intended validation boundaries"
   [[ "$observer_exit" == "0" ]] || die "adversarial live block observer failed: exit=$observer_exit"
 
   python3 "$SCRIPT_DIR/collect_stress.py" analyze --phase "$valid_name" \

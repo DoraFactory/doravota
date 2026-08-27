@@ -76,6 +76,11 @@ The rejected-stream summary groups outcomes by attack class and ABCI error
 code. Resource samples remain in `docker-stats.csv`, and validator runtime logs
 are preserved before disposable containers are removed.
 
+Oversized-extension fixtures use a separate 2,000,000 gas limit so standard
+transaction-size gas accounting cannot reject them before the pqcauth byte-cap
+check. The run fails unless every attack class reaches its intended ABCI error
+code; a generic rejection is not counted as a successful security test.
+
 This remains a single-host test. It measures validation and consensus behavior
 under controlled CPU and memory limits, but it does not replace cross-machine
 latency, packet-loss, validator-HSM, or IBC-counterparty testing.
