@@ -708,6 +708,15 @@ func (m msgServer) UpdateParams(
 			return nil, types.ErrInvalidParams.Wrap("parameter activation height overflow")
 		}
 		effectiveHeight = uint64(ctx.BlockHeight()) + delay
+		if current.RegistrationCutoffHeight == 0 &&
+			requestedScheduled.RegistrationCutoffHeight != 0 &&
+			requestedScheduled.RegistrationCutoffHeight <= effectiveHeight {
+			return nil, types.ErrInvalidParams.Wrapf(
+				"registration cutoff height %d must be after parameter activation height %d",
+				requestedScheduled.RegistrationCutoffHeight,
+				effectiveHeight,
+			)
+		}
 		if requestedScheduled.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL {
 			if effectiveHeight > math.MaxUint64-current.MaxEmergencyDurationBlocks {
 				return nil, types.ErrInvalidParams.Wrap("emergency expiration height overflow")

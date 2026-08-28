@@ -34,6 +34,7 @@ import (
 
 	group "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
@@ -323,6 +324,72 @@ func TestNativeMLDSAAccountSatisfiesGlobalRequiredWithoutPQCAuth(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.True(t, called)
+}
+
+func TestRequiredModeKeepsDirectClassicRegistrationBootstrapOpen(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
+	params := moduleKeeper.GetParams(ctx)
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+
+	classicPrivateKey := secp256k1.GenPrivKey()
+	address := sdk.AccAddress(classicPrivateKey.PubKey().Address())
+	account := authtypes.NewBaseAccount(address, classicPrivateKey.PubKey(), 11, 3)
+	accountKeeper.accounts[address.String()] = account
+	signingPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
+	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+	require.NoError(t, err)
+	_, proofSize, err := pqccrypto.Sizes(pqccrypto.AlgorithmMLDSA65)
+	require.NoError(t, err)
+	message := &types.MsgRegisterKey{
+		Owner:                address.String(),
+		ExpectedSigningKeyId: 1,
+		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
+		SigningPublicKey:     signingPublicKey,
+		SigningKeyProof:      make([]byte, proofSize),
+		RecoveryAlgorithm:    types.Algorithm_ALGORITHM_ML_DSA_65,
+		RecoveryPublicKey:    recoveryPublicKey,
+		RecoveryKeyProof:     make([]byte, proofSize),
+		SelfEnforce:          true,
+	}
+	builder := txConfig.NewTxBuilder()
+	require.NoError(t, builder.SetMsgs(message))
+	builder.SetGasLimit(2_000_000)
+	require.NoError(t, builder.SetSignatures(txsigning.SignatureV2{
+		PubKey: classicPrivateKey.PubKey(),
+		Data: &txsigning.SingleSignatureData{
+			SignMode:  txsigning.SignMode_SIGN_MODE_DIRECT,
+			Signature: make([]byte, 64),
+		},
+		Sequence: account.GetSequence(),
+	}))
+
+	called := false
+	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+		ctx,
+		builder.GetTx(),
+		true,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			called = true
+			require.NoError(t, execution.RequireLifecycleMessage(nextCtx, message))
+			return nextCtx, nil
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, called)
+
+	params.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
+		ctx,
+		builder.GetTx(),
+		true,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			return nextCtx, nil
+		},
+	)
+	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 }
 
 func TestNativeMLDSAAccountCannotUsePQCAuthExtension(t *testing.T) {

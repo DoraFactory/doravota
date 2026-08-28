@@ -755,14 +755,17 @@ wait_for_param_state() {
   local mode="$1"
   local emergency="$2"
   local label="$3"
+  local registration="${4:-}"
   local output="$WORK_DIR/tx/$(artifact_name "$label").params.json"
   local deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
   while (( $(date +%s) < deadline )); do
     if "$DORAD_BIN" query pqcauth params --node "$RPC_URL" --output json >"$output" 2>"$output.stderr"; then
-      if jq -e --arg mode "$mode" --arg emergency "$emergency" \
-        '.effective_enforcement_mode == $mode and .effective_emergency_mode == $emergency' \
+      if jq -e --arg mode "$mode" --arg emergency "$emergency" --arg registration "$registration" \
+        '.effective_enforcement_mode == $mode
+         and .effective_emergency_mode == $emergency
+         and ($registration == "" or .effective_registration_mode == $registration)' \
         "$output" >/dev/null; then
-        pass "$label" "mode=$mode emergency=$emergency height=$(rpc_height 0)"
+        pass "$label" "mode=$mode emergency=$emergency registration=$(jq -r '.effective_registration_mode' "$output") height=$(rpc_height 0)"
         return 0
       fi
     fi
@@ -776,17 +779,19 @@ submit_params_update() {
   local mode="$2"
   local emergency="$3"
   local cutoff="$4"
+  local registration="${5:-}"
   local name
   name="$(artifact_name "$label")"
   local current="$WORK_DIR/tx/${name}.current-params.json"
   local desired="$WORK_DIR/tx/${name}.desired-params.json"
   local proposal="$WORK_DIR/tx/${name}.proposal.json"
   "$DORAD_BIN" query pqcauth params --node "$RPC_URL" --output json >"$current"
-  jq --arg mode "$mode" --arg emergency "$emergency" --arg cutoff "$cutoff" \
+  jq --arg mode "$mode" --arg emergency "$emergency" --arg cutoff "$cutoff" --arg registration "$registration" \
     '.params
      | .enforcement_mode = $mode
      | .emergency_mode = $emergency
      | .registration_cutoff_height = $cutoff
+     | if $registration == "" then . else .registration_mode = $registration end
      | .emergency_expires_height = "0"
      | .pending = null
      | .pending_activation_height = "0"' \
@@ -841,7 +846,7 @@ submit_params_update() {
   done
   [[ "$status" == "PROPOSAL_STATUS_PASSED" ]] || die "governance proposal $proposal_id did not pass before timeout"
   pass "governance executes proposal $proposal_id" "$label"
-  wait_for_param_state "$mode" "$emergency" "$label activates at its consensus-scheduled height"
+  wait_for_param_state "$mode" "$emergency" "$label activates at its consensus-scheduled height" "$registration"
 }
 
 initialize_network() {
@@ -868,7 +873,7 @@ initialize_network() {
     sed -i.e2e 's/^pprof_laddr = .*/pprof_laddr = ""/' "$home/config/config.toml"
   done
 
-  local classic_accounts=(alice bob carol dave eve grantee quota receiver feeowner feepayer)
+  local classic_accounts=(alice bob carol dave eve grantee quota receiver feeowner feepayer legacy fresh exposed)
   local account
   for account in "${classic_accounts[@]}"; do
     "$DORAD_BIN" keys add "$account" \
@@ -1338,6 +1343,28 @@ run_governance_scenarios() {
   broadcast_signed_bundle "protected transaction succeeds again after automatic pause expiry" alice \
     "$WORK_DIR/tx/alice-before-pqc-pause.signed.json"
 
+  local fresh_registration="REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY"
+  submit_params_update \
+    "restrict classic bootstrap to fresh accounts" \
+    "$optional" "$normal" 0 "$fresh_registration"
+  register_pqc_account fresh
+  pass "fresh account registers PQC keys in its first ordered outgoing transaction"
+
+  create_pqc_key exposed signing1
+  create_pqc_key exposed recovery2
+  create_key_proof exposed signing1 1 signing register-signing 0
+  create_key_proof exposed recovery2 2 recovery register-recovery 0
+  local exposed_registration_flags=()
+  while IFS= read -r -d '' item; do exposed_registration_flags+=("$item"); done < <(common_tx_flags exposed)
+  broadcast_rejected "fresh-only mode rejects an account whose classic public key was already exposed" \
+    "limited to fresh accounts" \
+    "$DORAD_BIN" tx pqcauth register-key 1 \
+      "$(jq -r '.public_key_base64' "$(key_json_file exposed signing1)")" \
+      "$(jq -r '.proof_base64' "$(proof_json_file exposed signing1 register-signing)")" \
+      --recovery-public-key-base64 "$(jq -r '.public_key_base64' "$(key_json_file exposed recovery2)")" \
+      --recovery-proof-base64 "$(jq -r '.proof_base64' "$(proof_json_file exposed recovery2 register-recovery)")" \
+      --self-enforce=true "${exposed_registration_flags[@]}"
+
   create_pqc_key eve signing1
   create_key_proof eve signing1 1 signing register-signing 0
   local cutoff
@@ -1375,6 +1402,7 @@ run_scenarios() {
   NETWORK_ID="$(jq -r '.params.network_id' "$params_file")"
   [[ -n "$NETWORK_ID" && "$NETWORK_ID" != "null" ]] || die "pqcauth network_id is missing"
   [[ "$(jq -r '.effective_enforcement_mode' "$params_file")" == "ENFORCEMENT_MODE_OPTIONAL" ]] || die "unexpected initial enforcement mode"
+  [[ "$(jq -r '.effective_registration_mode' "$params_file")" == "REGISTRATION_MODE_OPEN" ]] || die "unexpected initial registration mode"
   pass "query chain-derived pqcauth network identity" "$NETWORK_ID"
 
   local gas_estimate="$REPORT_DIR/verification-gas-estimate.json"
@@ -1389,6 +1417,20 @@ run_scenarios() {
   broadcast_ok "classic unregistered account remains compatible" \
     "$DORAD_BIN" tx bank send "$(account_address bob)" "$(account_address receiver)" "101${DENOM}" \
       "${bob_flags[@]}"
+
+  local legacy_flags=()
+  while IFS= read -r -d '' item; do legacy_flags+=("$item"); done < <(common_tx_flags legacy)
+  broadcast_ok "legacy account exposes its classic public key during the open migration window" \
+    "$DORAD_BIN" tx bank send "$(account_address legacy)" "$(account_address receiver)" "11${DENOM}" \
+      "${legacy_flags[@]}"
+  register_pqc_account legacy
+  pass "open registration mode migrates an account whose classic public key was already exposed"
+
+  local exposed_flags=()
+  while IFS= read -r -d '' item; do exposed_flags+=("$item"); done < <(common_tx_flags exposed)
+  broadcast_ok "future fresh-only control account exposes its classic public key" \
+    "$DORAD_BIN" tx bank send "$(account_address exposed)" "$(account_address receiver)" "12${DENOM}" \
+      "${exposed_flags[@]}"
 
   local native_flags=()
   while IFS= read -r -d '' item; do native_flags+=("$item"); done < <(common_tx_flags native)

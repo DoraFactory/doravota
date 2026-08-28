@@ -34,6 +34,9 @@ message QueryParamsResponse {
   Params params = 1 [(gogoproto.nullable) = false];
   EnforcementMode effective_enforcement_mode = 2;
   EmergencyMode effective_emergency_mode = 3;
+  // effective_registration_mode includes both a scheduled mode transition
+  // and the legacy cutoff gate at the query height.
+  RegistrationMode effective_registration_mode = 4;
 }
 
 message QueryAccountRequest {

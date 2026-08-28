@@ -1047,6 +1047,49 @@ func TestRegistrationModeTransitionIsDelayedAndIrreversibleAfterActivation(t *te
 	require.ErrorIs(t, err, types.ErrInvalidParams)
 }
 
+func TestRegistrationCutoffMustFollowItsActivationHeight(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 30)
+	current := types.DefaultParams()
+	current.GovernanceSafetyDelayBlocks = 5
+	require.NoError(t, moduleKeeper.SetParams(ctx, current))
+	server := NewMsgServer(moduleKeeper)
+
+	for _, cutoff := range []uint64{30, 34, 35} {
+		requested := current
+		requested.RegistrationCutoffHeight = cutoff
+		_, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+			Authority: moduleKeeper.Authority(),
+			Params:    requested,
+		})
+		require.ErrorIs(t, err, types.ErrInvalidParams)
+	}
+
+	requested := current
+	requested.RegistrationCutoffHeight = 36
+	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
+		Authority: moduleKeeper.Authority(),
+		Params:    requested,
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(35), response.ActivationHeight)
+
+	activationCtx := ctx.WithBlockHeight(36)
+	active, err := moduleKeeper.NormalizeParams(activationCtx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(36), active.RegistrationCutoffHeight)
+	active.EnforcementMode =
+		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
+	response, err = server.UpdateParams(
+		sdk.WrapSDKContext(activationCtx),
+		&types.MsgUpdateParams{
+			Authority: moduleKeeper.Authority(),
+			Params:    active,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint64(41), response.ActivationHeight)
+}
+
 func TestEmergencyOnlyUpdateActivatesAtHPlusOneAndCanBeCancelled(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
 	current := types.DefaultParams()
@@ -1195,6 +1238,11 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.Equal(t, scheduled.EnforcementMode, response.Params.EnforcementMode)
 	require.Equal(t, scheduled.EmergencyMode, response.Params.EmergencyMode)
 	require.Equal(t, scheduled.MaxPqcSigners, response.Params.MaxPqcSigners)
+	require.Equal(
+		t,
+		types.RegistrationMode_REGISTRATION_MODE_OPEN,
+		response.EffectiveRegistrationMode,
+	)
 	require.Nil(t, response.Params.Pending)
 	require.Zero(t, response.Params.PendingActivationHeight)
 
@@ -1204,6 +1252,35 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, normalized.Pending)
 	require.Nil(t, moduleKeeper.GetParams(activationCtx).Pending)
+}
+
+func TestParamsQueryReportsCutoffAsEffectiveClosedRegistration(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 30)
+	params := types.DefaultParams()
+	params.RegistrationCutoffHeight = 31
+	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+
+	before, err := NewQueryServer(moduleKeeper).Params(
+		sdk.WrapSDKContext(ctx),
+		&types.QueryParamsRequest{},
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		types.RegistrationMode_REGISTRATION_MODE_OPEN,
+		before.EffectiveRegistrationMode,
+	)
+
+	after, err := NewQueryServer(moduleKeeper).Params(
+		sdk.WrapSDKContext(ctx.WithBlockHeight(31)),
+		&types.QueryParamsRequest{},
+	)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		types.RegistrationMode_REGISTRATION_MODE_CLOSED,
+		after.EffectiveRegistrationMode,
+	)
 }
 
 func TestReserveKeyIDsRemainMonotonicWithoutLifetimeQuota(t *testing.T) {

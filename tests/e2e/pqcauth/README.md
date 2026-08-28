@@ -67,7 +67,10 @@ queries, transaction responses and rejection evidence remain beside it.
   for `OPTIONAL`, `DISABLED`, `REQUIRED_FOR_REGISTERED`, and final `REQUIRED`;
 - both emergency modes, including existing-key continuity during
   `PAUSE_NEW_KEYS` and classic-account continuity during a full PQC pause;
-- irreversible registration cutoff enforcement;
+- registration migration from `OPEN` to `FRESH_ACCOUNTS_ONLY`, including an
+  already-exposed legacy account migrating while open, first-transaction
+  registration for a fresh account, and rejection after classic-key exposure;
+- observable and irreversible registration cutoff enforcement;
 - one-validator outage, continued consensus, restart and catch-up;
 - cross-node app-hash convergence.
 
