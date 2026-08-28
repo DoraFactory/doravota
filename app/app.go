@@ -206,7 +206,7 @@ var (
 		distributionAppModuleBasic{},
 		gov.NewAppModuleBasic(getGovProposalHandlers()),
 		slashing.AppModuleBasic{},
-		feegrantmodule.AppModuleBasic{},
+		feegrantAppModuleBasic{},
 		groupAppModuleBasic{},
 		ibc.AppModuleBasic{},
 		ibctm.AppModuleBasic{},

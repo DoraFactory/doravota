@@ -12,6 +12,8 @@ import (
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/distribution"
 	distrcli "github.com/cosmos/cosmos-sdk/x/distribution/client/cli"
+	feegrantcli "github.com/cosmos/cosmos-sdk/x/feegrant/client/cli"
+	feegrantmodule "github.com/cosmos/cosmos-sdk/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingcli "github.com/cosmos/cosmos-sdk/x/staking/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/upgrade"
@@ -57,6 +59,12 @@ type distributionAppModuleBasic struct{ distribution.AppModuleBasic }
 
 func (distributionAppModuleBasic) GetTxCmd() *cobra.Command {
 	return distrcli.NewTxCmd(validatorAddressCodec(), accountAddressCodec())
+}
+
+type feegrantAppModuleBasic struct{ feegrantmodule.AppModuleBasic }
+
+func (feegrantAppModuleBasic) GetTxCmd() *cobra.Command {
+	return feegrantcli.GetTxCmd(accountAddressCodec())
 }
 
 type upgradeAppModuleBasic struct{ upgrade.AppModuleBasic }

@@ -15,6 +15,7 @@ func TestNewRootCmdBuildsModuleCommands(t *testing.T) {
 		{"tx", "bank"},
 		{"tx", "staking"},
 		{"tx", "distribution"},
+		{"tx", "feegrant", "grant"},
 		{"tx", "upgrade"},
 		{"tx", "vesting"},
 		{"tx", "group"},
