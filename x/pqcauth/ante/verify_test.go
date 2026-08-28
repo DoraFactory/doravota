@@ -8,6 +8,7 @@ import (
 
 	coreaddress "cosmossdk.io/core/address"
 	"cosmossdk.io/log/v2"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	cmtmldsa65 "github.com/cometbft/cometbft/crypto/mldsa65"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -26,10 +27,12 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	sdksigning "github.com/cosmos/cosmos-sdk/x/tx/signing"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
+	group "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -186,6 +189,9 @@ func newAnteTestCodec(t testing.TB) codec.Codec {
 	types.RegisterInterfaces(registry)
 	authz.RegisterInterfaces(registry)
 	banktypes.RegisterInterfaces(registry)
+	feegrant.RegisterInterfaces(registry)
+	group.RegisterInterfaces(registry)
+	wasmtypes.RegisterInterfaces(registry)
 	cdc := codec.NewProtoCodec(registry)
 	return cdc
 }

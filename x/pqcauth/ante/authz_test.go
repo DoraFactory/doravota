@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdkmldsa65 "github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
@@ -13,8 +14,10 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/stretchr/testify/require"
 
+	group "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -25,6 +28,17 @@ type authzGrantReaderMock struct {
 	err     error
 	request *authz.QueryGranterGrantsRequest
 }
+
+type delegatedFeeTxStub struct {
+	extensionOptionsTxStub
+	feePayer   sdk.AccAddress
+	feeGranter sdk.AccAddress
+}
+
+func (delegatedFeeTxStub) GetGas() uint64        { return 1_000_000 }
+func (delegatedFeeTxStub) GetFee() sdk.Coins     { return nil }
+func (tx delegatedFeeTxStub) FeePayer() []byte   { return tx.feePayer }
+func (tx delegatedFeeTxStub) FeeGranter() []byte { return tx.feeGranter }
 
 func (m *authzGrantReaderMock) GranterGrants(
 	_ context.Context,
@@ -54,6 +68,18 @@ func runAuthzDecorator(
 	_, err := decorator.AnteHandle(
 		ctx,
 		extensionOptionsTxStub{messages: messages},
+		false,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			return nextCtx, nil
+		},
+	)
+	return err
+}
+
+func runAuthzTx(ctx sdk.Context, decorator AuthzPQCDecorator, tx sdk.Tx) error {
+	_, err := decorator.AnteHandle(
+		ctx,
+		tx,
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
 			return nextCtx, nil
@@ -278,4 +304,197 @@ func TestAuthzExecCannotCreateUnsafeNestedGrant(t *testing.T) {
 	)
 	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
 	require.Contains(t, err.Error(), "cannot delegate")
+}
+
+func TestFeegrantProtectedGranterRequiresPQCGranteeAndFreezesPending(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+	granter := accountKeeper.account.GetAddress()
+	unsafeGrantee := addClassicAccount(&accountKeeper)
+	grant, err := feegrant.NewMsgGrantAllowance(
+		&feegrant.BasicAllowance{},
+		granter,
+		unsafeGrantee,
+	)
+	require.NoError(t, err)
+	require.ErrorIs(t, runAuthzDecorator(ctx, decorator, grant), types.ErrUnsafeAuthorization)
+
+	nativeGrantee := addNativePQCAccount(t, &accountKeeper)
+	grant, err = feegrant.NewMsgGrantAllowance(
+		&feegrant.BasicAllowance{},
+		granter,
+		nativeGrantee,
+	)
+	require.NoError(t, err)
+	require.NoError(t, runAuthzDecorator(ctx, decorator, grant))
+
+	policy, found := moduleKeeper.GetAccountPolicy(ctx, granter)
+	require.True(t, found)
+	policy.SelfEnforced = false
+	policy.PendingSelfEnforced = true
+	policy.PendingEffectiveHeight = uint64(ctx.BlockHeight()) + 1
+	policy.PendingPolicyVersion = policy.PolicyVersion + 1
+	require.NoError(t, moduleKeeper.SetAccountPolicy(ctx, granter, policy))
+	err = runAuthzDecorator(ctx, decorator, grant)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), "frozen")
+}
+
+func TestFeegrantUseChecksCurrentPayerProtection(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+	protectedGranter := accountKeeper.account.GetAddress()
+	unsafePayer := addClassicAccount(&accountKeeper)
+	recipient := addClassicAccount(&accountKeeper)
+	tx := delegatedFeeTxStub{
+		extensionOptionsTxStub: extensionOptionsTxStub{messages: []sdk.Msg{
+			banktypes.NewMsgSend(
+				unsafePayer,
+				recipient,
+				sdk.NewCoins(sdk.NewInt64Coin("stake", 1)),
+			),
+		}},
+		feePayer:   unsafePayer,
+		feeGranter: protectedGranter,
+	}
+	err := runAuthzTx(ctx, decorator, tx)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), "fee granter")
+
+	protectClassicAccount(t, ctx, moduleKeeper, unsafePayer)
+	require.NoError(t, runAuthzTx(ctx, decorator, tx))
+
+	unprotectedGranter := addClassicAccount(&accountKeeper)
+	tx.feeGranter = unprotectedGranter
+	require.NoError(t, runAuthzTx(ctx, decorator, tx))
+}
+
+func TestNestedAuthzChecksEveryDelegationLayer(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	protectedGranter := accountKeeper.account.GetAddress()
+	unsafeMiddleGrantee := addClassicAccount(&accountKeeper)
+	secureOuterGrantee := addNativePQCAccount(t, &accountKeeper)
+	recipient := addClassicAccount(&accountKeeper)
+	innerMessage := banktypes.NewMsgSend(
+		protectedGranter,
+		recipient,
+		sdk.NewCoins(sdk.NewInt64Coin("stake", 1)),
+	)
+	innerExec := authz.NewMsgExec(unsafeMiddleGrantee, []sdk.Msg{innerMessage})
+	outerExec := authz.NewMsgExec(secureOuterGrantee, []sdk.Msg{&innerExec})
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+
+	err := runAuthzDecorator(ctx, decorator, &outerExec)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), unsafeMiddleGrantee.String())
+
+	protectClassicAccount(t, ctx, moduleKeeper, unsafeMiddleGrantee)
+	require.NoError(t, runAuthzDecorator(ctx, decorator, &outerExec))
+}
+
+func TestNestedAuthzCannotCreateUnsafeFeeGrant(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	protectedGranter := accountKeeper.account.GetAddress()
+	secureExecutor := addNativePQCAccount(t, &accountKeeper)
+	unsafeFeeGrantee := addClassicAccount(&accountKeeper)
+	nestedGrant, err := feegrant.NewMsgGrantAllowance(
+		&feegrant.BasicAllowance{},
+		protectedGranter,
+		unsafeFeeGrantee,
+	)
+	require.NoError(t, err)
+	exec := authz.NewMsgExec(secureExecutor, []sdk.Msg{nestedGrant})
+
+	err = runAuthzDecorator(
+		ctx,
+		authzDecorator(
+			moduleKeeper,
+			accountKeeper,
+			&authzGrantReaderMock{},
+			newAnteTestCodec(t),
+		),
+		&exec,
+	)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), "fee granter")
+}
+
+func TestAuthzProtectionCoversWasmAndGroupMessageSigners(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	protectedSigner := accountKeeper.account.GetAddress()
+	unsafeExecutor := addClassicAccount(&accountKeeper)
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+
+	wasmMessage := &wasmtypes.MsgExecuteContract{
+		Sender:   protectedSigner.String(),
+		Contract: addClassicAccount(&accountKeeper).String(),
+		Msg:      []byte(`{}`),
+	}
+	wasmExec := authz.NewMsgExec(unsafeExecutor, []sdk.Msg{wasmMessage})
+	require.ErrorIs(
+		t,
+		runAuthzDecorator(ctx, decorator, &wasmExec),
+		types.ErrUnsafeAuthorization,
+	)
+
+	groupMessage := &group.MsgVote{
+		ProposalId: 1,
+		Voter:      protectedSigner.String(),
+		Option:     group.VOTE_OPTION_YES,
+	}
+	groupExec := authz.NewMsgExec(unsafeExecutor, []sdk.Msg{groupMessage})
+	require.ErrorIs(
+		t,
+		runAuthzDecorator(ctx, decorator, &groupExec),
+		types.ErrUnsafeAuthorization,
+	)
+
+	protectClassicAccount(t, ctx, moduleKeeper, unsafeExecutor)
+	require.NoError(t, runAuthzDecorator(ctx, decorator, &wasmExec))
+	require.NoError(t, runAuthzDecorator(ctx, decorator, &groupExec))
+}
+
+func TestAuthzDecoratorLeavesOrdinaryMultiSignerRejectionToAuthz(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	first := addClassicAccount(&accountKeeper)
+	second := addClassicAccount(&accountKeeper)
+	multiSignerMessage := &group.MsgSubmitProposal{
+		GroupPolicyAddress: addClassicAccount(&accountKeeper).String(),
+		Proposers:          []string{first.String(), second.String()},
+		Title:              "ordinary group proposal",
+		Summary:            "cardinality remains an x/authz decision",
+	}
+	executor := addClassicAccount(&accountKeeper)
+	exec := authz.NewMsgExec(executor, []sdk.Msg{multiSignerMessage})
+
+	require.NoError(t, runAuthzDecorator(
+		ctx,
+		authzDecorator(
+			moduleKeeper,
+			accountKeeper,
+			&authzGrantReaderMock{},
+			newAnteTestCodec(t),
+		),
+		&exec,
+	))
 }

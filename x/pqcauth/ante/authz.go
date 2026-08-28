@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/query"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
 	"github.com/cosmos/cosmos-sdk/x/authz"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/cosmos/gogoproto/proto"
 
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
@@ -29,9 +30,10 @@ type AuthzGrantReader interface {
 }
 
 // AuthzPQCDecorator closes the capability gap between account-level PQC
-// enforcement and x/authz. It preserves authz delegation: a granter does not
-// re-sign every MsgExec, but a protected granter may only delegate to an
-// account whose own transactions are already PQC-enforced.
+// enforcement and delegated x/authz or x/feegrant capabilities. It preserves
+// delegation semantics: a granter does not re-sign every use, but a protected
+// granter may only delegate to an account whose own transactions are already
+// PQC-enforced.
 type AuthzPQCDecorator struct {
 	keeper        pqckeeper.Keeper
 	accountKeeper authante.AccountKeeper
@@ -61,6 +63,9 @@ func (d AuthzPQCDecorator) AnteHandle(
 ) (sdk.Context, error) {
 	stateCtx := pqcStateContext(ctx, simulate)
 	params := d.keeper.GetParams(stateCtx).Effective(stateCtx.BlockHeight())
+	if err := d.validateFeePayment(stateCtx, params, tx); err != nil {
+		return ctx, err
+	}
 
 	for _, message := range tx.GetMsgs() {
 		switch msg := message.(type) {
@@ -82,10 +87,47 @@ func (d AuthzPQCDecorator) AnteHandle(
 			if err := d.validateExec(stateCtx, params, msg); err != nil {
 				return ctx, err
 			}
+		case *feegrant.MsgGrantAllowance:
+			if err := d.validateFeeGrant(stateCtx, params, msg); err != nil {
+				return ctx, err
+			}
 		}
 	}
 
 	return next(ctx, tx, simulate)
+}
+
+// validateFeePayment protects existing as well as newly created fee grants.
+// Fee grants are keyed by grantee in the SDK store, so scanning every grant by
+// granter in Ante would create an unbounded consensus-path operation. Runtime
+// validation instead makes every allowance issued by a protected account
+// unusable unless the current fee payer is still PQC-enforced. This also closes
+// the window where a grantee disables its own protection after receiving an
+// allowance.
+func (d AuthzPQCDecorator) validateFeePayment(
+	ctx sdk.Context,
+	params types.Params,
+	tx sdk.Tx,
+) error {
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return nil
+	}
+	feeGranter := sdk.AccAddress(feeTx.FeeGranter())
+	feePayer := sdk.AccAddress(feeTx.FeePayer())
+	if len(feeGranter) == 0 || feeGranter.Equals(feePayer) {
+		return nil
+	}
+	protected, _ := d.accountProtection(ctx, params, feeGranter)
+	if protected && !d.accountIsPQCEnforced(ctx, params, feePayer) {
+		return errorsmod.Wrapf(
+			types.ErrUnsafeAuthorization,
+			"PQC-protected fee granter %s cannot pay fees for non-PQC account %s",
+			feeGranter.String(),
+			feePayer.String(),
+		)
+	}
+	return nil
 }
 
 func (d AuthzPQCDecorator) requireNoExistingGrants(ctx sdk.Context, granter string) error {
@@ -159,6 +201,42 @@ func (d AuthzPQCDecorator) validateGrant(
 	return nil
 }
 
+func (d AuthzPQCDecorator) validateFeeGrant(
+	ctx sdk.Context,
+	params types.Params,
+	message *feegrant.MsgGrantAllowance,
+) error {
+	granter, err := d.accountAddress(message.Granter)
+	if err != nil {
+		return err
+	}
+	protected, pending := d.accountProtection(ctx, params, granter)
+	if pending {
+		return errorsmod.Wrapf(
+			types.ErrUnsafeAuthorization,
+			"fee granter %s has pending PQC protection; fee grants are frozen until activation",
+			message.Granter,
+		)
+	}
+	if !protected {
+		return nil
+	}
+
+	grantee, err := d.accountAddress(message.Grantee)
+	if err != nil {
+		return err
+	}
+	if !d.accountIsPQCEnforced(ctx, params, grantee) {
+		return errorsmod.Wrapf(
+			types.ErrUnsafeAuthorization,
+			"protected fee granter %s cannot delegate to non-PQC grantee %s",
+			message.Granter,
+			message.Grantee,
+		)
+	}
+	return nil
+}
+
 func (d AuthzPQCDecorator) validateExec(
 	ctx sdk.Context,
 	params types.Params,
@@ -191,27 +269,6 @@ func (d AuthzPQCDecorator) validateExecutedMessages(
 	}
 
 	for _, message := range messages {
-		switch nested := message.(type) {
-		case *authz.MsgGrant:
-			if err := d.validateGrant(ctx, params, nested); err != nil {
-				return err
-			}
-		case *authz.MsgExec:
-			nestedMessages, err := nested.GetMessages()
-			if err != nil {
-				return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
-			}
-			if err := d.validateExecutedMessages(
-				ctx,
-				params,
-				executor,
-				nestedMessages,
-				depth+1,
-			); err != nil {
-				return err
-			}
-		}
-
 		protoMessage, ok := message.(proto.Message)
 		if !ok {
 			return errorsmod.Wrapf(
@@ -225,12 +282,10 @@ func (d AuthzPQCDecorator) validateExecutedMessages(
 			return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
 		}
 		if len(signers) != 1 {
-			return errorsmod.Wrapf(
-				types.ErrUnsafeAuthorization,
-				"authz message %s has %d signers",
-				sdk.MsgTypeURL(message),
-				len(signers),
-			)
+			// x/authz itself rejects messages that do not have exactly one
+			// signer. Leave that module's ordinary behavior and error code
+			// unchanged instead of imposing a pqcauth-wide restriction.
+			continue
 		}
 
 		granter := sdk.AccAddress(signers[0])
@@ -242,6 +297,35 @@ func (d AuthzPQCDecorator) validateExecutedMessages(
 				granter.String(),
 				executor.String(),
 			)
+		}
+
+		switch nested := message.(type) {
+		case *authz.MsgGrant:
+			if err := d.validateGrant(ctx, params, nested); err != nil {
+				return err
+			}
+		case *feegrant.MsgGrantAllowance:
+			if err := d.validateFeeGrant(ctx, params, nested); err != nil {
+				return err
+			}
+		case *authz.MsgExec:
+			nestedExecutor, err := d.accountAddress(nested.Grantee)
+			if err != nil {
+				return err
+			}
+			nestedMessages, err := nested.GetMessages()
+			if err != nil {
+				return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+			}
+			if err := d.validateExecutedMessages(
+				ctx,
+				params,
+				nestedExecutor,
+				nestedMessages,
+				depth+1,
+			); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

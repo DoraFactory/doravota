@@ -59,6 +59,8 @@ queries, transaction responses and rejection evidence remain beside it.
 - rejection of protection activation with a pre-existing authz grant;
 - protected-granter delegation restricted to PQC-enforced classic or native
   grantees, including runtime rejection after a grantee drops protection;
+- feegrant creation and use restricted to PQC-enforced grantees, including
+  runtime containment of allowances created before the granter enabled PQC;
 - unbounded monotonic key IDs with bounded per-role terminal history, including
   preservation of active signing and recovery records;
 - governance proposal submission, bonded-validator voting and H+1 activation

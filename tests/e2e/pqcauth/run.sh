@@ -868,7 +868,7 @@ initialize_network() {
     sed -i.e2e 's/^pprof_laddr = .*/pprof_laddr = ""/' "$home/config/config.toml"
   done
 
-  local classic_accounts=(alice bob carol dave eve grantee quota receiver)
+  local classic_accounts=(alice bob carol dave eve grantee quota receiver feeowner feepayer)
   local account
   for account in "${classic_accounts[@]}"; do
     "$DORAD_BIN" keys add "$account" \
@@ -1120,6 +1120,59 @@ run_authz_security_scenarios() {
   broadcast_rejected "old grant stops after the grantee drops PQC enforcement" \
     "cannot be executed by non-PQC grantee" \
     "$DORAD_BIN" tx authz exec "$downgraded_inner" "${grantee_flags[@]}"
+}
+
+run_feegrant_security_scenarios() {
+  local feeowner_flags=()
+  local feepayer_flags=()
+  while IFS= read -r -d '' item; do feeowner_flags+=("$item"); done < <(common_tx_flags feeowner)
+  while IFS= read -r -d '' item; do feepayer_flags+=("$item"); done < <(common_tx_flags feepayer)
+
+  broadcast_ok "unprotected account creates a pre-existing fee grant" \
+    "$DORAD_BIN" tx feegrant grant feeowner "$(account_address feepayer)" \
+      --spend-limit "1000000${DENOM}" "${feeowner_flags[@]}"
+
+  register_pqc_account feeowner
+
+  broadcast_rejected "legacy fee grant cannot be used by a non-PQC payer" \
+    "fee granter" \
+    "$DORAD_BIN" tx bank send "$(account_address feepayer)" "$(account_address receiver)" \
+      "401${DENOM}" --fee-granter "$(account_address feeowner)" "${feepayer_flags[@]}"
+
+  local unsafe_grant_unsigned="$WORK_DIR/tx/feeowner-unsafe-feegrant.unsigned.json"
+  "$DORAD_BIN" tx feegrant grant feeowner "$(account_address receiver)" \
+    --spend-limit "1000000${DENOM}" \
+    --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --generate-only --output json >"$unsafe_grant_unsigned"
+  prepare_and_sign_unsigned_bundle feeowner signing1 "$unsafe_grant_unsigned" feeowner-unsafe-feegrant
+  broadcast_rejected "protected fee granter rejects a non-PQC grantee" \
+    "cannot delegate to non-PQC grantee" \
+    "$DORAD_BIN" tx pqcauth broadcast-bundle "$WORK_DIR/tx/feeowner-unsafe-feegrant.signed.json" \
+      --from feeowner --keyring-backend test --home "$CLIENT_HOME" \
+      --chain-id "$CHAIN_ID" --node "$RPC_URL" --broadcast-mode sync --output json --yes
+
+  local native_grant_unsigned="$WORK_DIR/tx/feeowner-native-feegrant.unsigned.json"
+  "$DORAD_BIN" tx feegrant grant feeowner "$(account_address native)" \
+    --spend-limit "1000000${DENOM}" \
+    --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --generate-only --output json >"$native_grant_unsigned"
+  prepare_and_sign_unsigned_bundle feeowner signing1 "$native_grant_unsigned" feeowner-native-feegrant
+  broadcast_signed_bundle "protected fee granter delegates to native ML-DSA account" feeowner \
+    "$WORK_DIR/tx/feeowner-native-feegrant.signed.json"
+
+  register_pqc_account feepayer
+  local safe_use_unsigned="$WORK_DIR/tx/feepayer-safe-feegrant-use.unsigned.json"
+  "$DORAD_BIN" tx bank send "$(account_address feepayer)" "$(account_address receiver)" \
+    "402${DENOM}" \
+    --from feepayer --keyring-backend test --home "$CLIENT_HOME" \
+    --chain-id "$CHAIN_ID" --node "$RPC_URL" --gas "$TX_GAS" --fees "$TX_FEE" \
+    --fee-granter "$(account_address feeowner)" \
+    --generate-only --output json >"$safe_use_unsigned"
+  prepare_and_sign_unsigned_bundle feepayer signing1 "$safe_use_unsigned" feepayer-safe-feegrant-use
+  broadcast_signed_bundle "PQC-enforced payer uses protected account fee grant" feepayer \
+    "$WORK_DIR/tx/feepayer-safe-feegrant-use.signed.json"
 }
 
 run_nested_authz_scenario() {
@@ -1543,6 +1596,7 @@ run_scenarios() {
   broadcast_signed_bundle "valid transaction succeeds after adversarial rejection matrix" alice "$adversarial_bundle"
 
   run_authz_security_scenarios
+  run_feegrant_security_scenarios
   run_nested_authz_scenario
   run_history_compaction_scenario
 
