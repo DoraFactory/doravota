@@ -28,6 +28,13 @@ func TestProposalLimitsHonorStricterConsensusAndRequestLimits(t *testing.T) {
 	require.Equal(t, int64(5_000), effectiveProposalMaxBytes(ctx, 5_000))
 }
 
+func TestPQCVerificationBudgetHonorsExactBoundaryAndRejectsOverflow(t *testing.T) {
+	require.False(t, exceedsPQCVerificationBudget(398, 2, 16, 400))
+	require.True(t, exceedsPQCVerificationBudget(399, 2, 16, 400))
+	require.True(t, exceedsPQCVerificationBudget(0, 17, 16, 400))
+	require.True(t, exceedsPQCVerificationBudget(^uint64(0), 1, 16, ^uint64(0)))
+}
+
 func TestEnsureFiniteBlockLimitsPreservesExplicitLimits(t *testing.T) {
 	params := &tmproto.ConsensusParams{
 		Block: &tmproto.BlockParams{MaxBytes: 10_000, MaxGas: 20_000},

@@ -22,6 +22,11 @@ type proposalGasTx interface {
 	GetGas() uint64
 }
 
+type proposalPreflightTx struct {
+	raw         []byte
+	declaredGas uint64
+}
+
 func (app *App) setProposalHandlers(txConfig client.TxConfig) {
 	txDecoder := pqcauthante.CanonicalPQCAuthTxDecoder(txConfig.TxDecoder())
 	app.SetPrepareProposal(app.prepareProposalHandler(txDecoder))
@@ -35,6 +40,11 @@ func (app *App) prepareProposalHandler(txDecoder sdk.TxDecoder) sdk.PreparePropo
 		selected := make([][]byte, 0, len(request.Txs))
 		var totalBytes int64
 		var totalGas uint64
+		var totalPQCVerifications uint64
+		params := app.PQCAuthKeeper.GetParams(ctx).Effective(ctx.BlockHeight())
+		perTxPQCVerificationLimit := uint64(params.EffectiveMaxPQCVerificationsPerTx())
+		blockPQCVerificationLimit := uint64(params.EffectiveMaxPQCVerificationsPerBlock())
+		budgetTracker := pqcauthante.NewPQCVerificationBudgetTracker(app.AccountKeeper)
 
 		for _, rawTx := range request.Txs {
 			if int64(len(rawTx)) > maxBytes-totalBytes {
@@ -48,6 +58,15 @@ func (app *App) prepareProposalHandler(txDecoder sdk.TxDecoder) sdk.PreparePropo
 			if !ok || exceedsUint64(totalGas, txGas) || totalGas+txGas > maxGas {
 				continue
 			}
+			inspection, err := budgetTracker.Inspect(ctx, tx, params)
+			if err != nil || exceedsPQCVerificationBudget(
+				totalPQCVerifications,
+				inspection.Cost.Total(),
+				perTxPQCVerificationLimit,
+				blockPQCVerificationLimit,
+			) {
+				continue
+			}
 			verifiedBytes, err := app.PrepareProposalVerifyTx(tx)
 			if err != nil {
 				continue
@@ -58,6 +77,8 @@ func (app *App) prepareProposalHandler(txDecoder sdk.TxDecoder) sdk.PreparePropo
 			selected = append(selected, verifiedBytes)
 			totalBytes += int64(len(verifiedBytes))
 			totalGas += txGas
+			totalPQCVerifications += inspection.Cost.Total()
+			budgetTracker.Commit(inspection)
 		}
 		return &abci.ResponsePrepareProposal{Txs: selected}, nil
 	}
@@ -69,7 +90,16 @@ func (app *App) processProposalHandler(txDecoder sdk.TxDecoder) sdk.ProcessPropo
 		maxGas := effectiveProposalGasLimit(ctx)
 		var totalBytes int64
 		var totalGas uint64
+		var totalPQCVerifications uint64
+		params := app.PQCAuthKeeper.GetParams(ctx).Effective(ctx.BlockHeight())
+		perTxPQCVerificationLimit := uint64(params.EffectiveMaxPQCVerificationsPerTx())
+		blockPQCVerificationLimit := uint64(params.EffectiveMaxPQCVerificationsPerBlock())
+		budgetTracker := pqcauthante.NewPQCVerificationBudgetTracker(app.AccountKeeper)
+		preflight := make([]proposalPreflightTx, 0, len(request.Txs))
 
+		// Perform a cheap complete-proposal preflight before executing any
+		// signature verification. An over-budget malicious proposal is rejected
+		// without first consuming the full allowed ML-DSA CPU budget.
 		for _, rawTx := range request.Txs {
 			if int64(len(rawTx)) > maxBytes-totalBytes {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
@@ -82,16 +112,31 @@ func (app *App) processProposalHandler(txDecoder sdk.TxDecoder) sdk.ProcessPropo
 			if !ok || exceedsUint64(totalGas, txGas) || totalGas+txGas > maxGas {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
-			tx, gasWanted, err := app.ProcessProposalVerifyTx(rawTx)
+			inspection, err := budgetTracker.Inspect(ctx, decodedTx, params)
+			if err != nil || exceedsPQCVerificationBudget(
+				totalPQCVerifications,
+				inspection.Cost.Total(),
+				perTxPQCVerificationLimit,
+				blockPQCVerificationLimit,
+			) {
+				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
+			}
+			preflight = append(preflight, proposalPreflightTx{raw: rawTx, declaredGas: txGas})
+			totalBytes += int64(len(rawTx))
+			totalGas += txGas
+			totalPQCVerifications += inspection.Cost.Total()
+			budgetTracker.Commit(inspection)
+		}
+
+		for _, candidate := range preflight {
+			tx, gasWanted, err := app.ProcessProposalVerifyTx(candidate.raw)
 			if err != nil {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
 			verifiedGas, ok := declaredGas(tx)
-			if !ok || verifiedGas != txGas || gasWanted == 0 {
+			if !ok || verifiedGas != candidate.declaredGas || gasWanted == 0 {
 				return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_REJECT}, nil
 			}
-			totalBytes += int64(len(rawTx))
-			totalGas += txGas
 		}
 		return &abci.ResponseProcessProposal{Status: abci.ResponseProcessProposal_ACCEPT}, nil
 	}
@@ -125,6 +170,17 @@ func declaredGas(tx sdk.Tx) (uint64, bool) {
 
 func exceedsUint64(current, addition uint64) bool {
 	return addition > math.MaxUint64-current
+}
+
+func exceedsPQCVerificationBudget(
+	current uint64,
+	transaction uint64,
+	perTxLimit uint64,
+	perBlockLimit uint64,
+) bool {
+	return transaction > perTxLimit ||
+		exceedsUint64(current, transaction) ||
+		current+transaction > perBlockLimit
 }
 
 // ensureFiniteBlockLimits mutates only legacy unlimited/missing values and

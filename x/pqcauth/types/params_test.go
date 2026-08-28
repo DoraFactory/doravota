@@ -14,6 +14,8 @@ func TestDefaultParamsValidate(t *testing.T) {
 	require.Equal(t, DefaultGovernanceSafetyDelayBlocks, params.GovernanceSafetyDelayBlocks)
 	require.Equal(t, DefaultMaxEmergencyDurationBlocks, params.MaxEmergencyDurationBlocks)
 	require.Equal(t, DefaultRecoveryDelayBlocks, params.RecoveryDelayBlocks)
+	require.Equal(t, DefaultMaxPQCVerificationsPerTx, params.MaxPqcVerificationsPerTx)
+	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, params.MaxPqcVerificationsPerBlock)
 	require.True(t, params.IsAlgorithmAllowed(Algorithm_ALGORITHM_ML_DSA_65))
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(10))
 	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(10))
@@ -79,6 +81,23 @@ func TestParamsEnforcementActivatesAtExactHeight(t *testing.T) {
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_REQUIRED, params.EffectiveEnforcementMode(101))
 }
 
+func TestPQCVerificationBudgetsActivateAtomically(t *testing.T) {
+	params := DefaultParams()
+	pending := params.AsScheduled()
+	pending.MaxPqcVerificationsPerTx = 8
+	pending.MaxPqcVerificationsPerBlock = 200
+	params.Pending = &pending
+	params.PendingActivationHeight = 101
+
+	before := params.Effective(100)
+	require.Equal(t, DefaultMaxPQCVerificationsPerTx, before.EffectiveMaxPQCVerificationsPerTx())
+	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, before.EffectiveMaxPQCVerificationsPerBlock())
+
+	after := params.Effective(101)
+	require.Equal(t, uint32(8), after.EffectiveMaxPQCVerificationsPerTx())
+	require.Equal(t, uint32(200), after.EffectiveMaxPQCVerificationsPerBlock())
+}
+
 func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -89,6 +108,16 @@ func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 		{"oversized auth", func(p *Params) { p.MaxPqcAuthBytes = AbsoluteMaxPQCAuthBytes + 1 }},
 		{"too much key history", func(p *Params) {
 			p.MaxRetainedKeyRecordsPerRole = AbsoluteMaxRetainedKeyRecordsPerRole + 1
+		}},
+		{"too many PQC verifications per transaction", func(p *Params) {
+			p.MaxPqcVerificationsPerTx = AbsoluteMaxPQCVerificationsPerTx + 1
+		}},
+		{"too many PQC verifications per block", func(p *Params) {
+			p.MaxPqcVerificationsPerBlock = AbsoluteMaxPQCVerificationsPerBlock + 1
+		}},
+		{"transaction PQC budget exceeds block budget", func(p *Params) {
+			p.MaxPqcVerificationsPerTx = 17
+			p.MaxPqcVerificationsPerBlock = 16
 		}},
 		{"zero verification gas", func(p *Params) { p.SignatureVerificationGas = 0 }},
 		{"signature gas below floor", func(p *Params) {
@@ -157,7 +186,12 @@ func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
 	require.Equal(t, DefaultMaxRetainedKeyRecordsPerRole, params.EffectiveMaxRetainedKeyRecordsPerRole())
 	require.Equal(t, DefaultSignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, DefaultProofVerificationGas, params.EffectiveProofVerificationGas())
+	require.Equal(t, DefaultMaxPQCVerificationsPerTx, params.EffectiveMaxPQCVerificationsPerTx())
+	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, params.EffectiveMaxPQCVerificationsPerBlock())
 	require.Equal(t, DefaultRecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
+	normalized := params.Effective(1)
+	require.Equal(t, DefaultMaxPQCVerificationsPerTx, normalized.MaxPqcVerificationsPerTx)
+	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, normalized.MaxPqcVerificationsPerBlock)
 
 	params = DefaultParams()
 	require.Equal(t, params.MaxPqcSigners, params.EffectiveMaxPQCSigners())
@@ -169,6 +203,8 @@ func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
 	)
 	require.Equal(t, params.SignatureVerificationGas, params.EffectiveSignatureVerificationGas())
 	require.Equal(t, params.ProofVerificationGas, params.EffectiveProofVerificationGas())
+	require.Equal(t, params.MaxPqcVerificationsPerTx, params.EffectiveMaxPQCVerificationsPerTx())
+	require.Equal(t, params.MaxPqcVerificationsPerBlock, params.EffectiveMaxPQCVerificationsPerBlock())
 	require.Equal(t, params.RecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
 	require.Equal(
 		t,

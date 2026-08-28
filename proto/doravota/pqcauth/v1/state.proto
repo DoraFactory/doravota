@@ -101,6 +101,15 @@ message Params {
   // replacement signing key. It must leave at least one complete block in
   // which the current signing key can cancel an unauthorized request.
   uint64 recovery_delay_blocks = 17;
+  // Maximum number of expensive post-quantum signature/proof verifications a
+  // single transaction may request. Zero in legacy state maps to the protocol
+  // default.
+  uint32 max_pqc_verifications_per_tx = 18;
+  // Maximum aggregate number of expensive post-quantum signature/proof
+  // verifications admitted into one proposal. It includes native SDK ML-DSA
+  // signatures, pqcauth signatures, lifecycle proofs, and recovery signatures.
+  // Zero in legacy state maps to the protocol default.
+  uint32 max_pqc_verifications_per_block = 19;
 }
 
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The
@@ -121,6 +130,8 @@ message ScheduledParams {
   // cannot choose or extend this value directly.
   uint64 emergency_expires_height = 10;
   RegistrationMode registration_mode = 11;
+  uint32 max_pqc_verifications_per_tx = 12;
+  uint32 max_pqc_verifications_per_block = 13;
 }
 
 // PQCKeyRecord is an append-only key record. inactive_from_height is exclusive;

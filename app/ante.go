@@ -74,6 +74,13 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewValidateMemoDecorator(options.AccountKeeper),
 		ante.NewConsumeGasForTxSizeDecorator(options.AccountKeeper),
 		pqcauthante.NewValidatePQCStructureDecorator(options.PQCAuthKeeper),
+		// Reject transactions that could exceed the bounded number of native
+		// ML-DSA, pqcauth, or lifecycle-proof verifications before fees and any
+		// expensive cryptographic work are performed.
+		pqcauthante.NewValidatePQCVerificationBudgetDecorator(
+			options.PQCAuthKeeper,
+			options.AccountKeeper,
+		),
 		sponsorante.NewSponsorContractTxAnteDecorator(options.SponsorKeeper, options.AccountKeeper.(authkeeper.AccountKeeper), options.BankKeeper.(bankkeeper.Keeper), options.TxFeeChecker),
 		// Use sponsor-aware fee decorator that handles both normal fees and sponsor fees
 		sponsorante.NewSponsorAwareDeductFeeDecorator(

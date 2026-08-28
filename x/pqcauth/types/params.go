@@ -17,6 +17,8 @@ const (
 	DefaultGovernanceSafetyDelayBlocks  uint64 = 17_280
 	DefaultMaxEmergencyDurationBlocks   uint64 = 17_280
 	DefaultRecoveryDelayBlocks          uint64 = 17_280
+	DefaultMaxPQCVerificationsPerTx     uint32 = 16
+	DefaultMaxPQCVerificationsPerBlock  uint32 = 400
 
 	AbsoluteMaxPQCSigners                  uint32 = 32
 	AbsoluteMaxPQCAuthBytes                uint32 = 256 * 1024
@@ -25,6 +27,8 @@ const (
 	AbsoluteMaxGovernanceSafetyDelayBlocks uint64 = 2_000_000
 	AbsoluteMaxEmergencyDurationBlocks     uint64 = 172_800
 	AbsoluteMaxRecoveryDelayBlocks         uint64 = 2_000_000
+	AbsoluteMaxPQCVerificationsPerTx       uint32 = 64
+	AbsoluteMaxPQCVerificationsPerBlock    uint32 = 4_096
 	MinimumGovernanceSafetyDelayBlocks     uint64 = 2
 	MinimumEmergencyDurationBlocks         uint64 = 2
 	MinimumRecoveryDelayBlocks             uint64 = 2
@@ -65,6 +69,8 @@ func DefaultParams() Params {
 		GovernanceSafetyDelayBlocks:  DefaultGovernanceSafetyDelayBlocks,
 		MaxEmergencyDurationBlocks:   DefaultMaxEmergencyDurationBlocks,
 		RecoveryDelayBlocks:          DefaultRecoveryDelayBlocks,
+		MaxPqcVerificationsPerTx:     DefaultMaxPQCVerificationsPerTx,
+		MaxPqcVerificationsPerBlock:  DefaultMaxPQCVerificationsPerBlock,
 	}
 }
 
@@ -190,6 +196,28 @@ func validateScheduledParams(p ScheduledParams) error {
 			AbsoluteMaxRetainedKeyRecordsPerRole,
 		)
 	}
+	maxPerTx := effectiveMaxPQCVerificationsPerTx(p.MaxPqcVerificationsPerTx)
+	maxPerBlock := effectiveMaxPQCVerificationsPerBlock(p.MaxPqcVerificationsPerBlock)
+	if maxPerTx > AbsoluteMaxPQCVerificationsPerTx {
+		return fmt.Errorf(
+			"%w: max PQC verifications per transaction must be in [1,%d]",
+			ErrInvalidParams,
+			AbsoluteMaxPQCVerificationsPerTx,
+		)
+	}
+	if maxPerBlock > AbsoluteMaxPQCVerificationsPerBlock {
+		return fmt.Errorf(
+			"%w: max PQC verifications per block must be in [1,%d]",
+			ErrInvalidParams,
+			AbsoluteMaxPQCVerificationsPerBlock,
+		)
+	}
+	if maxPerTx > maxPerBlock {
+		return fmt.Errorf(
+			"%w: max PQC verifications per transaction cannot exceed the block budget",
+			ErrInvalidParams,
+		)
+	}
 	if !validRegistrationMode(normalizeRegistrationMode(p.RegistrationMode)) {
 		return fmt.Errorf("%w: invalid registration mode %d", ErrInvalidParams, p.RegistrationMode)
 	}
@@ -244,6 +272,8 @@ func (p Params) EffectiveRegistrationMode(height int64) RegistrationMode {
 // activation height. The returned copy never contains an activated schedule.
 func (p Params) Effective(height int64) Params {
 	p.RecoveryDelayBlocks = p.EffectiveRecoveryDelayBlocks()
+	p.MaxPqcVerificationsPerTx = p.EffectiveMaxPQCVerificationsPerTx()
+	p.MaxPqcVerificationsPerBlock = p.EffectiveMaxPQCVerificationsPerBlock()
 	if height < 0 {
 		return p
 	}
@@ -277,6 +307,8 @@ func (p Params) AsScheduled() ScheduledParams {
 		RegistrationMode:             normalizeRegistrationMode(p.RegistrationMode),
 		EmergencyMode:                p.EmergencyMode,
 		EmergencyExpiresHeight:       p.EmergencyExpiresHeight,
+		MaxPqcVerificationsPerTx:     p.EffectiveMaxPQCVerificationsPerTx(),
+		MaxPqcVerificationsPerBlock:  p.EffectiveMaxPQCVerificationsPerBlock(),
 	}
 }
 
@@ -292,6 +324,8 @@ func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
 	p.RegistrationMode = normalizeRegistrationMode(scheduled.RegistrationMode)
 	p.EmergencyMode = scheduled.EmergencyMode
 	p.EmergencyExpiresHeight = scheduled.EmergencyExpiresHeight
+	p.MaxPqcVerificationsPerTx = scheduled.MaxPqcVerificationsPerTx
+	p.MaxPqcVerificationsPerBlock = scheduled.MaxPqcVerificationsPerBlock
 }
 
 func (p Params) EffectiveMaxPQCSigners() uint32 {
@@ -330,6 +364,28 @@ func (p Params) EffectiveProofVerificationGas() uint64 {
 		return DefaultProofVerificationGas
 	}
 	return p.ProofVerificationGas
+}
+
+func (p Params) EffectiveMaxPQCVerificationsPerTx() uint32 {
+	return effectiveMaxPQCVerificationsPerTx(p.MaxPqcVerificationsPerTx)
+}
+
+func (p Params) EffectiveMaxPQCVerificationsPerBlock() uint32 {
+	return effectiveMaxPQCVerificationsPerBlock(p.MaxPqcVerificationsPerBlock)
+}
+
+func effectiveMaxPQCVerificationsPerTx(value uint32) uint32 {
+	if value == 0 {
+		return DefaultMaxPQCVerificationsPerTx
+	}
+	return value
+}
+
+func effectiveMaxPQCVerificationsPerBlock(value uint32) uint32 {
+	if value == 0 {
+		return DefaultMaxPQCVerificationsPerBlock
+	}
+	return value
 }
 
 // EffectiveRecoveryDelayBlocks maps the zero value written by pre-v2 state to

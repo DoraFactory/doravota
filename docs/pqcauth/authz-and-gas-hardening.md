@@ -1,4 +1,4 @@
-# pqcauth Authz and Gas Hardening
+# pqcauth Authz, Gas, and Verification-Budget Hardening
 
 This note records the consensus rules and operator workflow introduced for the
 P0 `x/authz` boundary and deterministic ML-DSA gas calibration.
@@ -65,6 +65,32 @@ set native ML-DSA verification below the SDK's benchmark-backed default of 750
 gas. Native ML-DSA public-key and signature bytes remain charged by
 `ConsumeGasForTxSize`. pqcauth's separate transaction-signature and lifecycle
 proof floors remain 250,000 gas.
+
+## Deterministic transaction and block verification budgets
+
+Gas and transaction bytes remain the economic controls, while a separate
+consensus budget is the final CPU-safety boundary. Every operation that can
+reach an expensive post-quantum verification counts once:
+
+- a native SDK ML-DSA signature, including an ML-DSA leaf selected by a
+  supported SDK multisig;
+- a pqcauth transaction signature;
+- a lifecycle key proof; or
+- a Recovery v2 recovery signature.
+
+The protocol defaults are 16 verifications per transaction and 400 per block.
+Governance may schedule stricter or looser values only within binary absolute
+limits, and the per-transaction limit cannot exceed the block limit. Legacy
+state that predates these fields maps zero values to the protocol defaults.
+
+Ante rejects an over-budget transaction immediately after bounded structural
+decoding and before fees, classic signature verification, or ML-DSA work.
+`PrepareProposal` admits only transactions that keep the aggregate within the
+block budget. `ProcessProposal` first decodes and counts the complete proposal,
+rejecting an over-budget proposal before it performs any signature
+verification; only a successful preflight proceeds to the normal Ante replay.
+This prevents a malicious proposer from hiding an excessive CPU workload
+behind otherwise valid gas and byte declarations.
 
 ## Target-hardware calibration
 

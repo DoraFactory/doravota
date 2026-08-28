@@ -29,4 +29,5 @@ var (
 	ErrFreshRegistrationOnly  = errorsmod.Register(ModuleName, 24, "PQC registration is limited to fresh accounts")
 	ErrUnsafeAuthorization    = errorsmod.Register(ModuleName, 25, "delegated authorization is not quantum-safe")
 	ErrNoPendingRecovery      = errorsmod.Register(ModuleName, 26, "no cancellable PQC recovery is pending")
+	ErrVerificationBudget     = errorsmod.Register(ModuleName, 27, "PQC verification budget exceeded")
 )
