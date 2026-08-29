@@ -33,6 +33,36 @@ IBC application logic, group policies, and other modules that implement their
 own authorization remain separate security boundaries and require their own
 review.
 
+## Protection-readiness preflight
+
+Before a classic account registers pqcauth or enables `self_enforced`, operators
+and clients should check capabilities that the account previously delegated:
+
+```bash
+dorad pqcauth protection-readiness <account-address> \
+  --node <rpc-address>
+```
+
+The read-only command classifies the SDK account key and lists bounded pages of
+`x/authz` grants and `x/feegrant` allowances for which the account is the
+granter. It exits successfully only for an eligible classic account with no
+remaining delegated capabilities. Native ML-DSA accounts are reported as
+ineligible because they already use native PQC authentication and must not
+register a pqcauth second factor.
+
+The preflight is deliberately a client/operator query, not an Ante decorator.
+In particular, the SDK `AllowancesByGranter` query uses a filtered collection
+scan; placing it in consensus execution would make transaction cost depend on
+unrelated global feegrant state. Query errors therefore fail the command closed
+without adding an unbounded scan to every transaction.
+
+The registration window has a separate strict rule: under
+`FRESH_ACCOUNTS_ONLY`, registration must be the account's first outgoing
+transaction, while its sequence is zero and its classic public key is still
+unpublished. Receiving funds does not consume freshness, but sending another
+transaction first does. Wallet integrations must build registration as the
+first transaction or keep the window `OPEN` during broad migration.
+
 ## Deterministic gas model
 
 Consensus code never derives gas from wall-clock duration. The pqcauth

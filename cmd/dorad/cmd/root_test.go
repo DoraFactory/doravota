@@ -21,6 +21,7 @@ func TestNewRootCmdBuildsModuleCommands(t *testing.T) {
 		{"tx", "group"},
 		{"tx", "pqcauth"},
 		{"pqcauth", "audit-state"},
+		{"pqcauth", "protection-readiness"},
 	} {
 		command, _, err := root.Find(path)
 		require.NoError(t, err, "resolve command %v", path)

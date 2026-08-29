@@ -17,9 +17,12 @@ import (
 func pqcauthAuditCommand(encodingConfig appparams.EncodingConfig) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "pqcauth",
-		Short: "Offline PQC authentication maintenance",
+		Short: "PQC authentication maintenance",
 	}
-	command.AddCommand(pqcauthAuditStateCommand(encodingConfig))
+	command.AddCommand(
+		pqcauthAuditStateCommand(encodingConfig),
+		pqcauthProtectionReadinessCommand(encodingConfig),
+	)
 	return command
 }
 
