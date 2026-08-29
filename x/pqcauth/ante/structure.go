@@ -54,6 +54,9 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 ) (sdk.Context, error) {
 	stateCtx := pqcStateContext(ctx, simulate)
 	params := d.keeper.GetParams(stateCtx).Effective(stateCtx.BlockHeight())
+	if err := validateNoNestedLifecycleMessages(tx.GetMsgs(), 0); err != nil {
+		return ctx, err
+	}
 	extension, found, err := ExtractExtension(tx, params)
 	if err != nil {
 		return ctx, err

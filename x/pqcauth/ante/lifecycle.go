@@ -477,18 +477,10 @@ func topLevelLifecycleMessage(tx sdk.Tx) sdk.Msg {
 	if len(tx.GetMsgs()) != 1 {
 		return nil
 	}
-	switch tx.GetMsgs()[0].(type) {
-	case *types.MsgRegisterKey,
-		*types.MsgRotateKey,
-		*types.MsgRotateRecoveryKey,
-		*types.MsgSetProtection,
-		*types.MsgRevokeKey,
-		*types.MsgRecoverKey,
-		*types.MsgCancelRecovery:
+	if isPQCAuthLifecycleMessage(tx.GetMsgs()[0]) {
 		return tx.GetMsgs()[0]
-	default:
-		return nil
 	}
+	return nil
 }
 
 func keyChangeAllowed(params types.Params) error {
