@@ -31,6 +31,21 @@ type authzGrantReaderMock struct {
 	request *authz.QueryGranterGrantsRequest
 }
 
+type feegrantAllowanceReaderMock struct {
+	allowances map[string]feegrant.FeeAllowanceI
+	err        error
+}
+
+func (m feegrantAllowanceReaderMock) GetAllowance(
+	_ context.Context,
+	granter, grantee sdk.AccAddress,
+) (feegrant.FeeAllowanceI, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.allowances[granter.String()+"/"+grantee.String()], nil
+}
+
 type delegatedFeeTxStub struct {
 	extensionOptionsTxStub
 	feePayer   sdk.AccAddress
@@ -59,7 +74,29 @@ func authzDecorator(
 	reader AuthzGrantReader,
 	appCodec codec.Codec,
 ) AuthzPQCDecorator {
-	return NewAuthzPQCDecorator(moduleKeeper, accountKeeper, reader, appCodec)
+	return NewAuthzPQCDecorator(
+		moduleKeeper,
+		accountKeeper,
+		reader,
+		feegrantAllowanceReaderMock{},
+		appCodec,
+	)
+}
+
+func authzDecoratorWithFeegrantReader(
+	moduleKeeper pqckeeper.Keeper,
+	accountKeeper accountKeeperMock,
+	authzReader AuthzGrantReader,
+	feegrantReader FeegrantAllowanceReader,
+	appCodec codec.Codec,
+) AuthzPQCDecorator {
+	return NewAuthzPQCDecorator(
+		moduleKeeper,
+		accountKeeper,
+		authzReader,
+		feegrantReader,
+		appCodec,
+	)
 }
 
 func runAuthzDecorator(
@@ -67,26 +104,34 @@ func runAuthzDecorator(
 	decorator AuthzPQCDecorator,
 	messages ...sdk.Msg,
 ) error {
+	cacheCtx, write := ctx.CacheContext()
 	_, err := decorator.AnteHandle(
-		ctx,
+		cacheCtx,
 		extensionOptionsTxStub{messages: messages},
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
 			return nextCtx, nil
 		},
 	)
+	if err == nil {
+		write()
+	}
 	return err
 }
 
 func runAuthzTx(ctx sdk.Context, decorator AuthzPQCDecorator, tx sdk.Tx) error {
+	cacheCtx, write := ctx.CacheContext()
 	_, err := decorator.AnteHandle(
-		ctx,
+		cacheCtx,
 		tx,
 		false,
 		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
 			return nextCtx, nil
 		},
 	)
+	if err == nil {
+		write()
+	}
 	return err
 }
 
@@ -188,6 +233,164 @@ func TestAuthzProtectionFailsClosedWhenGrantQueryFails(t *testing.T) {
 		Owner: accountKeeper.account.GetAddress().String(),
 	})
 	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+}
+
+func TestPQCActivationRequiresOutgoingFeegrantsToBeRevoked(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	owner := accountKeeper.account.GetAddress()
+	grantee := addClassicAccount(&accountKeeper)
+	require.NoError(t, moduleKeeper.SetOutgoingFeegrant(
+		ctx,
+		owner,
+		grantee,
+		&feegrant.BasicAllowance{},
+	))
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+
+	err := runAuthzDecorator(ctx, decorator, &types.MsgRegisterKey{Owner: owner.String()})
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), "feegrant")
+
+	revoke := feegrant.NewMsgRevokeAllowance(owner, grantee)
+	require.NoError(t, runAuthzDecorator(
+		ctx,
+		decorator,
+		&revoke,
+		&types.MsgRegisterKey{Owner: owner.String()},
+	))
+	found, err := moduleKeeper.HasOutgoingFeegrant(ctx, owner)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestPQCActivationRejectsSameTransactionCapabilityGrant(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	owner := accountKeeper.account.GetAddress()
+	nativeGrantee := addNativePQCAccount(t, &accountKeeper)
+	feeGrant, err := feegrant.NewMsgGrantAllowance(
+		&feegrant.BasicAllowance{},
+		owner,
+		nativeGrantee,
+	)
+	require.NoError(t, err)
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+
+	err = runAuthzDecorator(
+		ctx,
+		decorator,
+		&types.MsgRegisterKey{Owner: owner.String()},
+		feeGrant,
+	)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	found, indexErr := moduleKeeper.HasOutgoingFeegrant(ctx, owner)
+	require.NoError(t, indexErr)
+	require.False(t, found)
+
+	authzGrant, err := authz.NewMsgGrant(
+		owner,
+		nativeGrantee,
+		authz.NewGenericAuthorization(sdk.MsgTypeURL(&banktypes.MsgSend{})),
+		nil,
+	)
+	require.NoError(t, err)
+	err = runAuthzDecorator(
+		ctx,
+		decorator,
+		authzGrant,
+		&types.MsgRegisterKey{Owner: owner.String()},
+	)
+	require.ErrorIs(t, err, types.ErrUnsafeAuthorization)
+	require.Contains(t, err.Error(), "cannot be combined")
+}
+
+func TestFeegrantIndexPredictionRollsBackWithAnteFailure(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	granter := addClassicAccount(&accountKeeper)
+	grantee := addClassicAccount(&accountKeeper)
+	grant, err := feegrant.NewMsgGrantAllowance(
+		&feegrant.BasicAllowance{},
+		granter,
+		grantee,
+	)
+	require.NoError(t, err)
+	decorator := authzDecorator(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		newAnteTestCodec(t),
+	)
+	cacheCtx, _ := ctx.CacheContext()
+	expected := errors.New("downstream ante failure")
+	_, err = decorator.AnteHandle(
+		cacheCtx,
+		extensionOptionsTxStub{messages: []sdk.Msg{grant}},
+		false,
+		func(nextCtx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) {
+			return nextCtx, expected
+		},
+	)
+	require.ErrorIs(t, err, expected)
+	found, err := moduleKeeper.HasOutgoingFeegrant(ctx, granter)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestFeePaymentRepairsAndRemovesOutgoingFeegrantIndex(t *testing.T) {
+	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
+	granter := addClassicAccount(&accountKeeper)
+	grantee := addClassicAccount(&accountKeeper)
+	tx := delegatedFeeTxStub{
+		extensionOptionsTxStub: extensionOptionsTxStub{},
+		feePayer:               grantee,
+		feeGranter:             granter,
+	}
+	allowance := &feegrant.BasicAllowance{}
+	reader := feegrantAllowanceReaderMock{allowances: map[string]feegrant.FeeAllowanceI{
+		granter.String() + "/" + grantee.String(): allowance,
+	}}
+	decorator := authzDecoratorWithFeegrantReader(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		reader,
+		newAnteTestCodec(t),
+	)
+
+	require.NoError(t, runAuthzTx(ctx, decorator, tx))
+	found, err := moduleKeeper.HasOutgoingFeegrant(ctx, granter)
+	require.NoError(t, err)
+	require.True(t, found)
+
+	decorator = authzDecoratorWithFeegrantReader(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		feegrantAllowanceReaderMock{},
+		newAnteTestCodec(t),
+	)
+	require.NoError(t, runAuthzTx(ctx, decorator, tx))
+	found, err = moduleKeeper.HasOutgoingFeegrant(ctx, granter)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	decorator = authzDecoratorWithFeegrantReader(
+		moduleKeeper,
+		accountKeeper,
+		&authzGrantReaderMock{},
+		feegrantAllowanceReaderMock{err: errors.New("feegrant store unavailable")},
+		newAnteTestCodec(t),
+	)
+	require.ErrorIs(t, runAuthzTx(ctx, decorator, tx), types.ErrUnsafeAuthorization)
 }
 
 func TestAuthzGrantFreezesPendingProtectionAndRequiresSafeGrantee(t *testing.T) {

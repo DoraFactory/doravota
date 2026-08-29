@@ -29,14 +29,15 @@ import (
 type HandlerOptions struct {
 	ante.HandlerOptions
 
-	IBCKeeper             *keeper.Keeper
-	NodeConfig            *wasmTypes.NodeConfig
-	TXCounterStoreService corestore.KVStoreService
-	SponsorKeeper         sponsortypes.SponsorKeeperInterface
-	PQCAuthKeeper         pqcauthkeeper.Keeper
-	AuthzGrantReader      pqcauthante.AuthzGrantReader
-	AppCodec              codec.Codec
-	AppOptions            servertypes.AppOptions
+	IBCKeeper               *keeper.Keeper
+	NodeConfig              *wasmTypes.NodeConfig
+	TXCounterStoreService   corestore.KVStoreService
+	SponsorKeeper           sponsortypes.SponsorKeeperInterface
+	PQCAuthKeeper           pqcauthkeeper.Keeper
+	AuthzGrantReader        pqcauthante.AuthzGrantReader
+	FeegrantAllowanceReader pqcauthante.FeegrantAllowanceReader
+	AppCodec                codec.Codec
+	AppOptions              servertypes.AppOptions
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -57,6 +58,9 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 	}
 	if options.AuthzGrantReader == nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "authz grant reader is required for ante builder")
+	}
+	if options.FeegrantAllowanceReader == nil {
+		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "feegrant allowance reader is required for ante builder")
 	}
 	if options.AppCodec == nil {
 		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "app codec is required for ante builder")
@@ -99,6 +103,7 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 			options.PQCAuthKeeper,
 			options.AccountKeeper,
 			options.AuthzGrantReader,
+			options.FeegrantAllowanceReader,
 			options.AppCodec,
 		),
 		pqcauthante.NewVerifyPQCDecorator(options.PQCAuthKeeper, options.AccountKeeper),

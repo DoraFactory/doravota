@@ -24,15 +24,17 @@ type StateAuditIssue struct {
 // exported-state auditor. Counts always describe every record inspected, even
 // when the issue list is truncated.
 type StateAuditReport struct {
-	Consistent      bool              `json:"consistent"`
-	Height          int64             `json:"height"`
-	Keys            uint64            `json:"keys"`
-	Policies        uint64            `json:"policies"`
-	KeySequences    uint64            `json:"key_sequences"`
-	KeyHistories    uint64            `json:"key_histories"`
-	TotalIssues     uint64            `json:"total_issues"`
-	IssuesTruncated bool              `json:"issues_truncated"`
-	Issues          []StateAuditIssue `json:"issues"`
+	Consistent       bool              `json:"consistent"`
+	Height           int64             `json:"height"`
+	Keys             uint64            `json:"keys"`
+	Policies         uint64            `json:"policies"`
+	KeySequences     uint64            `json:"key_sequences"`
+	KeyHistories     uint64            `json:"key_histories"`
+	FeegrantIndexes  uint64            `json:"feegrant_indexes"`
+	FeegrantExpiries uint64            `json:"feegrant_expiries"`
+	TotalIssues      uint64            `json:"total_issues"`
+	IssuesTruncated  bool              `json:"issues_truncated"`
+	Issues           []StateAuditIssue `json:"issues"`
 }
 
 func NewStateAuditReport(height int64) StateAuditReport {

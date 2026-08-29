@@ -27,11 +27,40 @@ SDK signature has been verified:
 5. Existing-grant activation checks use the authz store's granter prefix with
    a pagination limit of one. Ante never performs an unbounded global grant
    scan.
+6. The same activation boundary applies to `x/feegrant`: registration or
+   enabling `self_enforced` is rejected while the account has an outgoing fee
+   allowance. A transaction cannot hide a new authz or feegrant capability
+   behind message ordering in the same transaction.
 
 These rules protect account-level Cosmos authz capabilities. Wasm contracts,
 IBC application logic, group policies, and other modules that implement their
 own authorization remain separate security boundaries and require their own
 review.
+
+## Consensus-enforced feegrant reverse index
+
+The SDK feegrant primary key is ordered by grantee, so answering "does this
+granter have any allowance?" otherwise requires scanning unrelated global
+state. pqcauth consensus version 2 adds a derived, deterministic index ordered
+by `granter -> grantee`; activation checks read at most the first key under the
+granter prefix.
+
+The index is kept consistent at every canonical mutation boundary:
+
+- the application wraps the SDK feegrant MsgServer, so grant, revoke, and
+  explicit pruning update the SDK store and pqcauth index in the same cached
+  state transition, including calls routed through authz, group, governance,
+  or Wasm;
+- Ante reads the allowance after SDK fee deduction and updates or removes the
+  index when spending changes or exhausts an allowance;
+- feegrant EndBlock expiration pruning is mirrored with the same limits and
+  the same `expiration -> grantee -> granter` ordering; and
+- the pqcauth v1-to-v2 migration and first-install initialization rebuild the
+  index from all existing fee allowances before activation is allowed.
+
+State audit validates both the reverse entries and the expiration queue. A
+decode error or mismatch fails closed instead of silently treating the account
+as ready for protection.
 
 ## Protection-readiness preflight
 
@@ -50,11 +79,10 @@ remaining delegated capabilities. Native ML-DSA accounts are reported as
 ineligible because they already use native PQC authentication and must not
 register a pqcauth second factor.
 
-The preflight is deliberately a client/operator query, not an Ante decorator.
-In particular, the SDK `AllowancesByGranter` query uses a filtered collection
-scan; placing it in consensus execution would make transaction cost depend on
-unrelated global feegrant state. Query errors therefore fail the command closed
-without adding an unbounded scan to every transaction.
+The preflight remains a client/operator query and reports the SDK's canonical
+state. Consensus execution does not call the SDK `AllowancesByGranter` filtered
+scan; it uses the bounded reverse index above. Query errors therefore fail the
+command closed without adding an unbounded scan to every transaction.
 
 The registration window has a separate strict rule: under
 `FRESH_ACCOUNTS_ONLY`, registration must be the account's first outgoing

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"time"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
@@ -21,6 +22,11 @@ func (k Keeper) AuditState(
 	report := types.NewStateAuditReport(ctx.BlockHeight())
 	genesis := types.GenesisState{Params: types.DefaultParams()}
 	owners := make(map[string]struct{})
+	type reverseIndexState struct {
+		expiration *time.Time
+	}
+	reverseIndexes := make(map[string]reverseIndexState)
+	expiryIndexes := make(map[string]time.Time)
 
 	store := ctx.KVStore(k.storeKey)
 	iterator := store.Iterator(nil, nil)
@@ -89,8 +95,67 @@ func (k Keeper) AuditState(
 			owners[history.Owner] = struct{}{}
 			k.auditStorageKey(maxIssues, &report, storageKey, history.Owner, 0, history.Role)
 
+		case types.FeegrantReverseKeyPrefix[0]:
+			report.FeegrantIndexes++
+			granter, grantee, err := types.DecodeFeegrantReverseKey(storageKey)
+			if err != nil {
+				report.AddIssue(maxIssues, "feegrant_index_key_decode_failure", "", fmt.Sprintf("key %X: %v", storageKey, err))
+				continue
+			}
+			expected := types.FeegrantReverseKey(granter, grantee)
+			if !bytes.Equal(storageKey, expected) {
+				report.AddIssue(maxIssues, "feegrant_index_key_mismatch", granter.String(), fmt.Sprintf("key %X, expected %X", storageKey, expected))
+				continue
+			}
+			expiration, err := types.DecodeFeegrantIndexValue(value)
+			if err != nil {
+				report.AddIssue(maxIssues, "feegrant_index_value_decode_failure", granter.String(), err.Error())
+				continue
+			}
+			reverseIndexes[string(storageKey)] = reverseIndexState{expiration: expiration}
+
+		case types.FeegrantExpiryKeyPrefix[0]:
+			report.FeegrantExpiries++
+			expiration, granter, grantee, err := types.DecodeFeegrantExpiryKey(storageKey)
+			if err != nil {
+				report.AddIssue(maxIssues, "feegrant_expiry_key_decode_failure", "", fmt.Sprintf("key %X: %v", storageKey, err))
+				continue
+			}
+			expected, err := types.FeegrantExpiryKey(expiration, granter, grantee)
+			if err != nil || !bytes.Equal(storageKey, expected) {
+				report.AddIssue(maxIssues, "feegrant_expiry_key_mismatch", granter.String(), fmt.Sprintf("key %X is not canonical", storageKey))
+				continue
+			}
+			if !bytes.Equal(value, []byte{1}) {
+				report.AddIssue(maxIssues, "feegrant_expiry_value_mismatch", granter.String(), fmt.Sprintf("key %X has invalid value", storageKey))
+				continue
+			}
+			reverseKey := string(types.FeegrantReverseKey(granter, grantee))
+			if _, found := expiryIndexes[reverseKey]; found {
+				report.AddIssue(maxIssues, "duplicate_feegrant_expiry_index", granter.String(), fmt.Sprintf("key %X duplicates an expiry entry", storageKey))
+				continue
+			}
+			expiryIndexes[reverseKey] = expiration
+
 		default:
 			report.AddIssue(maxIssues, "unknown_storage_key", "", fmt.Sprintf("unknown key %X", storageKey))
+		}
+	}
+	for reverseKey, state := range reverseIndexes {
+		expiration, hasExpiry := expiryIndexes[reverseKey]
+		if state.expiration == nil {
+			if hasExpiry {
+				report.AddIssue(maxIssues, "unexpected_feegrant_expiry_index", "", fmt.Sprintf("reverse key %X has no expiration", []byte(reverseKey)))
+			}
+			continue
+		}
+		if !hasExpiry || !state.expiration.Equal(expiration) {
+			report.AddIssue(maxIssues, "missing_feegrant_expiry_index", "", fmt.Sprintf("reverse key %X has no matching expiry", []byte(reverseKey)))
+		}
+	}
+	for reverseKey := range expiryIndexes {
+		if _, found := reverseIndexes[reverseKey]; !found {
+			report.AddIssue(maxIssues, "orphan_feegrant_expiry_index", "", fmt.Sprintf("reverse key %X is missing", []byte(reverseKey)))
 		}
 	}
 

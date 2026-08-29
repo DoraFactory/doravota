@@ -1,6 +1,7 @@
 package pqcauth
 
 import (
+	"context"
 	"encoding/json"
 	"math/rand"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -19,6 +21,15 @@ type moduleInvariantRegistryStub struct {
 	moduleName string
 	route      string
 	invariant  sdk.Invariant
+}
+
+type emptyFeegrantSource struct{}
+
+func (emptyFeegrantSource) IterateAllFeeAllowances(
+	context.Context,
+	func(feegrant.Grant) bool,
+) error {
+	return nil
 }
 
 func (r *moduleInvariantRegistryStub) RegisterRoute(
@@ -63,8 +74,8 @@ func TestAppModuleBasicWiringAndGenesisValidation(t *testing.T) {
 
 func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 	ctx, moduleKeeper := setupGenesisTest(t, 10)
-	appModule := NewAppModule(moduleKeeper)
-	require.Equal(t, uint64(1), appModule.ConsensusVersion())
+	appModule := NewAppModule(moduleKeeper, emptyFeegrantSource{})
+	require.Equal(t, uint64(2), appModule.ConsensusVersion())
 
 	cdc := moduleKeeper.Codec().(*codec.ProtoCodec)
 	genesis := types.DefaultGenesisState()

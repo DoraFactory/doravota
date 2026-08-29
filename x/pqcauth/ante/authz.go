@@ -2,8 +2,10 @@ package ante
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"cosmossdk.io/collections"
 	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -29,29 +31,40 @@ type AuthzGrantReader interface {
 	) (*authz.QueryGranterGrantsResponse, error)
 }
 
+type FeegrantAllowanceReader interface {
+	GetAllowance(
+		context.Context,
+		sdk.AccAddress,
+		sdk.AccAddress,
+	) (feegrant.FeeAllowanceI, error)
+}
+
 // AuthzPQCDecorator closes the capability gap between account-level PQC
 // enforcement and delegated x/authz or x/feegrant capabilities. It preserves
 // delegation semantics: a granter does not re-sign every use, but a protected
 // granter may only delegate to an account whose own transactions are already
 // PQC-enforced.
 type AuthzPQCDecorator struct {
-	keeper        pqckeeper.Keeper
-	accountKeeper authante.AccountKeeper
-	authzKeeper   AuthzGrantReader
-	codec         codec.Codec
+	keeper         pqckeeper.Keeper
+	accountKeeper  authante.AccountKeeper
+	authzKeeper    AuthzGrantReader
+	feegrantKeeper FeegrantAllowanceReader
+	codec          codec.Codec
 }
 
 func NewAuthzPQCDecorator(
 	moduleKeeper pqckeeper.Keeper,
 	accountKeeper authante.AccountKeeper,
 	authzKeeper AuthzGrantReader,
+	feegrantKeeper FeegrantAllowanceReader,
 	appCodec codec.Codec,
 ) AuthzPQCDecorator {
 	return AuthzPQCDecorator{
-		keeper:        moduleKeeper,
-		accountKeeper: accountKeeper,
-		authzKeeper:   authzKeeper,
-		codec:         appCodec,
+		keeper:         moduleKeeper,
+		accountKeeper:  accountKeeper,
+		authzKeeper:    authzKeeper,
+		feegrantKeeper: feegrantKeeper,
+		codec:          appCodec,
 	}
 }
 
@@ -66,16 +79,35 @@ func (d AuthzPQCDecorator) AnteHandle(
 	if err := d.validateFeePayment(stateCtx, params, tx); err != nil {
 		return ctx, err
 	}
+	if err := d.syncFeePaymentIndex(stateCtx, tx); err != nil {
+		return ctx, err
+	}
+	hasAuthzGrant, err := d.stageFeegrantMutations(stateCtx, tx.GetMsgs(), 0)
+	if err != nil {
+		return ctx, err
+	}
 
 	for _, message := range tx.GetMsgs() {
 		switch msg := message.(type) {
 		case *types.MsgRegisterKey:
-			if err := d.requireNoExistingGrants(stateCtx, msg.Owner); err != nil {
+			if hasAuthzGrant {
+				return ctx, errorsmod.Wrap(
+					types.ErrUnsafeAuthorization,
+					"pqcauth activation cannot be combined with a new authz grant",
+				)
+			}
+			if err := d.requireNoExistingCapabilities(stateCtx, msg.Owner); err != nil {
 				return ctx, err
 			}
 		case *types.MsgSetProtection:
 			if msg.Enabled && d.enablesProtection(stateCtx, msg.Owner) {
-				if err := d.requireNoExistingGrants(stateCtx, msg.Owner); err != nil {
+				if hasAuthzGrant {
+					return ctx, errorsmod.Wrap(
+						types.ErrUnsafeAuthorization,
+						"pqcauth activation cannot be combined with a new authz grant",
+					)
+				}
+				if err := d.requireNoExistingCapabilities(stateCtx, msg.Owner); err != nil {
 					return ctx, err
 				}
 			}
@@ -95,6 +127,54 @@ func (d AuthzPQCDecorator) AnteHandle(
 	}
 
 	return next(ctx, tx, simulate)
+}
+
+// stageFeegrantMutations predicts the transaction's final feegrant index before
+// checking a pqcauth activation message. The real MsgServer applies the same
+// changes after successful SDK execution. Ante writes live in the transaction
+// cache, so any later message failure rolls the prediction back with the tx.
+func (d AuthzPQCDecorator) stageFeegrantMutations(
+	ctx sdk.Context,
+	messages []sdk.Msg,
+	depth int,
+) (bool, error) {
+	if depth > maxNestedAuthzDepth {
+		return false, errorsmod.Wrapf(
+			types.ErrUnsafeAuthorization,
+			"nested MsgExec depth exceeds %d",
+			maxNestedAuthzDepth,
+		)
+	}
+	hasAuthzGrant := false
+	for _, message := range messages {
+		switch nested := message.(type) {
+		case *authz.MsgGrant:
+			hasAuthzGrant = true
+		case *feegrant.MsgGrantAllowance:
+			if err := d.stageFeegrantGrant(ctx, nested); err != nil {
+				return false, err
+			}
+		case *feegrant.MsgRevokeAllowance:
+			if err := d.stageFeegrantRevoke(ctx, nested); err != nil {
+				return false, err
+			}
+		case *feegrant.MsgPruneAllowances:
+			if err := d.keeper.PruneExpiredFeegrantIndexForMessage(ctx); err != nil {
+				return false, errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+			}
+		case *authz.MsgExec:
+			executed, err := nested.GetMessages()
+			if err != nil {
+				return false, errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+			}
+			found, err := d.stageFeegrantMutations(ctx, executed, depth+1)
+			if err != nil {
+				return false, err
+			}
+			hasAuthzGrant = hasAuthzGrant || found
+		}
+	}
+	return hasAuthzGrant, nil
 }
 
 // validateFeePayment protects existing as well as newly created fee grants.
@@ -130,7 +210,7 @@ func (d AuthzPQCDecorator) validateFeePayment(
 	return nil
 }
 
-func (d AuthzPQCDecorator) requireNoExistingGrants(ctx sdk.Context, granter string) error {
+func (d AuthzPQCDecorator) requireNoExistingCapabilities(ctx sdk.Context, granter string) error {
 	response, err := d.authzKeeper.GranterGrants(
 		sdk.WrapSDKContext(ctx),
 		&authz.QueryGranterGrantsRequest{
@@ -143,12 +223,96 @@ func (d AuthzPQCDecorator) requireNoExistingGrants(ctx sdk.Context, granter stri
 	if err != nil {
 		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
 	}
-	if response != nil && len(response.Grants) != 0 {
+	if response == nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, "authz granter query returned an empty response")
+	}
+	if len(response.Grants) != 0 {
 		return errorsmod.Wrapf(
 			types.ErrUnsafeAuthorization,
 			"account %s must revoke all existing authz grants before enabling pqcauth protection",
 			granter,
 		)
+	}
+	address, err := d.accountAddress(granter)
+	if err != nil {
+		return err
+	}
+	hasFeegrant, err := d.keeper.HasOutgoingFeegrant(ctx, address)
+	if err != nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+	}
+	if hasFeegrant {
+		return errorsmod.Wrapf(
+			types.ErrUnsafeAuthorization,
+			"account %s must revoke all existing feegrant allowances before enabling pqcauth protection",
+			granter,
+		)
+	}
+	return nil
+}
+
+func (d AuthzPQCDecorator) syncFeePaymentIndex(ctx sdk.Context, tx sdk.Tx) error {
+	feeTx, ok := tx.(sdk.FeeTx)
+	if !ok {
+		return nil
+	}
+	granter := sdk.AccAddress(feeTx.FeeGranter())
+	grantee := sdk.AccAddress(feeTx.FeePayer())
+	if len(granter) == 0 || len(grantee) == 0 || granter.Equals(grantee) {
+		return nil
+	}
+	allowance, err := d.feegrantKeeper.GetAllowance(sdk.WrapSDKContext(ctx), granter, grantee)
+	if err != nil && !errors.Is(err, collections.ErrNotFound) {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+	}
+	if allowance == nil || errors.Is(err, collections.ErrNotFound) {
+		if err := d.keeper.DeleteOutgoingFeegrant(ctx, granter, grantee); err != nil {
+			return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+		}
+		return nil
+	}
+	if err := d.keeper.SetOutgoingFeegrant(ctx, granter, grantee, allowance); err != nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+	}
+	return nil
+}
+
+func (d AuthzPQCDecorator) stageFeegrantGrant(
+	ctx sdk.Context,
+	message *feegrant.MsgGrantAllowance,
+) error {
+	granter, err := d.accountAddress(message.Granter)
+	if err != nil {
+		return err
+	}
+	grantee, err := d.accountAddress(message.Grantee)
+	if err != nil {
+		return err
+	}
+	allowance, err := message.GetFeeAllowanceI()
+	if err != nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+	}
+	if err := d.keeper.SetOutgoingFeegrant(ctx, granter, grantee, allowance); err != nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
+	}
+	return nil
+}
+
+func (d AuthzPQCDecorator) stageFeegrantRevoke(
+	ctx sdk.Context,
+	message *feegrant.MsgRevokeAllowance,
+) error {
+	granter, err := d.accountAddress(message.Granter)
+	if err != nil {
+		return err
+	}
+	grantee, err := d.accountAddress(message.Grantee)
+	if err != nil {
+		return err
+	}
+	if err := d.keeper.DeleteOutgoingFeegrant(ctx, granter, grantee); err != nil {
+		return errorsmod.Wrap(types.ErrUnsafeAuthorization, err.Error())
 	}
 	return nil
 }

@@ -71,11 +71,18 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command { return cli.GetQueryCmd() }
 
 type AppModule struct {
 	AppModuleBasic
-	keeper keeper.Keeper
+	keeper         keeper.Keeper
+	feegrantSource keeper.FeegrantAllowanceSource
 }
 
-func NewAppModule(moduleKeeper keeper.Keeper) AppModule {
-	return AppModule{keeper: moduleKeeper}
+func NewAppModule(
+	moduleKeeper keeper.Keeper,
+	feegrantSource keeper.FeegrantAllowanceSource,
+) AppModule {
+	if feegrantSource == nil {
+		panic("pqcauth feegrant allowance source is required")
+	}
+	return AppModule{keeper: moduleKeeper, feegrantSource: feegrantSource}
 }
 
 func (AppModule) IsOnePerModuleType() {}
@@ -84,6 +91,15 @@ func (AppModule) IsAppModule()        {}
 func (am AppModule) RegisterServices(configurator module.Configurator) {
 	types.RegisterMsgServer(configurator.MsgServer(), keeper.NewMsgServer(am.keeper))
 	types.RegisterQueryServer(configurator.QueryServer(), keeper.NewQueryServer(am.keeper))
+	if err := configurator.RegisterMigration(
+		types.ModuleName,
+		1,
+		func(ctx sdk.Context) error {
+			return am.keeper.RebuildFeegrantIndex(ctx, am.feegrantSource)
+		},
+	); err != nil {
+		panic(err)
+	}
 }
 
 func (am AppModule) RegisterInvariants(registry sdk.InvariantRegistry) {
@@ -100,6 +116,9 @@ func (am AppModule) InitGenesis(
 		panic(err)
 	}
 	InitGenesis(ctx, am.keeper, genesis)
+	if err := am.keeper.RebuildFeegrantIndex(ctx, am.feegrantSource); err != nil {
+		panic(err)
+	}
 	return nil
 }
 
@@ -107,7 +126,7 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 	return cdc.MustMarshalJSON(ExportGenesis(ctx, am.keeper))
 }
 
-func (AppModule) ConsensusVersion() uint64 { return 1 }
+func (AppModule) ConsensusVersion() uint64 { return 2 }
 func (am AppModule) BeginBlock(ctx context.Context) error {
 	_, err := am.keeper.NormalizeParams(sdk.UnwrapSDKContext(ctx))
 	return err
