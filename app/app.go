@@ -1219,6 +1219,15 @@ func (app *App) setupUpgradeHandlers() {
 					"max_bytes", consensusParams.Block.MaxBytes,
 				)
 			}
+			audit := app.PQCAuthKeeper.AuditState(ctx, pqcauthtypes.DefaultStateAuditMaxIssues)
+			if err := audit.Error(); err != nil {
+				logger.Error(
+					"refusing to complete upgrade with inconsistent pqcauth state",
+					"issues", audit.TotalIssues,
+					"error", err,
+				)
+				return nil, err
+			}
 
 			logger.Info("Upgrade completed successfully")
 			return vm, nil

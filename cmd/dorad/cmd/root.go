@@ -149,6 +149,7 @@ func initRootCmd(
 		debug.Cmd(),
 		genesisCommand(encodingConfig),
 		version.NewVersionCommand(),
+		pqcauthAuditCommand(encodingConfig),
 	)
 
 	a := appCreator{
