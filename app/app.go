@@ -984,6 +984,26 @@ func (app *App) AppCodec() codec.Codec {
 	return app.appCodec
 }
 
+// GetBaseApp exposes the BaseApp through the ibc-go testing application
+// interface. Keeping this small adapter on the production app lets IBC
+// compatibility tests exercise the real Dora module and AnteHandler wiring
+// instead of a generic SimApp.
+func (app *App) GetBaseApp() *baseapp.BaseApp {
+	return app.BaseApp
+}
+
+// GetIBCKeeper exposes the application IBC keeper to ibc-go's deterministic
+// two-chain harness.
+func (app *App) GetIBCKeeper() *ibckeeper.Keeper {
+	return app.IBCKeeper
+}
+
+// GetTxConfig exposes the transaction configuration expected by ibc-go's
+// deterministic two-chain harness.
+func (app *App) GetTxConfig() client.TxConfig {
+	return app.txConfig
+}
+
 // InterfaceRegistry returns an InterfaceRegistry
 func (app *App) InterfaceRegistry() types.InterfaceRegistry {
 	return app.interfaceRegistry
