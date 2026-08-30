@@ -11,6 +11,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/app"
@@ -23,9 +24,12 @@ func TestPQCAuthAuditStateCommandAcceptsConsistentExport(t *testing.T) {
 	require.NoError(t, err)
 	authRaw, err := encodingConfig.Marshaler.MarshalJSON(authtypes.DefaultGenesisState())
 	require.NoError(t, err)
+	feegrantRaw, err := encodingConfig.Marshaler.MarshalJSON(feegrant.DefaultGenesisState())
+	require.NoError(t, err)
 	export := marshalAuditExport(t, map[string]json.RawMessage{
 		pqcauthtypes.ModuleName: pqcRaw,
 		authtypes.ModuleName:    authRaw,
+		feegrant.ModuleName:     feegrantRaw,
 	})
 
 	command := pqcauthAuditStateCommand(encodingConfig)
@@ -40,14 +44,19 @@ func TestPQCAuthAuditStateCommandAcceptsConsistentExport(t *testing.T) {
 	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
 	require.True(t, report.Consistent)
 	require.Equal(t, int64(10), report.Height)
+	require.Zero(t, report.FeegrantAllowances)
+	require.False(t, report.FeegrantIndexCompared)
 }
 
 func TestPQCAuthAuditStateCommandFailsClosedWithoutAuthState(t *testing.T) {
 	encodingConfig := app.MakeEncodingConfig()
 	pqcRaw, err := encodingConfig.Marshaler.MarshalJSON(pqcauthtypes.DefaultGenesisState())
 	require.NoError(t, err)
+	feegrantRaw, err := encodingConfig.Marshaler.MarshalJSON(feegrant.DefaultGenesisState())
+	require.NoError(t, err)
 	export := marshalAuditExport(t, map[string]json.RawMessage{
 		pqcauthtypes.ModuleName: pqcRaw,
+		feegrant.ModuleName:     feegrantRaw,
 	})
 
 	command := pqcauthAuditStateCommand(encodingConfig)
@@ -63,6 +72,32 @@ func TestPQCAuthAuditStateCommandFailsClosedWithoutAuthState(t *testing.T) {
 	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
 	require.False(t, report.Consistent)
 	require.Equal(t, "missing_auth_state", report.Issues[0].Code)
+}
+
+func TestPQCAuthAuditStateCommandFailsClosedWithoutFeegrantState(t *testing.T) {
+	encodingConfig := app.MakeEncodingConfig()
+	pqcRaw, err := encodingConfig.Marshaler.MarshalJSON(pqcauthtypes.DefaultGenesisState())
+	require.NoError(t, err)
+	authRaw, err := encodingConfig.Marshaler.MarshalJSON(authtypes.DefaultGenesisState())
+	require.NoError(t, err)
+	export := marshalAuditExport(t, map[string]json.RawMessage{
+		pqcauthtypes.ModuleName: pqcRaw,
+		authtypes.ModuleName:    authRaw,
+	})
+
+	command := pqcauthAuditStateCommand(encodingConfig)
+	command.SilenceUsage = true
+	command.SilenceErrors = true
+	output := new(bytes.Buffer)
+	command.SetOut(output)
+	command.SetArgs([]string{export})
+	err = command.Execute()
+	require.ErrorIs(t, err, pqcauthtypes.ErrInconsistentState)
+
+	var report pqcauthtypes.StateAuditReport
+	require.NoError(t, json.Unmarshal(output.Bytes(), &report))
+	require.False(t, report.Consistent)
+	require.Equal(t, "missing_feegrant_state", report.Issues[0].Code)
 }
 
 func TestAuditExportedOwnerAccountsClassifiesClassicAndNativeOwners(t *testing.T) {
@@ -96,6 +131,24 @@ func TestAuditExportedOwnerAccountsClassifiesClassicAndNativeOwners(t *testing.T
 	}
 	require.True(t, codes["native_pqc_owner"])
 	require.True(t, codes["owner_account_not_found"])
+}
+
+func TestAuditExportedFeegrantStateCountsValidAllowances(t *testing.T) {
+	granter := sdk.AccAddress(bytes.Repeat([]byte{0x78}, 20))
+	grantee := sdk.AccAddress(bytes.Repeat([]byte{0x79}, 20))
+	grant, err := feegrant.NewGrant(granter, grantee, &feegrant.BasicAllowance{})
+	require.NoError(t, err)
+	report := pqcauthtypes.NewStateAuditReport(10)
+
+	auditExportedFeegrantState(
+		&report,
+		100,
+		*feegrant.NewGenesisState([]feegrant.Grant{grant}),
+	)
+
+	require.True(t, report.Consistent)
+	require.Equal(t, uint64(1), report.FeegrantAllowances)
+	require.False(t, report.FeegrantIndexCompared)
 }
 
 func marshalAuditExport(t testing.TB, appState map[string]json.RawMessage) string {

@@ -103,7 +103,7 @@ func (am AppModule) RegisterServices(configurator module.Configurator) {
 }
 
 func (am AppModule) RegisterInvariants(registry sdk.InvariantRegistry) {
-	keeper.RegisterInvariants(registry, am.keeper)
+	keeper.RegisterInvariants(registry, am.keeper, am.feegrantSource)
 }
 
 func (am AppModule) InitGenesis(

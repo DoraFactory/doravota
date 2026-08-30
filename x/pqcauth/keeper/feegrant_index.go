@@ -209,38 +209,17 @@ func (k Keeper) RebuildFeegrantIndex(
 
 	var rebuildErr error
 	err := source.IterateAllFeeAllowances(sdk.WrapSDKContext(ctx), func(grant feegrant.Grant) bool {
-		granter, err := sdk.AccAddressFromBech32(grant.Granter)
+		entry, err := decodeAuditedFeegrant(grant)
 		if err != nil {
-			rebuildErr = fmt.Errorf("decode feegrant granter %q: %w", grant.Granter, err)
+			rebuildErr = fmt.Errorf(
+				"decode feegrant allowance %s/%s: %w",
+				grant.Granter,
+				grant.Grantee,
+				err,
+			)
 			return true
 		}
-		if granter.String() != grant.Granter {
-			rebuildErr = fmt.Errorf("feegrant granter %q is not canonical", grant.Granter)
-			return true
-		}
-		grantee, err := sdk.AccAddressFromBech32(grant.Grantee)
-		if err != nil {
-			rebuildErr = fmt.Errorf("decode feegrant grantee %q: %w", grant.Grantee, err)
-			return true
-		}
-		if grantee.String() != grant.Grantee {
-			rebuildErr = fmt.Errorf("feegrant grantee %q is not canonical", grant.Grantee)
-			return true
-		}
-		allowance, err := grant.GetGrant()
-		if err != nil {
-			rebuildErr = fmt.Errorf("decode feegrant allowance %s/%s: %w", grant.Granter, grant.Grantee, err)
-			return true
-		}
-		expiration, err := allowance.ExpiresAt()
-		if err != nil {
-			rebuildErr = fmt.Errorf("read feegrant expiration %s/%s: %w", grant.Granter, grant.Grantee, err)
-			return true
-		}
-		if expiration != nil && expiration.Before(ctx.BlockTime()) {
-			return false
-		}
-		if err := k.setOutgoingFeegrant(ctx, granter, grantee, expiration); err != nil {
+		if err := k.setOutgoingFeegrant(ctx, entry.granter, entry.grantee, entry.expiration); err != nil {
 			rebuildErr = fmt.Errorf("index feegrant allowance %s/%s: %w", grant.Granter, grant.Grantee, err)
 			return true
 		}

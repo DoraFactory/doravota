@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -14,6 +15,23 @@ type invariantRegistryStub struct {
 	moduleName string
 	route      string
 	invariant  sdk.Invariant
+}
+
+func TestStateInvariantComparesCanonicalFeegrantState(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
+	granter := sdk.AccAddress(bytes.Repeat([]byte{0x61}, 20))
+	grantee := sdk.AccAddress(bytes.Repeat([]byte{0x62}, 20))
+	grant, err := feegrant.NewGrant(granter, grantee, &feegrant.BasicAllowance{})
+	require.NoError(t, err)
+
+	message, broken := StateInvariant(
+		moduleKeeper,
+		feegrantSourceStub{grants: []feegrant.Grant{grant}},
+	)(ctx)
+
+	require.True(t, broken)
+	require.Contains(t, message, "missing_feegrant_reverse_index")
 }
 
 func (r *invariantRegistryStub) RegisterRoute(
@@ -31,7 +49,7 @@ func TestRegisterInvariantsRegistersStateConsistencyRoute(t *testing.T) {
 	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
 	registry := &invariantRegistryStub{}
 
-	RegisterInvariants(registry, moduleKeeper)
+	RegisterInvariants(registry, moduleKeeper, feegrantSourceStub{})
 
 	require.Equal(t, types.ModuleName, registry.moduleName)
 	require.Equal(t, stateInvariantRoute, registry.route)
@@ -70,7 +88,7 @@ func TestStateInvariantDetectsMissingPendingRecoveryKey(t *testing.T) {
 		NextKeyId: 2,
 	}))
 
-	message, broken := StateInvariant(moduleKeeper)(ctx)
+	message, broken := StateInvariant(moduleKeeper, feegrantSourceStub{})(ctx)
 	require.True(t, broken)
 	require.Contains(t, message, "pending recovery key missing")
 }

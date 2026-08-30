@@ -116,7 +116,7 @@ func TestPruneExpiredFeegrantIndexIsOrderedAndBounded(t *testing.T) {
 	require.True(t, store.Has(types.FeegrantReverseKey(granter, grantees[2])))
 }
 
-func TestRebuildFeegrantIndexBackfillsActiveAllowances(t *testing.T) {
+func TestRebuildFeegrantIndexBackfillsCanonicalAllowances(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 10)
 	now := time.Unix(2_000_000_000, 0).UTC()
 	ctx = ctx.WithBlockTime(now)
@@ -143,11 +143,126 @@ func TestRebuildFeegrantIndexBackfillsActiveAllowances(t *testing.T) {
 	}))
 	store := ctx.KVStore(moduleKeeper.storeKey)
 	require.True(t, store.Has(types.FeegrantReverseKey(granter, activeGrantee)))
-	require.False(t, store.Has(types.FeegrantReverseKey(granter, expiredGrantee)))
-	require.NoError(t, moduleKeeper.AuditState(ctx, 100).Error())
+	require.True(t, store.Has(types.FeegrantReverseKey(granter, expiredGrantee)))
+	report := moduleKeeper.AuditStateWithFeegrant(ctx, feegrantSourceStub{
+		grants: []feegrant.Grant{active, expired},
+	}, 100)
+	require.NoError(t, report.Error())
+	require.True(t, report.FeegrantIndexCompared)
+	require.Equal(t, uint64(2), report.FeegrantAllowances)
 
 	expected := errors.New("feegrant store unavailable")
 	require.ErrorIs(t, moduleKeeper.RebuildFeegrantIndex(ctx, feegrantSourceStub{err: expected}), expected)
+}
+
+func TestFeegrantCrossModuleAuditDetectsMissingOrphanAndExpirationMismatch(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	granter := sdk.AccAddress(bytes.Repeat([]byte{0x64}, 20))
+	missingGrantee := sdk.AccAddress(bytes.Repeat([]byte{0x65}, 20))
+	orphanGrantee := sdk.AccAddress(bytes.Repeat([]byte{0x66}, 20))
+	mismatchGrantee := sdk.AccAddress(bytes.Repeat([]byte{0x67}, 20))
+	canonicalExpiration := time.Unix(2_100_000_000, 123).UTC()
+	indexedExpiration := canonicalExpiration.Add(time.Hour)
+
+	missing, err := feegrant.NewGrant(
+		granter,
+		missingGrantee,
+		&feegrant.BasicAllowance{},
+	)
+	require.NoError(t, err)
+	mismatch, err := feegrant.NewGrant(
+		granter,
+		mismatchGrantee,
+		&feegrant.BasicAllowance{Expiration: &canonicalExpiration},
+	)
+	require.NoError(t, err)
+	require.NoError(t, moduleKeeper.SetOutgoingFeegrant(
+		ctx,
+		granter,
+		orphanGrantee,
+		&feegrant.BasicAllowance{},
+	))
+	require.NoError(t, moduleKeeper.SetOutgoingFeegrant(
+		ctx,
+		granter,
+		mismatchGrantee,
+		&feegrant.BasicAllowance{Expiration: &indexedExpiration},
+	))
+
+	report := moduleKeeper.AuditStateWithFeegrant(ctx, feegrantSourceStub{
+		grants: []feegrant.Grant{missing, mismatch},
+	}, 100)
+	require.Error(t, report.Error())
+	require.True(t, report.FeegrantIndexCompared)
+	require.Equal(t, uint64(2), report.FeegrantAllowances)
+	require.Equal(t, uint64(2), report.FeegrantIndexes)
+	codes := auditIssueCodes(report)
+	require.True(t, codes["missing_feegrant_reverse_index"])
+	require.True(t, codes["orphan_feegrant_reverse_index"])
+	require.True(t, codes["feegrant_expiration_mismatch"])
+}
+
+func TestFeegrantCrossModuleAuditFailsClosedOnSourceError(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	expected := errors.New("canonical feegrant store unavailable")
+
+	report := moduleKeeper.AuditStateWithFeegrant(
+		ctx,
+		feegrantSourceStub{err: expected},
+		100,
+	)
+
+	require.Error(t, report.Error())
+	require.False(t, report.FeegrantIndexCompared)
+	require.Equal(t, "feegrant_source_iteration_failure", report.Issues[0].Code)
+}
+
+func TestFeegrantCrossModuleAuditRejectsDuplicateCanonicalRecords(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	granter := sdk.AccAddress(bytes.Repeat([]byte{0x6b}, 20))
+	grantee := sdk.AccAddress(bytes.Repeat([]byte{0x6c}, 20))
+	grant, err := feegrant.NewGrant(granter, grantee, &feegrant.BasicAllowance{})
+	require.NoError(t, err)
+	require.NoError(t, moduleKeeper.SetOutgoingFeegrant(
+		ctx,
+		granter,
+		grantee,
+		&feegrant.BasicAllowance{},
+	))
+
+	report := moduleKeeper.AuditStateWithFeegrant(ctx, feegrantSourceStub{
+		grants: []feegrant.Grant{grant, grant},
+	}, 100)
+
+	require.Error(t, report.Error())
+	require.True(t, report.FeegrantIndexCompared)
+	require.Equal(t, uint64(2), report.FeegrantAllowances)
+	require.Equal(t, "duplicate_canonical_feegrant", report.Issues[0].Code)
+}
+
+func TestFeegrantCrossModuleAuditCountsAllIssuesWhenTruncated(t *testing.T) {
+	moduleKeeper, ctx := setupKeeper(t, 10)
+	granter := sdk.AccAddress(bytes.Repeat([]byte{0x68}, 20))
+	first, err := feegrant.NewGrant(
+		granter,
+		sdk.AccAddress(bytes.Repeat([]byte{0x69}, 20)),
+		&feegrant.BasicAllowance{},
+	)
+	require.NoError(t, err)
+	second, err := feegrant.NewGrant(
+		granter,
+		sdk.AccAddress(bytes.Repeat([]byte{0x6a}, 20)),
+		&feegrant.BasicAllowance{},
+	)
+	require.NoError(t, err)
+
+	report := moduleKeeper.AuditStateWithFeegrant(ctx, feegrantSourceStub{
+		grants: []feegrant.Grant{first, second},
+	}, 1)
+
+	require.Equal(t, uint64(2), report.TotalIssues)
+	require.Len(t, report.Issues, 1)
+	require.True(t, report.IssuesTruncated)
 }
 
 func TestFeegrantIndexAuditDetectsOrphanExpiry(t *testing.T) {

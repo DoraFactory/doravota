@@ -141,7 +141,13 @@ func (k Keeper) AuditState(
 			report.AddIssue(maxIssues, "unknown_storage_key", "", fmt.Sprintf("unknown key %X", storageKey))
 		}
 	}
-	for reverseKey, state := range reverseIndexes {
+	orderedReverseKeys := make([]string, 0, len(reverseIndexes))
+	for reverseKey := range reverseIndexes {
+		orderedReverseKeys = append(orderedReverseKeys, reverseKey)
+	}
+	sort.Strings(orderedReverseKeys)
+	for _, reverseKey := range orderedReverseKeys {
+		state := reverseIndexes[reverseKey]
 		expiration, hasExpiry := expiryIndexes[reverseKey]
 		if state.expiration == nil {
 			if hasExpiry {
@@ -153,7 +159,12 @@ func (k Keeper) AuditState(
 			report.AddIssue(maxIssues, "missing_feegrant_expiry_index", "", fmt.Sprintf("reverse key %X has no matching expiry", []byte(reverseKey)))
 		}
 	}
+	orderedExpiryKeys := make([]string, 0, len(expiryIndexes))
 	for reverseKey := range expiryIndexes {
+		orderedExpiryKeys = append(orderedExpiryKeys, reverseKey)
+	}
+	sort.Strings(orderedExpiryKeys)
+	for _, reverseKey := range orderedExpiryKeys {
 		if _, found := reverseIndexes[reverseKey]; !found {
 			report.AddIssue(maxIssues, "orphan_feegrant_expiry_index", "", fmt.Sprintf("reverse key %X is missing", []byte(reverseKey)))
 		}

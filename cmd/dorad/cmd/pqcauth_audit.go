@@ -8,6 +8,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/spf13/cobra"
 
 	appparams "github.com/DoraFactory/doravota/app/params"
@@ -30,8 +31,9 @@ func pqcauthAuditStateCommand(encodingConfig appparams.EncodingConfig) *cobra.Co
 	command := &cobra.Command{
 		Use:   "audit-state [exported-state.json]",
 		Short: "Audit an exported pqcauth state before an upgrade",
-		Long: "Audit pqcauth and auth state from a complete `dorad export` JSON document. " +
-			"The command is offline and never queries a public RPC endpoint.",
+		Long: "Audit pqcauth, auth, and canonical feegrant state from a complete `dorad export` JSON document. " +
+			"The command is offline and never queries a public RPC endpoint. Derived pqcauth feegrant indexes " +
+			"are not exported, so their live bidirectional comparison is performed by the on-chain invariant and upgrade audit.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			height, err := command.Flags().GetInt64("height")
@@ -79,6 +81,18 @@ func pqcauthAuditStateCommand(encodingConfig appparams.EncodingConfig) *cobra.Co
 				}
 			}
 
+			feegrantRaw, exists := appState[feegrant.ModuleName]
+			if !exists {
+				report.AddIssue(maxIssues, "missing_feegrant_state", "", "complete feegrant state is required for an upgrade audit")
+			} else {
+				var feegrantGenesis feegrant.GenesisState
+				if err := encodingConfig.Marshaler.UnmarshalJSON(feegrantRaw, &feegrantGenesis); err != nil {
+					report.AddIssue(maxIssues, "feegrant_state_decode_failure", "", err.Error())
+				} else {
+					auditExportedFeegrantState(&report, maxIssues, feegrantGenesis)
+				}
+			}
+
 			encoder := json.NewEncoder(command.OutOrStdout())
 			encoder.SetIndent("", "  ")
 			if err := encoder.Encode(report); err != nil {
@@ -98,6 +112,47 @@ func pqcauthAuditStateCommand(encodingConfig appparams.EncodingConfig) *cobra.Co
 		"maximum detailed issues to print",
 	)
 	return command
+}
+
+func auditExportedFeegrantState(
+	report *pqcauthtypes.StateAuditReport,
+	maxIssues uint32,
+	genesis feegrant.GenesisState,
+) {
+	report.FeegrantAllowances = uint64(len(genesis.Allowances))
+	if err := feegrant.ValidateGenesis(genesis); err != nil {
+		report.AddIssue(maxIssues, "invalid_feegrant_state", "", err.Error())
+		return
+	}
+	for _, grant := range genesis.Allowances {
+		granter, err := sdk.AccAddressFromBech32(grant.Granter)
+		if err != nil || granter.String() != grant.Granter {
+			report.AddIssue(maxIssues, "invalid_feegrant_granter", grant.Granter, "feegrant granter is not a canonical account address")
+			continue
+		}
+		grantee, err := sdk.AccAddressFromBech32(grant.Grantee)
+		if err != nil || grantee.String() != grant.Grantee {
+			report.AddIssue(maxIssues, "invalid_feegrant_grantee", grant.Granter, "feegrant grantee is not a canonical account address")
+			continue
+		}
+		if granter.Equals(grantee) {
+			report.AddIssue(maxIssues, "invalid_feegrant_pair", grant.Granter, "feegrant granter and grantee must be distinct")
+			continue
+		}
+		allowance, err := grant.GetGrant()
+		if err != nil {
+			report.AddIssue(maxIssues, "feegrant_allowance_decode_failure", grant.Granter, err.Error())
+			continue
+		}
+		expiration, err := allowance.ExpiresAt()
+		if err != nil {
+			report.AddIssue(maxIssues, "feegrant_expiration_failure", grant.Granter, err.Error())
+			continue
+		}
+		if _, err := pqcauthtypes.EncodeFeegrantIndexValue(expiration); err != nil {
+			report.AddIssue(maxIssues, "invalid_feegrant_expiration", grant.Granter, err.Error())
+		}
+	}
 }
 
 func exportedAppState(raw []byte) (map[string]json.RawMessage, error) {

@@ -58,9 +58,26 @@ The index is kept consistent at every canonical mutation boundary:
 - the pqcauth v1-to-v2 migration and first-install initialization rebuild the
   index from all existing fee allowances before activation is allowed.
 
-State audit validates both the reverse entries and the expiration queue. A
-decode error or mismatch fails closed instead of silently treating the account
-as ready for protection.
+State audit validates both the reverse entries and the expiration queue. The
+live crisis invariant and the v1.0.0 upgrade audit additionally iterate the
+canonical SDK feegrant store and compare it with the pqcauth index in both
+directions. Missing entries, orphan entries, duplicate canonical grants,
+expiration mismatches, decode failures, and source iteration failures all fail
+closed instead of silently treating the account as ready for protection. This
+full-store comparison is deliberately excluded from Ante and public queries.
+
+The offline pre-upgrade command validates the exported `pqcauth`, `auth`, and
+canonical `feegrant` genesis states:
+
+```bash
+dorad pqcauth audit-state exported-state.json --height <export-height>
+```
+
+Derived feegrant indexes are rebuilt on import and are therefore not part of a
+standard module export. The JSON report exposes
+`feegrant_index_compared=false` for the offline command; the corresponding
+live-store comparison is enforced by the invariant and upgrade handler, where
+the derived index is available.
 
 ## Protection-readiness preflight
 

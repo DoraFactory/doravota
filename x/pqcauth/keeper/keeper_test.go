@@ -545,7 +545,7 @@ func TestStateInvariantRejectsNativeMLDSAOwner(t *testing.T) {
 		NextKeyId: 3,
 	}))
 
-	message, broken := StateInvariant(moduleKeeper)(ctx)
+	message, broken := StateInvariant(moduleKeeper, feegrantSourceStub{})(ctx)
 	require.True(t, broken)
 	require.Contains(t, message, "ineligible pqcauth state owner")
 }
@@ -682,7 +682,7 @@ func TestRotateRecoveryKeyActivatesAtHPlusOne(t *testing.T) {
 	newRecoveryKey, found := moduleKeeper.GetKey(ctx, ownerAddress, 3)
 	require.True(t, found)
 	require.False(t, newRecoveryKey.IsEffective(ctx.BlockHeight()))
-	_, broken := StateInvariant(moduleKeeper)(ctx)
+	_, broken := StateInvariant(moduleKeeper, feegrantSourceStub{})(ctx)
 	require.False(t, broken)
 
 	revokeMessage := &types.MsgRevokeKey{Owner: owner, KeyId: 2}

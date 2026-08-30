@@ -130,7 +130,11 @@ func TestPQCAuthMigrationBackfillsExistingFeegrants(t *testing.T) {
 	found, err = chainApp.PQCAuthKeeper.HasOutgoingFeegrant(ctx, granter)
 	require.NoError(t, err)
 	require.True(t, found)
-	require.NoError(t, chainApp.PQCAuthKeeper.AuditState(ctx, 100).Error())
+	require.NoError(t, chainApp.PQCAuthKeeper.AuditStateWithFeegrant(
+		ctx,
+		chainApp.FeeGrantKeeper,
+		100,
+	).Error())
 }
 
 func TestFeegrantMessageRouterMaintainsPQCAuthIndex(t *testing.T) {
