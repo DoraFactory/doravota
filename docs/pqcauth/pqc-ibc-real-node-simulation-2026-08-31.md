@@ -27,6 +27,18 @@
 - `dora-pqc-ibc-a-20260831T025430Z`
 - `dora-pqc-ibc-b-20260831T025430Z`
 
+### 2.1 区块浏览器
+
+- [Chain A PingPub](http://77.42.3.141:18180/dora-pqc-ibc-a-1)
+- [Chain B PingPub](http://77.42.3.141:18280/dora-pqc-ibc-b-1)
+
+两个浏览器使用独立的前端、RPC 代理和 REST API 代理。以下链接可以直接查看一组完整的轮换后双向 IBC 交易：
+
+- A → B：[Chain A Transfer](http://77.42.3.141:18180/dora-pqc-ibc-a-1/tx/9B142DC5E012A3926FF96089D18434E983B96773307F869A8AEDDE2F5D2E3896) → [Chain B RecvPacket](http://77.42.3.141:18280/dora-pqc-ibc-b-1/tx/B138A0915C1D64656A643FC238E9787664A6F6E107C8E47CA39737AC4A73020F)
+- B → A：[Chain B Transfer](http://77.42.3.141:18280/dora-pqc-ibc-b-1/tx/699540A732AFE5C291CA1FD4AD716BA365441DFFE9B0574FA95C14A519440C53) → [Chain A RecvPacket](http://77.42.3.141:18180/dora-pqc-ibc-a-1/tx/E607681AE7164BC59673E4370BF816682C091C1FCF31512BA5B93AE123791012)
+
+第 4 节中的其他交易也可以把哈希追加到相应链的 `/<chain-id>/tx/<hash>` 路径查看。
+
 ## 3. 测试流程
 
 1. 以 Ed25519 共识密钥启动 Chain A 和 Chain B。
