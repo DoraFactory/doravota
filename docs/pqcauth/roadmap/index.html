@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dora Vota · Post-Quantum Roadmap</title>
+  <meta name="description" content="Doravota dual-track migration to ML-DSA-65." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="nav" data-nav>
+    <a class="brand" data-copy="brand" href="https://dorafactory.org/">DORA FACTORY</a>
+    <div class="paw" aria-hidden="true">
+      <svg viewBox="0 0 56 56">
+        <path d="M33.118 16.307c0 2.598-2.291 4.705-5.118 4.705s-5.119-2.107-5.119-4.705 2.292-4.704 5.119-4.704 5.118 2.106 5.118 4.704M37.384 33.478c0 3.637-4.202 3.764-9.384 3.764s-9.384-.127-9.384-3.764 2.346-9.644 9.384-9.644 9.384 6.007 9.384 9.644M14.35 27.833c2.828 0 5.12-2.106 5.12-4.704 0-2.599-2.292-4.705-5.12-4.705-2.826 0-5.118 2.106-5.118 4.704 0 2.599 2.292 4.705 5.119 4.705M46.768 23.129c0 2.598-2.292 4.704-5.119 4.704s-5.118-2.106-5.118-4.704c0-2.599 2.291-4.705 5.118-4.705s5.119 2.106 5.119 4.704" />
+        <path fill-rule="evenodd" d="M28 52.541c15.12 0 27.378-10.995 27.378-24.56 0-7.65-3.9-14.484-10.013-18.988-4.631-3.467-10.71-5.57-17.365-5.57-6.656 0-12.734 2.103-17.365 5.57C4.522 13.498.622 20.331.622 27.982c0 13.563 12.258 24.56 27.378 24.56m0-5.435c14.119 0 25.276-9.7 25.276-21.339S42.12 4.43 28 4.43s-25.276 9.7-25.276 21.338S13.88 47.106 28 47.106" clip-rule="evenodd" />
+      </svg>
+    </div>
+    <div class="nav-actions">
+      <span class="progress-chip" data-chip>08/12</span>
+      <button class="nav-btn" data-copy="lang" type="button">中文</button>
+      <button class="nav-btn" data-copy="curate" type="button">Ignite</button>
+    </div>
+  </header>
+
+  <div class="curator-banner">
+    <span data-copy="curatorBanner">Ignite mode</span>
+    <div>
+      <button data-copy="export" type="button">Export progress</button>
+      <button data-copy="reset" type="button">Reset defaults</button>
+    </div>
+  </div>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <h1>
+        <span class="lead">POST-</span>
+        <span class="lead">QUANTUM</span>
+        <span class="product">DORA VOTA</span>
+      </h1>
+      <div class="stats">
+        <div>
+          <div class="stat-n" data-stat="done">08</div>
+          <div class="stat-l" data-copy="statDone">Ignited</div>
+        </div>
+        <div>
+          <div class="stat-n" data-stat="live">01</div>
+          <div class="stat-l" data-copy="statLive">Live</div>
+        </div>
+        <div>
+          <div class="stat-n" data-stat="pending">03</div>
+          <div class="stat-l" data-copy="statPending">Remaining</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="draw-stage">
+      <aside class="dispatch" data-dispatch></aside>
+      <div class="pocket-well">
+        <button class="pocket-replay" type="button" data-replay aria-label="Replay trail: walk from the start to now"></button>
+        <span class="portal-orbit portal-orbit-a" aria-hidden="true"><i></i></span>
+        <span class="portal-orbit portal-orbit-b" aria-hidden="true"><i></i></span>
+        <span class="portal-core">
+          <svg viewBox="0 0 56 56" aria-hidden="true">
+            <path d="M33.118 16.307c0 2.598-2.291 4.705-5.118 4.705s-5.119-2.107-5.119-4.705 2.292-4.704 5.119-4.704 5.118 2.106 5.118 4.704M37.384 33.478c0 3.637-4.202 3.764-9.384 3.764s-9.384-.127-9.384-3.764 2.346-9.644 9.384-9.644 9.384 6.007 9.384 9.644M14.35 27.833c2.828 0 5.12-2.106 5.12-4.704 0-2.599-2.292-4.705-5.12-4.705-2.826 0-5.118 2.106-5.118 4.704 0 2.599 2.292 4.705 5.119 4.705M46.768 23.129c0 2.598-2.292 4.704-5.119 4.704s-5.118-2.106-5.118-4.704c0-2.599 2.291-4.705 5.118-4.705s5.119 2.106 5.119 4.704" />
+            <path fill-rule="evenodd" d="M28 52.541c15.12 0 27.378-10.995 27.378-24.56 0-7.65-3.9-14.484-10.013-18.988-4.631-3.467-10.71-5.57-17.365-5.57-6.656 0-12.734 2.103-17.365 5.57C4.522 13.498.622 20.331.622 27.982c0 13.563 12.258 24.56 27.378 24.56m0-5.435c14.119 0 25.276-9.7 25.276-21.339S42.12 4.43 28 4.43s-25.276 9.7-25.276 21.338S13.88 47.106 28 47.106" clip-rule="evenodd" />
+          </svg>
+          <a class="portal-doc-link" data-design-article href="https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/pqc-migration.en.md" target="_blank" rel="noopener">PQC</a>
+        </span>
+        <span class="pocket-cta">
+          <strong data-copy="draw">Replay trail</strong>
+          <em data-copy="drawHint">Walk from the start to now</em>
+        </span>
+        <span class="pocket-pct" data-pct>67%</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="voyage-wrap" id="lattice">
+    <div class="section-head">
+      <div class="section-kicker" data-copy="lattice">MIGRATION FLIGHT CHART</div>
+    </div>
+    <div class="map-bar">
+      <div class="track-filters" aria-label="Roadmap tracks">
+        <button type="button" class="on" data-focus="" aria-pressed="true"><span data-copy="allTracks">All</span></button>
+        <button type="button" data-focus="account" aria-pressed="false"><i></i><span data-copy="laneAccount">ACCOUNT</span></button>
+        <button type="button" data-focus="software" aria-pressed="false"><i></i><span data-copy="laneSoftware">SOFTWARE</span></button>
+        <button type="button" data-focus="consensus" aria-pressed="false"><i></i><span data-copy="laneConsensus">CONSENSUS</span></button>
+      </div>
+      <div class="status-legend" aria-label="Roadmap status">
+        <span><i class="done"></i><em data-copy="legendDone">Complete</em></span>
+        <span><i class="live"></i><em data-copy="legendLive">Current</em></span>
+        <span><i class="planned"></i><em data-copy="legendPlanned">Planned</em></span>
+      </div>
+    </div>
+    <div class="voyage" data-voyage>
+      <div class="lane-index" aria-hidden="true">
+        <span class="account" data-copy="laneAccount">ACCOUNT</span>
+        <span class="software" data-copy="laneSoftware">SOFTWARE</span>
+        <span class="consensus" data-copy="laneConsensus">CONSENSUS</span>
+      </div>
+      <svg class="trail" data-trail viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+      <div class="stations" data-stations></div>
+      <div class="traveler" data-traveler aria-hidden="true"></div>
+      <article class="map-card" id="waypoint-detail" data-map-card hidden></article>
+    </div>
+  </section>
+
+  <div class="toast" role="status" aria-atomic="true"></div>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

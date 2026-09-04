@@ -1,0 +1,14 @@
+{
+  "architecture": "done",
+  "module": "done",
+  "hardening": "done",
+  "cons-lab": "done",
+  "ibc-lab": "pending",
+  "prod-upgrade": "done",
+  "prod-accounts": "done",
+  "prod-cons": "done",
+  "wallet-support": "done",
+  "target": "live",
+  "pqc-others": "pending",
+  "e2e-pqc": "pending"
+}
