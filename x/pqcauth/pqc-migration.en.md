@@ -1,4 +1,4 @@
-# Dora's PQC Migration Path: Native ML-DSA and Legacy Account Protection
+# Dora Vota Post-Quantum Cryptography Migration: Native ML-DSA and Legacy Account Protection
 
 One of the main threats quantum computing poses to blockchains is the weakening of the security assumptions behind existing digital signature schemes. Dora Vota adopts a dual-track migration strategy: the account and consensus layers use the native ML-DSA capabilities provided by the Cosmos SDK and CometBFT, while legacy accounts that cannot change their addresses gain an additional ML-DSA authentication factor through [`x/pqcauth`](https://github.com/DoraFactory/doravota/tree/pqc-auth/x/pqcauth).
 
