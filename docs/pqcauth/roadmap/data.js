@@ -150,7 +150,7 @@ window.PQC_ROADMAP = {
     },
   },
   featuredArticle: {
-    href: "https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/pqc-migration.en.md",
+    href: "https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/pqc-migration.md",
   },
   tracks: [
     {

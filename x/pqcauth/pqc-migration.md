@@ -1,31 +1,37 @@
-# Dora 的 PQC 升级路径：原生 ML-DSA 与存量账户保护
+# Dora Vota Post-Quantum Migration: Architecture, Implementation, and Validation
 
-量子计算对区块链的主要威胁之一，是削弱现有数字签名方案的安全假设。Dora Vota 采用双轨迁移方案：账户层和共识层使用 Cosmos SDK 与 CometBFT 原生的 ML-DSA 能力；无法更换地址的存量账户则通过 [`x/pqcauth`](https://github.com/DoraFactory/doravota/tree/pqc-auth/x/pqcauth) 增加 ML-DSA 认证因子。
+Dora Vota's migration combines **native ML-DSA-65 accounts and consensus keys** with **hybrid authentication for legacy accounts that must keep their addresses**. The aim is to upgrade the chain's signing systems while preserving its history and giving users a practical way to migrate address-bound assets and permissions.
 
-## 1. 背景与迁移约束
+This article explains the staged upgrade path and the results of our account, consensus, and IBC tests. The tests demonstrate these capabilities in isolated networks; production migration and broader end-to-end security still require further validation.
 
-Dora Vota 当前的用户账户主要使用 [`secp256k1`](https://github.com/cosmos/cosmos-sdk/tree/v0.55.0/crypto/keys/secp256k1)，验证人共识密钥使用 [`Ed25519`](https://github.com/cometbft/cometbft/tree/v0.40.0/crypto/ed25519)。两种方案的安全性均依赖椭圆曲线离散对数问题，无法抵抗具备足够规模的量子计算机所运行的 Shor 算法。账户首次发送交易后，经典公钥会公开记录在链上，长期暴露会提高未来遭受密钥恢复攻击的风险。
+## 1. Why Account Migration Needs Two Paths
 
-对于已经运行的链，签名算法无法通过直接替换完成迁移。公钥参与账户地址派生，采用 PQC（Post-Quantum Cryptography）公钥通常会生成新地址；旧地址关联的余额、质押、合约权限、authz、feegrant 以及外部系统映射不会自动转移。钱包、交易所和托管系统也需要独立完成兼容性升级。
+The classical starting point uses secp256k1 for most account signatures and Ed25519 for validator consensus signatures. A sufficiently capable quantum computer running Shor's algorithm could break the discrete-logarithm assumptions behind both schemes. An account's public key is normally revealed when it first signs an on-chain transaction and may also be exposed elsewhere. A hidden public key is therefore not a substitute for migrating authentication.
 
-因此，账户迁移按地址是否允许变化分为两类：
+For an existing chain, changing the signature algorithm also changes how users control their assets. A native ML-DSA public key derives a new account address. Balances, staking positions, contract administration, authz grants, feegrant allowances, and external account mappings do not automatically follow it.
 
-- 可以更换地址的用户，迁移到原生 PQC 账户；
-- 地址不能变化的用户，保留原地址并增加 PQC 第二因子。
+| Account situation | Migration path | Address outcome |
+|---|---|---|
+| New account | Use native ML-DSA-65 through the SDK | New ML-DSA address |
+| Existing account whose assets and permissions can move | Create a native account, then migrate each supported asset and permission | New ML-DSA address |
+| Existing account that must retain its address | Register ML-DSA keys with `x/pqcauth` and require hybrid authorization | Existing address retained |
 
-## 2. 原生 ML-DSA 支持
+Validator consensus keys follow a separate migration path. Rotating them changes the validator's consensus address, while preserving its staking operator identity. Protecting an operator account's transactions and protecting the validator's consensus votes are distinct tasks.
 
-[Cosmos SDK v0.55.0](https://github.com/cosmos/cosmos-sdk/releases/tag/v0.55.0) 和 [CometBFT v0.40.0](https://github.com/cometbft/cometbft/releases/tag/v0.40.0) 提供了符合 [NIST FIPS 204](https://csrc.nist.gov/pubs/fips/204/final) 的 ML-DSA-65 支持。密码学实现来自 [Cloudflare CIRCL](https://github.com/cloudflare/circl/tree/main/sign/mldsa/mldsa65)；Cosmos SDK 与 CometBFT 在此基础上实现密钥接口、protobuf 编码、地址派生以及账户和共识验签流程。
+## 2. Native ML-DSA Support
 
-| 实现层 | 实现范围 |
+The [target dependencies](https://github.com/DoraFactory/doravota/blob/pqc-auth/go.mod) use Cosmos SDK v0.55.0 and CometBFT v0.40.0. Their ML-DSA-65 support is built on Cloudflare CIRCL's implementation of the algorithm standardized in [NIST FIPS 204](https://csrc.nist.gov/pubs/fips/204/final). ML-DSA relies on module-lattice problems and is designed to resist both classical and quantum attacks.
+
+| Component | Responsibility |
 |---|---|
-| [Cloudflare CIRCL](https://github.com/cloudflare/circl/tree/main/sign/mldsa/mldsa65) | ML-DSA-65 的密钥生成、签名和验签 |
-| [CometBFT v0.40 `crypto/mldsa65`](https://github.com/cometbft/cometbft/tree/v0.40.0/crypto/mldsa65) | 定义 `PubKeyMlDsa65` 和共识签名接口，可将 ML-DSA 用作验证人共识密钥 |
-| [Cosmos SDK v0.55 `crypto/keys/mldsa65`](https://github.com/cosmos/cosmos-sdk/tree/v0.55.0/crypto/keys/mldsa65) | 接入 protobuf codec、keyring、助记词恢复、地址派生和 [`x/auth` 原生验签](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/x/auth/ante/sigverify.go) |
+| [Cloudflare CIRCL](https://github.com/cloudflare/circl/tree/main/sign/mldsa/mldsa65) | ML-DSA-65 key generation, signing, and verification |
+| [CometBFT `crypto/mldsa65`](https://github.com/cometbft/cometbft/tree/v0.40.0/crypto/mldsa65) | Consensus-key interfaces, encoding, and signature verification |
+| [Cosmos SDK `crypto/keys/mldsa65`](https://github.com/cosmos/cosmos-sdk/tree/v0.55.0/crypto/keys/mldsa65) | Account-key interfaces, protobuf codecs, keyring integration, mnemonic recovery, and address derivation |
+| [Cosmos SDK `x/auth`](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/x/auth/ante/sigverify.go) | Native account-signature verification in transaction processing |
 
-### 2.1 账户层：原生 ML-DSA 交易签名
+### 2.1 Native Account Signing
 
-升级后的 `dorad` 可以直接创建原生 ML-DSA 账户：
+An upgraded `dorad` can create a native ML-DSA account:
 
 ```bash
 dorad keys add alice-pqc \
@@ -34,145 +40,216 @@ dorad keys add alice-pqc \
   --home ~/.dora
 ```
 
-该账户地址由 ML-DSA-65 公钥派生，交易由对应私钥签名，Cosmos SDK 的 `x/auth` 使用账户公钥完成验证。ML-DSA-65 的安全性基于模块格困难问题，不依赖 secp256k1 和 Ed25519 使用的椭圆曲线离散对数假设。FIPS 204 对算法、参数和编码作出标准化定义，其目标是在经典和量子攻击模型下提供数字签名安全性。
+The SDK derives the account address from the ML-DSA public key, signs transactions with the corresponding private key, and verifies them through `x/auth`.
 
-### 2.2 共识层：ML-DSA 验证人密钥
+**Native ML-DSA accounts do not need an `x/pqcauth` second factor.** The current [Ante implementation](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go) recognizes a verified native ML-DSA signature as satisfying the global PQC requirement, including `REQUIRED` mode. Such accounts cannot register `pqcauth` keys or attach a `pqcauth` authorization for themselves. This keeps the native and legacy authentication paths distinct.
 
-[CometBFT v0.40 的 ML-DSA-65 实现](https://github.com/cometbft/cometbft/tree/v0.40.0/crypto/mldsa65) 实现了与 Ed25519 共识密钥一致的接口。共识参数允许 `ml_dsa_65` 公钥类型后，验证人可以使用 ML-DSA-65 私钥签署区块提案（proposal）和共识投票（vote），其他节点依据验证人集合中的公钥完成验签，区块 commit 记录相应的 ML-DSA-65 签名。该机制覆盖验证人身份认证和新区块的共识签名。
+### 2.2 Native Consensus Signing
 
-该升级不改变 CometBFT 的 BFT 共识流程和验证人运营地址，只替换验证人参与共识时使用的密钥与签名算法。已有验证人可通过 Cosmos SDK v0.55 的 [`MsgRotateConsPubKey`](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/docs/architecture/adr-016-validator-consensus-key-rotation.md) 将新公钥绑定到原验证人，再由 ABCI validator update 更新 CometBFT 验证人集合，具体流程见 4.2。ML-DSA 公钥和签名的尺寸显著大于 Ed25519，生产部署前需重新评估区块容量、网络带宽、共识超时和密钥托管方案。
+Once governance permits the `ml_dsa_65` validator public-key type, validators can sign proposals and votes with ML-DSA-65. Other nodes verify these signatures using the validator set, and commits contain the resulting consensus signatures.
 
-## 3. PQC Auth 补充认证模块
+The migration retains CometBFT's consensus protocol and each validator's operator identity. The SDK's [`MsgRotateConsPubKey`](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/docs/architecture/adr-016-validator-consensus-key-rotation.md) schedules a new consensus key, and an ABCI validator update changes the active validator set. This protects signing with the new keys; it does not re-sign historical blocks or replace P2P node identities. The operational sequence is described in Section 4.2.
 
-SDK 的原生 ML-DSA 适用于新账户，但无法在保留现有 secp256k1 地址的同时替换账户公钥。[`x/pqcauth`](https://github.com/DoraFactory/doravota/tree/pqc-auth/x/pqcauth) 用于处理此类兼容场景：账户地址和经典账户模型保持不变，ML-DSA 作为附加认证因子参与交易授权。
+## 3. Preserving Legacy Addresses with `x/pqcauth`
 
-![IMG_8052](https://hackmd.io/_uploads/r1pq68VvGl.jpg)
+[`x/pqcauth`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/README.md) adds ML-DSA authorization to eligible classical accounts without replacing their `BaseAccount` public key or changing their address. An ordinary protected transaction must carry **both the existing Cosmos account signature and a valid ML-DSA-65 signature**.
 
-模块仅保存 [公钥记录和账户策略](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/state.proto)，不保存用户私钥。每个账户可登记用于日常交易的 Signing Key、离线保存的 Recovery Key，以及强制认证状态、当前 key ID 和 policy version。注册、轮换、恢复、撤销和策略变更均通过 [专用生命周期消息](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/tx.proto) 执行，并在 H+1 生效，确保 CheckTx 与 DeliverTx 在同一高度使用一致的认证状态。
+### 3.1 Transaction Verification
 
-受保护交易保留标准 Cosmos 签名，并在 SDK 定义的 [`TxBody.critical_extension_options`](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/proto/cosmos/tx/v1beta1/tx.proto) 字段中写入自定义 [`ExtensionPQCAuth`](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/extension.proto)，其中包含每个 signer 对应的 ML-DSA 签名：
+The second signature is carried in [`ExtensionPQCAuth`](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/extension.proto), inside **`TxBody.extension_options`**, the SDK's critical extension field. It is not placed in `non_critical_extension_options`, whose unrecognized entries may be ignored. Each PQC entry identifies the protected signer and its position in `AuthInfo.signer_infos`; native ML-DSA signers do not receive second-factor entries.
 
-```text
-secp256k1 经典签名
-          AND
-ML-DSA-65 第二因子签名
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
+flowchart LR
+    accTitle: Verification of an ordinary protected legacy transaction
+    accDescr: The transaction passes structural checks, standard Cosmos signature verification, and PQC policy and signature verification before business messages execute. The PQC check reads registered public keys and policy from chain state.
+    TX["Protected<br/>transaction"] --> SHAPE["Validate format<br/>and resource limits"]
+    SHAPE --> SDK["Verify Cosmos<br/>account signature"]
+    SDK --> PQC["Verify PQC policy<br/>and ML-DSA signature"]
+    STATE[("Public keys<br/>and account policy")] -.-> PQC
+    PQC --> EXEC["Execute business<br/>messages"]
+    classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
+    classDef auth fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
+    class TX,SHAPE,STATE,EXEC base;
+    class SDK,PQC auth;
 ```
 
-[Ante Handler 集成](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/ante.go) 在业务消息执行前完成验证：
+*Figure 1. The protected transaction path. Any failed authentication check rejects the transaction before business-message execution; it never falls back to classical-only authorization. Registration and recovery use dedicated lifecycle proofs, described below.*
 
-1. 检查 extension 的唯一性、位置、canonical 编码、大小上限和 signer 数量上限；
-2. 验证标准 Cosmos 签名；
-3. 查询账户当前策略和 active ML-DSA key；
-4. 重建确定性的 [`PQCSignDocV1`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/types/canonical_tx.go) 并验证第二签名；
-5. 两类签名均验证通过后，执行 bank、staking、Wasm 等业务消息。
+The [AnteHandler](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/ante.go) validates extension placement and encoding, bounds transaction resources and verification work, verifies the standard signature, and then checks the second factor through [`VerifyPQCDecorator`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go). Bank, staking, and Wasm messages run only after transaction authentication succeeds; business modules do not need to implement the same second-factor check independently.
 
-`PQCSignDocV1` 绑定 chain/network、账户号、sequence、消息、fee、gas、signer 顺序、key ID 和 policy version，用于防止跨链重放、旧密钥重放和交易字段替换。Recovery Key 仅用于恢复 Signing Key，不参与日常交易；客户端或托管系统应采用离线存储或分片备份。
+The ML-DSA signature covers a deterministic [`PQCSignDocV1`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/types/canonical_tx.go). It binds the network and chain, account number and sequence, signer identity and order, key ID, policy version, transaction body, and `AuthInfo`, including fee and gas. The PQC extension itself is removed from the canonical body to avoid signing a document that contains its own signature. Clients add the resulting extension before producing the standard Cosmos signature over the final transaction.
 
-PQC 校验集中在 [`VerifyPQCDecorator`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go)，因此 bank、staking、Wasm 等业务模块无需分别集成 ML-DSA。生命周期消息只能作为顶层消息直接执行；消息指纹将 Ante 授权绑定到同一条消息，阻止通过 authz、group 或合约嵌套绕过证明校验。[`PrepareProposal` 和 `ProcessProposal`](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/proposal.go) 会再次执行认证检查，防止提议节点绕过 mempool 将无效交易纳入区块提案。
+These bindings prevent a valid authorization from being moved to another chain, account, sequence, key-policy version, or altered transaction. Protected transactions use `SIGN_MODE_DIRECT`.
 
-## 4. 技术迁移路径
+### 3.2 Registration, Rotation, and Recovery
 
-整体迁移先完成应用与链上状态升级，再在目标版本上分批推进账户认证和验证人共识密钥迁移：
+Registration atomically installs **two distinct ML-DSA public keys**: a routine signing key and a mandatory recovery key. It also enables account-level self-protection. The module stores public-key records and policy state, never private keys. Clients should keep the recovery private key offline and use it only for its authorized lifecycle operations.
 
-![image](https://hackmd.io/_uploads/HyJktQ4vze.png)
+Account-key and protection-policy changes submitted at height H normally become effective at H+1. Transactions within H therefore cannot start using a newly registered or rotated key halfway through the block. Governance parameter changes have their own activation rules, including a safety delay for tightening changes.
 
-### 4.1 应用软件与链上状态升级
+The [lifecycle messages](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/tx.proto) support registration, signing-key and recovery-key rotation, protection changes, revocation of inactive keys, and recovery of a lost signing key. Recovery authorizes a specific replacement transaction; it does not remove the requirement for the account's standard Cosmos signature. Lifecycle messages must execute directly at the top level, with authorization bound to the exact message, so authz, group, or contract nesting cannot bypass their proofs.
 
-生产链不支持从 SDK v0.47 / IBC-Go v7 直接升级至 SDK v0.55 / IBC-Go v11。SDK v0.55 已移除部分依赖旧 `x/params` 的迁移代码和 Wasm 历史迁移实现，IBC-Go v11 也无法直接处理现有 IBC module version。Dora 旧版本还在 `upgrade/Consensus` 中保存了一份需要迁移的共识参数状态。
+First registration has a separate trust boundary: no PQC key is yet bound to the account, so it relies on the classical signature plus proof of possession of both new keys. Registration must occur while that classical authorization remains trustworthy. The module supports an irreversible registration cutoff to restrict later enrollment; it cannot use a newly presented ML-DSA key to establish the rightful owner of an already compromised classical account. See the [bootstrap policy](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/README.md#42-bootstrap-boundary-for-first-registration).
 
-升级分为两个阶段：
+### 3.3 What This Layer Protects
 
-```text
-当前生产版本
-SDK v0.47 / IBC-Go v7 / CometBFT v0.37
-        │
-        ▼
-桥接版本
-SDK v0.53 / IBC-Go v10 / CometBFT v0.38
-迁移旧 params、IBC、Wasm 和共识参数状态
-        │
-        ▼
-PQC 目标版本
-SDK v0.55 / IBC-Go v11 / CometBFT v0.40
-原生 ML-DSA + x/pqcauth
+`x/pqcauth` protects account-initiated SDK transactions. It does not itself replace consensus signatures, IBC light-client verification, P2P identities, or signature checks implemented inside contracts. Existing delegated permissions also need review; registering a key does not automatically revoke them.
+
+[`PrepareProposal` and `ProcessProposal`](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/proposal.go) enforce transaction verification and aggregate resource limits as well. A proposer cannot obtain valid-block acceptance for an invalid protected transaction merely by bypassing the mempool.
+
+## 4. Migration Sequence
+
+The migration separates **preserving chain state**, **upgrading account and consensus authentication**, and **extending coverage to the surrounding systems**. After the target software is available, account and consensus work can proceed in coordinated tracks rather than requiring every account to migrate at one height.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
+flowchart TB
+    accTitle: Dora Vota migration dependencies
+    accDescr: The existing chain upgrades through the SDK 0.53 bridge to SDK 0.55. The target enables native accounts, address-preserving legacy protection, and validator consensus-key rotation. Account and consensus coverage then supports further work on IBC, applications, custody, and infrastructure. The diagram describes dependencies, not deployment status.
+    OLD["Existing chain state<br/>SDK 0.47 · IBC-Go 7 · CometBFT 0.37"]
+    BRIDGE["Preserve historical state<br/>SDK 0.53 · IBC-Go 10 · CometBFT 0.38"]
+    TARGET["Enable PQC capabilities<br/>SDK 0.55 · IBC-Go 11 · CometBFT 0.40"]
+    OLD --> BRIDGE --> TARGET
+    TARGET --> NATIVE["Native accounts<br/>New addresses and migrated permissions"]
+    TARGET --> LEGACY["Legacy accounts<br/>Keep addresses with x/pqcauth"]
+    TARGET --> CONS["Validator consensus<br/>Rotate keys to ML-DSA-65"]
+    NATIVE --> CORE["Account and consensus<br/>authentication coverage"]
+    LEGACY --> CORE
+    CONS --> CORE
+    CORE --> WIDER["Extend and verify coverage<br/>IBC · applications · custody · infrastructure"]
+    classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
+    classDef pqc fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
+    classDef scope fill:#fffaf4,stroke:#a6988b,stroke-dasharray:5 4,color:#424257;
+    class OLD,BRIDGE base;
+    class TARGET,NATIVE,LEGACY,CONS,CORE pqc;
+    class WIDER scope;
 ```
 
-目标版本通过 [升级前置检查](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/upgrades/v1_0_0/migration.go) 核对 module version map。桥接迁移未完成时，升级处理器将终止执行，防止历史状态迁移被遗漏而未显式报错。
+*Figure 2. Migration dependencies, not a completion chart. Native and hybrid account paths cover different account populations. Core account and consensus coverage does not imply end-to-end post-quantum security.*
 
-### 4.2 迁移共识密钥
+### 4.1 Preserve Application and On-Chain State
 
-共识密钥轮换由 Cosmos SDK v0.55 的 [`MsgRotateConsPubKey`](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/docs/architecture/adr-016-validator-consensus-key-rotation.md) 和节点私钥切换共同完成，流程如下：
+The supported upgrade path for the existing SDK v0.47 chain uses an intermediate SDK v0.53 / IBC-Go v10 binary before the SDK v0.55 / IBC-Go v11 target. This bridge is a historical-state requirement, not a cryptographic prerequisite: a new chain starting directly on SDK v0.55 does not need it.
 
-1. 治理提交 `cosmos.consensus.v1.MsgUpdateParams`，将 `ml_dsa_65` 加入共识参数中的验证人公钥类型白名单；
-2. 验证人在隔离目录执行 `dorad init --consensus-key-algo ml_dsa_65` 生成新密钥，再用 `dorad comet show-validator` 导出新公钥；
-3. 验证人运营账户提交 `dorad tx staking rotate-cons-pub-key '<new-pubkey-json>' --from <operator>`。SDK 检查密钥类型、重复使用、轮换历史和费用，并在 staking 状态中记录新公钥；运营账户启用 `x/pqcauth` 时，该交易同时接受经典签名和 ML-DSA 签名验证；
-4. 交易返回 `apply_height` 后，验证人备份原 `priv_validator_key.json`，并在计划窗口安装新私钥。staking 模块通过 `ValidatorUpdate` 移除旧共识地址并加入新地址；
-5. 节点重启后，分别查询 staking validator、CometBFT `/validators` 和 `/block?height=...`，确认新公钥已进入验证人集合，且区块 `commit` 中包含新地址的 ML-DSA 签名，再执行下一位验证人的轮换。
-
-生产环境应逐个轮换，并持续保持超过三分之二的投票权在线。[多节点模拟脚本](https://github.com/DoraFactory/doravota/blob/pqc-auth/scripts/rehearse-multinode-pqc-upgrade.sh) 按照“提交交易 → 读取生效高度 → 停止单个节点并安装新私钥 → 由其他节点跨过生效高度 → 重启并验证区块”的顺序完成了四个验证人的轮换。
-
-### 4.3 账户迁移
-
-账户迁移按地址和业务状态约束分流：
-
-- 新建账户直接采用 SDK 原生 ML-DSA 密钥；
-- 可更换地址的存量账户，将余额和业务权限迁移至新的 ML-DSA 地址；
-- 地址不能变化的账户，启用 `x/pqcauth` hybrid 双签；
-- 支持变更 owner、admin 或 operator 的业务，应提供显式地址替换流程。
-
-网络策略首先运行于 `OPTIONAL` 模式，为钱包和用户提供接入窗口；随后切换至 `REQUIRED_FOR_REGISTERED`，对已注册账户强制执行双签。首次注册窗口可持续开放，避免未迁移账户被永久阻断。
-
-下一节给出四验证人网络的模拟结果。
-
-## 5. 多节点升级模拟与性能数据
-
-测试环境在一台高性能服务器上运行 4 个隔离的验证人进程、4 个普通钱包和 4 个验证人运营账户。每个节点使用独立的节点目录（node home）、数据库、端口和共识私钥，并按 SDK v0.47 → v0.53 → v0.55 的顺序完成两阶段升级。两次升级后，四个节点的 App Hash 均保持一致。该环境用于验证多验证人状态机和密钥轮换流程，不覆盖跨主机延迟、丢包及故障域隔离测试。
-
-测试覆盖 PQC Auth 注册、混合认证交易和验证人共识密钥轮换。受保护账户的经典单签交易按预期被拒绝，包含有效 ML-DSA 签名的交易执行成功；四次 Ed25519 → ML-DSA-65 共识密钥轮换均在提交高度 H+2 生效。轮换后，验证人集合中的公钥类型全部为 `cometbft/PubKeyMlDsa65`，全节点重启后继续正常出块。测试共记录 53 笔成功上链交易，其中包括两个原生 ML-DSA 账户直接签署的 4 笔转账。
-
-性能对比统一使用 SDK v0.55 二进制和标准 `MsgSend`，每组包含 4 笔成功交易。交易大小按 RPC 返回的原始 protobuf 字节数统计：
-
-| 测试阶段 | 账户认证 | 共识密钥 | 单笔交易大小 | Gas 消耗 |
-|---|---|---|---:|---:|
-| 经典基线 | secp256k1 | Ed25519 | 314 B | 75,241 |
-| PQC Auth 混合认证 | secp256k1 与 ML-DSA-65 | Ed25519 | 3,730 B | 376,597 |
-| PQC Auth 混合认证 + ML-DSA 共识 | secp256k1 与 ML-DSA-65 | ML-DSA-65 | 3,731 B | 376,607 |
-| 原生 ML-DSA 账户 + ML-DSA 共识 | ML-DSA-65 | ML-DSA-65 | 5,483–5,485 B | 首笔 282,691；后续 228,941 |
-
-PQC Auth 交易包含 3,309 B 的 ML-DSA-65 签名，单笔交易因此增加约 3.4 KB。原生 ML-DSA 交易还需在 `SignerInfo` 中携带 1,952 B 公钥，交易体积进一步增加。其后续交易的 Gas 低于混合认证交易，因为验签路径仅包含原生 ML-DSA，不包含 secp256k1 验签和 PQC Auth 配置为 250,000 gas 的 extension verification。
-
-共识签名不属于交易原始字节，因此共识密钥轮换基本不影响同类混合认证交易的大小和 Gas。新增开销位于区块 commit：Ed25519 单签名为 64 B，ML-DSA-65 单签名为 3,309 B；在四验证人网络中，commit 签名总量从 256 B 增至 13,236 B，相当于每个区块增加约 13 KB 固定开销。生产部署需根据实际验证人数量继续测试满块吞吐、P2P 带宽和共识超时。
-
-上述流程已固化在 [多节点升级模拟脚本](https://github.com/DoraFactory/doravota/blob/pqc-auth/scripts/rehearse-multinode-pqc-upgrade.sh) 中；脚本会保存全部交易、节点日志、共识密钥轮换证据，并自动生成交易大小与 Gas 对比报告。
-
-## 6. PQC-IBC 双链兼容性实验
-
-我们在两条独立 Dora 链上建立了 IBC client、connection 和 ICS20 channel，并将两条链的验证人共识密钥依次从 Ed25519 轮换为 ML-DSA-65。轮换前后均完成了双向转账、client update、`RecvPacket` 和 `Acknowledgement`，现有 IBC client 无需删除或重建。
-
-实验使用旧验证人集合签署的过渡 Header，先向对端承诺下一高度的 ML-DSA 验证人集合，再提交首个由新集合签署的 Header。PQC-aware relayer 负责构造和中继 ML-DSA Header，相关 IBC 交易由原生 ML-DSA-65 relayer 账户签署。
-
-| 验证项 | 结果 |
+| Upgrade step | Purpose |
 |---|---|
-| 共识密钥轮换前后双向 ICS20 中继 | 通过 |
-| ML-DSA Header、validator set 与 commit 验证 | 通过 |
-| 原生 ML-DSA relayer 账户签名 | 通过 |
-| IBC Header 大小 | 855 B → 11,794–11,796 B，增加约 10.9 KiB |
+| Existing chain → bridge | Run legacy parameter, IBC, and Wasm migrations; move Dora's historical `upgrade/Consensus` state into the consensus store |
+| Bridge → PQC target | Run the remaining supported module migrations and initialize the target PQC capabilities |
 
-该结果验证了真实 CometBFT、RPC、IBC proof 和状态机路径的兼容性，但不代表已经覆盖生产规模验证人集合、跨机房网络和全部 IBC 应用。
+Some migrations needed by the older state no longer exist in the target dependencies. The target's [preflight check](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/upgrades/v1_0_0/migration.go) therefore rejects an unsupported source module-version map before starting migration. It does not silently skip missing history.
 
-## 7. 端到端抗量子安全的剩余工作
+### 4.2 Rotate Validator Consensus Keys
 
-账户签名和共识签名完成 PQC 迁移后，仍需处理钱包、业务状态、跨链协议和运维基础设施中的经典密码依赖：
+A consensus-key rotation requires both an on-chain update and a coordinated change to the validator's signing infrastructure:
 
-- 钱包与托管集成：Keplr、硬件钱包、交易所和托管系统需支持原生 ML-DSA、PQC Auth 扩展字段、密钥轮换和恢复；
-- 认证策略：全局 `REQUIRED` 当前仍要求原生 ML-DSA signer 提供 PQC Auth 扩展字段；Ante 应识别原生 ML-DSA 账户签名，并将其视为满足 PQC 认证要求；
-- 业务状态迁移：staking、vesting、合约管理员、authz、feegrant、DAO 和 ICA 等地址绑定状态需要迁移接口，同时应排查合约内部使用 secp256k1 或 Ed25519 验签的逻辑；
-- 共识密钥托管：验证人基础设施需支持 ML-DSA 的 HSM、remote signer、备份和事故恢复；
-- 跨链验证：IBC light client、relayer、对端链和跨链应用均需验证 ML-DSA 共识公钥的兼容性；本链升级不会自动改变跨链路径的安全属性；
-- 地址与哈希：原生 ML-DSA 地址仍沿用 Cosmos 的截断公钥哈希规则，应根据目标量子安全等级评估是否引入更长且带版本的地址格式；
-- 网络与发布：P2P 节点身份、RPC TLS、升级包和发布签名仍可能依赖经典密码，这些组件属于完整运维安全边界；
-- 性能与审计：应根据生产验证人数量重新标定 Gas、区块大小、P2P 带宽和 proposal timeout，并完成独立密码学审计、升级审计与依赖漏洞清理。
+1. **Permit the key type.** Governance executes `cosmos.consensus.v1.MsgUpdateParams` to add `ml_dsa_65` to the allowed validator key types while retaining types still in use.
+2. **Prepare the replacement key.** Generate it in an isolated home with `dorad init --consensus-key-algo ml_dsa_65`, then export its public key with `dorad comet show-validator --home <isolated-home>`. Key generation alone does not change the active validator.
+3. **Submit the rotation.** The operator submits `dorad tx staking rotate-cons-pub-key '<new-pubkey-json>' --from <operator>`. The SDK checks eligibility and charges the rotation fee. A protected classical operator account must use hybrid authorization; a native operator account signs through the native path.
+4. **Coordinate activation.** Read `apply_height` from the committed transaction events. Stop the affected signer and install the replacement key using the rehearsed procedure, preserving its signing-state safeguards. Ensure the remaining online voting power can carry the chain across activation; do not run duplicate signers or reset signing state to force progress.
+5. **Verify before continuing.** Check staking state, the CometBFT validator set at the relevant height, and a commit signed by the new consensus address. Confirm block production before rotating another validator.
 
-建议先为新账户启用原生 ML-DSA，再为必须保留地址的存量账户配置 PQC Auth 混合认证，并分阶段迁移共识密钥、业务权限和生态工具。存量账户无需在同一升级高度完成全部迁移。
+In our four-validator tests, we rotated one validator at a time while the other three continued signing. Production scheduling must account for voting power, not only validator count, and keep more than two-thirds available. Use the reported activation height rather than assuming a fixed offset from transaction inclusion. The four-validator experiment observed H+2; Section 6 describes a separate single-validator transition.
 
-进一步了解模块细节可阅读 [PQC Auth 模块说明](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/README.md) 和 [实现导读](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/implementation.md)。
+### 4.3 Migrate Accounts and Tighten Policy
+
+New accounts can use native ML-DSA as soon as compatible signing tools are available. Existing users who can change addresses need explicit procedures for balances, staking, contract administration, and delegated permissions. Users who must retain their addresses register `x/pqcauth` keys before the enrollment cutoff.
+
+The relevant enforcement modes apply as follows to ordinary transactions:
+
+| Mode | Classical account behavior | Native ML-DSA behavior |
+|---|---|---|
+| `OPTIONAL` | Unprotected accounts may use classical signatures; self-protected accounts still require PQC authorization | SDK signature satisfies PQC authentication |
+| `REQUIRED_FOR_REGISTERED` | Registered accounts require PQC authorization | SDK signature satisfies PQC authentication |
+| `REQUIRED` | Classical signers require PQC authorization; unregistered accounts need the controlled registration path | SDK signature satisfies PQC authentication |
+
+An extension that is present must verify even in `OPTIONAL` mode. New registrations enable self-protection at H+1, so optional network-wide enforcement does not mean those accounts are unprotected. Policy tightening, wallet readiness, registration rules, and recovery procedures must be coordinated before enforcement expands.
+
+## 5. Four-Validator Test Results and Measured Costs
+
+We tested the migration with four isolated validator processes on one server, each with its own home, database, ports, and consensus key. The setup also included four user wallets and four operator accounts.
+
+The tests confirmed:
+
+- Completion of the SDK v0.47 → v0.53 → v0.55 upgrade, with matching App Hash values across the four nodes at the checked heights after each upgrade.
+- Successful registration and hybrid transactions, with classical-only transactions from protected accounts rejected.
+- Four Ed25519 → ML-DSA-65 consensus-key rotations, each observed at H+2, followed by continued block production after all nodes restarted.
+- 53 successful on-chain transactions across the tests, including four transfers signed directly by two native ML-DSA accounts.
+
+### 5.1 Transaction Size and Gas
+
+The comparison used the same SDK v0.55 binary and standard `MsgSend`, with four successful transactions per group. Sizes are decoded raw protobuf transaction bytes from RPC, not JSON response sizes. These are small-sample measurements from this test configuration, not throughput or latency benchmarks.
+
+| Account authentication | Consensus signing | Raw transaction size | Gas used |
+|---|---|---:|---:|
+| secp256k1 | Ed25519 | 314 B | 75,241 |
+| secp256k1 + ML-DSA-65 via `pqcauth` | Ed25519 | 3,730 B | 376,597 |
+| secp256k1 + ML-DSA-65 via `pqcauth` | ML-DSA-65 | 3,731 B | 376,607 |
+| Native ML-DSA-65 | ML-DSA-65 | 5,483–5,485 B | First outgoing transaction: 282,691; subsequent: 228,941 |
+
+Hybrid authentication adds a 3,309 B ML-DSA signature plus extension metadata: 3,416 B above the classical baseline in this sample. The tested SDK CLI's native transactions also include the 1,952 B public key in `SignerInfo`, making them larger than the hybrid transactions, whose PQC public keys are already registered in module state.
+
+Native transactions nevertheless used less gas than hybrid transactions in this configuration. They avoid the additional classical-signature check and the separately configured 250,000-gas `pqcauth` verification charge. A native account's first outgoing transaction used an extra 53,750 gas to store its public key. Gas is an execution-accounting measure; these figures do not establish relative wall-clock signing or verification speed.
+
+### 5.2 Consensus and Network Costs
+
+Consensus signatures are outside the transaction bytes and account Ante gas path. The 1 B and 10 gas difference between the two hybrid rows comes from ordinary payload encoding, not an extra consensus-signature check on the transaction.
+
+With four validators signing a commit, signature bytes alone increase from `4 × 64 = 256 B` for Ed25519 to `4 × 3,309 = 13,236 B` for ML-DSA-65: an additional **12,980 B per commit**, before encoding overhead. Larger validator sets increase that cost, and proposals and vote propagation also need measurement.
+
+These single-server tests validate state-machine and rotation behavior. They do not measure inter-host latency, packet loss, failure-domain isolation, sustained throughput, or production-scale validator traffic.
+
+## 6. IBC Compatibility Across Consensus-Key Rotation
+
+We tested IBC compatibility by connecting two independent Dora chains on one server, **with one validator per chain**. We established IBC clients, a connection, and an ICS20 channel, then rotated both chains' consensus keys to ML-DSA-65 without recreating the clients.
+
+The critical step was preserving the light client's trust transition. Before the first ML-DSA-signed header, the relayer submitted a transition header signed by the old validator set that committed to the next validator set.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","actorBkg":"#fffaf4","actorBorder":"#ff6600","actorTextColor":"#1b1b2a","noteBkgColor":"#fff0e5","noteBorderColor":"#d7cec5","noteTextColor":"#424257","signalColor":"#424257","signalTextColor":"#1b1b2a"},"sequence":{"wrap":true,"useMaxWidth":true}}}%%
+sequenceDiagram
+    accTitle: Relaying a consensus-key transition to an existing IBC client
+    accDescr: A relayer first updates the counterparty with the old-key transition header committing to the new validator set, then submits a header signed by the new ML-DSA validator set. The sequence repeats for the opposite chain.
+    participant A as Source chain
+    participant R as PQC-aware relayer
+    participant B as Existing client on counterparty
+    A->>R: Transition header at N, signed by old set<br/>Commits to next validator set
+    R->>B: Update client with transition header
+    B->>B: Verify old-set signature<br/>and record next validator-set hash
+    A->>R: Header at N+1, signed by ML-DSA set
+    R->>B: Update client with new-set header and validators
+    B->>B: Verify validator-set continuity<br/>and ML-DSA commit signatures
+    Note over A,B: Repeat the transition for the other chain.<br/>Continue packet and acknowledgement relay.
+```
+
+*Figure 3. Header order in the tested transition. N denotes the transition header height, not the rotation transaction height. The relayer submits evidence; the counterparty light client verifies it.*
+
+The PQC-aware relayer handled ML-DSA header encoding, and its native ML-DSA account signed relay transactions. Account signing and light-client verification are separate requirements.
+
+| Check or measurement | Test result |
+|---|---|
+| ICS20 transfer, client update, `RecvPacket`, and `Acknowledgement` | Successful before rotation; successful in both directions after rotation |
+| Existing IBC clients | Retained across the transition |
+| ML-DSA validator sets and commits | Accepted by the tested client-verification path |
+| Native ML-DSA relayer account | Successfully signed relay transactions |
+| Serialized IBC header, single-validator topology | 855 B → 11,794–11,796 B, about 10.7 KiB additional data |
+
+This demonstrates compatibility for the tested binaries and ICS20 flow. It does not establish compatibility with every counterparty or IBC application. Multi-validator transitions, ICA, contract IBC callbacks, timeout paths, cross-host failures, and sustained relayer load remain to be evaluated.
+
+## 7. Work Remaining Beyond Account and Consensus Signing
+
+The native and hybrid paths address different parts of transaction authentication. End-to-end security also depends on the systems that authorize, transport, and operate those transactions.
+
+| Area | Remaining migration or validation work |
+|---|---|
+| Wallets and custody | Integrate native ML-DSA and critical extension signing, including offline signing, registration, rotation, and recovery in wallets, exchanges, hardware devices, and custody systems |
+| Address-bound business state | Provide explicit migration procedures for staking, vesting, contract administration, authz, feegrant, DAOs, and ICA; inventory signature checks inside contracts |
+| Validator operations | Validate remote signers, HSM support, backups, activation procedures, and incident recovery with ML-DSA |
+| Interchain paths | Extend compatibility and failure testing to production-scale validator sets, other clients and counterparties, and IBC applications beyond the tested ICS20 flow |
+| Addresses and hashes | Assess the target quantum-security level of the native implementation's 20-byte truncated SHA-256 address format and whether a longer, versioned format is needed |
+| Network and release infrastructure | Inventory classical dependencies in P2P identities, RPC TLS, release signing, upgrade artifacts, and software distribution |
+| Performance and assurance | Calibrate verification budgets, gas, block limits, bandwidth, and timeouts at production scale; complete independent cryptographic, application, and upgrade reviews |
+
+The deployment plan should preserve historical state first, make both account paths usable, and rotate consensus keys under voting-power and signer-readiness constraints. Each expansion of coverage needs its own evidence; the account and consensus milestones alone do not certify the entire system as post-quantum secure.
+
+For detailed behavior and implementation references, see the [PQC Auth module documentation](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/README.md).
