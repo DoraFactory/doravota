@@ -58,23 +58,9 @@ The migration retains CometBFT's consensus protocol and each validator's operato
 
 The second signature is carried in [`ExtensionPQCAuth`](https://github.com/DoraFactory/doravota/blob/pqc-auth/proto/doravota/pqcauth/v1/extension.proto), inside **`TxBody.extension_options`**, the SDK's critical extension field. It is not placed in `non_critical_extension_options`, whose unrecognized entries may be ignored. Each PQC entry identifies the protected signer and its position in `AuthInfo.signer_infos`; native ML-DSA signers do not receive second-factor entries.
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
-flowchart LR
-    accTitle: Verification of an ordinary protected legacy transaction
-    accDescr: The transaction passes structural checks, standard Cosmos signature verification, and PQC policy and signature verification before business messages execute. The PQC check reads registered public keys and policy from chain state.
-    TX["Protected<br/>transaction"] --> SHAPE["Validate format<br/>and resource limits"]
-    SHAPE --> SDK["Verify Cosmos<br/>account signature"]
-    SDK --> PQC["Verify PQC policy<br/>and ML-DSA signature"]
-    STATE[("Public keys<br/>and account policy")] -.-> PQC
-    PQC --> EXEC["Execute business<br/>messages"]
-    classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
-    classDef auth fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
-    class TX,SHAPE,STATE,EXEC base;
-    class SDK,PQC auth;
-```
+![Protected transaction verification: format checks, Cosmos signature verification, PQC policy and ML-DSA verification, then message execution.](https://raw.githubusercontent.com/DoraFactory/doravota/pqc-auth/x/pqcauth/diagrams/transaction-verification.png)
 
-*Figure 1. The protected transaction path. Any failed authentication check rejects the transaction before business-message execution; it never falls back to classical-only authorization. Registration and recovery use dedicated lifecycle proofs, described below.*
+*Figure 1. The protected transaction path. Any failed authentication check rejects the transaction before business-message execution; it never falls back to classical-only authorization. Registration and recovery use dedicated lifecycle proofs, described below.* [Diagram source](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/diagrams/transaction-verification.mmd).
 
 The [AnteHandler](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/ante.go) validates extension placement and encoding, bounds transaction resources and verification work, verifies the standard signature, and then checks the second factor through [`VerifyPQCDecorator`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go). Bank, staking, and Wasm messages run only after transaction authentication succeeds; business modules do not need to implement the same second-factor check independently.
 
@@ -102,31 +88,9 @@ First registration has a separate trust boundary: no PQC key is yet bound to the
 
 The migration separates **preserving chain state**, **upgrading account and consensus authentication**, and **extending coverage to the surrounding systems**. After the target software is available, account and consensus work can proceed in coordinated tracks rather than requiring every account to migrate at one height.
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
-flowchart TB
-    accTitle: Dora Vota migration dependencies
-    accDescr: The existing chain upgrades through the SDK 0.53 bridge to SDK 0.55. The target enables native accounts, address-preserving legacy protection, and validator consensus-key rotation. Account and consensus coverage then supports further work on IBC, applications, custody, and infrastructure. The diagram describes dependencies, not deployment status.
-    OLD["Existing chain state<br/>SDK 0.47 · IBC-Go 7 · CometBFT 0.37"]
-    BRIDGE["Preserve historical state<br/>SDK 0.53 · IBC-Go 10 · CometBFT 0.38"]
-    TARGET["Enable PQC capabilities<br/>SDK 0.55 · IBC-Go 11 · CometBFT 0.40"]
-    OLD --> BRIDGE --> TARGET
-    TARGET --> NATIVE["Native accounts<br/>New addresses and migrated permissions"]
-    TARGET --> LEGACY["Legacy accounts<br/>Keep addresses with x/pqcauth"]
-    TARGET --> CONS["Validator consensus<br/>Rotate keys to ML-DSA-65"]
-    NATIVE --> CORE["Account and consensus<br/>authentication coverage"]
-    LEGACY --> CORE
-    CONS --> CORE
-    CORE --> WIDER["Extend and verify coverage<br/>IBC · applications · custody · infrastructure"]
-    classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
-    classDef pqc fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
-    classDef scope fill:#fffaf4,stroke:#a6988b,stroke-dasharray:5 4,color:#424257;
-    class OLD,BRIDGE base;
-    class TARGET,NATIVE,LEGACY,CONS,CORE pqc;
-    class WIDER scope;
-```
+![Dora Vota migration dependencies: preserve state through the bridge, enable native and legacy account paths and consensus rotation, then extend security coverage.](https://raw.githubusercontent.com/DoraFactory/doravota/pqc-auth/x/pqcauth/diagrams/migration-sequence.png)
 
-*Figure 2. Migration dependencies, not a completion chart. Native and hybrid account paths cover different account populations. Core account and consensus coverage does not imply end-to-end post-quantum security.*
+*Figure 2. Migration dependencies, not a completion chart. Native and hybrid account paths cover different account populations. Core account and consensus coverage does not imply end-to-end post-quantum security.* [Diagram source](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/diagrams/migration-sequence.mmd).
 
 ### 4.1 Preserve Application and On-Chain State
 
@@ -205,24 +169,9 @@ We tested IBC compatibility by connecting two independent Dora chains on one ser
 
 The critical step was preserving the light client's trust transition. Before the first ML-DSA-signed header, the relayer submitted a transition header signed by the old validator set that committed to the next validator set.
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","actorBkg":"#fffaf4","actorBorder":"#ff6600","actorTextColor":"#1b1b2a","noteBkgColor":"#fff0e5","noteBorderColor":"#d7cec5","noteTextColor":"#424257","signalColor":"#424257","signalTextColor":"#1b1b2a"},"sequence":{"wrap":true,"useMaxWidth":true}}}%%
-sequenceDiagram
-    accTitle: Relaying a consensus-key transition to an existing IBC client
-    accDescr: A relayer first updates the counterparty with the old-key transition header committing to the new validator set, then submits a header signed by the new ML-DSA validator set. The sequence repeats for the opposite chain.
-    participant A as Source chain
-    participant R as PQC-aware relayer
-    participant B as Existing client on counterparty
-    A->>R: Transition header at N, signed by old set<br/>Commits to next validator set
-    R->>B: Update client with transition header
-    B->>B: Verify old-set signature<br/>and record next validator-set hash
-    A->>R: Header at N+1, signed by ML-DSA set
-    R->>B: Update client with new-set header and validators
-    B->>B: Verify validator-set continuity<br/>and ML-DSA commit signatures
-    Note over A,B: Repeat the transition for the other chain.<br/>Continue packet and acknowledgement relay.
-```
+![IBC key transition: relay the old-set transition header before the first ML-DSA-signed header so the existing client can verify validator-set continuity.](https://raw.githubusercontent.com/DoraFactory/doravota/pqc-auth/x/pqcauth/diagrams/ibc-key-transition.png)
 
-*Figure 3. Header order in the tested transition. N denotes the transition header height, not the rotation transaction height. The relayer submits evidence; the counterparty light client verifies it.*
+*Figure 3. Header order in the tested transition. N denotes the transition header height, not the rotation transaction height. The relayer submits evidence; the counterparty light client verifies it.* [Diagram source](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/diagrams/ibc-key-transition.mmd).
 
 The PQC-aware relayer handled ML-DSA header encoding, and its native ML-DSA account signed relay transactions. Account signing and light-client verification are separate requirements.
 

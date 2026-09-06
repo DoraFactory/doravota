@@ -1,0 +1,14 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, sans-serif","actorBkg":"#fffaf4","actorBorder":"#ff6600","actorTextColor":"#1b1b2a","noteBkgColor":"#fff0e5","noteBorderColor":"#d7cec5","noteTextColor":"#424257","signalColor":"#424257","signalTextColor":"#1b1b2a"},"sequence":{"wrap":true,"useMaxWidth":true}}}%%
+sequenceDiagram
+    accTitle: Relaying a consensus-key transition to an existing IBC client
+    accDescr: A relayer first updates the counterparty with the old-key transition header committing to the new validator set, then submits a header signed by the new ML-DSA validator set. The sequence repeats for the opposite chain.
+    participant A as Source chain
+    participant R as PQC-aware relayer
+    participant B as Existing client on counterparty
+    A->>R: Transition header at N, signed by old set<br/>Commits to next validator set
+    R->>B: Update client with transition header
+    B->>B: Verify old-set signature<br/>and record next validator-set hash
+    A->>R: Header at N+1, signed by ML-DSA set
+    R->>B: Update client with new-set header and validators
+    B->>B: Verify validator-set continuity<br/>and ML-DSA commit signatures
+    Note over A,B: Repeat the transition for the other chain.<br/>Continue packet and acknowledgement relay.

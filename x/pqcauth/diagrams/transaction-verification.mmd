@@ -1,0 +1,13 @@
+%%{init: {"theme":"base","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
+flowchart LR
+    accTitle: Verification of an ordinary protected legacy transaction
+    accDescr: The transaction passes structural checks, standard Cosmos signature verification, and PQC policy and signature verification before business messages execute. The PQC check reads registered public keys and policy from chain state.
+    TX["Protected<br/>transaction"] --> SHAPE["Validate format<br/>and resource limits"]
+    SHAPE --> SDK["Verify Cosmos<br/>account signature"]
+    SDK --> PQC["Verify PQC policy<br/>and ML-DSA signature"]
+    STATE[("Public keys<br/>and account policy")] -.-> PQC
+    PQC --> EXEC["Execute business<br/>messages"]
+    classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
+    classDef auth fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
+    class TX,SHAPE,STATE,EXEC base;
+    class SDK,PQC auth;
