@@ -1,7 +1,7 @@
 %%{init: {"theme":"base","htmlLabels":false,"themeVariables":{"fontFamily":"Arial, sans-serif","lineColor":"#a6988b"},"flowchart":{"curve":"basis","nodeSpacing":28,"rankSpacing":36}}}%%
 flowchart TB
     accTitle: Dora Vota migration dependencies
-    accDescr: The existing chain upgrades through the SDK 0.53 bridge to SDK 0.55. The target enables native accounts, address-preserving legacy protection, and validator consensus-key rotation. Account and consensus coverage then supports further work on IBC, applications, custody, and infrastructure. The diagram describes dependencies, not deployment status.
+    accDescr: The existing chain upgrades through the SDK 0.53 bridge to SDK 0.55. The target enables native accounts, address-preserving legacy protection, and validator consensus-key rotation. Wallet, custody, IBC, and infrastructure integration and evaluation proceed alongside account and consensus migration. The diagram describes dependencies, not deployment status.
     OLD["Existing chain state<br/>SDK 0.47 · IBC-Go 7 · CometBFT 0.37"]
     BRIDGE["Preserve historical state<br/>SDK 0.53 · IBC-Go 10 · CometBFT 0.38"]
     TARGET["Enable PQC capabilities<br/>SDK 0.55 · IBC-Go 11 · CometBFT 0.40"]
@@ -12,7 +12,11 @@ flowchart TB
     NATIVE --> CORE["Account and consensus<br/>authentication coverage"]
     LEGACY --> CORE
     CONS --> CORE
-    CORE --> WIDER["Extend and verify coverage<br/>IBC · applications · custody · infrastructure"]
+    WIDER["Parallel integration and evaluation<br/>Wallets · custody · IBC · infrastructure"]
+    TARGET -.-> WIDER
+    WIDER -.-> NATIVE
+    WIDER -.-> LEGACY
+    WIDER -.-> CONS
     classDef base fill:#fffaf4,stroke:#d7cec5,color:#1b1b2a;
     classDef pqc fill:#fff0e5,stroke:#ff6600,color:#1b1b2a;
     classDef scope fill:#fffaf4,stroke:#a6988b,stroke-dasharray:5 4,color:#424257;

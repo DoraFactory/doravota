@@ -11,4 +11,4 @@ sequenceDiagram
     A->>R: Header at N+1, signed by ML-DSA set
     R->>B: Update client with new-set header and validators
     B->>B: Verify validator-set continuity<br/>and ML-DSA commit signatures
-    Note over A,B: Repeat the transition for the other chain.<br/>Continue packet and acknowledgement relay.
+    Note over A,B: Tested single-validator update sequence.<br/>Repeat for the other chain, then continue packet relay.
