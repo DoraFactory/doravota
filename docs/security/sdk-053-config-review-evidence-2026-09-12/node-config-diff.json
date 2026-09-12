@@ -1,0 +1,337 @@
+[
+  {
+    "file": "app.toml",
+    "key": "grpc-web.address",
+    "kind": "移除",
+    "old": "localhost:9091",
+    "new": null,
+    "effect": "上游移除；gRPC-Web 改由 API 地址提供，旧 9091 代理须检查。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "grpc-web.enable-unsafe-cors",
+    "kind": "移除",
+    "old": false,
+    "new": null,
+    "effect": "上游移除；改由 api.enable-unsafe-cors 控制，不应直接放开 CORS。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "grpc.historical-grpc-address-block-range",
+    "kind": "新增",
+    "old": null,
+    "new": "{}",
+    "effect": "历史高度 gRPC 转发映射；空对象不启用转发。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "iavl-lazy-loading",
+    "kind": "移除",
+    "old": false,
+    "new": null,
+    "effect": "上游移除，当前根命令也不再传递；不要用旧字段推断新 IAVL 行为。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "mempool.max-txs",
+    "kind": "改默认值",
+    "old": 5000,
+    "new": -1,
+    "effect": "模板变化，Vota 0.4.4 和本分支均未接 SetMempool；当前实际为 NoOp，不能视为运行时变更。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "minimum-gas-prices",
+    "kind": "改默认值",
+    "old": "100000000000peaka",
+    "new": "10000000000peaka",
+    "effect": "Vota 显式且用户已批准；仅本地默认，不改链上参数、不覆盖现有配置。",
+    "source": "Vota approved policy"
+  },
+  {
+    "file": "app.toml",
+    "key": "query-gas-limit",
+    "kind": "新增",
+    "old": null,
+    "new": "0",
+    "effect": "SDK 新选项；本轮补上 SetQueryGasLimit 接线，0 仍为不限制。仅查询，非共识 block.max_gas。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.address",
+    "kind": "移除",
+    "old": ":8080",
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.blockchain",
+    "kind": "移除",
+    "old": "app",
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.denom-to-suggest",
+    "kind": "移除",
+    "old": "uatom",
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.enable",
+    "kind": "移除",
+    "old": false,
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.enable-fee-suggestion",
+    "kind": "移除",
+    "old": false,
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.gas-to-suggest",
+    "kind": "移除",
+    "old": 200000,
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.network",
+    "kind": "移除",
+    "old": "network",
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.offline",
+    "kind": "移除",
+    "old": false,
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "rosetta.retries",
+    "kind": "移除",
+    "old": 3,
+    "new": null,
+    "effect": "上游移除 Rosetta 配置/服务。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "store.streamers",
+    "kind": "移除",
+    "old": [],
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.fsync",
+    "kind": "移除",
+    "old": "false",
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.keys",
+    "kind": "移除",
+    "old": [
+      "*"
+    ],
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.output-metadata",
+    "kind": "移除",
+    "old": "true",
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.prefix",
+    "kind": "移除",
+    "old": "",
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.stop-node-on-error",
+    "kind": "移除",
+    "old": "true",
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streamers.file.write_dir",
+    "kind": "移除",
+    "old": "",
+    "new": null,
+    "effect": "上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streaming.abci.keys",
+    "kind": "新增",
+    "old": null,
+    "new": [],
+    "effect": "新 ABCI 流式插件导出的 store keys，默认空；不自动迁移旧 file streamer。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streaming.abci.plugin",
+    "kind": "新增",
+    "old": null,
+    "new": "",
+    "effect": "新 ABCI 流式插件路径，默认空、未启用。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "streaming.abci.stop-node-on-err",
+    "kind": "新增",
+    "old": null,
+    "new": true,
+    "effect": "启用插件后遇插件错误可停止节点；默认无插件时无作用。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "telemetry.datadog-hostname",
+    "kind": "新增",
+    "old": null,
+    "new": "",
+    "effect": "上游监控配置，默认空；需主动启用并设置 telemetry。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "telemetry.metrics-sink",
+    "kind": "新增",
+    "old": null,
+    "new": "",
+    "effect": "上游监控输出选择，默认空。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "app.toml",
+    "key": "telemetry.statsd-addr",
+    "kind": "新增",
+    "old": null,
+    "new": "",
+    "effect": "上游 StatsD 地址，默认空。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "block_sync",
+    "kind": "移除",
+    "old": true,
+    "new": null,
+    "effect": "上游删除旧配置字段，不等于新版关闭区块同步。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "mempool.recheck_timeout",
+    "kind": "新增",
+    "old": null,
+    "new": "1s",
+    "effect": "Comet 重检等待上限，默认 1 秒；不同于应用层 max-txs。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "mempool.ttl-duration",
+    "kind": "移除",
+    "old": "0s",
+    "new": null,
+    "effect": "上游删除旧交易 TTL 配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "mempool.ttl-num-blocks",
+    "kind": "移除",
+    "old": 0,
+    "new": null,
+    "effect": "上游删除旧交易 TTL 配置。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "mempool.version",
+    "kind": "移除",
+    "old": "v0",
+    "new": null,
+    "effect": "上游删除旧版本选择字段；不可与仍存在的 mempool.type 混淆。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "rpc.max_request_batch_size",
+    "kind": "新增",
+    "old": null,
+    "new": 10,
+    "effect": "单批 JSON-RPC 请求数上限 10；批量调用客户端须核对。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "statesync.max_snapshot_chunks",
+    "kind": "新增",
+    "old": null,
+    "new": 100000,
+    "effect": "快照分块总数上限 100000；state-sync 节点须核对。",
+    "source": "locked upstream default/template"
+  },
+  {
+    "file": "config.toml",
+    "key": "version",
+    "kind": "新增",
+    "old": null,
+    "new": "0.38.19",
+    "effect": "Comet 配置格式标记；0.38.19 是上游模板常量，实际二进制依赖为 0.38.21。",
+    "source": "locked upstream default/template"
+  }
+]

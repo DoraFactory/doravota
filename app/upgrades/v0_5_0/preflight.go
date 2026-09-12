@@ -20,6 +20,8 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	govv5 "github.com/cosmos/cosmos-sdk/x/gov/migrations/v5"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"github.com/cosmos/iavl"
 )
 
@@ -147,6 +149,30 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 			return fmt.Errorf("feeibc module has a balance entry: refusing fee store deletion")
 		}
 		return it.Error()
+	}); err != nil {
+		return err
+	}
+	// Check the approved expedited policy against the real legacy governance
+	// values before StoreLoader deletes anything. These two new SDK defaults
+	// participate in cross-field validation; never shorten the old voting period
+	// or lower the old threshold/deposit just to make the new values fit.
+	if err = read("gov", func(tree *iavl.ImmutableTree) error {
+		raw, err := tree.Get(govv5.ParamsKey)
+		if err != nil {
+			return err
+		}
+		if len(raw) == 0 {
+			return fmt.Errorf("legacy governance parameters are missing")
+		}
+		var params govv1.Params
+		if err := params.Unmarshal(raw); err != nil {
+			return fmt.Errorf("decode legacy governance parameters: %w", err)
+		}
+		defaults := govv1.DefaultParams()
+		params.ExpeditedVotingPeriod = defaults.ExpeditedVotingPeriod
+		params.ExpeditedThreshold = defaults.ExpeditedThreshold
+		_, err = ApprovedGovernanceParams(params)
+		return err
 	}); err != nil {
 		return err
 	}

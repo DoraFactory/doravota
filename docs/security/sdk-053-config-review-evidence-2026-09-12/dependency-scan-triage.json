@@ -1,0 +1,1266 @@
+{
+  "tool": "govulncheck v1.1.4",
+  "mode": "binary",
+  "binary": "/tmp/dorad-legacy-preservation",
+  "binary_sha256": "7a2ffcbb02132e9245578ee7346b6e0e05dfae401bc363892a1fdcf7d3ca6e0f",
+  "platform": "darwin/amd64",
+  "source_boundary": "Previous local build before this review SetQueryGasLimit hook; dependency versions unchanged. Not the final Linux RC.",
+  "unique_linked_advisories": 49,
+  "warning": "Not an exploitable vulnerability count. OSV ranges can include already-backported fixes and platform/entry-point false positives.",
+  "items": [
+    {
+      "id": "GO-2024-2584",
+      "summary": "Slashing evasion in github.com/cosmos/cosmos-sdk",
+      "review_status": "REVIEWED",
+      "modules": [
+        "github.com/cosmos/cosmos-sdk@v0.53.6"
+      ],
+      "scanner_fixed_versions": [],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/cosmos/cosmos-sdk/security/advisories/GHSA-86h5-xcpx-cfqc"
+        },
+        {
+          "type": "FIX",
+          "url": "https://github.com/cosmos/cosmos-sdk/commit/7dbed2fc0c3ed7c285645e21cb1037d8810372ae"
+        },
+        {
+          "type": "FIX",
+          "url": "https://github.com/cosmos/cosmos-sdk/commit/d1b5b0c5ae2c51206cc1849e09e4d59986742cc3"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-3922",
+      "summary": "Memory leaks when decoding a corrupted multiple LZMA archives in github.com/ulikunitz/xz",
+      "review_status": "REVIEWED",
+      "modules": [
+        "github.com/ulikunitz/xz@v0.5.14"
+      ],
+      "scanner_fixed_versions": [
+        "v0.5.15"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/ulikunitz/xz/security/advisories/GHSA-jc7w-c686-c4v9"
+        },
+        {
+          "type": "FIX",
+          "url": "https://github.com/ulikunitz/xz/commit/88ddf1d0d98d688db65de034f48960b2760d2ae2"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4007",
+      "summary": "Quadratic complexity when checking name constraints in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75681"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709854"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4008",
+      "summary": "ALPN negotiation error contains attacker controlled information in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/707776"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75652"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4009",
+      "summary": "Quadratic complexity when parsing some invalid inputs in encoding/pem",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75676"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709858"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4010",
+      "summary": "Insufficient validation of bracketed IPv6 hostnames in net/url",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75678"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709857"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4011",
+      "summary": "Parsing DER payload can cause memory exhaustion in encoding/asn1",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75671"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709856"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4012",
+      "summary": "Lack of limit when parsing cookies can cause memory exhaustion in net/http",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75672"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709855"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4013",
+      "summary": "Panic when validating certificates with DSA public keys in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709853"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75675"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4014",
+      "summary": "Unbounded allocation when parsing GNU sparse map in archive/tar",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709861"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75677"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4015",
+      "summary": "Excessive CPU consumption in Reader.ReadResponse in net/textproto",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/709859"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/75716"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/4Emdl2iQ_bI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4155",
+      "summary": "Excessive resource consumption when printing error string for host certificate validation in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.11"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/725920"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/76445"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/8FJoBkPddm4"
+        }
+      ]
+    },
+    {
+      "id": "GO-2025-4175",
+      "summary": "Improper application of excluded DNS name constraints when verifying wildcard names in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.11"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/723900"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/76442"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/8FJoBkPddm4"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4337",
+      "summary": "Unexpected session resumption in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/K09ubi9FQFk"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/737700"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77217"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4340",
+      "summary": "Handshake messages may be processed at the incorrect encryption level in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.12"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/724120"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/76443"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/Vd2tYVM8eUc"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4341",
+      "summary": "Memory exhaustion in query parameter parsing in net/url",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.12"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/736712"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77101"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/Vd2tYVM8eUc"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4342",
+      "summary": "Excessive CPU consumption when building archive index in archive/zip",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.24.12"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/736713"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77102"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/Vd2tYVM8eUc"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4513",
+      "summary": "Denial of service in github.com/shamaton/msgpack",
+      "review_status": "REVIEWED",
+      "modules": [
+        "github.com/shamaton/msgpack/v2@v2.0.0-20260513223856-04a026e9ac24"
+      ],
+      "scanner_fixed_versions": [],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://github.com/shamaton/msgpack/issues/59"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://github.com/golang/vulndb/issues/4513"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4601",
+      "summary": "Incorrect parsing of IPv6 host literals in net/url",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/752180"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77578"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/EdhZqrQ98hk"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4602",
+      "summary": "FileInfo can escape from a Root in os",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/EdhZqrQ98hk"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77827"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/749480"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4603",
+      "summary": "URLs in meta content attribute actions are not escaped in html/template",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.8"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/EdhZqrQ98hk"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/77954"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/752081"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4740",
+      "summary": "Denial of service in github.com/shamaton/msgpack",
+      "review_status": "UNREVIEWED",
+      "modules": [
+        "github.com/shamaton/msgpack/v2@v2.0.0-20260513223856-04a026e9ac24"
+      ],
+      "scanner_fixed_versions": [],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/advisories/GHSA-h9q6-hc68-35rp"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://github.com/shamaton/msgpack/issues/59"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/golang/vulndb/issues/4513"
+        },
+        {
+          "type": "WEB",
+          "url": "https://securityinfinity.com/research/shamaton-msgpack-oob-panic-fixext-dos-2026"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4762",
+      "summary": "Authorization bypass in gRPC-Go via missing leading slash in :path in google.golang.org/grpc",
+      "review_status": "REVIEWED",
+      "modules": [
+        "google.golang.org/grpc@v1.79.1"
+      ],
+      "scanner_fixed_versions": [
+        "v1.79.3"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/grpc/grpc-go/security/advisories/GHSA-p77j-4mvh-x3m3"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4865",
+      "summary": "JsBraceDepth Context Tracking Bugs (XSS) in html/template",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/763762"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78331"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4869",
+      "summary": "Unbounded allocation for old GNU sparse in archive/tar",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/763766"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78301"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4870",
+      "summary": "Unauthenticated TLS 1.3 KeyUpdate record can cause persistent connection retention and DoS in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/763767"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78334"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4918",
+      "summary": "Infinite loop in HTTP/2 transport when given bad SETTINGS_MAX_FRAME_SIZE in net/http/internal/http2 in golang.org/x/net",
+      "review_status": "REVIEWED",
+      "modules": [
+        "golang.org/x/net@v0.48.0",
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v0.53.0",
+        "v1.25.10"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/761581"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/761640"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78476"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/qcCIEXso47M"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4945",
+      "summary": "Go JOSE Panics in JWE decryption in github.com/go-jose/go-jose",
+      "review_status": "REVIEWED",
+      "modules": [
+        "github.com/go-jose/go-jose/v4@v4.1.3"
+      ],
+      "scanner_fixed_versions": [
+        "v4.1.4"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/go-jose/go-jose/security/advisories/GHSA-78h2-9frx-2jm8"
+        },
+        {
+          "type": "WEB",
+          "url": "https://pkg.go.dev/github.com/go-jose/go-jose/v4#pkg-constants"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4946",
+      "summary": "Inefficient policy validation in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/758061"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78281"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4947",
+      "summary": "Unexpected work during chain building in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.9"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/758320"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78282"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4971",
+      "summary": "Panic in Dial and LookupPort when handling NUL byte on Windows in net",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.10"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/79006"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/qcCIEXso47M"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/775320"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4980",
+      "summary": "Escaper bypass leads to XSS in html/template",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.10"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78981"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/771180"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/qcCIEXso47M"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4981",
+      "summary": "Crash when handling long CNAME response in net",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.10"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78803"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/767860"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/qcCIEXso47M"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-4982",
+      "summary": "Bypass of meta content URL escaping causes XSS in html/template",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.10"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78913"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/769920"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/qcCIEXso47M"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5026",
+      "summary": "Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna",
+      "review_status": "REVIEWED",
+      "modules": [
+        "golang.org/x/net@v0.48.0",
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v0.55.0",
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/767220"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/78760"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/iI-mYSI0lu8"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5037",
+      "summary": "Inefficient candidate hostname parsing in crypto/x509",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.11"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/783621"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/79694"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/tKs3rmcBcKw"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5039",
+      "summary": "Arbitrary inputs are included in errors without any escaping in net/textproto",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.11"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/79346"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/777060"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/tKs3rmcBcKw"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5058",
+      "summary": "HashiCorp's go-getter library may allow arbitrary file reads in github.com/hashicorp/go-getter",
+      "review_status": "REVIEWED",
+      "modules": [
+        "github.com/hashicorp/go-getter@v1.7.9"
+      ],
+      "scanner_fixed_versions": [
+        "v1.8.6"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/advisories/GHSA-92mm-2pjq-r785"
+        },
+        {
+          "type": "WEB",
+          "url": "https://discuss.hashicorp.com/t/hcsec-2026-04-go-getter-may-allow-to-arbitrary-filesystem-reads-through-git-operations/77311"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5506",
+      "summary": "OpenTelemetry-Go: Multi-value baggage header extraction causes excessive allocations in go.opentelemetry.io/otel",
+      "review_status": "REVIEWED",
+      "modules": [
+        "go.opentelemetry.io/otel@v1.40.0"
+      ],
+      "scanner_fixed_versions": [
+        "v1.41.0"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/open-telemetry/opentelemetry-go/security/advisories/GHSA-mh2q-q3fh-2475"
+        },
+        {
+          "type": "FIX",
+          "url": "https://github.com/open-telemetry/opentelemetry-go/commit/aa1894e09e3fe66860c7885cb40f98901b35277f"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/open-telemetry/opentelemetry-go/pull/7880"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.41.0"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5856",
+      "summary": "Invoking Encrypted Client Hello privacy leak in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.12"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/775960"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/79282"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/OrmQE_Yp5Sc"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5932",
+      "summary": "The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design, and has known security issues",
+      "review_status": "REVIEWED",
+      "modules": [
+        "golang.org/x/crypto@v0.46.0"
+      ],
+      "scanner_fixed_versions": [],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/44226"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5970",
+      "summary": "Infinite loop on invalid input in golang.org/x/text",
+      "review_status": "REVIEWED",
+      "modules": [
+        "golang.org/x/text@v0.34.0"
+      ],
+      "scanner_fixed_versions": [
+        "v0.39.0"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80142"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/794100"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-5972",
+      "summary": "Enforce maximum recursion depth in encoding/asn1",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80405"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/814980"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6061",
+      "summary": "Vulnerabilities in the xDS RBAC authorization engine and the HTTP/2 transport server implementation in google.golang.org/grpc",
+      "review_status": "REVIEWED",
+      "modules": [
+        "google.golang.org/grpc@v1.79.1"
+      ],
+      "scanner_fixed_versions": [
+        "v1.82.1"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/grpc/grpc-go/security/advisories/GHSA-hrxh-6v49-42gf"
+        },
+        {
+          "type": "FIX",
+          "url": "https://github.com/grpc/grpc-go/commit/4ea465d4ab98013f72a142fe0fc89c19770b2935"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/grpc/grpc-go/pull/9236"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/grpc/grpc-go/releases/tag/v1.82.1"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6088",
+      "summary": "Add recursion depth guard during decode in encoding/xml",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80481"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/803320"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6089",
+      "summary": "Apply ReadHeaderTimeout when doing unencrypted HTTP/2 check in net/http",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80205"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/795540"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6090",
+      "summary": "Limit handshake messages we are willing to accept post-handshake in crypto/tls",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80528"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/804261"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6091",
+      "summary": "Fix Javascript regexp context tracking in html/template",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80435"
+        },
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/807100"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    },
+    {
+      "id": "GO-2026-6218",
+      "summary": "Avoid quadratic complexity in resolvePath in net/url",
+      "review_status": "REVIEWED",
+      "modules": [
+        "stdlib@v1.24.7"
+      ],
+      "scanner_fixed_versions": [
+        "v1.25.13"
+      ],
+      "status": "linked-symbol match; exploitation not established",
+      "references": [
+        {
+          "type": "FIX",
+          "url": "https://go.dev/cl/803681"
+        },
+        {
+          "type": "REPORT",
+          "url": "https://go.dev/issue/80494"
+        },
+        {
+          "type": "WEB",
+          "url": "https://groups.google.com/g/golang-announce/c/94pEornpRlI"
+        }
+      ]
+    }
+  ]
+}

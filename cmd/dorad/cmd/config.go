@@ -2,10 +2,9 @@ package cmd
 
 import (
 	sdkmath "cosmossdk.io/math"
-
-	"github.com/DoraFactory/doravota/app"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
+	"github.com/DoraFactory/doravota/app"
 )
 
 const (

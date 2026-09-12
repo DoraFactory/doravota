@@ -1,0 +1,53 @@
+{
+  "time_utc": "2026-09-12T06:00:44.813379+00:00",
+  "reviewed_head": "917c53b650afdc592873e956b32e41fa720e97a5",
+  "environment": {
+    "go": "go version go1.24.7 darwin/amd64",
+    "os": "Darwin",
+    "machine": "arm64"
+  },
+  "working_tree": "uncommitted; live rehearsal binaries unchanged",
+  "checks": [
+    {
+      "command": "go test ./... -count=1",
+      "result": "PASS",
+      "output": "ok  \tgithub.com/DoraFactory/doravota/app\t7.930s\n?   \tgithub.com/DoraFactory/doravota/app/params\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_3_0\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_3_1\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_4_0\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_4_2\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_4_3\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/app/upgrades/v0_4_4\t[no test files]\nok  \tgithub.com/DoraFactory/doravota/app/upgrades/v0_5_0\t5.033s\n?   \tgithub.com/DoraFactory/doravota/cmd/dorad\t[no test files]\nok  \tgithub.com/DoraFactory/doravota/cmd/dorad/cmd\t4.634s\n?   \tgithub.com/DoraFactory/doravota/cmd/store-compare\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/cmd/store-report\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/docs\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/testutil/network\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/testutil/nullify\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/testutil/sample\t[no test files]\n?   \tgithub.com/DoraFactory/doravota/types\t[no test files]\n"
+    },
+    {
+      "command": "go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s -json",
+      "result": "PASS",
+      "passed": [
+        "TestAppStateDeterminism",
+        "TestAppImportExport",
+        "TestAppSimulationAfterImport"
+      ]
+    },
+    {
+      "command": "go test github.com/shamaton/msgpack/v2/... -run 'Test(UnmarshalTruncatedTimestampExtReturnsTooShort|ExtValidationRejectsTruncatedBytesBeforeCustomDecoders)$' -count=1",
+      "result": "PASS",
+      "output": "ok  \tgithub.com/shamaton/msgpack/v2\t2.221s\n?   \tgithub.com/shamaton/msgpack/v2/def\t[no test files]\n?   \tgithub.com/shamaton/msgpack/v2/ext\t[no test files]\nok  \tgithub.com/shamaton/msgpack/v2/internal/common\t1.755s [no tests to run]\n?   \tgithub.com/shamaton/msgpack/v2/internal/common/testutil\t[no test files]\nok  \tgithub.com/shamaton/msgpack/v2/internal/decoding\t2.625s\nok  \tgithub.com/shamaton/msgpack/v2/internal/encoding\t3.002s [no tests to run]\nok  \tgithub.com/shamaton/msgpack/v2/internal/stream/decoding\t3.380s [no tests to run]\nok  \tgithub.com/shamaton/msgpack/v2/internal/stream/encoding\t3.808s [no tests to run]\nok  \tgithub.com/shamaton/msgpack/v2/time\t4.190s [no tests to run]\n"
+    }
+  ],
+  "modified_source_sha256": {
+    "app/app.go": "4dd958dab129fea66b1fa41da0ad2f3eaef3bac9ffbc34f5d16ac0d30002bb70",
+    "app/policy_compatibility_test.go": "ca5ebfdf87f2cf41b3ca8579d9517acd577414d99775f19c05d886f96d299f18",
+    "app/proposal.go": "DELETED",
+    "app/proposal_test.go": "DELETED",
+    "app/simulation_test.go": "b8479911b4414d55415fb6ee95f4af9bc256c9f4467efe464a8b0bcfd0ab3eca",
+    "app/upgrades/v0_4_0/constants.go": "bb3e3255eea4b30dafc7de1ff60d7c62d2b1bd954e847af694575637b11da1b3",
+    "app/upgrades/v0_4_2/constants.go": "2376d0ed50d0a52d8d882517cb033870b409d123d876e6bb25656ac592f32a7e",
+    "app/upgrades/v0_4_3/constants.go": "b71ed9f1de4846c7606ef4c791a8892085c95524dfc3a3111e532f9cf23503ae",
+    "app/upgrades/v0_4_4/constants.go": "970cc4416f91cadfba6e793947f2ccd44f371eb00d6dd26ef7b09b968c52a224",
+    "app/upgrades/v0_5_0/governance.go": "0fcb07c05fab9eb6d54ca8dd90d5a6fb8c99f30b8561264a731192b3323399b6",
+    "app/upgrades/v0_5_0/governance_test.go": "5c91b31f4ba4758a388d1878104d03d920c8899262c47a806351d0cbdd5b588f",
+    "app/upgrades/v0_5_0/preflight.go": "ebe5ba3b42e28fc4b1eea3da83c8d3fc623436f2dce911b10a59c5f84a1a9256",
+    "app/upgrades/v0_5_0/preflight_test.go": "4402ec8b024430eb155cfc7c8ab08a11e79b7dbc4b3c734f0aa3ba8ed4a9ab7e",
+    "app/wasm.go": "92ac01c8c47a6752531d05f88a1dd19ca24b5fb3dc50ff5464e0cee77296dbe9",
+    "go.mod": "78b4521a8645eac2c5778cb9ecfd0e745507714de817158973a5923197e57c0a"
+  },
+  "limits": [
+    "No new Linux release artifact built",
+    "No new four-validator upgrade rehearsal",
+    "No production IBC channel or Groth16 business clearance"
+  ]
+}

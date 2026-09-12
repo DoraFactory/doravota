@@ -231,4 +231,6 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
+// Backport ext-frame bounds validation used by WasmVM message decoding.
+// Upstream: https://github.com/shamaton/msgpack/commit/04a026e9ac24527f593a30258a98884768ec0e52
 replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-20260513223856-04a026e9ac24

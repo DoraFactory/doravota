@@ -1,0 +1,38 @@
+file,key,kind,old,new,effect,source
+app.toml,grpc-web.address,移除,localhost:9091,,上游移除；gRPC-Web 改由 API 地址提供，旧 9091 代理须检查。,locked upstream default/template
+app.toml,grpc-web.enable-unsafe-cors,移除,False,,上游移除；改由 api.enable-unsafe-cors 控制，不应直接放开 CORS。,locked upstream default/template
+app.toml,grpc.historical-grpc-address-block-range,新增,,{},历史高度 gRPC 转发映射；空对象不启用转发。,locked upstream default/template
+app.toml,iavl-lazy-loading,移除,False,,上游移除，当前根命令也不再传递；不要用旧字段推断新 IAVL 行为。,locked upstream default/template
+app.toml,mempool.max-txs,改默认值,5000,-1,模板变化，Vota 0.4.4 和本分支均未接 SetMempool；当前实际为 NoOp，不能视为运行时变更。,locked upstream default/template
+app.toml,minimum-gas-prices,改默认值,100000000000peaka,10000000000peaka,Vota 显式且用户已批准；仅本地默认，不改链上参数、不覆盖现有配置。,Vota approved policy
+app.toml,query-gas-limit,新增,,0,SDK 新选项；本轮补上 SetQueryGasLimit 接线，0 仍为不限制。仅查询，非共识 block.max_gas。,locked upstream default/template
+app.toml,rosetta.address,移除,:8080,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.blockchain,移除,app,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.denom-to-suggest,移除,uatom,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.enable,移除,False,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.enable-fee-suggestion,移除,False,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.gas-to-suggest,移除,200000,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.network,移除,network,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.offline,移除,False,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,rosetta.retries,移除,3,,上游移除 Rosetta 配置/服务。,locked upstream default/template
+app.toml,store.streamers,移除,[],,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.fsync,移除,false,,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.keys,移除,['*'],,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.output-metadata,移除,true,,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.prefix,移除,,,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.stop-node-on-error,移除,true,,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streamers.file.write_dir,移除,,,上游移除旧 file streamer 配置；如曾使用，须单独迁移插件配置。,locked upstream default/template
+app.toml,streaming.abci.keys,新增,,[],新 ABCI 流式插件导出的 store keys，默认空；不自动迁移旧 file streamer。,locked upstream default/template
+app.toml,streaming.abci.plugin,新增,,,新 ABCI 流式插件路径，默认空、未启用。,locked upstream default/template
+app.toml,streaming.abci.stop-node-on-err,新增,,True,启用插件后遇插件错误可停止节点；默认无插件时无作用。,locked upstream default/template
+app.toml,telemetry.datadog-hostname,新增,,,上游监控配置，默认空；需主动启用并设置 telemetry。,locked upstream default/template
+app.toml,telemetry.metrics-sink,新增,,,上游监控输出选择，默认空。,locked upstream default/template
+app.toml,telemetry.statsd-addr,新增,,,上游 StatsD 地址，默认空。,locked upstream default/template
+config.toml,block_sync,移除,True,,上游删除旧配置字段，不等于新版关闭区块同步。,locked upstream default/template
+config.toml,mempool.recheck_timeout,新增,,1s,Comet 重检等待上限，默认 1 秒；不同于应用层 max-txs。,locked upstream default/template
+config.toml,mempool.ttl-duration,移除,0s,,上游删除旧交易 TTL 配置。,locked upstream default/template
+config.toml,mempool.ttl-num-blocks,移除,0,,上游删除旧交易 TTL 配置。,locked upstream default/template
+config.toml,mempool.version,移除,v0,,上游删除旧版本选择字段；不可与仍存在的 mempool.type 混淆。,locked upstream default/template
+config.toml,rpc.max_request_batch_size,新增,,10,单批 JSON-RPC 请求数上限 10；批量调用客户端须核对。,locked upstream default/template
+config.toml,statesync.max_snapshot_chunks,新增,,100000,快照分块总数上限 100000；state-sync 节点须核对。,locked upstream default/template
+config.toml,version,新增,,0.38.19,Comet 配置格式标记；0.38.19 是上游模板常量，实际二进制依赖为 0.38.21。,locked upstream default/template

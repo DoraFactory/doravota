@@ -1,0 +1,57 @@
+{
+  "baseline": "0.4.4",
+  "head": "917c53b650afdc592873e956b32e41fa720e97a5",
+  "scope": "uncommitted local restoration; no remote rollout",
+  "go": [
+    "go1.24.7",
+    "darwin",
+    "amd64"
+  ],
+  "original_044_handler_body_preserved": true,
+  "original_wasm_capabilities_file_preserved": true,
+  "checks": {
+    "full_go_test": "PASS",
+    "historical_plan_preblock_and_no_remigration": "PASS",
+    "legacy_params_route_and_cli": "PASS",
+    "explicit_simulations": [
+      {
+        "Action": "pass",
+        "Test": "TestAppStateDeterminism",
+        "Elapsed": 7.63
+      },
+      {
+        "Action": "pass",
+        "Test": "TestAppImportExport",
+        "Elapsed": 1.26
+      },
+      {
+        "Action": "pass",
+        "Test": "TestAppSimulationAfterImport",
+        "Elapsed": 2.08
+      },
+      {
+        "Action": "pass",
+        "Elapsed": 16.701999999999998
+      }
+    ],
+    "darwin_ledger_build": "PASS",
+    "linux_docker_build": "NOT RUN: Docker daemon unavailable",
+    "diff_check": "PASS",
+    "release_script_syntax": "PASS"
+  },
+  "source_sha256": {
+    "app/app.go": "d6efe55a97ae3cc62e81971a936b09ed9f312161fc336063f29e22ed90c01a61",
+    "app/ante.go": "ead9984eaa4a1f677a9f86c819265ae564a229b6b32ccacfbee3b464993d6ce1",
+    "app/export.go": "aa3a648203a0d65b3460a2aab468c5d6d91bc8c0417375cf2d9e3f6ddce49af8",
+    "app/wasm.go": "b29d4c00f0e93b76ee11fc5b79bc5c60eea54bb90002b1a388c5addcea61af01",
+    "app/upgrade_name_test.go": "7d5bf3abe6869b1b33a40c17bebb35850cd8ccf40c3e7329cc3f0984319d6655",
+    "app/policy_compatibility_test.go": "673ce657b3a052dec8fd63bf59de61e979dde2775a3832604d2e865240503fdc",
+    "Dockerfile": "e0b1bf0a7a32c44ff85066e09465f3a94030150af682b9f578a46720ce24f970",
+    "scripts/build-bridge-release.sh": "739ee4483465363759012aa89cfe0a3af9eef5297359c2d93942a82ceedf48b3"
+  },
+  "logs": {
+    "/tmp/vota-legacy-preservation-tests-final.log": "8bb9b0afadb4b590ab7c262e010f40b77511f7d08195c002d4ce3580b1ed218d",
+    "/tmp/vota-legacy-preservation-simulations.json": "78e9f005e679b29e0ed0082242f4dd5c243bd39c9802ab3c3c5c6bb140557ee6",
+    "/tmp/vota-ledger-preservation-build-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

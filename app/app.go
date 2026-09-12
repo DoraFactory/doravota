@@ -2,61 +2,47 @@ package app
 
 import (
 	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"maps"
-	"os"
-	"path/filepath"
-
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	"cosmossdk.io/client/v2/autocli"
 	"cosmossdk.io/core/appmodule"
-	"cosmossdk.io/log"
-	storetypes "cosmossdk.io/store/types"
-	"cosmossdk.io/x/evidence"
-	evidencekeeper "cosmossdk.io/x/evidence/keeper"
-	evidencetypes "cosmossdk.io/x/evidence/types"
-	"cosmossdk.io/x/feegrant"
-	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
-	feegrantmodule "cosmossdk.io/x/feegrant/module"
-	"cosmossdk.io/x/upgrade"
-	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"encoding/json"
+	"fmt"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
+	v0_4_4 "github.com/DoraFactory/doravota/app/upgrades/v0_4_4"
 	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
-	abci "github.com/cometbft/cometbft/abci/types"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
+	abci "github.com/cometbft/cometbft/abci/types"
+	"cosmossdk.io/log"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
-	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	nodeservice "github.com/cosmos/cosmos-sdk/client/grpc/node"
+	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	runtimeservices "github.com/cosmos/cosmos-sdk/runtime/services"
-	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
+	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
-	authcodec "github.com/cosmos/cosmos-sdk/x/auth/codec"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	"github.com/cosmos/cosmos-sdk/x/auth/posthandler"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/vesting"
+	authcodec "github.com/cosmos/cosmos-sdk/x/auth/codec"
 	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
@@ -70,6 +56,12 @@ import (
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
+	"cosmossdk.io/x/evidence"
+	evidencekeeper "cosmossdk.io/x/evidence/keeper"
+	evidencetypes "cosmossdk.io/x/evidence/types"
+	"cosmossdk.io/x/feegrant"
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
+	feegrantmodule "cosmossdk.io/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -77,22 +69,31 @@ import (
 	govkeeper "github.com/cosmos/cosmos-sdk/x/gov/keeper"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
 	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	"github.com/cosmos/cosmos-sdk/x/group"
+	groupkeeper "github.com/cosmos/cosmos-sdk/x/group/keeper"
+	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	mintkeeper "github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/cosmos/cosmos-sdk/x/params"
+	paramsclient "github.com/cosmos/cosmos-sdk/x/params/client"
 	paramskeeper "github.com/cosmos/cosmos-sdk/x/params/keeper"
 	paramstypes "github.com/cosmos/cosmos-sdk/x/params/types"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
 	"github.com/cosmos/cosmos-sdk/x/slashing"
 	slashingkeeper "github.com/cosmos/cosmos-sdk/x/slashing/keeper"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-
-	"github.com/cosmos/cosmos-sdk/x/group"
-	groupkeeper "github.com/cosmos/cosmos-sdk/x/group/keeper"
-	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
+	"cosmossdk.io/x/upgrade"
+	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
+	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"io"
+	"os"
+	"context"
+	"maps"
+	"path/filepath"
 
 	ica "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts"
 	icacontroller "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/controller"
@@ -102,25 +103,23 @@ import (
 	icahostkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/keeper"
 	icahosttypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/types"
 	icatypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/types"
-	ibccallbacks "github.com/cosmos/ibc-go/v10/modules/apps/callbacks"
 	"github.com/cosmos/ibc-go/v10/modules/apps/transfer"
 	ibctransferkeeper "github.com/cosmos/ibc-go/v10/modules/apps/transfer/keeper"
 	ibctransfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
-	transferv2 "github.com/cosmos/ibc-go/v10/modules/apps/transfer/v2"
 	ibc "github.com/cosmos/ibc-go/v10/modules/core"
 	ibcclienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
 	ibcconnectiontypes "github.com/cosmos/ibc-go/v10/modules/core/03-connection/types"
 	porttypes "github.com/cosmos/ibc-go/v10/modules/core/05-port/types"
-	ibcapi "github.com/cosmos/ibc-go/v10/modules/core/api"
 	ibcexported "github.com/cosmos/ibc-go/v10/modules/core/exported"
 	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
+	ibcapi "github.com/cosmos/ibc-go/v10/modules/core/api"
+	solomachine "github.com/cosmos/ibc-go/v10/modules/light-clients/06-solomachine"
 	ibctm "github.com/cosmos/ibc-go/v10/modules/light-clients/07-tendermint"
 
 	// this line is used by starport scaffolding # stargate/app/moduleImport
 	"github.com/CosmWasm/wasmd/x/wasm"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-
 	// cosmwasm "github.com/CosmWasm/wasmvm"
 
 	appparams "github.com/DoraFactory/doravota/app/params"
@@ -179,7 +178,15 @@ var (
 }
 */
 func getGovProposalHandlers() []govclient.ProposalHandler {
-	return []govclient.ProposalHandler{}
+	var govProposalHandlers []govclient.ProposalHandler
+	// this line is used by starport scaffolding # stargate/app/govProposalHandlers
+
+	govProposalHandlers = append(govProposalHandlers,
+		paramsclient.ProposalHandler,
+		// this line is used by starport scaffolding # stargate/app/govProposalHandler
+	)
+
+	return govProposalHandlers
 }
 
 var (
@@ -204,6 +211,7 @@ var (
 		params.AppModuleBasic{},
 		ibc.AppModuleBasic{},
 		ibctm.AppModuleBasic{},
+		solomachine.AppModuleBasic{},
 		upgradeAppModuleBasic{},
 		evidence.AppModuleBasic{},
 		transfer.AppModuleBasic{},
@@ -266,8 +274,8 @@ type App struct {
 	invCheckPeriod uint
 
 	// keys to access the substores
-	keys  map[string]*storetypes.KVStoreKey
-	tkeys map[string]*storetypes.TransientStoreKey
+	keys    map[string]*storetypes.KVStoreKey
+	tkeys   map[string]*storetypes.TransientStoreKey
 
 	// keepers
 	AccountKeeper         authkeeper.AccountKeeper
@@ -341,7 +349,8 @@ func New(
 		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey,
 		minttypes.StoreKey, distrtypes.StoreKey, slashingtypes.StoreKey,
 		govtypes.StoreKey, paramstypes.StoreKey, consensusparamtypes.StoreKey, upgradetypes.StoreKey, feegrant.StoreKey,
-		evidencetypes.StoreKey, authzkeeper.StoreKey, group.StoreKey,
+		evidencetypes.StoreKey,
+		authzkeeper.StoreKey, group.StoreKey,
 		// non sdk store keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		wasm.StoreKey, icahosttypes.StoreKey,
@@ -449,12 +458,17 @@ func New(
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
+	groupConfig := group.DefaultConfig()
+	/*
+		Example of setting group params:
+		groupConfig.MaxMetadataLen = 1000
+	*/
 	app.GroupKeeper = groupkeeper.NewKeeper(
 		keys[group.StoreKey],
 		appCodec,
 		app.MsgServiceRouter(),
 		app.AccountKeeper,
-		group.DefaultConfig(),
+		groupConfig,
 	)
 
 	app.UpgradeKeeper = upgradekeeper.NewKeeper(
@@ -470,8 +484,7 @@ func New(
 
 	// Create IBC Keeper
 	app.IBCKeeper = ibckeeper.NewKeeper(
-		appCodec,
-		runtime.NewKVStoreService(keys[ibcexported.StoreKey]),
+		appCodec, runtime.NewKVStoreService(keys[ibcexported.StoreKey]),
 		app.GetSubspace(ibcexported.ModuleName),
 		app.UpgradeKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
@@ -482,7 +495,8 @@ func New(
 	// by granting the governance module the right to execute the message.
 	// See: https://docs.cosmos.network/main/modules/gov#proposal-messages
 	govRouter := govv1beta1.NewRouter()
-	govRouter.AddRoute(govtypes.RouterKey, govv1beta1.ProposalHandler)
+	govRouter.AddRoute(govtypes.RouterKey, govv1beta1.ProposalHandler).
+		AddRoute(paramproposal.RouterKey, params.NewParamChangeProposalHandler(app.ParamsKeeper))
 
 	govConfig := govtypes.DefaultConfig()
 	/*
@@ -554,7 +568,7 @@ func New(
 	)
 
 	wasmDir := filepath.Join(homePath, "wasm")
-	nodeConfig, err := wasm.ReadNodeConfig(appOpts)
+	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
 	if err != nil {
 		panic(fmt.Sprintf("error while reading wasm config: %s", err))
 	}
@@ -573,9 +587,9 @@ func New(
 		app.MsgServiceRouter(),
 		app.GRPCQueryRouter(),
 		wasmDir,
-		nodeConfig,
+		wasmConfig,
 		wasmtypes.VMConfig{},
-		wasmkeeper.BuiltInCapabilities(),
+		AllCapabilities(),
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		wasmOpts...,
 	)
@@ -593,14 +607,10 @@ func New(
 	// Create Interchain Accounts Stack.
 	var icaControllerStack porttypes.IBCModule
 	icaControllerStack = icacontroller.NewIBCMiddleware(app.ICAControllerKeeper)
-	icaControllerStack = ibccallbacks.NewIBCMiddleware(icaControllerStack, app.IBCKeeper.ChannelKeeper, wasmStackIBCHandler, wasm.DefaultMaxIBCCallbackGas)
-	app.ICAControllerKeeper.WithICS4Wrapper(icaControllerStack.(porttypes.ICS4Wrapper))
 
 	// Create Transfer Stack.
 	var transferStack porttypes.IBCModule
 	transferStack = transfer.NewIBCModule(app.TransferKeeper)
-	transferStack = ibccallbacks.NewIBCMiddleware(transferStack, app.IBCKeeper.ChannelKeeper, wasmStackIBCHandler, wasm.DefaultMaxIBCCallbackGas)
-	app.TransferKeeper.WithICS4Wrapper(transferStack.(porttypes.ICS4Wrapper))
 
 	icaHostStack := icahost.NewIBCModule(app.ICAHostKeeper)
 	ibcRouter := porttypes.NewRouter().
@@ -610,15 +620,16 @@ func New(
 		AddRoute(icahosttypes.SubModuleName, icaHostStack)
 	app.IBCKeeper.SetRouter(ibcRouter)
 
-	ibcRouterV2 := ibcapi.NewRouter().
-		AddRoute(ibctransfertypes.PortID, transferv2.NewIBCModule(app.TransferKeeper)).
-		AddPrefixRoute(wasmkeeper.PortIDPrefixV2, wasmkeeper.NewIBC2Handler(app.WasmKeeper))
-	app.IBCKeeper.SetRouterV2(ibcRouterV2)
+	// IBC v2 is an optional feature, outside the 0.4.4 migration scope.
+	// Keep a non-nil empty router without enabling new transfer/contract ports.
+	app.IBCKeeper.SetRouterV2(ibcapi.NewRouter())
 
 	clientKeeper := app.IBCKeeper.ClientKeeper
 	storeProvider := clientKeeper.GetStoreProvider()
 	tmLightClientModule := ibctm.NewLightClientModule(appCodec, storeProvider)
 	clientKeeper.AddRoute(ibctm.ModuleName, &tmLightClientModule)
+	soloLightClientModule := solomachine.NewLightClientModule(appCodec, storeProvider)
+	clientKeeper.AddRoute(solomachine.ModuleName, &soloLightClientModule)
 
 	/**** Module Hooks ****/
 
@@ -679,11 +690,12 @@ func New(
 		transfer.NewAppModule(app.TransferKeeper),
 		ica.NewAppModule(&app.ICAControllerKeeper, &app.ICAHostKeeper),
 		ibctm.NewAppModule(tmLightClientModule),
+		solomachine.NewAppModule(soloLightClientModule),
 		wasmAppModule,
 	)
 
 	// x/upgrade executes scheduled upgrade plans in PreBlock. Register it
-	// explicitly so v0.55 does not silently skip upgrade execution.
+	// explicitly as required by SDK v0.53.
 	app.mm.SetOrderPreBlockers(
 		upgradetypes.ModuleName,
 		authtypes.ModuleName,
@@ -711,7 +723,8 @@ func New(
 		authtypes.ModuleName, banktypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName, minttypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, group.ModuleName, paramstypes.ModuleName, upgradetypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
+		feegrant.ModuleName, group.ModuleName,
+		paramstypes.ModuleName, upgradetypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
 		ibcexported.ModuleName,
@@ -721,9 +734,6 @@ func New(
 
 	// NOTE: The genutils module must occur after staking so that pools are
 	// properly initialized with tokens from genesis accounts.
-	// NOTE: Capability module must occur first so that it can initialize any capabilities
-	// so that other modules that want to create or claim capabilities afterwards in InitChain
-	// can do so safely.
 	genesisModuleOrder := []string{
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
@@ -765,8 +775,7 @@ func New(
 	app.MountTransientStores(tkeys)
 
 	// initialize BaseApp
-	app.setAnteHandler(encodingConfig.TxConfig, nodeConfig, keys[wasmtypes.StoreKey], appOpts)
-	app.setProposalHandlers(encodingConfig.TxConfig)
+	app.setAnteHandler(encodingConfig.TxConfig, wasmConfig, keys[wasmtypes.StoreKey])
 	app.SetInitChainer(app.InitChainer)
 	app.SetPreBlocker(app.PreBlocker)
 	app.SetBeginBlocker(app.BeginBlocker)
@@ -801,7 +810,7 @@ func New(
 	return app
 }
 
-func (app *App) setAnteHandler(txConfig client.TxConfig, nodeConfig wasmtypes.NodeConfig, txCounterStoreKey *storetypes.KVStoreKey, appOpts servertypes.AppOptions) {
+func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.NodeConfig, txCounterStoreKey *storetypes.KVStoreKey) {
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -811,10 +820,10 @@ func (app *App) setAnteHandler(txConfig client.TxConfig, nodeConfig wasmtypes.No
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
-			IBCKeeper:             app.IBCKeeper,
-			NodeConfig:            &nodeConfig,
-			WasmKeeper:            &app.WasmKeeper,
-			TXCounterStoreService: runtime.NewKVStoreService(txCounterStoreKey),
+			IBCKeeper:         app.IBCKeeper,
+			WasmConfig:        &wasmConfig,
+			WasmKeeper:        &app.WasmKeeper,
+			TXCounterStoreKey: runtime.NewKVStoreService(txCounterStoreKey),
 		},
 	)
 	if err != nil {
@@ -837,12 +846,12 @@ func (app *App) setPostHandler() {
 // Name returns the name of the App
 func (app *App) Name() string { return app.BaseApp.Name() }
 
-// BeginBlocker application updates every begin block
+// PreBlocker runs module pre-block processing.
 func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
 	return app.mm.PreBlock(ctx)
 }
 
-// BeginBlocker application updates every begin block.
+// BeginBlocker application updates every begin block
 func (app *App) BeginBlocker(ctx sdk.Context) (sdk.BeginBlock, error) {
 	return app.mm.BeginBlock(ctx)
 }
@@ -857,14 +866,6 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	var genesisState GenesisState
 	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
 		panic(err)
-	}
-	if req.ConsensusParams == nil {
-		req.ConsensusParams = &tmproto.ConsensusParams{}
-	}
-	if ensureFiniteBlockLimits(req.ConsensusParams) {
-		if err := app.StoreConsensusParams(ctx, *req.ConsensusParams); err != nil {
-			return nil, err
-		}
 	}
 	if err := app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap()); err != nil {
 		return nil, err
@@ -900,6 +901,9 @@ func GetMaccPerms() map[string][]string { return maps.Clone(maccPerms) }
 func (app *App) BlockedModuleAccountAddrs() map[string]bool {
 	modAccAddrs := app.ModuleAccountAddrs()
 	delete(modAccAddrs, authtypes.NewModuleAddress(govtypes.ModuleName).String())
+	// Retain the old bank-send restriction after removing the fee middleware.
+	// The historical account remains in auth; do not turn it into a funds sink.
+	modAccAddrs[authtypes.NewModuleAddress("feeibc").String()] = true
 
 	return modAccAddrs
 }
@@ -966,16 +970,13 @@ func (app *App) GetTKey(storeKey string) *storetypes.TransientStoreKey {
 }
 
 // GetSubspace returns the legacy x/params subspace retained exclusively for
-// the v0.47 -> v0.53 migration. The target release deletes this store only
-// after every registered migration has completed.
+// the v0.47 -> v0.53 migration. This release retains the store; removing it
+// requires a separate upgrade after all consumers have been reviewed.
 func (app *App) GetSubspace(moduleName string) paramstypes.Subspace {
 	subspace, _ := app.ParamsKeeper.GetSubspace(moduleName)
 	return subspace
 }
 
-// GetMemKey returns the MemStoreKey for the provided mem key.
-//
-// NOTE: This is solely used for testing purposes.
 // RegisterAPIRoutes registers all application module routes with the provided
 // API server.
 func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {
@@ -1014,16 +1015,6 @@ func (app *App) RegisterNodeService(clientCtx client.Context, cfg config.Config)
 	nodeservice.RegisterNodeService(clientCtx, app.GRPCQueryRouter(), cfg)
 }
 
-// SimulationManager returns the app SimulationManager
-func (app *App) SimulationManager() *module.SimulationManager {
-	return app.sm
-}
-
-// ModuleManager returns the app ModuleManager
-func (app *App) ModuleManager() *module.Manager {
-	return app.mm
-}
-
 // initParamsKeeper mounts every v0.47 subspace that is read by cumulative
 // module migrations. Do not remove one merely because the v0.53 runtime no
 // longer writes it: the bridge upgrade still needs the historical values.
@@ -1044,8 +1035,19 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(icacontrollertypes.SubModuleName).WithKeyTable(icacontrollertypes.ParamKeyTable())
 	paramsKeeper.Subspace(icahosttypes.SubModuleName).WithKeyTable(icahosttypes.ParamKeyTable())
 	paramsKeeper.Subspace(wasmtypes.ModuleName)
+	// this line is used by starport scaffolding # stargate/app/paramSubspace
 
 	return paramsKeeper
+}
+
+// SimulationManager returns the app SimulationManager
+func (app *App) SimulationManager() *module.SimulationManager {
+	return app.sm
+}
+
+// ModuleManager returns the app ModuleManager
+func (app *App) ModuleManager() *module.Manager {
+	return app.mm
 }
 
 func (app *App) setupUpgradeHandlers() {
@@ -1155,6 +1157,25 @@ func (app *App) setupUpgradeHandlers() {
 		},
 	)
 
+	// v0.4.4 upgrade handler
+	app.UpgradeKeeper.SetUpgradeHandler(
+		v0_4_4.UpgradeName,
+		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			ctx := sdk.UnwrapSDKContext(goCtx)
+			logger := ctx.Logger().With("upgrade", v0_4_4.UpgradeName)
+			logger.Info("Enable wasm 3MB limit on CLI path and run migrations...")
+
+			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+			if err != nil {
+				logger.Error("failed to run migrations", "error", err)
+				return nil, err
+			}
+
+			logger.Info("Upgrade completed successfully")
+			return vm, nil
+		},
+	)
+
 	// SDK v0.53 bridge handler. RunMigrations performs the cumulative SDK,
 	// IBC-Go v7 -> v10, and Wasmd v0.43 -> v0.61 migrations while every
 	// legacy x/params subspace is still available.
@@ -1203,19 +1224,18 @@ func (app *App) setupUpgradeHandlers() {
 				logger.Error("failed to run migrations", "error", err)
 				return nil, err
 			}
-			consensusParams, repairedConsensusParams := completeConsensusParams(
-				app.GetConsensusParams(ctx),
-				ctx.ConsensusParams(),
-			)
-			if ensureFiniteBlockLimits(&consensusParams) || repairedConsensusParams {
-				if err := app.StoreConsensusParams(ctx, consensusParams); err != nil {
-					return nil, fmt.Errorf("store complete consensus parameters: %w", err)
-				}
-				logger.Info(
-					"Applied finite consensus block limits",
-					"max_gas", consensusParams.Block.MaxGas,
-					"max_bytes", consensusParams.Block.MaxBytes,
-				)
+			// Only the explicitly approved new governance fields are overridden.
+			// Existing governance and consensus values are not reset to defaults.
+			govParams, err := app.GovKeeper.Params.Get(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("read migrated governance parameters: %w", err)
+			}
+			govParams, err = v0_5_0.ApprovedGovernanceParams(govParams)
+			if err != nil {
+				return nil, err
+			}
+			if err := app.GovKeeper.Params.Set(ctx, govParams); err != nil {
+				return nil, fmt.Errorf("store approved governance parameters: %w", err)
 			}
 
 			logger.Info("Upgrade completed successfully")
@@ -1247,6 +1267,8 @@ func (app *App) setupUpgradeHandlers() {
 	case v0_4_2.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_4_3.UpgradeName:
+		storeUpgrades = &storetypes.StoreUpgrades{}
+	case v0_4_4.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_5_0.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{

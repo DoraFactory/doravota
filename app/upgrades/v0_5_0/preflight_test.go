@@ -14,7 +14,10 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	govv5 "github.com/cosmos/cosmos-sdk/x/gov/migrations/v5"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"github.com/stretchr/testify/require"
+	"time"
 )
 
 func TestSourceVersionMap(t *testing.T) {
@@ -61,6 +64,15 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 		want   string
 	}{
 		{"empty fees", func(map[string]storetypes.KVStore) {}, ""},
+		{"missing governance", func(s map[string]storetypes.KVStore) { s["gov"].Delete(govv5.ParamsKey) }, "governance parameters are missing"},
+		{"incompatible rehearsal governance", func(s map[string]storetypes.KVStore) {
+			p := govv1.DefaultParams()
+			d := time.Minute
+			p.VotingPeriod = &d
+			b, err := p.Marshal()
+			require.NoError(t, err)
+			s["gov"].Set(govv5.ParamsKey, b)
+		}, "strictly less"},
 		{"legacy empty fee root", func(map[string]storetypes.KVStore) {}, ""},
 		{"escrow", func(s map[string]storetypes.KVStore) {
 			s["feeibc"].Set([]byte("feesInEscrow/transfer/channel-0/1"), []byte{1})
@@ -82,7 +94,7 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			t.Cleanup(func() { require.NoError(t, db.Close()) })
 			multi := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
 			keys := map[string]*storetypes.KVStoreKey{}
-			for _, name := range []string{"feeibc", "bank", "upgrade"} {
+			for _, name := range []string{"feeibc", "bank", "upgrade", "gov"} {
 				keys[name] = storetypes.NewKVStoreKey(name)
 				multi.MountStoreWithDB(keys[name], storetypes.StoreTypeIAVL, nil)
 			}
@@ -101,6 +113,10 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			b, err := p.Marshal()
 			require.NoError(t, err)
 			stores["upgrade"].Set([]byte("Consensus"), b)
+			govParams := govv1.DefaultParams()
+			govRaw, err := govParams.Marshal()
+			require.NoError(t, err)
+			stores["gov"].Set(govv5.ParamsKey, govRaw)
 			tc.change(stores)
 			multi.Commit()
 			if tc.name == "legacy empty fee root" {

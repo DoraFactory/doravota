@@ -20,8 +20,9 @@ binary="dorad-${VERSION}-linux-${suffix}"
 # CI checks out as runner but builds inside a root-owned container.
 # Commit identity is supplied explicitly below; do not ask Git to inspect a
 # bind-mounted checkout (or require .git in exported source archives).
-CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags 'muslc,netgo,osusergo,static_build' \
-  -ldflags "-linkmode external -extldflags '-static -L/usr/local/lib -lm' -X github.com/cosmos/cosmos-sdk/version.Version=${VERSION} -X github.com/cosmos/cosmos-sdk/version.Commit=${commit_sha}" \
+build_tags=${BUILD_TAGS:-muslc,netgo,osusergo,static_build}
+CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$build_tags" \
+  -ldflags "-linkmode external -extldflags '-static -L/usr/local/lib -lm' -X github.com/cosmos/cosmos-sdk/version.Version=${VERSION} -X github.com/cosmos/cosmos-sdk/version.Commit=${commit_sha} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags}" \
   -o "release/${binary}" ./cmd/dorad
 if readelf -l "release/${binary}" | grep -q INTERP; then
   echo 'Release unexpectedly requires a dynamic loader' >&2; exit 1
