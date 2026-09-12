@@ -1,0 +1,16 @@
+               total        used        free      shared  buff/cache   available
+Mem:            62Gi       7.0Gi       3.5Gi       1.0Mi        51Gi        54Gi
+Swap:           31Gi       259Mi        31Gi
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/md2        905G  731G  129G  86% /
+vota-final-relayer CPU=0.95% MEM=46.59MiB / 1GiB
+vota-final-node3 CPU=4.90% MEM=192.6MiB / 5GiB
+vota-final-node2 CPU=3.29% MEM=186.2MiB / 5GiB
+vota-final-node1 CPU=2.78% MEM=188.4MiB / 5GiB
+vota-final-node0 CPU=3.21% MEM=186.2MiB / 5GiB
+vota-final-peer CPU=3.42% MEM=181.1MiB / 3GiB
+vota-snapshot-node3 CPU=3.04% MEM=1.208GiB / 8GiB
+vota-snapshot-node2 CPU=3.20% MEM=1.222GiB / 8GiB
+vota-snapshot-node1 CPU=3.16% MEM=1.221GiB / 8GiB
+vota-snapshot-node0 CPU=4.12% MEM=1.267GiB / 8GiB
+vota-snapshot-pingpub CPU=0.00% MEM=27.88MiB / 62.4GiB

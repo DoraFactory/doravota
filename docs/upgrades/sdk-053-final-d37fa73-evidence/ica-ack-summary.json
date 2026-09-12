@@ -1,0 +1,34 @@
+{
+  "snapshot-ica-send": {
+    "sequence": "1",
+    "source_channel": "channel-19",
+    "destination_channel": "channel-1",
+    "ack": {
+      "result": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ=="
+    }
+  },
+  "snapshot-ica-wrong-signer": {
+    "sequence": "2",
+    "source_channel": "channel-19",
+    "destination_channel": "channel-1",
+    "ack": {
+      "error": "ABCI code: 2: error handling packet: see events for details"
+    }
+  },
+  "peer-ica-send": {
+    "sequence": "1",
+    "source_channel": "channel-2",
+    "destination_channel": "channel-20",
+    "ack": {
+      "result": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ=="
+    }
+  },
+  "peer-ica-wrong-signer": {
+    "sequence": "2",
+    "source_channel": "channel-2",
+    "destination_channel": "channel-20",
+    "ack": {
+      "error": "ABCI code: 2: error handling packet: see events for details"
+    }
+  }
+}

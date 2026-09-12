@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          test "$VERSION" = "v0.5.0-rc.1"
+          test "$VERSION" = "0.5.0"
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           # Keep the output directory owned by the runner, not container root.

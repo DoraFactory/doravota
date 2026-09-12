@@ -1,0 +1,13 @@
+fund-snapshot-relayer 17250330
+fund-peer-relayer 52
+Error: chains need to be configured before paths to them can be added: chain with ID snapshot is not configured
+Traceback (most recent call last):
+  File "/root/vota-final-snapshot-rehearsal-d37fa73/ibc.py", line 55, in <module>
+    rly('paths','new','snapshot','peer','final-transfer');rly('tx','link','final-transfer')
+  File "/root/vota-final-snapshot-rehearsal-d37fa73/ibc.py", line 19, in rly
+    def rly(*args):return subprocess.check_output(['docker','run','--rm','--network','host','--user','0:0','-v',str(R)+':/work','--entrypoint','rly','ghcr.io/cosmos/relayer:latest',*args,'--home','/work/relayer'],text=True)
+  File "/usr/lib/python3.10/subprocess.py", line 421, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+  File "/usr/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['docker', 'run', '--rm', '--network', 'host', '--user', '0:0', '-v', '/root/vota-final-snapshot-rehearsal-d37fa73:/work', '--entrypoint', 'rly', 'ghcr.io/cosmos/relayer:latest', 'paths', 'new', 'snapshot', 'peer', 'final-transfer', '--home', '/work/relayer']' returned non-zero exit status 1.

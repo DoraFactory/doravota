@@ -1,0 +1,182 @@
+{
+  "hash": "C9F7E9C7349E1E98088216D89CD287E5F13F27E640140441FE38F7E089426FC9",
+  "height": "476",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EqIBClgvaWJjLmFwcGxpY2F0aW9ucy5pbnRlcmNoYWluX2FjY291bnRzLmNvbnRyb2xsZXIudjEuTXNnUmVnaXN0ZXJJbnRlcmNoYWluQWNjb3VudFJlc3BvbnNlEkYKCWNoYW5uZWwtMhI5aWNhY29udHJvbGxlci1kb3JhMTY3bDVuc3E3bnk0a3IwOTljcmhrNjdhcjVnOWhodGhycmthaHE3",
+    "log": "",
+    "info": "",
+    "gas_wanted": "800000",
+    "gas_used": "103055",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "20000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7/3",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "DkN99qgFVcc3ryWKe88pI628hmz9X7l/SAUfa0ARRkkgyxqWebLKYIobWQqlz09qr+pH2ZAceOdOxfOYqqB1cA==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/ibc.applications.interchain_accounts.controller.v1.MsgRegisterInterchainAccount",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "channel_open_init",
+        "attributes": [
+          {
+            "key": "port_id",
+            "value": "icacontroller-dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "channel_id",
+            "value": "channel-2",
+            "index": true
+          },
+          {
+            "key": "counterparty_port_id",
+            "value": "icahost",
+            "index": true
+          },
+          {
+            "key": "connection_id",
+            "value": "connection-0",
+            "index": true
+          },
+          {
+            "key": "version",
+            "value": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-0\",\"host_connection_id\":\"connection-54\",\"address\":\"\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "module",
+            "value": "ibc_channel",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "CpQBCpEBClAvaWJjLmFwcGxpY2F0aW9ucy5pbnRlcmNoYWluX2FjY291bnRzLmNvbnRyb2xsZXIudjEuTXNnUmVnaXN0ZXJJbnRlcmNoYWluQWNjb3VudBI9Citkb3JhMTY3bDVuc3E3bnk0a3IwOTljcmhrNjdhcjVnOWhodGhycmthaHE3Egxjb25uZWN0aW9uLTAgARJ0ClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECahUSs/OdXUI8FkyBfzRvIBESXCCzbWjqFADuT1iw2pYSBAoCCAEYAxIgChoKBXBlYWthEhEyMDAwMDAwMDAwMDAwMDAwMBCA6jAaQA5DffaoBVXHN68linvPKSOtvIZs/V+5f0gFH2tAEUZJIMsalnmyymCKG1kKpc9Paq/qR9mQHHjnTsXzmKqgdXA="
+}

@@ -1,0 +1,16 @@
+{
+  "snapshot": {
+    "ica": "dora1z0357rggqv0ly3ey6veyfrpp0zz4x4kzjlkzsdsp7zxx8s5hayesmmemrf",
+    "balance_before": "1000000000000000000",
+    "balance_after": "0",
+    "recipient_before": "899948880000000000000000",
+    "recipient_after": "899949880000000000000000"
+  },
+  "peer": {
+    "ica": "dora1yzg4r4tezrsmtwvjue8mk55jecw386ya5tu5fwj4awqm4rftjassn6sn6l",
+    "balance_before": "1000000000000000000",
+    "balance_after": "0",
+    "recipient_before": "938840000000000000000",
+    "recipient_after": "939840000000000000000"
+  }
+}

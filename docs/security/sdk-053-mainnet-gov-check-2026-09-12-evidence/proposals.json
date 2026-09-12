@@ -1,0 +1,714 @@
+{
+  "proposals": [
+    {
+      "id": "1",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/gov/v1/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "min_deposit": [
+                {
+                  "denom": "peaka",
+                  "amount": "100000000000000000000000"
+                }
+              ],
+              "max_deposit_period": "120h0m0s",
+              "voting_period": "120h0m0s",
+              "quorum": "0.334000000000000000",
+              "threshold": "0.500000000000000000",
+              "veto_threshold": "0.334000000000000000",
+              "min_initial_deposit_ratio": "0.000000000000000000",
+              "expedited_min_deposit": null,
+              "burn_vote_veto": true
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "110000000000000000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2023-11-06T07:49:21.313548949Z",
+      "deposit_end_time": "2023-11-08T07:49:21.313548949Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "1000000000000000000"
+        }
+      ],
+      "voting_start_time": "2023-11-06T07:49:21.313548949Z",
+      "voting_end_time": "2023-11-08T07:49:21.313548949Z",
+      "title": "First proposal - governance params change",
+      "summary": "Update governance deposit params and voting period",
+      "proposer": "dora1gerunjnh6umehq6zm0gphrc87u37veuv8jqmq3"
+    },
+    {
+      "id": "2",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/staking/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "unbonding_time": "504h0m0s",
+              "max_validators": 3,
+              "max_entries": 7,
+              "historical_entries": 10000,
+              "bond_denom": "peaka",
+              "min_commission_rate": "0.000000000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "225485800000001000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2023-11-09T07:52:52.150278513Z",
+      "deposit_end_time": "2023-11-14T07:52:52.150278513Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2023-11-09T07:52:52.150278513Z",
+      "voting_end_time": "2023-11-14T07:52:52.150278513Z",
+      "title": "Increase validator set and increase proposal deposit amount",
+      "summary": "update validators set",
+      "proposer": "dora1gerunjnh6umehq6zm0gphrc87u37veuv8jqmq3"
+    },
+    {
+      "id": "3",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "/ibc.core.client.v1.ClientUpdateProposal",
+              "value": {
+                "title": "Governance proposal to recover IBC connection with Osmosis chain",
+                "description": "Governance proposal to recover CLIENT 07-tendermint-0 and move it to CLIENT 07-tendermint-11 and access funds in channel-0 (vota-ash \u003c\u003e osmosis-1)",
+                "subject_client_id": "07-tendermint-0",
+                "substitute_client_id": "07-tendermint-11"
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "240273640816901000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2023-11-23T01:43:10.167733708Z",
+      "deposit_end_time": "2023-11-28T01:43:10.167733708Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100002840000000000002000"
+        }
+      ],
+      "voting_start_time": "2023-11-24T02:31:25.999446106Z",
+      "voting_end_time": "2023-11-29T02:31:25.999446106Z",
+      "title": "Governance proposal to recover IBC connection with Osmosis chain",
+      "summary": "Governance proposal to recover CLIENT 07-tendermint-0 and move it to CLIENT 07-tendermint-11 and access funds in channel-0 (vota-ash \u003c\u003e osmosis-1)",
+      "proposer": "dora1qdagdkg9me4253h9qyvx83sd4gpta6rzh2fa0j"
+    },
+    {
+      "id": "4",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "/ibc.core.client.v1.ClientUpdateProposal",
+              "value": {
+                "title": "Recover IBC connection with Osmosis chain\n",
+                "description": "Governance proposal to recover CLIENT 07-tendermint-0 and move it to CLIENT 07-tendermint-11 and access funds in channel-0 (vota-ash \u003c====\u003e osmosis-1)\n",
+                "subject_client_id": "07-tendermint-0",
+                "substitute_client_id": "07-tendermint-11"
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "240313540816901000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2023-12-16T01:44:22.027864246Z",
+      "deposit_end_time": "2023-12-21T01:44:22.027864246Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000100"
+        }
+      ],
+      "voting_start_time": "2023-12-16T01:47:37.74189142Z",
+      "voting_end_time": "2023-12-21T01:47:37.74189142Z",
+      "title": "Recover IBC connection with Osmosis chain\n",
+      "summary": "Governance proposal to recover CLIENT 07-tendermint-0 and move it to CLIENT 07-tendermint-11 and access funds in channel-0 (vota-ash \u003c====\u003e osmosis-1)\n",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "5",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "cosmos-sdk/SoftwareUpgradeProposal",
+              "value": {
+                "title": "upgrade to 0.3.0",
+                "description": "Mainly upgrade wasmd version to 0.43.0 and wasmvm to 1.5.0",
+                "plan": {
+                  "name": "0.3.0",
+                  "time": "0001-01-01T00:00:00Z",
+                  "height": "2002947",
+                  "info": "{ \"binaries\": { \"linux/amd64\":\"https://github.com/DoraFactory/doravota/releases/download/0.3.0/doravota_0.3.0_Darwin_arm64?checksum=sha256:9331d9f3ee2de10626755ff53b9c14f2e398bde9701738cc4eef426ce6288aff\" } }"
+                }
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "726818800000001000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2023-12-21T09:02:20.102606195Z",
+      "deposit_end_time": "2023-12-26T09:02:20.102606195Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2023-12-21T09:04:03.462989191Z",
+      "voting_end_time": "2023-12-26T09:04:03.462989191Z",
+      "title": "upgrade to 0.3.0",
+      "summary": "Mainly upgrade wasmd version to 0.43.0 and wasmvm to 1.5.0",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "6",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/staking/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "unbonding_time": "504h0m0s",
+              "max_validators": 11,
+              "max_entries": 7,
+              "historical_entries": 10000,
+              "bond_denom": "peaka",
+              "min_commission_rate": "0.000000000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "730119510000001000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-01-26T17:27:48.272473296Z",
+      "deposit_end_time": "2024-01-31T17:27:48.272473296Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000001000"
+        }
+      ],
+      "voting_start_time": "2024-01-26T17:30:12.403830176Z",
+      "voting_end_time": "2024-01-31T17:30:12.403830176Z",
+      "title": "Expand Validator Set",
+      "summary": "Expand the active validator set and increase the number of active validators from 3 to 11.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "7",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "cosmos-sdk/SoftwareUpgradeProposal",
+              "value": {
+                "title": "Network upgrade to address voting power overflow risk",
+                "description": "We have put forward some solutions to address the potential overflow issue with the current version of totalVotingPower. Please refer to this link: https://github.com/DoraFactory/doravota/blob/0.3.1/upgrade_proposal-7.md for more details.",
+                "plan": {
+                  "name": "0.3.1",
+                  "time": "0001-01-01T00:00:00Z",
+                  "height": "2778500",
+                  "info": "{ \"binaries\": { \"linux/amd64\":\"https://github.com/DoraFactory/doravota/releases/download/0.3.1/doravota_0.3.1_Darwin_arm64?checksum=sha256:b3cfaf642fc5d37e3e6700f8567b010fa9900d367d11556f91b0b4bf373afd1b\" } }"
+                }
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "736072813293677523331228",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-02-06T06:39:25.315622256Z",
+      "deposit_end_time": "2024-02-11T06:39:25.315622256Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2024-02-06T06:47:44.951806976Z",
+      "voting_end_time": "2024-02-11T06:47:44.951806976Z",
+      "title": "Network upgrade to address voting power overflow risk",
+      "summary": "We have put forward some solutions to address the potential overflow issue with the current version of totalVotingPower. Please refer to this link: https://github.com/DoraFactory/doravota/blob/0.3.1/upgrade_proposal-7.md for more details.",
+      "proposer": "dora1urh32mwj85y4xx6urqknps9zzcjhd8kvrm4254"
+    },
+    {
+      "id": "8",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/staking/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "unbonding_time": "504h0m0s",
+              "max_validators": 14,
+              "max_entries": 7,
+              "historical_entries": 10000,
+              "bond_denom": "peaka",
+              "min_commission_rate": "0.000000000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "2254462790885527241694291",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-08-13T03:56:14.406945973Z",
+      "deposit_end_time": "2024-08-18T03:56:14.406945973Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000001000000"
+        }
+      ],
+      "voting_start_time": "2024-08-14T08:32:47.29219052Z",
+      "voting_end_time": "2024-08-19T08:32:47.29219052Z",
+      "title": "Expand Active Validator Set",
+      "summary": "Expand the active validator set and increase the number of active validators from 11 to 14.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "9",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/slashing/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "signed_blocks_window": "19200",
+              "min_signed_per_window": "0.500000000000000000",
+              "downtime_jail_duration": "10m0s",
+              "slash_fraction_double_sign": "0.005000000000000000",
+              "slash_fraction_downtime": "0.000500000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "2680096632169727241694301",
+        "abstain_count": "500000000000000000",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-08-23T08:38:26.140616447Z",
+      "deposit_end_time": "2024-08-28T08:38:26.140616447Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000010000"
+        }
+      ],
+      "voting_start_time": "2024-08-23T08:42:22.429097366Z",
+      "voting_end_time": "2024-08-28T08:42:22.429097366Z",
+      "title": "Update slash parameters",
+      "summary": "Change downtime-jail duration to 10 min, min-sign block window to 16 hours, downtime slash fraction to 0.05% and double sign slash fraction to 0.5%",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "10",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/consensus/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "block": {
+              "max_bytes": "22020096",
+              "max_gas": "350000000"
+            },
+            "evidence": {
+              "max_age_num_blocks": "324000",
+              "max_age_duration": "504h0m0s",
+              "max_bytes": "1048576"
+            },
+            "validator": {
+              "pub_key_types": [
+                "ed25519"
+              ]
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "2103697680172650398338150",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-09-11T07:42:56.788723911Z",
+      "deposit_end_time": "2024-09-16T07:42:56.788723911Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000001000000"
+        }
+      ],
+      "voting_start_time": "2024-09-11T14:48:35.536779587Z",
+      "voting_end_time": "2024-09-16T14:48:35.536779587Z",
+      "title": " Update Evidence Age and Max Gas Allocated Per Block",
+      "summary": "Addressing feedback from a most recent security audit, this proposal increases the evidence age and updates the max gas allocated per block. For more details, please refer to this link: https://ipfs.io/ipfs/QmStU5MP3uzqDrxk4k4BWo5xTkEo7pU6fZYP2mjWdP5Jx8",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "11",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "cosmos-sdk/SoftwareUpgradeProposal",
+              "value": {
+                "title": "Upgrade to 0.4.0",
+                "description": "Upgrade wasmvm version from 1.5.0 to 1.5.1, remove crisis module and upgrade CosmosSDK version from v0.47.5 to v0.47.10.",
+                "plan": {
+                  "name": "0.4.0",
+                  "time": "0001-01-01T00:00:00Z",
+                  "height": "6308000",
+                  "info": "{ \"binaries\": {\"linux/amd64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.0/dorad-0.4.0-linux-amd?checksum=sha256:3481f97a2660dd8e4838946e6af67d7bec313e161915154b47e0300b90dba6ee\", \"linux/arm64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.0/dorad-0.4.0-linux-arm?checksum=sha256:6f70b2533ba2feac81e3fb5505f65937a59ea2431630679a907279e94c49d81c\"}}"
+                }
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "6989650558012852762717277",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-09-22T09:03:51.095755358Z",
+      "deposit_end_time": "2024-09-27T09:03:51.095755358Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2024-09-22T09:16:20.280509692Z",
+      "voting_end_time": "2024-09-27T09:16:20.280509692Z",
+      "title": "Upgrade to 0.4.0",
+      "summary": "Upgrade wasmvm version from 1.5.0 to 1.5.1, remove crisis module and upgrade CosmosSDK version from v0.47.5 to v0.47.10.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "12",
+      "messages": [
+        {
+          "type": "cosmos-sdk/distribution/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "community_tax": "0.000000000000000000",
+              "base_proposer_reward": "0.000000000000000000",
+              "bonus_proposer_reward": "0.000000000000000000",
+              "withdraw_addr_enabled": true
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "4882246655586116066950095",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2024-10-15T09:09:56.803136254Z",
+      "deposit_end_time": "2024-10-20T09:09:56.803136254Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000001000"
+        }
+      ],
+      "voting_start_time": "2024-10-16T14:40:03.665650131Z",
+      "voting_end_time": "2024-10-21T14:40:03.665650131Z",
+      "title": "Set community tax to 0",
+      "summary": "As a utility-driven token economy, the Dora Vota appchain does not require a community pool. Therefore, we will set community tax to 0 of now. If there is a need in the future, our community will be able to adjust it accordingly.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "13",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "cosmos-sdk/SoftwareUpgradeProposal",
+              "value": {
+                "title": "Upgrade to 0.4.2",
+                "description": "Dora Vota software upgrade 0.4.2: upgrade cosmos sdk version from 0.47.15 to 0.47.16",
+                "plan": {
+                  "name": "0.4.2",
+                  "time": "0001-01-01T00:00:00Z",
+                  "height": "8818888",
+                  "info": "{ \n    \"binaries\": { \n        \"linux/amd64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.2/dorad-0.4.2-linux-amd.tar.gz?checksum=sha256:0eff690a968f78d410c1bb4bf9192661dcde0dce65075d091cdb9fddbe5b0975\",\n        \"linux/arm64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.2/dorad-0.4.2-linux-arm64.tar.gz?checksum=sha256:4e32290506872fc0cb84caef78f55cbb811ac8d70d2a0d1c164858faed577bfd\"\n    } \n}"
+                }
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "16674253328235174752114652",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2025-03-05T06:48:35.841871649Z",
+      "deposit_end_time": "2025-03-10T06:48:35.841871649Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2025-03-07T04:18:21.223672539Z",
+      "voting_end_time": "2025-03-12T04:18:21.223672539Z",
+      "title": "Upgrade to 0.4.2",
+      "summary": "Dora Vota software upgrade 0.4.2: upgrade cosmos sdk version from 0.47.15 to 0.47.16",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "14",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/consensus/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "block": {
+              "max_bytes": "22020096",
+              "max_gas": "600000000"
+            },
+            "evidence": {
+              "max_age_num_blocks": "324000",
+              "max_age_duration": "504h0m0s",
+              "max_bytes": "1048576"
+            },
+            "validator": {
+              "pub_key_types": [
+                "ed25519"
+              ]
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "9681753481604872613114665",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2025-04-21T06:04:22.117743924Z",
+      "deposit_end_time": "2025-04-26T06:04:22.117743924Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000001000000"
+        }
+      ],
+      "voting_start_time": "2025-04-21T06:07:42.798535232Z",
+      "voting_end_time": "2025-04-26T06:07:42.798535232Z",
+      "title": " Update Max Gas Allocated Per Block",
+      "summary": "Update block gas limit to support voting 25 options at once in 4-2-2-25 circuit power.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "15",
+      "messages": [
+        {
+          "type": "cosmos-sdk/v1/MsgExecLegacyContent",
+          "value": {
+            "content": {
+              "type": "cosmos-sdk/SoftwareUpgradeProposal",
+              "value": {
+                "title": "Upgrade to 0.4.3",
+                "description": "Upgrade CosmosSDK version from v0.47.16 to v0.47.17",
+                "plan": {
+                  "name": "0.4.3",
+                  "time": "0001-01-01T00:00:00Z",
+                  "height": "10200000",
+                  "info": "{ \"binaries\": {\"linux/amd64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.3/dorad-0.4.3-linux-amd?checksum=sha256:87d26565d34878d46ba057daf6e6c5b3eea71a45608a3b83deeb36c77e298678\", \"linux/arm64\":\"https://github.com/DoraFactory/doravota/releases/download/0.4.3/dorad-0.4.3-linux-arm64?checksum=sha256:1b90131aab1d699097fa246fda26e49c7e772ddf05f30003e06738afa2d82d23\"}}"
+                }
+              }
+            },
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9"
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "8554021793130699084658269",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2025-06-03T05:27:27.851176648Z",
+      "deposit_end_time": "2025-06-08T05:27:27.851176648Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000000000"
+        }
+      ],
+      "voting_start_time": "2025-06-03T19:47:25.295979854Z",
+      "voting_end_time": "2025-06-08T19:47:25.295979854Z",
+      "title": "Upgrade to 0.4.3",
+      "summary": "Upgrade CosmosSDK version from v0.47.16 to v0.47.17",
+      "proposer": "dora1vraqv8dtsppvpp032antrx9n9w7c9a39trw5l3"
+    },
+    {
+      "id": "16",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/staking/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "unbonding_time": "504h0m0s",
+              "max_validators": 25,
+              "max_entries": 7,
+              "historical_entries": 10000,
+              "bond_denom": "peaka",
+              "min_commission_rate": "0.000000000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "9520105892140142782505575",
+        "abstain_count": "950000000000000000",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2025-07-04T03:37:28.752826592Z",
+      "deposit_end_time": "2025-07-09T03:37:28.752826592Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000001000000"
+        }
+      ],
+      "voting_start_time": "2025-07-05T02:07:53.438571033Z",
+      "voting_end_time": "2025-07-10T02:07:53.438571033Z",
+      "title": "Expand Active Validator Set",
+      "summary": "Increase the number of active validators from 14 to 25.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    },
+    {
+      "id": "18",
+      "messages": [
+        {
+          "type": "cosmos-sdk/x/staking/MsgUpdateParams",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "params": {
+              "unbonding_time": "504h0m0s",
+              "max_validators": 21,
+              "max_entries": 7,
+              "historical_entries": 10000,
+              "bond_denom": "peaka",
+              "min_commission_rate": "0.000000000000000000"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "41967875190047387413985506",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2026-08-20T15:56:06.679688121Z",
+      "deposit_end_time": "2026-08-25T15:56:06.679688121Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "100000000000000000010000"
+        }
+      ],
+      "voting_start_time": "2026-08-20T16:10:16.398868806Z",
+      "voting_end_time": "2026-08-25T16:10:16.398868806Z",
+      "title": "Reduce Dora Vota Maximum Validator Set Size from 25 to 21",
+      "summary": "This proposal reduces Dora Vota's max_validators parameter from 25 to 21.",
+      "proposer": "dora1x964452ma7ll8qsjjqqpurqahy4cvfgu65dwxx"
+    }
+  ],
+  "pagination": {
+    "total": "17"
+  }
+}

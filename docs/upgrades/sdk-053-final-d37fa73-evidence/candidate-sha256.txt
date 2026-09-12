@@ -1,0 +1,2 @@
+34d77e545b00a0fb73f791aaf3bcbb261ab7331251691c24e1c87d94e4f08456  /root/vota-final-snapshot-rehearsal-d37fa73/bin/dorad
+0b415cc24d82189e7442811fbb0c47e1b23da8483cb1694c24e035106914dbc6  /root/vota-final-snapshot-rehearsal-d37fa73/bin/libwasmvm.x86_64.so

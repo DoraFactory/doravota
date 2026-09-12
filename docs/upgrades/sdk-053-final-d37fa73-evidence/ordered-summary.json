@@ -1,0 +1,54 @@
+{
+  "ica": "dora1af02hyjnwe9tlvdgnyyws5064fpydu5x2v593a5yh0tjkdnlj04st84rpy",
+  "old_channel": {
+    "state": "STATE_OPEN",
+    "ordering": "ORDER_ORDERED",
+    "counterparty": {
+      "port_id": "icahost",
+      "channel_id": "channel-3"
+    },
+    "connection_hops": [
+      "connection-54"
+    ],
+    "version": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-54\",\"host_connection_id\":\"connection-0\",\"address\":\"dora1af02hyjnwe9tlvdgnyyws5064fpydu5x2v593a5yh0tjkdnlj04st84rpy\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}",
+    "port_id": "icacontroller-dora1jtyj7ljh85ssjqkdx3tkdm5xn544h0jnphp227",
+    "channel_id": "channel-21"
+  },
+  "closed_channel": {
+    "channel": {
+      "state": "STATE_CLOSED",
+      "ordering": "ORDER_ORDERED",
+      "counterparty": {
+        "port_id": "icahost",
+        "channel_id": "channel-3"
+      },
+      "connection_hops": [
+        "connection-54"
+      ],
+      "version": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-54\",\"host_connection_id\":\"connection-0\",\"address\":\"dora1af02hyjnwe9tlvdgnyyws5064fpydu5x2v593a5yh0tjkdnlj04st84rpy\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}"
+    },
+    "proof": "CqcJCqQJCl9jaGFubmVsRW5kcy9wb3J0cy9pY2Fjb250cm9sbGVyLWRvcmExanR5ajdsamg4NXNzanFrZHgzdGtkbTV4bjU0NGgwam5waHAyMjcvY2hhbm5lbHMvY2hhbm5lbC0yMRKKAggEEAIaFAoHaWNhaG9zdBIJY2hhbm5lbC0zIg1jb25uZWN0aW9uLTU0Kt4BeyJ2ZXJzaW9uIjoiaWNzMjctMSIsImNvbnRyb2xsZXJfY29ubmVjdGlvbl9pZCI6ImNvbm5lY3Rpb24tNTQiLCJob3N0X2Nvbm5lY3Rpb25faWQiOiJjb25uZWN0aW9uLTAiLCJhZGRyZXNzIjoiZG9yYTFhZjAyaHlqbndlOXRsdmRnbnl5d3M1MDY0ZnB5ZHU1eDJ2NTkzYTV5aDB0amtkbmxqMDRzdDg0cnB5IiwiZW5jb2RpbmciOiJwcm90bzMiLCJ0eF90eXBlIjoic2RrX211bHRpX21zZyJ9Gg4IARgBIAEqBgAC1Om5ECIsCAESKAIE1Om5ECCBXyi+kp0jCsdFLQJLiMLvMXteUfAhM66RyCCP4hCVUyAiLggBEgcECNTpuRAgGiEgrY3XYToQ0aQF7PFwBY7HaRY9muTQMWGdS/iF/HZnCasiLAgBEigGENTpuRAgiqyLdCc9vfCMN4ModB6BTTmFycTnaRV9BdoVAs3zdcwgIiwIARIoCB7U6bkQIF5Eo1IavDGPYrxhwXN+70Zw0RWaWxChwR/fQHONOiTdICIsCAESKAo21Om5ECCEsMYxYkydPPE7NVXBvrInxtYrZr4Na11wyU+bctbhQSAiLAgBEigMYNTpuRAggar1z0DlAVsYXq3b5DdHJVm+2p8zee5SQqenEUhI/9ogIi8IARIIDowB1Om5ECAaISBzFbR05NB8Np91Y6EAKpjFf7nqU4pkLcmiKFA8OUXpQSItCAESKRDkAdTpuRAgb0iNHyFZQRiPGXrwll0U0xW9eUT6dL/pw2UQy+ToLD4gIi0IARIpEpQE1Om5ECCbq4HtSA4Os/RDM/ZjjW+nzz/k+kMWvseCQqNQcP4QkiAiLQgBEikU4gbU6bkQIMNOUd+/j3nR0v9uZKV2hM9lNoGFHKG6CLnvds1mAfEFICItCAESKRbACtTpuRAgzh2v8/djUt1U+7v5kWvi8Rhj1IK1aLcZqzpEOb/XtlIgIi0IARIpGvYe1Om5ECCPK13yEL70raGWiK9GpyMtnGsz+aWBxdmU7Xx1NVirbSAiLQgBEikcxDLU6bkQIA51P8iGuHYzE0Nu8ojN0s50Pwp7l5l0ab5z7bP3wL5QICItCAESKR7mfdTpuRAgX8V9+qYqIKjVUW/v1kxE7bgWZEmu7ucILH9lwhgRKuUgIjAIARIJIqysB9TpuRAgGiEgCADlshBL79BdK+rDPKgjmRo3eI51R3hwF+OiCcTO7z0iMAgBEgkk3JYQ1Om5ECAaISDlocS55SAxo8ZVvxeAWV+puMsRUwqa87cKKmsKcHAVWyIwCAESCSb6lh3U6bkQIBohIFTDWUXhfdzTDs3ds35kS0mYlZoxDQ2HVbttUWyZHLslCv4BCvsBCgNpYmMSIAeGmJZquywezjJPoQUND8uZtbyq6KPWKg9KPbEBMnKPGgkIARgBIAEqAQAiJQgBEiEBBrmcDYEZ/x7by+Fl0PGTN9u8CA5nfIjleqKudn6/Dw8iJwgBEgEBGiCVtekWFTrK8wLCTlmxd7GDEkBohLAvVEt++4lda5x6nyInCAESAQEaIGrzHaGenSvMDLqFnaxCzFPHhYOAL3lLmzrfgNz/CA0oIiUIARIhAVD0QmNVc1K3o3U70ekufD3RHEC99qbk0AdwL7JzOEudIicIARIBARogWRmqba7YFpfuspDWKO5aSIR/sGVm4lIzvP3B/OvU/kw=",
+    "proof_height": {
+      "revision_number": "20260911",
+      "revision_height": "17250923"
+    }
+  },
+  "new_channel": {
+    "state": "STATE_OPEN",
+    "ordering": "ORDER_ORDERED",
+    "counterparty": {
+      "port_id": "icahost",
+      "channel_id": "channel-4"
+    },
+    "connection_hops": [
+      "connection-54"
+    ],
+    "version": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-54\",\"host_connection_id\":\"connection-0\",\"address\":\"dora1af02hyjnwe9tlvdgnyyws5064fpydu5x2v593a5yh0tjkdnlj04st84rpy\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}",
+    "port_id": "icacontroller-dora1jtyj7ljh85ssjqkdx3tkdm5xn544h0jnphp227",
+    "channel_id": "channel-22"
+  },
+  "timeout_committed": true,
+  "timeout_balance_unchanged": true,
+  "address_preserved_on_reopen": true,
+  "send_after_reopen_passed": true
+}

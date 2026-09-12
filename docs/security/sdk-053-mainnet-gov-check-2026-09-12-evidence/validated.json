@@ -1,0 +1,67 @@
+{
+  "app_hash": "41E23658347BABC92F5BC84651782E24A20BDC76FDBC527B33D0FDF1D148A43E",
+  "approved_governance": {
+    "min_deposit": [
+      {
+        "denom": "peaka",
+        "amount": "100000000000000000000000"
+      }
+    ],
+    "max_deposit_period": 432000000000000,
+    "voting_period": 432000000000000,
+    "quorum": "0.334000000000000000",
+    "threshold": "0.500000000000000000",
+    "veto_threshold": "0.334000000000000000",
+    "min_initial_deposit_ratio": "0.000000000000000000",
+    "proposal_cancel_ratio": "0.000000000000000000",
+    "expedited_voting_period": 86400000000000,
+    "expedited_threshold": "0.667000000000000000",
+    "expedited_min_deposit": [
+      {
+        "denom": "peaka",
+        "amount": "110000000000000000000000"
+      }
+    ],
+    "burn_vote_veto": true,
+    "min_deposit_ratio": "0.000000000000000000"
+  },
+  "approved_validation_passed": true,
+  "consensus-store_proof_valid": true,
+  "gov-store_proof_valid": true,
+  "header_height": 17268225,
+  "height": 17268224,
+  "legacy_governance_fields_unchanged": true,
+  "source_consensus": {
+    "block": {
+      "max_bytes": 22020096,
+      "max_gas": 600000000
+    },
+    "evidence": {
+      "max_age_num_blocks": 324000,
+      "max_age_duration": 1814400000000000,
+      "max_bytes": 1048576
+    },
+    "validator": {
+      "pub_key_types": [
+        "ed25519"
+      ]
+    },
+    "version": {}
+  },
+  "source_governance": {
+    "min_deposit": [
+      {
+        "denom": "peaka",
+        "amount": "100000000000000000000000"
+      }
+    ],
+    "max_deposit_period": 432000000000000,
+    "voting_period": 432000000000000,
+    "quorum": "0.334000000000000000",
+    "threshold": "0.500000000000000000",
+    "veto_threshold": "0.334000000000000000",
+    "min_initial_deposit_ratio": "0.000000000000000000",
+    "expedited_min_deposit": null,
+    "burn_vote_veto": true
+  }
+}

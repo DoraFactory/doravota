@@ -1,0 +1,46 @@
+{
+  "app_hash": "0366347D10BC32E37FA6F1F391A9BE4A73797EAACC26EF2BF25BF0773BD08371",
+  "chain_id": "vota-final-d37fa73",
+  "changed_stores": [
+    "acc",
+    "bank",
+    "gov",
+    "upgrade"
+  ],
+  "note": "Offline isolated checkpoint: restored real mainnet gov params, scheduled 0.5.0 plan, changed test chain ID. This bypasses governance voting only; old binary halt and new migration are exercised normally.",
+  "original_governance": {
+    "min_deposit": [
+      {
+        "denom": "peaka",
+        "amount": "100000000000000000000000"
+      }
+    ],
+    "max_deposit_period": 432000000000000,
+    "voting_period": 432000000000000,
+    "quorum": "0.334000000000000000",
+    "threshold": "0.500000000000000000",
+    "veto_threshold": "0.334000000000000000",
+    "min_initial_deposit_ratio": "0.000000000000000000",
+    "burn_vote_veto": true
+  },
+  "prepared_height": 17250295,
+  "source_height": 17250294,
+  "test_faucet": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+  "test_governance": {
+    "min_deposit": [
+      {
+        "denom": "peaka",
+        "amount": "100000000000000000000000"
+      }
+    ],
+    "max_deposit_period": 432000000000000,
+    "voting_period": 432000000000000,
+    "quorum": "0.334000000000000000",
+    "threshold": "0.500000000000000000",
+    "veto_threshold": "0.334000000000000000",
+    "min_initial_deposit_ratio": "0.000000000000000000",
+    "burn_vote_veto": true
+  },
+  "test_minted_peaka": "1000000000000000000000",
+  "upgrade_height": 17250314
+}

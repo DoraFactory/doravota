@@ -1,0 +1,18 @@
+{
+  "stopped_old_containers": [
+    "vota-rc-state-sync",
+    "vota-inflight-relayer",
+    "vota-inflight-node0",
+    "vota-inflight-node1",
+    "vota-inflight-node2",
+    "vota-inflight-node3",
+    "vota-inflight-peer",
+    "vota-bridge-relayer",
+    "vota-bridge-ibc-peer"
+  ],
+  "preserved": "old databases, original snapshot, baseline checkpoints, old Ping.pub four nodes",
+  "removed": "only unused-boundary-node0 temporary copy in this rehearsal directory (~7.2 GiB)",
+  "final_nodes_limit": "each 5 GiB and 2 CPUs",
+  "final_peer_limit": "3 GiB and 2 CPUs",
+  "final_relayer_limit": "1 GiB and 1 CPU"
+}

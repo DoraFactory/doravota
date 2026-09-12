@@ -1,0 +1,126 @@
+{
+  "height": 17250374,
+  "binary_sha256": "34d77e545b00a0fb73f791aaf3bcbb261ab7331251691c24e1c87d94e4f08456",
+  "nodes": [
+    {
+      "node": 0,
+      "block_hash": "0423A85754B95E44D7D2F2E6D0C4660E2225CEED0B687B707CF68BB6FA396C47",
+      "app_hash": "6A91D394A1395CD1DB2E1FA007CB97564810C2A07773E50872567CC4C1420685",
+      "gov": {
+        "min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "100000000000000000000000"
+          }
+        ],
+        "max_deposit_period": "120h0m0s",
+        "voting_period": "120h0m0s",
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000",
+        "min_initial_deposit_ratio": "0.000000000000000000",
+        "proposal_cancel_ratio": "0.000000000000000000",
+        "expedited_voting_period": "24h0m0s",
+        "expedited_threshold": "0.667000000000000000",
+        "expedited_min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "110000000000000000000000"
+          }
+        ],
+        "burn_vote_veto": true,
+        "min_deposit_ratio": "0.000000000000000000"
+      }
+    },
+    {
+      "node": 1,
+      "block_hash": "0423A85754B95E44D7D2F2E6D0C4660E2225CEED0B687B707CF68BB6FA396C47",
+      "app_hash": "6A91D394A1395CD1DB2E1FA007CB97564810C2A07773E50872567CC4C1420685",
+      "gov": {
+        "min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "100000000000000000000000"
+          }
+        ],
+        "max_deposit_period": "120h0m0s",
+        "voting_period": "120h0m0s",
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000",
+        "min_initial_deposit_ratio": "0.000000000000000000",
+        "proposal_cancel_ratio": "0.000000000000000000",
+        "expedited_voting_period": "24h0m0s",
+        "expedited_threshold": "0.667000000000000000",
+        "expedited_min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "110000000000000000000000"
+          }
+        ],
+        "burn_vote_veto": true,
+        "min_deposit_ratio": "0.000000000000000000"
+      }
+    },
+    {
+      "node": 2,
+      "block_hash": "0423A85754B95E44D7D2F2E6D0C4660E2225CEED0B687B707CF68BB6FA396C47",
+      "app_hash": "6A91D394A1395CD1DB2E1FA007CB97564810C2A07773E50872567CC4C1420685",
+      "gov": {
+        "min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "100000000000000000000000"
+          }
+        ],
+        "max_deposit_period": "120h0m0s",
+        "voting_period": "120h0m0s",
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000",
+        "min_initial_deposit_ratio": "0.000000000000000000",
+        "proposal_cancel_ratio": "0.000000000000000000",
+        "expedited_voting_period": "24h0m0s",
+        "expedited_threshold": "0.667000000000000000",
+        "expedited_min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "110000000000000000000000"
+          }
+        ],
+        "burn_vote_veto": true,
+        "min_deposit_ratio": "0.000000000000000000"
+      }
+    },
+    {
+      "node": 3,
+      "block_hash": "0423A85754B95E44D7D2F2E6D0C4660E2225CEED0B687B707CF68BB6FA396C47",
+      "app_hash": "6A91D394A1395CD1DB2E1FA007CB97564810C2A07773E50872567CC4C1420685",
+      "gov": {
+        "min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "100000000000000000000000"
+          }
+        ],
+        "max_deposit_period": "120h0m0s",
+        "voting_period": "120h0m0s",
+        "quorum": "0.334000000000000000",
+        "threshold": "0.500000000000000000",
+        "veto_threshold": "0.334000000000000000",
+        "min_initial_deposit_ratio": "0.000000000000000000",
+        "proposal_cancel_ratio": "0.000000000000000000",
+        "expedited_voting_period": "24h0m0s",
+        "expedited_threshold": "0.667000000000000000",
+        "expedited_min_deposit": [
+          {
+            "denom": "peaka",
+            "amount": "110000000000000000000000"
+          }
+        ],
+        "burn_vote_veto": true,
+        "min_deposit_ratio": "0.000000000000000000"
+      }
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+// TEST ONLY. Prepare governance and test funds in a STOPPED isolated snapshot fork.
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	apppkg "github.com/DoraFactory/doravota/app"
+	dbm "github.com/cometbft/cometbft-db"
+	"github.com/cometbft/cometbft/libs/log"
+	"github.com/cometbft/cometbft/privval"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	tmstate "github.com/cometbft/cometbft/state"
+	tmstore "github.com/cometbft/cometbft/store"
+	tmtypes "github.com/cometbft/cometbft/types"
+	"github.com/cosmos/cosmos-sdk/baseapp"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"os"
+	"path/filepath"
+	"time"
+ "encoding/base64"
+ upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
+)
+
+type opts map[string]interface{}
+
+func (o opts) Get(k string) interface{} { return o[k] }
+func must(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+func main() {
+	if len(os.Args) != 4 {
+		panic("usage: rehearsal-prepare /snapshot-rehearsal/node0 /snapshot-rehearsal/signers faucet-address")
+	}
+	home, keys := os.Args[1], os.Args[2]
+	if !bytes.Contains([]byte(home), []byte("snapshot-rehearsal")) {
+		panic("isolated home required")
+	}
+	c := sdk.GetConfig()
+	c.SetBech32PrefixForAccount("dora", "dorapub")
+	c.SetBech32PrefixForValidator("doravaloper", "doravaloperpub")
+	c.SetBech32PrefixForConsensusNode("doravalcons", "doravalconspub")
+	var e error
+	db, e := dbm.NewDB("application", dbm.GoLevelDBBackend, filepath.Join(home, "data"))
+	must(e)
+	a := apppkg.New(log.NewNopLogger(), db, nil, true, map[int64]bool{}, home, 0, apppkg.MakeEncodingConfig(), opts{"home": home}, nil, baseapp.SetChainID("vota-snapshot-rehearsal-20260911"))
+	defer a.Close()
+	sdb, e := dbm.NewDB("state", dbm.GoLevelDBBackend, filepath.Join(home, "data"))
+	must(e)
+	defer sdb.Close()
+	ss := tmstate.NewStore(sdb, tmstate.StoreOptions{DiscardABCIResponses: false})
+	s, e := ss.Load()
+	must(e)
+	h := a.LastBlockHeight()
+	if s.ChainID != "vota-snapshot-rehearsal-20260911" || h != s.LastBlockHeight || !bytes.Equal(a.LastCommitID().Hash, s.AppHash) {
+		panic("unexpected source state")
+	}
+	bdb, e := dbm.NewDB("blockstore", dbm.GoLevelDBBackend, filepath.Join(home, "data"))
+	must(e)
+	defer bdb.Close()
+	bs := tmstore.NewBlockStore(bdb)
+	if bs.Height() != h {
+		panic("blockstore mismatch")
+	}
+	roots := a.CommitMultiStore().(interface {
+		GetCommitInfo(int64) (*storetypes.CommitInfo, error)
+	})
+	before, e := roots.GetCommitInfo(h)
+	must(e)
+ s.ChainID = "vota-final-d37fa73"
+ ctx := a.NewUncachedContext(false, tmproto.Header{Height: h + 1, Time: s.LastBlockTime.Add(time.Second), ChainID: s.ChainID})
+ addr,e := sdk.AccAddressFromBech32("dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4");must(e)
+ if a.AccountKeeper.GetAccount(ctx,addr)==nil {a.AccountKeeper.SetAccount(ctx,a.AccountKeeper.NewAccountWithAddress(ctx,addr))}
+ amount,ok := sdk.NewIntFromString("1000000000000000000000");if !ok {panic("amount")}
+ coins:=sdk.NewCoins(sdk.NewCoin("peaka",amount));must(a.BankKeeper.MintCoins(ctx,"mint",coins));must(a.BankKeeper.SendCoinsFromModuleToAccount(ctx,"mint",addr,coins))
+ originalGov := a.GovKeeper.GetParams(ctx)
+ gp := originalGov
+ govraw,e := os.ReadFile(os.Args[3]);must(e)
+ var resp struct {Result struct {Response struct {Value string}}};must(json.Unmarshal(govraw,&resp))
+ bz,e := base64.StdEncoding.DecodeString(resp.Result.Response.Value);must(e);gp.Reset();must(gp.Unmarshal(bz));must(gp.ValidateBasic())
+ must(a.GovKeeper.SetParams(ctx,gp))
+ a.UpgradeKeeper.ClearUpgradePlan(ctx)
+ must(a.UpgradeKeeper.ScheduleUpgrade(ctx,upgradetypes.Plan{Name:"0.5.0",Height:h+20,Info:"isolated final d37fa73 rehearsal; test-only scheduled plan"}))
+	cid := a.CommitMultiStore().Commit()
+	if cid.Version != h+1 {
+		panic("commit height")
+	}
+	after, e := roots.GetCommitInfo(h + 1)
+	must(e)
+	var changed []string
+	for _, x := range before.StoreInfos {
+		for _, y := range after.StoreInfos {
+			if x.Name == y.Name && !bytes.Equal(x.CommitId.Hash, y.CommitId.Hash) {
+				changed = append(changed, x.Name)
+				if x.Name != "upgrade" && x.Name != "gov" && x.Name != "acc" && x.Name != "bank" {
+					panic("unexpected store change " + x.Name)
+				}
+			}
+		}
+	}
+	last := bs.LoadSeenCommit(h)
+	if last == nil {
+		panic("missing previous commit")
+	}
+	block := tmtypes.MakeBlock(h+1, nil, last, nil)
+	block.Header.Populate(s.Version.Consensus, s.ChainID, ctx.BlockTime(), s.LastBlockID, s.Validators.Hash(), s.NextValidators.Hash(), s.ConsensusParams.Hash(), s.AppHash, s.LastResultsHash, s.Validators.GetProposer().Address)
+	parts, e := block.MakePartSet(tmtypes.BlockPartSizeBytes)
+	must(e)
+	id := tmtypes.BlockID{Hash: block.Hash(), PartSetHeader: parts.Header()}
+	pvs := []*privval.FilePV{}
+	for i := 0; i < 4; i++ {
+		pvs = append(pvs, privval.LoadFilePV(filepath.Join(keys, fmt.Sprint(i), "priv_validator_key.json"), filepath.Join(keys, fmt.Sprint(i), "priv_validator_state.json")))
+	}
+	sigs := make([]tmtypes.CommitSig, len(s.Validators.Validators))
+	for j, v := range s.Validators.Validators {
+		for _, pv := range pvs {
+			pub, _ := pv.GetPubKey()
+			if bytes.Equal(pub.Address(), v.Address) {
+				vote := &tmproto.Vote{Type: tmproto.PrecommitType, Height: h + 1, Round: 0, BlockID: id.ToProto(), Timestamp: ctx.BlockTime().Add(time.Second), ValidatorAddress: v.Address, ValidatorIndex: int32(j)}
+				must(pv.SignVote(s.ChainID, vote))
+				sigs[j] = tmtypes.NewCommitSigForBlock(vote.Signature, v.Address, vote.Timestamp)
+			}
+		}
+	}
+	commit := tmtypes.NewCommit(h+1, 0, id, sigs)
+	must(s.Validators.VerifyCommit(s.ChainID, id, h+1, commit))
+	bs.SaveBlock(block, parts, commit)
+	s.LastValidators = s.Validators.Copy()
+	s.Validators = s.NextValidators.Copy()
+	s.NextValidators = s.Validators.CopyIncrementProposerPriority(1)
+	s.LastBlockHeight = h + 1
+	s.LastBlockID = id
+	s.LastBlockTime = ctx.BlockTime()
+	s.AppHash = cid.Hash
+	must(ss.Bootstrap(s))
+	report := map[string]interface{}{"source_height": h, "prepared_height": h + 1, "changed_stores": changed, "test_minted_peaka":amount.String(), "test_faucet":addr.String(), "chain_id": s.ChainID, "upgrade_height": h+20, "original_governance": originalGov, "test_governance": gp, "app_hash": fmt.Sprintf("%X", cid.Hash), "note": "Offline isolated checkpoint: restored real mainnet gov params, scheduled 0.5.0 plan, changed test chain ID. This bypasses governance voting only; old binary halt and new migration are exercised normally."}
+	raw, e := json.MarshalIndent(report, "", "  ")
+	must(e)
+	must(os.WriteFile(filepath.Join(home, "prepare-report.json"), raw, 0644))
+	fmt.Println(string(raw))
+}

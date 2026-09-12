@@ -1,0 +1,32 @@
+{
+  "old_channel": "channel-19",
+  "before": {
+    "state": "STATE_OPEN",
+    "ordering": "ORDER_UNORDERED",
+    "counterparty": {
+      "port_id": "icahost",
+      "channel_id": "channel-1"
+    },
+    "connection_hops": [
+      "connection-54"
+    ],
+    "version": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-54\",\"host_connection_id\":\"connection-0\",\"address\":\"dora1z0357rggqv0ly3ey6veyfrpp0zz4x4kzjlkzsdsp7zxx8s5hayesmmemrf\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}"
+  },
+  "after": {
+    "state": "STATE_OPEN",
+    "ordering": "ORDER_UNORDERED",
+    "counterparty": {
+      "port_id": "icahost",
+      "channel_id": "channel-1"
+    },
+    "connection_hops": [
+      "connection-54"
+    ],
+    "version": "{\"version\":\"ics27-1\",\"controller_connection_id\":\"connection-54\",\"host_connection_id\":\"connection-0\",\"address\":\"dora1z0357rggqv0ly3ey6veyfrpp0zz4x4kzjlkzsdsp7zxx8s5hayesmmemrf\",\"encoding\":\"proto3\",\"tx_type\":\"sdk_multi_msg\"}"
+  },
+  "timeout_committed": true,
+  "balances_unchanged_on_timeout": true,
+  "reopened": null,
+  "ica_address_preserved": null,
+  "send_after_reopen_passed": false
+}

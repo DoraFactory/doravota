@@ -1,0 +1,35 @@
+package main
+import (
+ "encoding/json"
+ "encoding/hex"
+ "fmt"
+ "os"
+ "reflect"
+ "cosmossdk.io/store/rootmulti"
+ crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+ tm "github.com/cometbft/cometbft/proto/tendermint/types"
+ gov "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+ upgrade "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
+)
+var evidenceDir string
+func must(e error){if e!=nil{panic(e)}}
+func read(n string,v any){b,e:=os.ReadFile(evidenceDir+"/"+n+".json");must(e);must(json.Unmarshal(b,v))}
+func main(){
+ if len(os.Args)!=2 {panic("usage: check.go evidence-directory")}; evidenceDir=os.Args[1]
+ var block struct {Result struct{Block struct{Header struct{Height string `json:"height"`; AppHash string `json:"app_hash"`}}}}
+ read("block",&block);if block.Result.Block.Header.Height!="17268225"{panic("wrong block")};root,e:=hex.DecodeString(block.Result.Block.Header.AppHash);must(e)
+ result:=map[string]any{"height":17268224,"header_height":17268225,"app_hash":block.Result.Block.Header.AppHash}
+ var p gov.Params
+ for _,x:=range []struct{name,path string}{{"gov-store","/gov/0"},{"consensus-store","/upgrade/Consensus"}} {
+ var q struct{Result struct{Response struct{Code uint32; Height string; Value []byte; ProofOps *crypto.ProofOps `json:"proofOps"`}}}
+ read(x.name,&q);r:=q.Result.Response;if r.Code!=0||r.Height!="17268224"||len(r.Value)==0{panic("invalid query "+x.name)}
+ must(rootmulti.DefaultProofRuntime().VerifyValue(r.ProofOps,root,x.path,r.Value))
+ result[x.name+"_proof_valid"]=true
+ if x.name=="gov-store" {must(p.Unmarshal(r.Value));result["source_governance"]=p} else {var c tm.ConsensusParams;must(c.Unmarshal(r.Value));result["source_consensus"]=c}
+ }
+ migrated:=p;d:=gov.DefaultParams();migrated.ExpeditedMinDeposit=d.ExpeditedMinDeposit;migrated.ExpeditedVotingPeriod=d.ExpeditedVotingPeriod;migrated.ExpeditedThreshold=d.ExpeditedThreshold;migrated.ProposalCancelRatio=d.ProposalCancelRatio;migrated.ProposalCancelDest=d.ProposalCancelDest;migrated.MinDepositRatio=d.MinDepositRatio
+ approved,e:=upgrade.ApprovedGovernanceParams(migrated);must(e);result["approved_governance"]=approved
+ preserved:=approved;preserved.ExpeditedMinDeposit=p.ExpeditedMinDeposit;preserved.ExpeditedVotingPeriod=p.ExpeditedVotingPeriod;preserved.ExpeditedThreshold=p.ExpeditedThreshold;preserved.ProposalCancelRatio=p.ProposalCancelRatio;preserved.ProposalCancelDest=p.ProposalCancelDest;preserved.MinDepositRatio=p.MinDepositRatio
+ if !reflect.DeepEqual(p,preserved){panic("old fields changed")};result["legacy_governance_fields_unchanged"]=true;result["approved_validation_passed"]=true
+ b,e:=json.MarshalIndent(result,"","  ");must(e);must(os.WriteFile(evidenceDir+"/validated.json",b,0644));fmt.Println(string(b))
+}

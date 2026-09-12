@@ -128,7 +128,10 @@ IBC v10 的 channel 迁移还移除旧 channel-upgrade/params 等已废弃布局
 | 配置 | 新增默认 | 边界 |
 |---|---|---|
 | `keyring-default-keyname` | 空字符串 | 上游 CLI 默认 key 名选择，不生成或替换用户密钥。 |
-| `--iavl-sync-pruning` | `false` | SDK 提供此开关，但 Vota 手动组装 BaseApp options 当前未传递它；不能承诺配置后生效。本轮未无故改变 pruning 路径。 |
+| `iavl-sync-pruning` | 布尔零值 `false` | 更正：SDK 有该名称常量及通用 BaseApp helper，但当前 start 未注册此 flag，Vota 也未接对应 helper；不是当前可用的启动开关。 |
+| `--shutdown-grace` | `0s` | 已注册的退出资源清理等待选项。 |
+| `grpc.skip-check-header` | `false` | gRPC 配置结构中存在并被读取；默认 TOML 不打印，不是已注册的同名 start flag。 |
+| `--with-comet` | `true` | 替代主名称 `--with-tendermint`，旧名称通过 normalize 保持兼容。 |
 
 此清单覆盖节点配置文件和发现的启动接线差异；AutoCLI 新版新增的各模块交易/查询命令不是“节点新增配置”，未逐个混入本表。
 

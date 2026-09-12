@@ -1,0 +1,7 @@
+snapshot-ica-register 17250461
+Traceback (most recent call last):
+  File "/root/vota-final-snapshot-rehearsal-d37fa73/ibc.py", line 65, in <module>
+    addr=wait(lambda:q(c,['ica','controller','interchain-account',owner,conn[c]]).get('address'))
+  File "/root/vota-final-snapshot-rehearsal-d37fa73/ibc.py", line 27, in wait
+    raise Exception('condition timeout')
+Exception: condition timeout

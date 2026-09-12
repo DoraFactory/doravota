@@ -1,0 +1,8 @@
+snapshot-ica-fund 457
+snapshot-ica-send 17250646
+snapshot-ica-wrong-signer 17250649
+peer-ica-register 476
+peer-ica-fund 17250664
+peer-ica-send 484
+peer-ica-wrong-signer 488
+bidirectional ICA execution and wrong-signer balance checks passed; acknowledgements still require verification

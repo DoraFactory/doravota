@@ -1,0 +1,38 @@
+[
+  {
+    "name": "vota-final-node0",
+    "oom_killed": false,
+    "state": "running",
+    "memory_limit": 5368709120,
+    "nanocpus": 2000000000,
+    "critical_log_matches": [],
+    "image_id": "sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec"
+  },
+  {
+    "name": "vota-final-node1",
+    "oom_killed": false,
+    "state": "running",
+    "memory_limit": 5368709120,
+    "nanocpus": 2000000000,
+    "critical_log_matches": [],
+    "image_id": "sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec"
+  },
+  {
+    "name": "vota-final-node2",
+    "oom_killed": false,
+    "state": "running",
+    "memory_limit": 5368709120,
+    "nanocpus": 2000000000,
+    "critical_log_matches": [],
+    "image_id": "sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec"
+  },
+  {
+    "name": "vota-final-node3",
+    "oom_killed": false,
+    "state": "running",
+    "memory_limit": 5368709120,
+    "nanocpus": 2000000000,
+    "critical_log_matches": [],
+    "image_id": "sha256:b8bae5bd9ba9b1f89b635c91c24cc75cea335a16fb5076310f38566fc674b1ec"
+  }
+]

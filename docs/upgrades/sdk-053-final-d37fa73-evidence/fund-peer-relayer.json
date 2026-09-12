@@ -1,0 +1,217 @@
+{
+  "hash": "C6E96119A13A65C65CDF949AED6C9260F1DF9A35346070864FDB54D4EB8544A8",
+  "height": "52",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ==",
+    "log": "",
+    "info": "",
+    "gas_wanted": "800000",
+    "gas_used": "84425",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "20000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "20000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7/1",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "2W6v7MzrDgNk7ygE7Vr2LD7DlNSyc5ZEBMIfAI28fk81YK4Hx0LA9zGvjoT86dOLDoB+2PZVX2o/YuPsuZZNgg==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.bank.v1beta1.MsgSend",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "bank",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora1y58hp6weav7pe4zcz7wnmleshfggvdxhhvl25l",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora1y58hp6weav7pe4zcz7wnmleshfggvdxhhvl25l",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora167l5nsq7ny4kr099crhk67ar5g9hhthrrkahq7",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "CpwBCpkBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnkKK2RvcmExNjdsNW5zcTdueTRrcjA5OWNyaGs2N2FyNWc5aGh0aHJya2FocTcSK2RvcmExeTU4aHA2d2VhdjdwZTR6Y3o3d25tbGVzaGZnZ3ZkeGhodmwyNWwaHQoFcGVha2ESFDUwMDAwMDAwMDAwMDAwMDAwMDAwEnQKUApGCh8vY29zbW9zLmNyeXB0by5zZWNwMjU2azEuUHViS2V5EiMKIQJqFRKz851dQjwWTIF/NG8gERJcILNtaOoUAO5PWLDalhIECgIIARgBEiAKGgoFcGVha2ESETIwMDAwMDAwMDAwMDAwMDAwEIDqMBpA2W6v7MzrDgNk7ygE7Vr2LD7DlNSyc5ZEBMIfAI28fk81YK4Hx0LA9zGvjoT86dOLDoB+2PZVX2o/YuPsuZZNgg=="
+}
