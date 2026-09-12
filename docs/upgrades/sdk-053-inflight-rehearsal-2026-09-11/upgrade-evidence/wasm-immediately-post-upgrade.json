@@ -1,0 +1,290 @@
+{
+  "dora1smg5qp5trjdkcekdjssqpjehdjf6n4cjss0clyvqcud3t3u3948s8rmgg4": {
+    "admin": {
+      "data": {
+        "admin": "dora1yu80rw3edxzc70sjunr5l7d8y7me0tnc2k8n3x"
+      }
+    },
+    "operator": {
+      "data": "dora1l8ptlxavtum53gcdhzl3sju5k9m5xxszx2f8ht"
+    },
+    "get_validators": {
+      "data": {
+        "addresses": [
+          "dora14uz8dt79a03g8alr5qa56lgad6djcstvssnchh",
+          "dora1t82jnx3cy38cmqs6este696v0al239j9v5a7zr",
+          "dora1vsq4dwt8qpwr2mqeg2aww096l9tu0ryxskrr9f",
+          "dora1arep488045nr8ka2tvnym6gswtqw04gg9ahm7n",
+          "dora1z6kfew2nhuh02szc2hdecw4fqey2d32a02a62e",
+          "dora1ddewp74vd2w8jhth2p0uazmc8ajgtcufz9wk7v",
+          "dora1gh8j89jtc2vx6d3y4ehllcdlvluwa49wfs7yxy",
+          "dora1gerunjnh6umehq6zm0gphrc87u37veuv8jqmq3",
+          "dora12yk434ut3un4wx0rult2aww89rsrel8nydy83p",
+          "dora15frh0nn3v4yp3vv6sk4pn6jg9l8rt82fd29lqt",
+          "dora1l5zz0kkjt2n7nllsrymy96mc2v2gehdau5a3z0",
+          "dora1j8ru7p8zctup6grfwuga6ndrjj7v88wzqr2gsp",
+          "dora1m9v3txhhtadjxpv09gwjhhs344qsxgfstcryqh",
+          "dora104syr0dwe5x8nl03jxm7s0ut2j8dhr3pj4995v",
+          "dora1zlaq8ennxz775t6e072cyzm6s7zwl3gay0c95h",
+          "dora1tw9xra5zua5npq3tvcfgmysklerrjspeuc5zhh",
+          "dora1ajlxk6rxm9usr598tkhmcfmtwa3wwsz4f48gte",
+          "dora10wygchf7sk6mhhxvsfmax7tzz4z3psx9razu3u",
+          "dora1tudltgheh93xdqe76afejljl8hx8kpq8ua6uck",
+          "dora19z5mskzdfu37tavguckfa0j2z2uzg9wgcax5ca",
+          "dora1krzfz3tm8pjjhul66q8sxsslnwkvkyewk9mlcf"
+        ]
+      }
+    },
+    "get_circuit_charge_config": {
+      "data": {
+        "fee_rate": "0.1"
+      }
+    },
+    "get_fee_config": {
+      "data": {
+        "base_fee": "46000000000000000000",
+        "message_fee": "121000000000000000",
+        "deactivate_fee": "10000000000000000000",
+        "signup_fee": "48000000000000000"
+      }
+    },
+    "get_delay_config": {
+      "data": {
+        "base_delay": 200,
+        "message_delay": 2,
+        "signup_delay": 1,
+        "deactivate_delay": 600
+      }
+    },
+    "get_amaci_code_id": {
+      "data": 153
+    },
+    "get_next_poll_id": {
+      "data": 672
+    }
+  },
+  "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w": {
+    "get_round_info": {
+      "data": {
+        "title": "ISOLATED SDK upgrade regression",
+        "description": "Test fork only",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1789136857000000000",
+        "end_time": "1789144027000000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "1"
+    },
+    "get_msg_chain_length": {
+      "data": "0"
+    },
+    "get_period": {
+      "data": {
+        "status": "pending"
+      }
+    },
+    "get_all_result": {
+      "data": "0"
+    },
+    "get_state_tree_root": {
+      "data": "20399383481495944292191268053275151893342541479518237070602442627687182178914"
+    }
+  },
+  "dora1a578av4ed62s8sqlrn5x6k0cs6dg9hllfj0dvvf07e8f7dj3404qg6xvlf": {
+    "get_round_info": {
+      "data": {
+        "title": "E2E publication-custom s0 w17 4b6cbe4ea7f846af58615a42",
+        "description": "",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788454105175000000",
+        "end_time": "1788626905175000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "0"
+    },
+    "get_msg_chain_length": {
+      "data": "0"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "0"
+    },
+    "get_state_tree_root": {
+      "data": "14385537449990765079718963953260620244735269748758454223090277993998194076282"
+    }
+  },
+  "dora1kkta9lzftl2vslh43g3hgmsxy6khaltzjr32s8z6zddea3qj2rzqcfuc09": {
+    "get_round_info": {
+      "data": {
+        "title": "E2E vote-access s0 w20 4b6cbe4ea7f846af58615a42",
+        "description": "",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788454122342000000",
+        "end_time": "1788626922342000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "2"
+    },
+    "get_msg_chain_length": {
+      "data": "2"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "2000000000000000000000002"
+    },
+    "get_state_tree_root": {
+      "data": "16010398191098176365440763035121116814289105032139767831957927702743465001026"
+    }
+  },
+  "dora1pqd7jfmnagpjjewvgg4p8y73xetv3r2uyu6snm42ccdwtn9ashcsjgx8s7": {
+    "get_round_info": {
+      "data": {
+        "title": "E2E vote-world s0 w18 4b6cbe4ea7f846af58615a42",
+        "description": "",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788454148054000000",
+        "end_time": "1788626948054000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "1"
+    },
+    "get_msg_chain_length": {
+      "data": "1"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "1000000000000000000000001"
+    },
+    "get_state_tree_root": {
+      "data": "18466763519637426970165910074577012674451486417340080645686808930774297161718"
+    }
+  },
+  "dora19786memjfu824x8p3zquy3369p6vrg2vt56xh47hrcz6r4hxgynq5a2ten": {
+    "get_round_info": {
+      "data": {
+        "title": "E2E vote-custom s0 w14 4b6cbe4ea7f846af58615a42",
+        "description": "",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788454149755000000",
+        "end_time": "1788626949755000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "1"
+    },
+    "get_msg_chain_length": {
+      "data": "1"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "1000000000000000000000001"
+    },
+    "get_state_tree_root": {
+      "data": "4162793428330744559289062921279547691555966590976669409989261650950822193642"
+    }
+  },
+  "dora106nsw4c5wdw3vkzvpk9xwjtrlpfzs8ju6pslqm9mchphvyk4hz7sfycu66": {
+    "get_round_info": {
+      "data": {
+        "title": "E2E rewards-access s0 w21 4b6cbe4ea7f846af58615a42",
+        "description": "",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788454156773000000",
+        "end_time": "1788626956773000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "1"
+    },
+    "get_msg_chain_length": {
+      "data": "1"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "1000000000000000000000001"
+    },
+    "get_state_tree_root": {
+      "data": "1663653134110274911732213981413532957124823506797804244379351709668096926652"
+    }
+  },
+  "dora1vgkuv50zglsnl7w8pl3cpftf2lajxzqrh2gzzcfa6lgrg0t5uamsw2u38m": {
+    "get_round_info": {
+      "data": {
+        "title": "Will Canada Join The USA?",
+        "description": "As of yesterday morning, Canada\u2019s retaliatory tariffs on American goods are officially live: up to 50% on roughly $28 billion worth of US steel, dairy, appliances, even game consoles. Canadian PM Mark Carney says America is trying to \u201cbreak us so they can own us,\u201d and that it will \u201cnever, ever happen.\u201d But\u2026 NEVER SAY NEVER, amigo.",
+        "link": ""
+      }
+    },
+    "get_voting_time": {
+      "data": {
+        "start_time": "1788881599582000000",
+        "end_time": "1789054399582000000"
+      }
+    },
+    "get_num_sign_up": {
+      "data": "26"
+    },
+    "get_msg_chain_length": {
+      "data": "26"
+    },
+    "get_period": {
+      "data": {
+        "status": "ended"
+      }
+    },
+    "get_all_result": {
+      "data": "26000000000000000000000026"
+    },
+    "get_state_tree_root": {
+      "data": "21396862147421284834780694533611450598826674416664005674300499026501784741990"
+    }
+  }
+}

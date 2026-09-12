@@ -1,0 +1,152 @@
+{
+  "hash": "24B63C57334B4ADBE0053A3F8CBD841EC03634A65019504D997B5EB460DE9FB1",
+  "height": "17250402",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EiAKHi9jb3Ntb3MuZ292LnYxLk1zZ1ZvdGVSZXNwb25zZQ==",
+    "log": "[{\"msg_index\":0,\"events\":[{\"type\":\"message\",\"attributes\":[{\"key\":\"action\",\"value\":\"/cosmos.gov.v1.MsgVote\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"module\",\"value\":\"gov\"}]},{\"type\":\"proposal_vote\",\"attributes\":[{\"key\":\"voter\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"option\",\"value\":\"option:VOTE_OPTION_YES weight:\\\"1.000000000000000000\\\"\"},{\"key\":\"proposal_id\",\"value\":\"19\"}]}]}]",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "52369",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/5",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "0fhxP29zR5vytM8VgElqU6ok8koW+h8Ug3bI0eBOpRQNjR77iiEQkv6uD9pgG0J7c3tpo+pwFy12o2igB0eMAg==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.gov.v1.MsgVote",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "gov",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "proposal_vote",
+        "attributes": [
+          {
+            "key": "voter",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "option",
+            "value": "option:VOTE_OPTION_YES weight:\"1.000000000000000000\"",
+            "index": true
+          },
+          {
+            "key": "proposal_id",
+            "value": "19",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Ck0KSwoWL2Nvc21vcy5nb3YudjEuTXNnVm90ZRIxCBMSK2RvcmExbnk0bnczMnd6ZzcwcXhkdHl5OWE2ZmhrbDgwOWVjaHV3ajQwZjQYARJ0ClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECjfKtJVR2KOQV9k+bXwitkDhpyHyMGNMKXLpv8vqU3lkSBAoCCAEYBRIgChoKBXBlYWthEhExMDAwMDAwMDAwMDAwMDAwMBCgwh4aQNH4cT9vc0eb8rTPFYBJalOqJPJKFvofFIN2yNHgTqUUDY0e+4ohEJL+rg/aYBtCe3N7aaPqcBctdqNooAdHjAI="
+}

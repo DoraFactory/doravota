@@ -1,0 +1,28 @@
+=== RUN   TestLoadLegacyConsensusParams
+--- PASS: TestLoadLegacyConsensusParams (0.00s)
+=== RUN   TestLoadLegacyConsensusParamsMissing
+--- PASS: TestLoadLegacyConsensusParamsMissing (0.00s)
+=== RUN   TestLoadLegacyConsensusParamsRejectsCorruption
+--- PASS: TestLoadLegacyConsensusParamsRejectsCorruption (0.00s)
+=== RUN   TestLegacyEmptyIAVLDBLoadsOldEmptyRootWithoutMutation
+--- PASS: TestLegacyEmptyIAVLDBLoadsOldEmptyRootWithoutMutation (0.03s)
+=== RUN   TestValidateLegacyEmptyIAVLStoresOnlyAtUpgradeBoundary
+--- PASS: TestValidateLegacyEmptyIAVLStoresOnlyAtUpgradeBoundary (0.00s)
+=== RUN   TestIsIAVLRootKey
+--- PASS: TestIsIAVLRootKey (0.00s)
+=== RUN   TestLegacyEmptyRootIndependentOfLocalPlan
+=== RUN   TestLegacyEmptyRootIndependentOfLocalPlan/bridge_plan
+=== RUN   TestLegacyEmptyRootIndependentOfLocalPlan/missing_plan
+=== RUN   TestLegacyEmptyRootIndependentOfLocalPlan/replaced_plan
+--- PASS: TestLegacyEmptyRootIndependentOfLocalPlan (0.03s)
+    --- PASS: TestLegacyEmptyRootIndependentOfLocalPlan/bridge_plan (0.00s)
+    --- PASS: TestLegacyEmptyRootIndependentOfLocalPlan/missing_plan (0.00s)
+    --- PASS: TestLegacyEmptyRootIndependentOfLocalPlan/replaced_plan (0.00s)
+=== RUN   TestEmptyRootViewDoesNotInventMissingRoots
+--- PASS: TestEmptyRootViewDoesNotInventMissingRoots (0.00s)
+=== RUN   TestEmptyStoreCommitAndRestartWithoutPlan
+--- PASS: TestEmptyStoreCommitAndRestartWithoutPlan (0.03s)
+=== RUN   TestRootKeyVersionMayContainSlash
+--- PASS: TestRootKeyVersionMayContainSlash (0.00s)
+PASS
+ok  	github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge	2.133s

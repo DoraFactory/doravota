@@ -1,0 +1,1 @@
+{"height": "0", "txhash": "30754767F6B36CF7528E7A7A0B8EC778A54D8640F1C0FB125F1438909F2DFADF", "codespace": "channel", "code": 40, "data": "", "raw_log": "receive packet verification failed: packet timeout elapsed: current height: 1-1411, timeout height 1-1155: timeout elapsed", "logs": [], "info": "", "gas_wanted": "0", "gas_used": "0", "tx": null, "timestamp": "", "events": []}

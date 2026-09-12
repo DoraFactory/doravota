@@ -1,0 +1,16 @@
+{
+  "validator": "dora14uz8dt79a03g8alr5qa56lgad6djcstvssnchh",
+  "operator": "dora1zgkjgh2ylxnq7x3v5cws4e2tzszn34yy7tee6w",
+  "pubkey": {
+    "x": "5600859985707967936048698297666122251676963658708192783246377055652778249104",
+    "y": "3169462102320760297720629420695102587280276772181960646240192855505939528260"
+  },
+  "rounds": {
+    "665": "dora1a578av4ed62s8sqlrn5x6k0cs6dg9hllfj0dvvf07e8f7dj3404qg6xvlf",
+    "666": "dora1kkta9lzftl2vslh43g3hgmsxy6khaltzjr32s8z6zddea3qj2rzqcfuc09",
+    "667": "dora1pqd7jfmnagpjjewvgg4p8y73xetv3r2uyu6snm42ccdwtn9ashcsjgx8s7",
+    "668": "dora19786memjfu824x8p3zquy3369p6vrg2vt56xh47hrcz6r4hxgynq5a2ten",
+    "669": "dora106nsw4c5wdw3vkzvpk9xwjtrlpfzs8ju6pslqm9mchphvyk4hz7sfycu66",
+    "670": "dora1vgkuv50zglsnl7w8pl3cpftf2lajxzqrh2gzzcfa6lgrg0t5uamsw2u38m"
+  }
+}

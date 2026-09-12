@@ -1,0 +1,254 @@
+[
+  {
+    "channel": "channel-19",
+    "port": "icacontroller-dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "icahost",
+      "channel_id": "channel-1"
+    },
+    "connection": "connection-54",
+    "client": "07-tendermint-46",
+    "chain": "vota-bridge-peer-1"
+  },
+  {
+    "channel": "channel-20",
+    "port": "icahost",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "icacontroller-dora1tsga40atdmdh63gx9wfl7pevugv2mnlrp7v0c3",
+      "channel_id": "channel-2"
+    },
+    "connection": "connection-54",
+    "client": "07-tendermint-46",
+    "chain": "vota-bridge-peer-1"
+  },
+  {
+    "channel": "channel-0",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-2694"
+    },
+    "connection": "connection-1",
+    "client": "07-tendermint-0",
+    "chain": "osmosis-1"
+  },
+  {
+    "channel": "channel-1",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-32"
+    },
+    "connection": "connection-3",
+    "client": "07-tendermint-10",
+    "chain": "archway-1"
+  },
+  {
+    "channel": "channel-10",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-101"
+    },
+    "connection": "connection-24",
+    "client": "07-tendermint-20",
+    "chain": "archway-1"
+  },
+  {
+    "channel": "channel-11",
+    "port": "transfer",
+    "state": "STATE_INIT",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": ""
+    },
+    "connection": "connection-27",
+    "client": "07-tendermint-21",
+    "chain": "pacific-1"
+  },
+  {
+    "channel": "channel-12",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-64"
+    },
+    "connection": "connection-27",
+    "client": "07-tendermint-21",
+    "chain": "pacific-1"
+  },
+  {
+    "channel": "channel-13",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-146"
+    },
+    "connection": "connection-28",
+    "client": "07-tendermint-22",
+    "chain": "archway-1"
+  },
+  {
+    "channel": "channel-14",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-94"
+    },
+    "connection": "connection-29",
+    "client": "07-tendermint-23",
+    "chain": "noble-1"
+  },
+  {
+    "channel": "channel-15",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-394"
+    },
+    "connection": "connection-30",
+    "client": "07-tendermint-24",
+    "chain": "stargaze-1"
+  },
+  {
+    "channel": "channel-17",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-106136"
+    },
+    "connection": "connection-41",
+    "client": "07-tendermint-40",
+    "chain": "osmosis-1"
+  },
+  {
+    "channel": "channel-18",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-0"
+    },
+    "connection": "connection-54",
+    "client": "07-tendermint-46",
+    "chain": "vota-bridge-peer-1"
+  },
+  {
+    "channel": "channel-2",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-10"
+    },
+    "connection": "connection-4",
+    "client": "07-tendermint-12",
+    "chain": "coreum-mainnet-1"
+  },
+  {
+    "channel": "channel-3",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-4092"
+    },
+    "connection": "connection-5",
+    "client": "07-tendermint-13",
+    "chain": "pirin-1"
+  },
+  {
+    "channel": "channel-4",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-750"
+    },
+    "connection": "connection-8",
+    "client": "07-tendermint-14",
+    "chain": "cosmoshub-4"
+  },
+  {
+    "channel": "channel-5",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-182"
+    },
+    "connection": "connection-9",
+    "client": "07-tendermint-15",
+    "chain": "injective-1"
+  },
+  {
+    "channel": "channel-6",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-15"
+    },
+    "connection": "connection-10",
+    "client": "07-tendermint-16",
+    "chain": "dydx-mainnet-1"
+  },
+  {
+    "channel": "channel-7",
+    "port": "transfer",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": "channel-125"
+    },
+    "connection": "connection-11",
+    "client": "07-tendermint-17",
+    "chain": "akashnet-2"
+  },
+  {
+    "channel": "channel-8",
+    "port": "transfer",
+    "state": "STATE_INIT",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": ""
+    },
+    "connection": "connection-23",
+    "client": "07-tendermint-19",
+    "chain": "pacific-1"
+  },
+  {
+    "channel": "channel-9",
+    "port": "transfer",
+    "state": "STATE_INIT",
+    "counterparty": {
+      "port_id": "transfer",
+      "channel_id": ""
+    },
+    "connection": "connection-23",
+    "client": "07-tendermint-19",
+    "chain": "pacific-1"
+  },
+  {
+    "channel": "channel-16",
+    "port": "wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu",
+    "state": "STATE_OPEN",
+    "counterparty": {
+      "port_id": "wasm.stars1r0a8ygvnjfaegy4n5z9325e0ew9uy2s7rn4vt7qf4ltv49fj4tnsk6pvtv",
+      "channel_id": "channel-397"
+    },
+    "connection": "connection-30",
+    "client": "07-tendermint-24",
+    "chain": "stargaze-1"
+  }
+]

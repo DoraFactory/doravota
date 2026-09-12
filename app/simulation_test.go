@@ -14,6 +14,8 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	evidencetypes "cosmossdk.io/x/evidence/types"
 	"github.com/CosmWasm/wasmd/x/wasm"
+	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
+	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -38,7 +40,21 @@ import (
 	"github.com/DoraFactory/doravota/app"
 )
 
-var emptyWasmOpts []wasm.Option
+// Each simulated application owns its VM directory and releases its native cache.
+func simulationHome(t testing.TB, opts simtestutil.AppOptionsMap) string {
+	home := t.TempDir()
+	opts[flags.FlagHome] = home
+	return home
+}
+
+func simulationWasmOpts(t testing.TB) []wasm.Option {
+	return []wasm.Option{wasmkeeper.WithWasmEngineDecorator(func(engine wasmtypes.WasmEngine) wasmtypes.WasmEngine {
+		if closer, ok := engine.(interface{ Cleanup() }); ok {
+			t.Cleanup(closer.Cleanup)
+		}
+		return engine
+	})}
+}
 
 type storeKeysPrefixes struct {
 	A        storetypes.StoreKey
@@ -85,7 +101,6 @@ func BenchmarkSimulation(b *testing.B) {
 	})
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.New(
@@ -94,12 +109,12 @@ func BenchmarkSimulation(b *testing.B) {
 		nil,
 		true,
 		map[int64]bool{},
-		app.DefaultNodeHome,
+		simulationHome(b, appOptions),
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		emptyWasmOpts,
+		simulationWasmOpts(b),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(b, app.Name, bApp.Name())
@@ -143,13 +158,12 @@ func TestAppStateDeterminism(t *testing.T) {
 	config.AllInvariants = true
 
 	var (
-		r                    = rand.New(rand.NewSource(time.Now().Unix()))
+		r                    = rand.New(rand.NewSource(simcli.FlagSeedValue))
 		numSeeds             = 3
 		numTimesToRunPerSeed = 5
 		appHashList          = make([]json.RawMessage, numTimesToRunPerSeed)
 		appOptions           = make(simtestutil.AppOptionsMap, 0)
 	)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	for i := 0; i < numSeeds; i++ {
@@ -162,7 +176,7 @@ func TestAppStateDeterminism(t *testing.T) {
 			} else {
 				logger = log.NewNopLogger()
 			}
-			chainID := fmt.Sprintf("chain-id-%d-%d", i, j)
+			chainID := fmt.Sprintf("chain-id-%d", i)
 			config.ChainID = chainID
 
 			db := dbm.NewMemDB()
@@ -172,12 +186,12 @@ func TestAppStateDeterminism(t *testing.T) {
 				nil,
 				true,
 				map[int64]bool{},
-				app.DefaultNodeHome,
+				simulationHome(t, appOptions),
 				simcli.FlagPeriodValue,
 				app.MakeEncodingConfig(),
 				appOptions,
 				// wasm.EnableAllProposals,
-				emptyWasmOpts,
+				simulationWasmOpts(t),
 				fauxMerkleModeOpt,
 				baseapp.SetChainID(chainID),
 			)
@@ -243,7 +257,6 @@ func TestAppImportExport(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.New(
@@ -252,12 +265,12 @@ func TestAppImportExport(t *testing.T) {
 		nil,
 		true,
 		map[int64]bool{},
-		app.DefaultNodeHome,
+		simulationHome(t, appOptions),
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		emptyWasmOpts,
+		simulationWasmOpts(t),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -315,12 +328,12 @@ func TestAppImportExport(t *testing.T) {
 		nil,
 		true,
 		map[int64]bool{},
-		app.DefaultNodeHome,
+		simulationHome(t, appOptions),
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		emptyWasmOpts,
+		simulationWasmOpts(t),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -400,7 +413,6 @@ func TestAppSimulationAfterImport(t *testing.T) {
 	}()
 
 	appOptions := make(simtestutil.AppOptionsMap, 0)
-	appOptions[flags.FlagHome] = app.DefaultNodeHome
 	appOptions[server.FlagInvCheckPeriod] = simcli.FlagPeriodValue
 
 	bApp := app.New(
@@ -409,12 +421,12 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		nil,
 		true,
 		map[int64]bool{},
-		app.DefaultNodeHome,
+		simulationHome(t, appOptions),
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		emptyWasmOpts,
+		simulationWasmOpts(t),
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)
@@ -478,12 +490,12 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		nil,
 		true,
 		map[int64]bool{},
-		app.DefaultNodeHome,
+		simulationHome(t, appOptions),
 		0,
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		emptyWasmOpts,
+		simulationWasmOpts(t),
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)

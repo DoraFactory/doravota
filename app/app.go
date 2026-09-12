@@ -191,7 +191,7 @@ var (
 	// and genesis verification.
 	ModuleBasics = module.NewBasicManager(
 		auth.AppModuleBasic{},
-		authzmodule.AppModuleBasic{},
+		authzAppModuleBasic{},
 		genutil.NewAppModuleBasic(genutiltypes.DefaultMessageValidator),
 		bankAppModuleBasic{},
 		stakingAppModuleBasic{},
@@ -199,8 +199,8 @@ var (
 		distributionAppModuleBasic{},
 		gov.NewAppModuleBasic(getGovProposalHandlers()),
 		slashing.AppModuleBasic{},
-		feegrantmodule.AppModuleBasic{},
-		groupmodule.AppModuleBasic{},
+		feegrantAppModuleBasic{},
+		groupAppModuleBasic{},
 		params.AppModuleBasic{},
 		ibc.AppModuleBasic{},
 		ibctm.AppModuleBasic{},
@@ -316,6 +316,9 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
+	if err := sdk_v053_bridge.ValidateUpgradeBoundary(logger, db, homePath); err != nil {
+		panic(fmt.Errorf("bridge preflight failed before store loading: %w", err))
+	}
 	overrideWasmVariables()
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
@@ -589,9 +592,7 @@ func New(
 
 	// Create Interchain Accounts Stack.
 	var icaControllerStack porttypes.IBCModule
-	var noAuthzModule porttypes.IBCModule
-	icaControllerStack = icacontroller.NewIBCMiddlewareWithAuth(noAuthzModule, app.ICAControllerKeeper)
-	icaControllerStack = icacontroller.NewIBCMiddlewareWithAuth(icaControllerStack, app.ICAControllerKeeper)
+	icaControllerStack = icacontroller.NewIBCMiddleware(app.ICAControllerKeeper)
 	icaControllerStack = ibccallbacks.NewIBCMiddleware(icaControllerStack, app.IBCKeeper.ChannelKeeper, wasmStackIBCHandler, wasm.DefaultMaxIBCCallbackGas)
 	app.ICAControllerKeeper.WithICS4Wrapper(icaControllerStack.(porttypes.ICS4Wrapper))
 
@@ -1163,6 +1164,9 @@ func (app *App) setupUpgradeHandlers() {
 			ctx := sdk.UnwrapSDKContext(goCtx)
 			logger := ctx.Logger().With("upgrade", sdk_v053_bridge.UpgradeName)
 			logger.Info("Upgrading production state to Cosmos SDK v0.53 and IBC-Go v10")
+			if err := sdk_v053_bridge.ValidateSourceVersionMap(fromVM); err != nil {
+				return nil, err
+			}
 
 			// Doravota v0.4.x constructed its x/consensus keeper with the
 			// x/upgrade store key. Seed the SDK v0.53 x/consensus collection from
@@ -1184,11 +1188,14 @@ func (app *App) setupUpgradeHandlers() {
 				}
 			}
 			if foundLegacyConsensusParams {
+				if err := sdk_v053_bridge.ValidateLegacyConsensusParams(legacyConsensusParams); err != nil {
+					return nil, err
+				}
 				if err := app.StoreConsensusParams(ctx, legacyConsensusParams); err != nil {
 					return nil, fmt.Errorf("migrate legacy consensus parameters: %w", err)
 				}
 			} else {
-				logger.Info("legacy consensus parameters were not present")
+				return nil, fmt.Errorf("legacy consensus parameters were not present")
 			}
 
 			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)

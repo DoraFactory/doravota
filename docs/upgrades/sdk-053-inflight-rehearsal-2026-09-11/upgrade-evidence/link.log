@@ -1,0 +1,13 @@
+bridge-fund-relayer height 17249888 hash 4B8D0776DF2980FB0A2E261FF8F3EC6F6D52A0ED66D561AAE42D8123DD3CA7C6
+{"height":"0","txhash":"C9EB57175E93CC6BD1BC2D1710D60D45430AA9FBD676F1710D64B2FF96CF3C37","codespace":"","code":0,"data":"","raw_log":"","logs":[],"info":"","gas_wanted":"0","gas_used":"0","tx":null,"timestamp":"","events":[]}
+Error: chains need to be configured before paths to them can be added: chain with ID snapshot is not configured
+Traceback (most recent call last):
+  File "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/vota-ibc-link.py", line 9, in <module>
+    rly('paths','new','snapshot','peer','bridge-transfer')
+  File "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/vota-ibc-link.py", line 4, in rly
+    def rly(*a):return subprocess.check_output(['docker','run','--rm','--network','host','--user','0:0','-v',str(r)+':/work','--entrypoint','rly','ghcr.io/cosmos/relayer:latest',*a,'--home','/work/relayer-bridge'],text=True)
+  File "/usr/lib/python3.10/subprocess.py", line 421, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+  File "/usr/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['docker', 'run', '--rm', '--network', 'host', '--user', '0:0', '-v', '/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal:/work', '--entrypoint', 'rly', 'ghcr.io/cosmos/relayer:latest', 'paths', 'new', 'snapshot', 'peer', 'bridge-transfer', '--home', '/work/relayer-bridge']' returned non-zero exit status 1.

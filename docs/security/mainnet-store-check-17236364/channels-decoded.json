@@ -1,0 +1,146 @@
+[
+  {
+    "channel": "channel-0",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-2694"
+  },
+  {
+    "channel": "channel-1",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-32"
+  },
+  {
+    "channel": "channel-10",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-101"
+  },
+  {
+    "channel": "channel-11",
+    "port": "transfer",
+    "state": 1,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": ""
+  },
+  {
+    "channel": "channel-12",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-64"
+  },
+  {
+    "channel": "channel-13",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-146"
+  },
+  {
+    "channel": "channel-14",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-94"
+  },
+  {
+    "channel": "channel-15",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-394"
+  },
+  {
+    "channel": "channel-17",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-106136"
+  },
+  {
+    "channel": "channel-2",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-10"
+  },
+  {
+    "channel": "channel-3",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-4092"
+  },
+  {
+    "channel": "channel-4",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-750"
+  },
+  {
+    "channel": "channel-5",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-182"
+  },
+  {
+    "channel": "channel-6",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-15"
+  },
+  {
+    "channel": "channel-7",
+    "port": "transfer",
+    "state": 3,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": "channel-125"
+  },
+  {
+    "channel": "channel-8",
+    "port": "transfer",
+    "state": 1,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": ""
+  },
+  {
+    "channel": "channel-9",
+    "port": "transfer",
+    "state": 1,
+    "version": "ics20-1",
+    "counterparty_port": "transfer",
+    "counterparty_channel": ""
+  },
+  {
+    "channel": "channel-16",
+    "port": "wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu",
+    "state": 3,
+    "version": "ics721-1",
+    "counterparty_port": "wasm.stars1r0a8ygvnjfaegy4n5z9325e0ew9uy2s7rn4vt7qf4ltv49fj4tnsk6pvtv",
+    "counterparty_channel": "channel-397"
+  }
+]

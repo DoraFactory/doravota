@@ -1,0 +1,45 @@
+fee-locked height=17236364 store=feeibc root=E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855 anchored=true empty=true
+cap-index height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-index membership verified
+cap-owner-1 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-1 membership verified
+cap-owner-10 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-10 membership verified
+cap-owner-11 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-11 membership verified
+cap-owner-12 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-12 membership verified
+cap-owner-13 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-13 membership verified
+cap-owner-14 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-14 membership verified
+cap-owner-15 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-15 membership verified
+cap-owner-16 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-16 membership verified
+cap-owner-17 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-17 membership verified
+cap-owner-18 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-18 membership verified
+cap-owner-19 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-19 membership verified
+cap-owner-2 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-2 membership verified
+cap-owner-20 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-20 membership verified
+cap-owner-21 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-21 membership verified
+cap-owner-3 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-3 membership verified
+cap-owner-4 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-4 membership verified
+cap-owner-5 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-5 membership verified
+cap-owner-6 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-6 membership verified
+cap-owner-7 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-7 membership verified
+cap-owner-8 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-8 membership verified
+cap-owner-9 height=17236364 store=capability root=DEB55839F3FE17085FDF9E4C3FE840E915A5E26E489B944DE3AC80C71E15B13A anchored=true empty=false
+cap-owner-9 membership verified

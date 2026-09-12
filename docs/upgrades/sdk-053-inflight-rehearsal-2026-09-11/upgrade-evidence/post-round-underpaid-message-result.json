@@ -1,0 +1,112 @@
+{
+  "hash": "B7F2D42CE9664283819DF983319293B3E945CF620554291E89953217A438DFEA",
+  "height": "17250435",
+  "index": 0,
+  "tx_result": {
+    "code": 5,
+    "data": null,
+    "log": "failed to execute message; message index: 0: Incorrect funds sent: payment must exactly equal the required fee: execute wasm contract failed",
+    "info": "",
+    "gas_wanted": "3000000",
+    "gas_used": "121310",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "30000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/16",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "WVBN69gaTZecftkJuZ+4qoI6Ey2EsFA/weSOh6Rg43NP0Budb2I0BZvJWfPfbLmMxMcuWUip48Uqj+Zl8cXFpw==",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": "wasm"
+  },
+  "tx": "Cr0DCroDCiQvY29zbXdhc20ud2FzbS52MS5Nc2dFeGVjdXRlQ29udHJhY3QSkQMKK2RvcmExbnk0bnczMnd6ZzcwcXhkdHl5OWE2ZmhrbDgwOWVjaHV3ajQwZjQSP2RvcmExNDJzMGZwaHg4MHY2NnozNGo0dHNwbDZwdG1lNTltY24zbXAyYXlkdTYweThmNWcwbnNtc2oybTI5dxqgAnsicHVibGlzaF9tZXNzYWdlIjogeyJtZXNzYWdlcyI6IFt7ImRhdGEiOiBbIjEiLCAiMSIsICIxIiwgIjEiLCAiMSIsICIxIiwgIjEiLCAiMSIsICIxIiwgIjEiXX1dLCAiZW5jX3B1Yl9rZXlzIjogW3sieCI6ICI1Mjk5NjE5MjQwNjQxNTUxMjgxNjM0ODY1NTgzNTE4Mjk3MDMwMjgyODc0NDcyMTkwNzcyODk0MDg2NTIxMTQ0NDgyNzIxMDAxNTUzIiwgInkiOiAiMTY5NTAxNTA3OTg0NjA2NTc3MTc5NTg2MjU1Njc4MjE4MzQ1NTAzMDE2NjMxNjE2MjQ3MDc3ODcyMjI4MTU5MzYxODI2Mzg5NjgyMDMifV19fRJ1ClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECjfKtJVR2KOQV9k+bXwitkDhpyHyMGNMKXLpv8vqU3lkSBAoCCAEYEBIhChoKBXBlYWthEhEzMDAwMDAwMDAwMDAwMDAwMBDAjbcBGkBZUE3r2BpNl5x+2Qm5n7iqgjoTLYSwUD/B5I6HpGDjc0/QG51vYjQFm8lZ899suYzExy5ZSKnjxSqP5mXxxcWn"
+}

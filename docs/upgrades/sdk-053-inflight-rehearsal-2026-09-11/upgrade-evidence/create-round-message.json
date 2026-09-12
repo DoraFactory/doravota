@@ -1,0 +1,41 @@
+{
+  "create_round": {
+    "operator": "dora1zgkjgh2ylxnq7x3v5cws4e2tzszn34yy7tee6w",
+    "vote_option_map": [
+      "A",
+      "B"
+    ],
+    "round_info": {
+      "title": "ISOLATED SDK upgrade regression",
+      "description": "Test fork only",
+      "link": ""
+    },
+    "voting_time": {
+      "start_time": "1789136857000000000",
+      "end_time": "1789144027000000000"
+    },
+    "circuit_type": "1",
+    "certification_system": "0",
+    "deactivate_enabled": false,
+    "voice_credit_mode": {
+      "unified": {
+        "amount": "100"
+      }
+    },
+    "registration_mode": {
+      "sign_up_with_static_whitelist": {
+        "whitelist": {
+          "users": [
+            {
+              "addr": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4"
+            },
+            {
+              "addr": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3"
+            }
+          ]
+        }
+      }
+    },
+    "max_votes_per_option": null
+  }
+}

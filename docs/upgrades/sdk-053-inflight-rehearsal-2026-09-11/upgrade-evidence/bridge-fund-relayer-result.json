@@ -1,0 +1,192 @@
+{
+  "hash": "4B8D0776DF2980FB0A2E261FF8F3EC6F6D52A0ED66D561AAE42D8123DD3CA7C6",
+  "height": "17249888",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EiYKJC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmRSZXNwb25zZQ==",
+    "log": "[{\"msg_index\":0,\"events\":[{\"type\":\"message\",\"attributes\":[{\"key\":\"action\",\"value\":\"/cosmos.bank.v1beta1.MsgSend\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"module\",\"value\":\"bank\"}]},{\"type\":\"coin_spent\",\"attributes\":[{\"key\":\"spender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"50000000000000000000peaka\"}]},{\"type\":\"coin_received\",\"attributes\":[{\"key\":\"receiver\",\"value\":\"dora1nv4l3pauedvt3qd6388svga0t7xt2gjp5ufvdh\"},{\"key\":\"amount\",\"value\":\"50000000000000000000peaka\"}]},{\"type\":\"transfer\",\"attributes\":[{\"key\":\"recipient\",\"value\":\"dora1nv4l3pauedvt3qd6388svga0t7xt2gjp5ufvdh\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"50000000000000000000peaka\"}]},{\"type\":\"message\",\"attributes\":[{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"}]}]}]",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "87611",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "APIY6oTMSxRDdUZQge8xIp3lqfFC6Ner/x5SSn7YD4AL84Uu4qSOqKIiJuoPvusimNtvSmsaFDJAxSthVMCsqA==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.bank.v1beta1.MsgSend",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "bank",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora1nv4l3pauedvt3qd6388svga0t7xt2gjp5ufvdh",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora1nv4l3pauedvt3qd6388svga0t7xt2gjp5ufvdh",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "50000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "CpwBCpkBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnkKK2RvcmExbnk0bnczMnd6ZzcwcXhkdHl5OWE2ZmhrbDgwOWVjaHV3ajQwZjQSK2RvcmExbnY0bDNwYXVlZHZ0M3FkNjM4OHN2Z2EwdDd4dDJnanA1dWZ2ZGgaHQoFcGVha2ESFDUwMDAwMDAwMDAwMDAwMDAwMDAwEnIKTgpGCh8vY29zbW9zLmNyeXB0by5zZWNwMjU2azEuUHViS2V5EiMKIQKN8q0lVHYo5BX2T5tfCK2QOGnIfIwY0wpcum/y+pTeWRIECgIIARIgChoKBXBlYWthEhExMDAwMDAwMDAwMDAwMDAwMBCgwh4aQADyGOqEzEsUQ3VGUIHvMSKd5anxQujXq/8eUkp+2A+AC/OFLuKkjqiiIibqD77rIpjbb0prGhQyQMUrYVTArKg="
+}

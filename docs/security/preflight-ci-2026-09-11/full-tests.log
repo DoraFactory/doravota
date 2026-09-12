@@ -1,0 +1,16 @@
+ok  	github.com/DoraFactory/doravota/app	6.076s
+?   	github.com/DoraFactory/doravota/app/params	[no test files]
+ok  	github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge	5.454s
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_3_0	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_3_1	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_0	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_2	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_3	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_4	[no test files]
+?   	github.com/DoraFactory/doravota/cmd/dorad	[no test files]
+?   	github.com/DoraFactory/doravota/cmd/dorad/cmd	[no test files]
+?   	github.com/DoraFactory/doravota/docs	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/network	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/nullify	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/sample	[no test files]
+?   	github.com/DoraFactory/doravota/types	[no test files]

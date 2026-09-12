@@ -1,0 +1,275 @@
+[
+  {
+    "index": 1,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "ports/transfer"
+      },
+      {
+        "1": "transfer",
+        "2": "ports/transfer"
+      }
+    ]
+  },
+  {
+    "index": 2,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "ports/icahost"
+      },
+      {
+        "1": "icahost",
+        "2": "ports/icahost"
+      }
+    ]
+  },
+  {
+    "index": 3,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-0"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-0"
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-1"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-1"
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-2"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-2"
+      }
+    ]
+  },
+  {
+    "index": 6,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-3"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-3"
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-4"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-4"
+      }
+    ]
+  },
+  {
+    "index": 8,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-5"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-5"
+      }
+    ]
+  },
+  {
+    "index": 9,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-6"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-6"
+      }
+    ]
+  },
+  {
+    "index": 10,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-7"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-7"
+      }
+    ]
+  },
+  {
+    "index": 11,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-8"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-8"
+      }
+    ]
+  },
+  {
+    "index": 12,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-9"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-9"
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-10"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-10"
+      }
+    ]
+  },
+  {
+    "index": 14,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-11"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-11"
+      }
+    ]
+  },
+  {
+    "index": 15,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-12"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-12"
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-13"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-13"
+      }
+    ]
+  },
+  {
+    "index": 17,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-14"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-14"
+      }
+    ]
+  },
+  {
+    "index": 18,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-15"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-15"
+      }
+    ]
+  },
+  {
+    "index": 19,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "ports/wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu"
+      },
+      {
+        "1": "wasm",
+        "2": "ports/wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu"
+      }
+    ]
+  },
+  {
+    "index": 20,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu/channels/channel-16"
+      },
+      {
+        "1": "wasm",
+        "2": "capabilities/ports/wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu/channels/channel-16"
+      }
+    ]
+  },
+  {
+    "index": 21,
+    "owners": [
+      {
+        "1": "ibc",
+        "2": "capabilities/ports/transfer/channels/channel-17"
+      },
+      {
+        "1": "transfer",
+        "2": "capabilities/ports/transfer/channels/channel-17"
+      }
+    ]
+  }
+]

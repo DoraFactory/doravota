@@ -1,0 +1,267 @@
+{
+  "hash": "5E0E9B00C0FC88E6F77AD3FEA587DD944323175217449CB26AC2551B3A5D689F",
+  "height": "17250432",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "Ei4KLC9jb3Ntd2FzbS53YXNtLnYxLk1zZ0V4ZWN1dGVDb250cmFjdFJlc3BvbnNl",
+    "log": "",
+    "info": "",
+    "gas_wanted": "3000000",
+    "gas_used": "436036",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "30000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "30000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3/0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "7yQchvDK49W2xVmx8kMQP0fQQuDbh0XQD+MtWJQRkpo4QE1VnMQKqz8ZF1NsTnv/8xFd+moKIdL1JhJ16KL9Ng==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmwasm.wasm.v1.MsgExecuteContract",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "wasm",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "48000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "48000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "48000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "execute",
+        "attributes": [
+          {
+            "key": "_contract_address",
+            "value": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "wasm",
+        "attributes": [
+          {
+            "key": "_contract_address",
+            "value": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+            "index": true
+          },
+          {
+            "key": "action",
+            "value": "sign_up",
+            "index": true
+          },
+          {
+            "key": "fee_paid",
+            "value": "48000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "state_idx",
+            "value": "1",
+            "index": true
+          },
+          {
+            "key": "pubkey",
+            "value": "\"5299619240641551281634865583518297030282874472190772894086521144482721001553\",\"16950150798460657717958625567821834550301663161624707787222815936182638968203\"",
+            "index": true
+          },
+          {
+            "key": "balance",
+            "value": "100",
+            "index": true
+          },
+          {
+            "key": "registration_mode",
+            "value": "SignUpWithStaticWhitelist",
+            "index": true
+          },
+          {
+            "key": "vc_mode",
+            "value": "Unified { amount: Uint256(100) }",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Cv0CCvoCCiQvY29zbXdhc20ud2FzbS52MS5Nc2dFeGVjdXRlQ29udHJhY3QS0QIKK2RvcmExbHBwMG11aGMwOXNlNXNqa2RjdzU2cW12bDk3amVleHh4enJmeTMSP2RvcmExNDJzMGZwaHg4MHY2NnozNGo0dHNwbDZwdG1lNTltY24zbXAyYXlkdTYweThmNWcwbnNtc2oybTI5dxrEAXsic2lnbl91cCI6IHsicHVia2V5IjogeyJ4IjogIjUyOTk2MTkyNDA2NDE1NTEyODE2MzQ4NjU1ODM1MTgyOTcwMzAyODI4NzQ0NzIxOTA3NzI4OTQwODY1MjExNDQ0ODI3MjEwMDE1NTMiLCAieSI6ICIxNjk1MDE1MDc5ODQ2MDY1NzcxNzk1ODYyNTU2NzgyMTgzNDU1MDMwMTY2MzE2MTYyNDcwNzc4NzIyMjgxNTkzNjE4MjYzODk2ODIwMyJ9fX0qGgoFcGVha2ESETQ4MDAwMDAwMDAwMDAwMDAwEnMKTgpGCh8vY29zbW9zLmNyeXB0by5zZWNwMjU2azEuUHViS2V5EiMKIQJq+i0rQbwGrWiZJRz7Jg8PiVSwmt9Ape6nW8luN863OhIECgIIARIhChoKBXBlYWthEhEzMDAwMDAwMDAwMDAwMDAwMBDAjbcBGkDvJByG8Mrj1bbFWbHyQxA/R9BC4NuHRdAP4y1YlBGSmjhATVWcxAqrPxkXU2xOe//zEV36agoh0vUmEnXoov02"
+}

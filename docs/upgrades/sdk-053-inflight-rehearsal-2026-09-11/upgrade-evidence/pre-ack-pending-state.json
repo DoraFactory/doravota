@@ -1,0 +1,33 @@
+{
+  "commitments": [
+    {
+      "port_id": "transfer",
+      "channel_id": "channel-18",
+      "sequence": "1",
+      "data": "vowXPXovSlSHw8alux2Sp8voJ9Jo+QeKoapb70/GlWo="
+    }
+  ],
+  "peer_balances": {
+    "balances": [
+      {
+        "denom": "ibc/47C6D1A5EEC103C82BE3B7F9185FC3CD0EAE89FBE44FAC3BB12F94895387A742",
+        "amount": "7000000000000000000"
+      },
+      {
+        "denom": "peaka",
+        "amount": "899949980000000000000000"
+      }
+    ],
+    "pagination": {
+      "total": "2"
+    }
+  },
+  "peer_ack": {
+    "acknowledgement": "CPdVftUYJv4Y2EUSvyTsdQAe268hI6R333KgqfNkCnw=",
+    "proof": "CvsCCvgCCjJhY2tzL3BvcnRzL3RyYW5zZmVyL2NoYW5uZWxzL2NoYW5uZWwtMC9zZXF1ZW5jZXMvMRIgCPdVftUYJv4Y2EUSvyTsdQAe268hI6R333KgqfNkCnwaDAgBGAEgASoEAALaCCIsCAESBQIE2gggGiEgzXh6ypVVm8552ljmjsL8r7QDERml3Dtl3k69ddIFGqQiLAgBEgUEBtoIIBohIFReb4nE8X0VVtxjLvlDjVkjKKyW0ft1ceGDnka7t2OSIiwIARIFBg7aCCAaISBGPrjlSvme/XXPxxfOOjZWH+2EGqJw1Zt3N/WODlHGFyIsCAESBQgU2gggGiEghJpDEbmSZnHn6aIcziP0yyy4FMPRpxQj4O8ArT9ZgeEiLAgBEgUKINoIIBohII8Fms2bKJ8ZQTIi71XIQuzGdY9WegSPHPataEgYg7v3IiwIARIFDFDaCCAaISDH6WeR49gIHejwFXcj5U0Rm5b1O97CaBPRbGBhg/vgeAr+AQr7AQoDaWJjEiCmEz+ST9YoZTnPpSKIi2N6Uu7asvpgBhEmn8hNHEPLrhoJCAEYASABKgEAIiUIARIhAQa5nA2BGf8e28vhZdDxkzfbvAgOZ3yI5XqirnZ+vw8PIicIARIBARogECviUJ4CyIXHST1uD6J5Kwjea8xxV3B/OfORY/bmjv0iJwgBEgEBGiC9si4hpToCAdWjpVD6vbNeI8TKrzLYGCxt6jcNhUxViiIlCAESIQGMx31VYR9sNzgzi+WNLrGg+8mEFwUIgSpi2wrkku2CjSInCAESAQEaII5YQsVjtzX+zXrxN7NRIcJ1o4e32zUGVruDVpMgBw/9",
+    "proof_height": {
+      "revision_number": "1",
+      "revision_height": "613"
+    }
+  }
+}

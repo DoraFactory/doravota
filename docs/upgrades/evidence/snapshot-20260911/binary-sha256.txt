@@ -1,0 +1,3 @@
+d755ca9dc72212b90d65ad634bb3920791bf732bd1211bf379b5d5ac2a17240d  /root/doravota-snapshot-rehearsal-20260911/bin/dorad
+0df16990bdd684b68c26139c629115a83cc40612038c8805c33fdc0e3d217d9a  /root/doravota-snapshot-rehearsal-20260911/bin/libwasmvm.x86_64.so
+dd9fb547ae033b9ae77170c8a804af92ab47a3a66368c4e5e014804cb6d3e0b1  /root/doravota-snapshot-rehearsal-20260911/bin/snapshot-fork

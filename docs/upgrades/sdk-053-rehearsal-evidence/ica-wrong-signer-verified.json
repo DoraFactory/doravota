@@ -1,0 +1,8 @@
+{
+  "acknowledgements": [
+    {
+      "error": "ABCI code: 2: error handling packet: see events for details"
+    }
+  ],
+  "balances_unchanged": true
+}

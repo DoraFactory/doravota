@@ -1,0 +1,37 @@
+{
+  "vota_before": [
+    {
+      "denom": "peaka",
+      "amount": "903812000000000000000"
+    }
+  ],
+  "vota_after": [
+    {
+      "denom": "ibc/73E7F882A619C2532C389F098980FD5A05D8FE9B8E9BAE55B5CC744B2696A7C3",
+      "amount": "40000000000000000000"
+    },
+    {
+      "denom": "peaka",
+      "amount": "786722000000000000000"
+    }
+  ],
+  "peer_after": [
+    {
+      "denom": "ibc/47C6D1A5EEC103C82BE3B7F9185FC3CD0EAE89FBE44FAC3BB12F94895387A742",
+      "amount": "17000000000000000000"
+    },
+    {
+      "denom": "peaka",
+      "amount": "899909970000000000000000"
+    }
+  ],
+  "expected_vota_native": "786722000000000000000",
+  "outgoing_delivered": "17000000000000000000",
+  "timeout_refunded": "20000000000000000000",
+  "error_refunded": "30000000000000000000",
+  "incoming_received": "40000000000000000000",
+  "vota_commitments": [],
+  "peer_commitments": [],
+  "fees_vota": "90000000000000000",
+  "test_delegation": "100000000000000000000"
+}

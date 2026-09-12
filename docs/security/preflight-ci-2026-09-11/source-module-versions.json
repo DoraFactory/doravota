@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": -1,
+  "result": {
+    "response": {
+      "code": 0,
+      "log": "",
+      "info": "",
+      "index": "0",
+      "key": null,
+      "value": "CggKBGF1dGgQBAoJCgVhdXRoehACCggKBGJhbmsQBAoOCgpjYXBhYmlsaXR5EAEKDQoJY29uc2Vuc3VzEAEKCgoGY3Jpc2lzEAIKEAoMZGlzdHJpYnV0aW9uEAMKDAoIZXZpZGVuY2UQAQoMCghmZWVncmFudBACCgoKBmZlZWliYxABCgsKB2dlbnV0aWwQAQoHCgNnb3YQBAoJCgVncm91cBACCgcKA2liYxAEChYKEmludGVyY2hhaW5hY2NvdW50cxACCggKBG1pbnQQAgoKCgZwYXJhbXMQAQoMCghzbGFzaGluZxADCgsKB3N0YWtpbmcQBAoMCgh0cmFuc2ZlchADCgsKB3VwZ3JhZGUQAgoLCgd2ZXN0aW5nEAEKCAoEd2FzbRAE",
+      "proofOps": null,
+      "height": "17250570",
+      "codespace": ""
+    }
+  }
+}

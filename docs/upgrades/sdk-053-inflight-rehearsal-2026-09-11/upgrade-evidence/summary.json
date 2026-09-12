@@ -1,0 +1,121 @@
+{
+  "chain_id": "vota-inflight-rehearsal-20260911",
+  "peer_chain_id": "vota-inflight-peer-1",
+  "upgrade_height": 17250384,
+  "proposal_id": "20",
+  "candidate_sha256": "066360c4ff46696bb41162b7ce5a505e58325311a3b73fefef07a90f5057bfe1",
+  "wasm_contracts_queried": 8,
+  "wasm_queries_equal": 57,
+  "query_errors": 0,
+  "business_results": {
+    "old_round": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+    "signups": "2",
+    "messages": "1",
+    "new_round": "dora1cl0tlgf8v47vgk8z79k0nxyqwdgvd6tv8yx877rs6r2mqcazncusvwhs43",
+    "new_poll_id": 672,
+    "negative_checks": [
+      {
+        "label": "post-registry-unauthorized",
+        "code": 5,
+        "log": "failed to execute message; message index: 0: Unauthorized: execute wasm contract failed"
+      },
+      {
+        "label": "post-round-underpaid-message",
+        "code": 5,
+        "log": "failed to execute message; message index: 0: Incorrect funds sent: payment must exactly equal the required fee: execute wasm contract failed"
+      }
+    ],
+    "limitations": [
+      "Encrypted message payload is synthetic, not a valid decrypted vote.",
+      "Successful Groth16 processing/tally/claim have not been tested.",
+      "Historical privileged operations are not impersonated."
+    ]
+  },
+  "settlement": {
+    "vota_before": [
+      {
+        "denom": "peaka",
+        "amount": "903812000000000000000"
+      }
+    ],
+    "vota_after": [
+      {
+        "denom": "ibc/73E7F882A619C2532C389F098980FD5A05D8FE9B8E9BAE55B5CC744B2696A7C3",
+        "amount": "40000000000000000000"
+      },
+      {
+        "denom": "peaka",
+        "amount": "786722000000000000000"
+      }
+    ],
+    "peer_after": [
+      {
+        "denom": "ibc/47C6D1A5EEC103C82BE3B7F9185FC3CD0EAE89FBE44FAC3BB12F94895387A742",
+        "amount": "17000000000000000000"
+      },
+      {
+        "denom": "peaka",
+        "amount": "899909970000000000000000"
+      }
+    ],
+    "expected_vota_native": "786722000000000000000",
+    "outgoing_delivered": "17000000000000000000",
+    "timeout_refunded": "20000000000000000000",
+    "error_refunded": "30000000000000000000",
+    "incoming_received": "40000000000000000000",
+    "vota_commitments": [],
+    "peer_commitments": [],
+    "fees_vota": "90000000000000000",
+    "test_delegation": "100000000000000000000"
+  },
+  "roundtrip": {
+    "vota": [
+      {
+        "denom": "peaka",
+        "amount": "803712000000000000000"
+      }
+    ],
+    "peer": {
+      "balances": [
+        {
+          "denom": "peaka",
+          "amount": "899949960000000000000000"
+        }
+      ],
+      "pagination": {
+        "total": "1"
+      }
+    },
+    "native_principal_restored": true,
+    "voucher_balances_zero": true,
+    "fees_vota": "100000000000000000",
+    "test_delegation": "100000000000000000000",
+    "fees_peer": "30000000000000000"
+  },
+  "consistency": {
+    "height": 17250474,
+    "latest_heights": [
+      17250476,
+      17250476,
+      17250476,
+      17250476
+    ],
+    "block_hash": "E661039C4226E3F9BA603CB5C86065D801E3D8F5C6FA804783F92151456F0825",
+    "app_hash": "F03E205673EE799C8566F485CCF48EA1F2FEB0245549F3ADE4DD97267DCE3B70",
+    "cache_moved": [
+      "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/node3/wasm/wasm/cache"
+    ],
+    "cold_queries": {
+      "dora1smg5qp5trjdkcekdjssqpjehdjf6n4cjss0clyvqcud3t3u3948s8rmgg4:get_next_poll_id": {
+        "data": 673
+      },
+      "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w:get_num_sign_up": {
+        "data": "2"
+      },
+      "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w:get_msg_chain_length": {
+        "data": "1"
+      }
+    },
+    "binary_sha256": "066360c4ff46696bb41162b7ce5a505e58325311a3b73fefef07a90f5057bfe1"
+  }
+}

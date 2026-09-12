@@ -1,0 +1,4 @@
+vota-snapshot-node0 167.8MiB / 8GiB 3.31%
+vota-snapshot-node1 169MiB / 8GiB 1.56%
+vota-snapshot-node2 165.5MiB / 8GiB 2.96%
+vota-snapshot-node3 167MiB / 8GiB 2.68%

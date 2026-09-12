@@ -1,0 +1,89 @@
+name: SDK 0.53 candidate validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sdk-053-bridge]
+  pull_request:
+    paths:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - VERSION
+      - Dockerfile
+      - scripts/**
+      - .github/workflows/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bridge-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit and regression tests
+        run: go test ./... -count=1
+      - name: Enabled simulations (skips are not success)
+        run: |
+          go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s -json > simulation-results.json
+          python3 - <<'PY'
+          import json
+          expected = {"TestAppStateDeterminism", "TestAppImportExport", "TestAppSimulationAfterImport"}
+          passed = {e.get("Test") for e in map(json.loads, open("simulation-results.json")) if e.get("Action") == "pass"}
+          assert expected <= passed, f"Missing successful simulations: {expected - passed}"
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation-results
+          path: simulation-results.json
+          if-no-files-found: ignore
+
+  linux:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - name: Build and execute candidate artifact
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          export VERSION=$(cat VERSION)
+          test "$VERSION" = "v0.5.0-rc.1"
+          export COMMIT_SHA="$GITHUB_SHA"
+          GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
+          docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
+            -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
+            sh -ec 'apk add --no-cache bash build-base binutils curl git; bash scripts/build-bridge-release.sh'
+          (cd release && sha256sum dorad-*.tar.gz > sha256sum.txt)
+          printf 'commit=%s\narch=%s\ngo=%s\n' "$GITHUB_SHA" "$ARCH" "$GO_VERSION" > release/build-info.txt
+      - name: Verify Dockerfile without publishing
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker build --platform "linux/${ARCH}" --build-arg GIT_VERSION="$(cat VERSION)" --build-arg COMMIT_SHA="$GITHUB_SHA" -t bridge-ci .
+          docker run --rm --platform "linux/${ARCH}" bridge-ci version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-linux-${{ matrix.arch }}
+          path: |
+            release/*.tar.gz
+            release/sha256sum.txt
+            release/build-info.txt
+          if-no-files-found: error

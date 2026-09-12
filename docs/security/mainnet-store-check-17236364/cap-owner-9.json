@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": -1,
+  "result": {
+    "response": {
+      "code": 0,
+      "log": "",
+      "info": "",
+      "index": "0",
+      "key": "Y2FwYWJpbGl0eV9pbmRleAAAAAAAAAAJ",
+      "value": "CjUKA2liYxIuY2FwYWJpbGl0aWVzL3BvcnRzL3RyYW5zZmVyL2NoYW5uZWxzL2NoYW5uZWwtNgo6Cgh0cmFuc2ZlchIuY2FwYWJpbGl0aWVzL3BvcnRzL3RyYW5zZmVyL2NoYW5uZWxzL2NoYW5uZWwtNg==",
+      "proofOps": {
+        "ops": [
+          {
+            "type": "ics23:iavl",
+            "key": "Y2FwYWJpbGl0eV9pbmRleAAAAAAAAAAJ",
+            "data": "Co0DChhjYXBhYmlsaXR5X2luZGV4AAAAAAAAAAkScwo1CgNpYmMSLmNhcGFiaWxpdGllcy9wb3J0cy90cmFuc2Zlci9jaGFubmVscy9jaGFubmVsLTYKOgoIdHJhbnNmZXISLmNhcGFiaWxpdGllcy9wb3J0cy90cmFuc2Zlci9jaGFubmVscy9jaGFubmVsLTYaDggBGAEgASoGAAKSu4sCIi4IARIHAgTcs60CIBohIIRyKbixu1VI84WV9ssU1zISbHmaqUGbVBqv+n1xBz39Ii4IARIHBAjsurMCIBohIAVUsgDZEDXQ+oCVy2vXl0ocKj0GdbnsOQ7dQkHYWNJ9Ii4IARIHBhCkl88GIBohILJXabK+Cdi0oZMeHR1x8e5kQN1xyI1RWeT8lCAf0BvZIi4IARIHCBzgpPkKIBohIKOwbgnSCY+Ghmx77851oGfKlTh50YnETI8kzhYQH5+qIiwIARIoCizgpPkKIDj3vkhBMwCO6ge1emoa3+OuwfHicxUgYxptZx/WpFk3IA=="
+          },
+          {
+            "type": "ics23:simple",
+            "key": "Y2FwYWJpbGl0eQ==",
+            "data": "CoICCgpjYXBhYmlsaXR5EiDetVg58/4XCF/fnkw/6EDpFaXibkiblE3jrIDHHhWxOhoJCAEYASABKgEAIiUIARIhAT948UZJ4xMKcoW5Fb+3iNkcytXtqeGybbS7CEr1ty5CIiUIARIhAarirCzcZUeN5Mz3xlxmobQG3Go16J6BgVTi1oNu2EeHIicIARIBARogOUlaTGvfmdko1DHLRuscT0R+LQACb/mRG0WxY7+YZPIiJwgBEgEBGiAAUDYYxt7bVCVG4eGRDvozFEXCfE0h0lzQ3u45ktVL+yInCAESAQEaILLOUu0BTlPJrQq+/W+9RLu57fWiYm5qbDPzC3JGzvTj"
+          }
+        ]
+      },
+      "height": "17236364",
+      "codespace": ""
+    }
+  }
+}

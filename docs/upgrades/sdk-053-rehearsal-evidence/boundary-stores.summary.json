@@ -1,0 +1,129 @@
+{
+  "new_height": 17250460,
+  "old_height": 17250459,
+  "stores": {
+    "acc": {
+      "added": 1,
+      "modified": 0,
+      "new_entries": 2854262,
+      "old_entries": 2854262,
+      "removed": 1
+    },
+    "authz": {
+      "entries": 2,
+      "root_equal": true
+    },
+    "bank": {
+      "added": 14,
+      "modified": 0,
+      "new_entries": 2273743,
+      "old_entries": 2273729,
+      "removed": 0
+    },
+    "capability": {
+      "old_entries": 22,
+      "removed": true
+    },
+    "consensus": {
+      "added": 1,
+      "modified": 0,
+      "new_entries": 1,
+      "old_entries": 0,
+      "removed": 0
+    },
+    "distribution": {
+      "added": 0,
+      "modified": 1,
+      "new_entries": 4271,
+      "old_entries": 4271,
+      "removed": 0
+    },
+    "evidence": {
+      "entries": 1,
+      "root_equal": true
+    },
+    "feegrant": {
+      "entries": 2139783,
+      "root_equal": true
+    },
+    "feeibc": {
+      "old_entries": 0,
+      "removed": true
+    },
+    "gov": {
+      "added": 1,
+      "modified": 1,
+      "new_entries": 21,
+      "old_entries": 20,
+      "removed": 0
+    },
+    "group": {
+      "entries": 3,
+      "root_equal": true
+    },
+    "ibc": {
+      "added": 2,
+      "modified": 0,
+      "new_entries": 238949,
+      "old_entries": 238948,
+      "removed": 1
+    },
+    "icacontroller": {
+      "added": 1,
+      "modified": 0,
+      "new_entries": 1,
+      "old_entries": 0,
+      "removed": 0
+    },
+    "icahost": {
+      "added": 1,
+      "modified": 0,
+      "new_entries": 2,
+      "old_entries": 1,
+      "removed": 0
+    },
+    "mint": {
+      "added": 0,
+      "modified": 0,
+      "new_entries": 2,
+      "old_entries": 2,
+      "removed": 0
+    },
+    "params": {
+      "entries": 7,
+      "root_equal": true
+    },
+    "slashing": {
+      "added": 6,
+      "modified": 13,
+      "new_entries": 104,
+      "old_entries": 78817,
+      "removed": 78719
+    },
+    "staking": {
+      "added": 12045,
+      "modified": 0,
+      "new_entries": 14632,
+      "old_entries": 12585,
+      "removed": 9998
+    },
+    "transfer": {
+      "added": 15,
+      "modified": 0,
+      "new_entries": 17,
+      "old_entries": 16,
+      "removed": 14
+    },
+    "upgrade": {
+      "added": 2,
+      "modified": 8,
+      "new_entries": 32,
+      "old_entries": 31,
+      "removed": 1
+    },
+    "wasm": {
+      "entries": 4180549,
+      "root_equal": true
+    }
+  }
+}

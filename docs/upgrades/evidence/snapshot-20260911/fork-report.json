@@ -1,0 +1,63 @@
+{
+  "chain_id": "vota-snapshot-rehearsal-20260911",
+  "changed_stores": [
+    "bank",
+    "slashing",
+    "staking"
+  ],
+  "fork_app_hash": "2078D47A90C0BE085F9A3FD0952DC807B6CCF60F718318F0126EB7BC874AD571",
+  "fork_seed_height": 17249824,
+  "note": "Synthetic offline checkpoint; staking max validators=4; other validators unbonded through keeper; user balances/contracts/IBC retained. Not a mainnet block.",
+  "preserved_stores": [
+    "acc",
+    "authz",
+    "capability",
+    "consensus",
+    "distribution",
+    "evidence",
+    "feegrant",
+    "feeibc",
+    "gov",
+    "group",
+    "ibc",
+    "icacontroller",
+    "icahost",
+    "mint",
+    "params",
+    "transfer",
+    "upgrade",
+    "wasm"
+  ],
+  "source_app_hash": "33C38FB34DF70094118170FD0640A05BF5B4600BDED0CB38DFF5AFB51EDE5499",
+  "source_height": 17249823,
+  "validators": [
+    {
+      "new_consensus": "doravalcons1e9gqe876v3svddgy5zg62u64m3yk6a2qxnkt4v",
+      "node": 0,
+      "old_consensus": "doravalcons17wm5d37urqhhetm2khrqmflc8zvu5ycp887ndt",
+      "operator": "doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg",
+      "power": 5747112
+    },
+    {
+      "new_consensus": "doravalcons1s6zvpwc5g9gtdujlltxlep792re87yfwtz07r3",
+      "node": 1,
+      "old_consensus": "doravalcons1vf9jj4m6vtdszq52yup5pkve3x6as4d57z84uy",
+      "operator": "doravaloper1l4z87uexawfzlmtr3006a0ru0wr54sam7mj0jw",
+      "power": 5125049
+    },
+    {
+      "new_consensus": "doravalcons1mlkg2p9e6quyw5aey8etf24sxkzuc38vtrztd5",
+      "node": 2,
+      "old_consensus": "doravalcons1k0xr49kld4n3kw58a6xm8cqpwcuhd8c3h6sm69",
+      "operator": "doravaloper1vsq4dwt8qpwr2mqeg2aww096l9tu0ryxrqx4nk",
+      "power": 5053675
+    },
+    {
+      "new_consensus": "doravalcons1xz5ykgt79txjf8k5xlc0et22dyc2vzhjvhkugs",
+      "node": 3,
+      "old_consensus": "doravalcons1c800grfqj7yd8wtgh4kkvx848n4we3lapfgw46",
+      "operator": "doravaloper1z6kfew2nhuh02szc2hdecw4fqey2d32auucvux",
+      "power": 5004822
+    }
+  ]
+}

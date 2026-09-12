@@ -1,0 +1,54 @@
+[
+  {
+    "node": 0,
+    "height": "17249854",
+    "network": "vota-snapshot-rehearsal-20260911",
+    "peers": [
+      "127.0.0.1",
+      "127.0.0.1",
+      "127.0.0.1"
+    ],
+    "compared_height": 17249853,
+    "block_hash": "007ADB092081915340467D91857AB7C29A21D0BBFFFB13DA039C8FD6C3B57F8E",
+    "app_hash": "B18A9FEC9F5FE508A5A21A5AD0B11BAF1B51590843D9044135F6B2710DC04115"
+  },
+  {
+    "node": 1,
+    "height": "17249854",
+    "network": "vota-snapshot-rehearsal-20260911",
+    "peers": [
+      "127.0.0.1",
+      "127.0.0.1",
+      "127.0.0.1"
+    ],
+    "compared_height": 17249853,
+    "block_hash": "007ADB092081915340467D91857AB7C29A21D0BBFFFB13DA039C8FD6C3B57F8E",
+    "app_hash": "B18A9FEC9F5FE508A5A21A5AD0B11BAF1B51590843D9044135F6B2710DC04115"
+  },
+  {
+    "node": 2,
+    "height": "17249854",
+    "network": "vota-snapshot-rehearsal-20260911",
+    "peers": [
+      "127.0.0.1",
+      "127.0.0.1",
+      "127.0.0.1"
+    ],
+    "compared_height": 17249853,
+    "block_hash": "007ADB092081915340467D91857AB7C29A21D0BBFFFB13DA039C8FD6C3B57F8E",
+    "app_hash": "B18A9FEC9F5FE508A5A21A5AD0B11BAF1B51590843D9044135F6B2710DC04115"
+  },
+  {
+    "node": 3,
+    "height": "17249854",
+    "network": "vota-snapshot-rehearsal-20260911",
+    "peers": [
+      "127.0.0.1",
+      "127.0.0.1",
+      "127.0.0.1"
+    ],
+    "compared_height": 17249853,
+    "block_hash": "007ADB092081915340467D91857AB7C29A21D0BBFFFB13DA039C8FD6C3B57F8E",
+    "app_hash": "B18A9FEC9F5FE508A5A21A5AD0B11BAF1B51590843D9044135F6B2710DC04115"
+  }
+]

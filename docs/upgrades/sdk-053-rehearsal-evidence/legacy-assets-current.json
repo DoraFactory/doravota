@@ -1,0 +1,338 @@
+{
+  "height": "17252862",
+  "chain_id": "vota-snapshot-rehearsal-20260911",
+  "observed_at": "2026-09-11T11:32:16.713550+00:00",
+  "channels": [
+    {
+      "channel": "channel-0",
+      "port": "transfer",
+      "state": "STATE_OPEN",
+      "counterparty": {
+        "port_id": "transfer",
+        "channel_id": "channel-2694"
+      },
+      "connection": "connection-1",
+      "client": "07-tendermint-0",
+      "chain": "osmosis-1",
+      "commitments": [],
+      "ack_count": 4374,
+      "ack_sha256": "e56f21e8e3426a7b52c707cf4d09f69d06b2cc34496cabab837d1a1eb1845fd3",
+      "escrow_address": "dora1a53udazy8ayufvy0s434pfwjcedzqv344k8guc",
+      "balances": [
+        {
+          "denom": "peaka",
+          "amount": "474762777110515299264757"
+        }
+      ]
+    },
+    {
+      "channel": "channel-14",
+      "port": "transfer",
+      "state": "STATE_OPEN",
+      "counterparty": {
+        "port_id": "transfer",
+        "channel_id": "channel-94"
+      },
+      "connection": "connection-29",
+      "client": "07-tendermint-23",
+      "chain": "noble-1",
+      "commitments": [],
+      "ack_count": 28,
+      "ack_sha256": "2bdad166a73aa61c751c1fc74a80130e87d902db545ca615b4450f7520d80dcc",
+      "escrow_address": "dora13wcjkgl60r8fv5s9r6yq8m33vshnkndkvf6lqq",
+      "balances": [
+        {
+          "denom": "peaka",
+          "amount": "4000024290000000001"
+        }
+      ]
+    },
+    {
+      "channel": "channel-17",
+      "port": "transfer",
+      "state": "STATE_OPEN",
+      "counterparty": {
+        "port_id": "transfer",
+        "channel_id": "channel-106136"
+      },
+      "connection": "connection-41",
+      "client": "07-tendermint-40",
+      "chain": "osmosis-1",
+      "commitments": [],
+      "ack_count": 0,
+      "ack_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "escrow_address": "dora17nsujlwvwf4xrgawwgxqphdak2anflw5jkzzh2",
+      "balances": [
+        {
+          "denom": "peaka",
+          "amount": "1"
+        }
+      ]
+    },
+    {
+      "channel": "channel-4",
+      "port": "transfer",
+      "state": "STATE_OPEN",
+      "counterparty": {
+        "port_id": "transfer",
+        "channel_id": "channel-750"
+      },
+      "connection": "connection-8",
+      "client": "07-tendermint-14",
+      "chain": "cosmoshub-4",
+      "commitments": [],
+      "ack_count": 3586,
+      "ack_sha256": "c37f1b25ff529e3916297106894cf8d484f7c89bc8550ad99891fa9c7995cd8b",
+      "escrow_address": "dora17sael2kcmm8npe2pmkxj3un90xfg60vvh0pq5t",
+      "balances": [
+        {
+          "denom": "peaka",
+          "amount": "221732826210837911066"
+        }
+      ]
+    },
+    {
+      "channel": "channel-16",
+      "port": "wasm.dora1q09v79ar0w99av6hlut0nhkstqt6up5mv3gmnut53t7jzxu4plyqt268vu",
+      "state": "STATE_OPEN",
+      "counterparty": {
+        "port_id": "wasm.stars1r0a8ygvnjfaegy4n5z9325e0ew9uy2s7rn4vt7qf4ltv49fj4tnsk6pvtv",
+        "channel_id": "channel-397"
+      },
+      "connection": "connection-30",
+      "client": "07-tendermint-24",
+      "chain": "stargaze-1",
+      "commitments": [],
+      "ack_count": 5,
+      "ack_sha256": "856153263c30100935b5a755146ca7388e9d7f2c3d2d33bdcbde49a40e88b477"
+    }
+  ],
+  "denoms": [
+    {
+      "base": "aarch",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-10"
+        }
+      ],
+      "path": "transfer/channel-10/aarch",
+      "ibc_denom": "ibc/1150925B42A4D5ED6A82549350330B1B79AA62ECD7891C49FD3C8109221AE4C1",
+      "supply": {
+        "denom": "ibc/1150925B42A4D5ED6A82549350330B1B79AA62ECD7891C49FD3C8109221AE4C1",
+        "amount": "1000000000000000000"
+      }
+    },
+    {
+      "base": "adydx",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-6"
+        }
+      ],
+      "path": "transfer/channel-6/adydx",
+      "ibc_denom": "ibc/D0C5DCA29836D2FD5937714B21206DD8243E5E76B1D0F180741CCB43DCAC1584",
+      "supply": {
+        "denom": "ibc/D0C5DCA29836D2FD5937714B21206DD8243E5E76B1D0F180741CCB43DCAC1584",
+        "amount": "1010000000000000000"
+      }
+    },
+    {
+      "base": "erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-4"
+        },
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-220"
+        }
+      ],
+      "path": "transfer/channel-4/transfer/channel-220/erc20:0xa00C59fF5a080D2b954d0c75e46E22a0c371235a",
+      "ibc_denom": "ibc/ADC71E62475958819B2D3D5FA2EBC2B94EB62E3D9EF3F3E00E466306E9DB612F",
+      "supply": {
+        "denom": "ibc/ADC71E62475958819B2D3D5FA2EBC2B94EB62E3D9EF3F3E00E466306E9DB612F",
+        "amount": "100"
+      }
+    },
+    {
+      "base": "inj",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-5"
+        }
+      ],
+      "path": "transfer/channel-5/inj",
+      "ibc_denom": "ibc/4F9BFE4F1919009E01C5D5960E35D15EFF330B846ADC4B2BECE5170E1AAEC0CE",
+      "supply": {
+        "denom": "ibc/4F9BFE4F1919009E01C5D5960E35D15EFF330B846ADC4B2BECE5170E1AAEC0CE",
+        "amount": "110100000000000000"
+      }
+    },
+    {
+      "base": "inj",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-0"
+        },
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-122"
+        }
+      ],
+      "path": "transfer/channel-0/transfer/channel-122/inj",
+      "ibc_denom": "ibc/4DE84C92C714009D07AFEA7350AB3EC383536BB0FAAD7AF9C0F1A0BEA169304E",
+      "supply": {
+        "denom": "ibc/4DE84C92C714009D07AFEA7350AB3EC383536BB0FAAD7AF9C0F1A0BEA169304E",
+        "amount": "100000000000000000"
+      }
+    },
+    {
+      "base": "peaka",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-4"
+        },
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-141"
+        },
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-2694"
+        }
+      ],
+      "path": "transfer/channel-4/transfer/channel-141/transfer/channel-2694/peaka",
+      "ibc_denom": "ibc/377CE68F42843A70807EF55876A6BB2DA09EEAE2C73B957C7CE1EDE88F32A860",
+      "supply": {
+        "denom": "ibc/377CE68F42843A70807EF55876A6BB2DA09EEAE2C73B957C7CE1EDE88F32A860",
+        "amount": "0"
+      }
+    },
+    {
+      "base": "uakt",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-7"
+        }
+      ],
+      "path": "transfer/channel-7/uakt",
+      "ibc_denom": "ibc/95762EB27E57BC8916A4EB9C37E20919C8B61025461CED7CA6EF71A38FD51C4E",
+      "supply": {
+        "denom": "ibc/95762EB27E57BC8916A4EB9C37E20919C8B61025461CED7CA6EF71A38FD51C4E",
+        "amount": "1010000"
+      }
+    },
+    {
+      "base": "uatom",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-4"
+        }
+      ],
+      "path": "transfer/channel-4/uatom",
+      "ibc_denom": "ibc/EF48E6B1A1A19F47ECAEA62F5670C37C0580E86A9E88498B7E393EB6F49F33C0",
+      "supply": {
+        "denom": "ibc/EF48E6B1A1A19F47ECAEA62F5670C37C0580E86A9E88498B7E393EB6F49F33C0",
+        "amount": "795370120"
+      }
+    },
+    {
+      "base": "ucore",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-2"
+        }
+      ],
+      "path": "transfer/channel-2/ucore",
+      "ibc_denom": "ibc/1C8A050BBE4C060A4392CC062B2D3B7C3BFD68E0FA6BB5A5D03DEFCBC0FA7C38",
+      "supply": {
+        "denom": "ibc/1C8A050BBE4C060A4392CC062B2D3B7C3BFD68E0FA6BB5A5D03DEFCBC0FA7C38",
+        "amount": "12220818910"
+      }
+    },
+    {
+      "base": "unls",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-3"
+        }
+      ],
+      "path": "transfer/channel-3/unls",
+      "ibc_denom": "ibc/C6824D6F41FC8F906D9656AC77B41FCF7CF136DD74A47E11385B021F6D578FE9",
+      "supply": {
+        "denom": "ibc/C6824D6F41FC8F906D9656AC77B41FCF7CF136DD74A47E11385B021F6D578FE9",
+        "amount": "7541000"
+      }
+    },
+    {
+      "base": "uosmo",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-0"
+        }
+      ],
+      "path": "transfer/channel-0/uosmo",
+      "ibc_denom": "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
+      "supply": {
+        "denom": "ibc/ED07A3391A112B175915CD8FAF43A2DA8E4790EDE12566649D0C2F97716B8518",
+        "amount": "6413122"
+      }
+    },
+    {
+      "base": "usei",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-12"
+        }
+      ],
+      "path": "transfer/channel-12/usei",
+      "ibc_denom": "ibc/1D0755F60633E1F7E5BA06B12EA2F531F72CD078D0B99C436FBAD79ED3A638D8",
+      "supply": {
+        "denom": "ibc/1D0755F60633E1F7E5BA06B12EA2F531F72CD078D0B99C436FBAD79ED3A638D8",
+        "amount": "1000123"
+      }
+    },
+    {
+      "base": "ustars",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-15"
+        }
+      ],
+      "path": "transfer/channel-15/ustars",
+      "ibc_denom": "ibc/07FA7831E1920D0C87C9388F86B0108677F6ED0C9DE7E4063F05ED675192405C",
+      "supply": {
+        "denom": "ibc/07FA7831E1920D0C87C9388F86B0108677F6ED0C9DE7E4063F05ED675192405C",
+        "amount": "1000001"
+      }
+    },
+    {
+      "base": "uusdc",
+      "trace": [
+        {
+          "port_id": "transfer",
+          "channel_id": "channel-14"
+        }
+      ],
+      "path": "transfer/channel-14/uusdc",
+      "ibc_denom": "ibc/8AF69BC1E1D72B447738B50C28B382F62F2AF65DE303021E45C0B7C851B4B2E1",
+      "supply": {
+        "denom": "ibc/8AF69BC1E1D72B447738B50C28B382F62F2AF65DE303021E45C0B7C851B4B2E1",
+        "amount": "507428155"
+      }
+    }
+  ]
+}

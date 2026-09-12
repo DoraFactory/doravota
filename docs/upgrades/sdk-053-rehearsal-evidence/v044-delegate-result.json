@@ -1,0 +1,187 @@
+{
+  "hash": "CEABE3FD69D6078DCE1074C7AB5D7D3A8663CB4C49DF54C17CFBF315DF0BBAA2",
+  "height": "17250329",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "Ei0KKy9jb3Ntb3Muc3Rha2luZy52MWJldGExLk1zZ0RlbGVnYXRlUmVzcG9uc2U=",
+    "log": "[{\"msg_index\":0,\"events\":[{\"type\":\"message\",\"attributes\":[{\"key\":\"action\",\"value\":\"/cosmos.staking.v1beta1.MsgDelegate\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"module\",\"value\":\"staking\"}]},{\"type\":\"coin_spent\",\"attributes\":[{\"key\":\"spender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"100000000000000000000peaka\"}]},{\"type\":\"coin_received\",\"attributes\":[{\"key\":\"receiver\",\"value\":\"dora1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3kpvzwp\"},{\"key\":\"amount\",\"value\":\"100000000000000000000peaka\"}]},{\"type\":\"delegate\",\"attributes\":[{\"key\":\"validator\",\"value\":\"doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg\"},{\"key\":\"delegator\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"100000000000000000000peaka\"},{\"key\":\"new_shares\",\"value\":\"100000000000000000000.000000000000000000\"}]}]}]",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "121913",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/1",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "olwGSwdGBTNwSVOZK9vT2JVWVtIQ4yCLu45oVQRxV3YjKl2qIjFBx2M30p10bs9Ace5dmwG7prvn3ysdMxNGFg==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.staking.v1beta1.MsgDelegate",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "staking",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3kpvzwp",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "delegate",
+        "attributes": [
+          {
+            "key": "validator",
+            "value": "doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg",
+            "index": true
+          },
+          {
+            "key": "delegator",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "new_shares",
+            "value": "100000000000000000000.000000000000000000",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "CqwBCqkBCiMvY29zbW9zLnN0YWtpbmcudjFiZXRhMS5Nc2dEZWxlZ2F0ZRKBAQorZG9yYTFueTRudzMyd3pnNzBxeGR0eXk5YTZmaGtsODA5ZWNodXdqNDBmNBIyZG9yYXZhbG9wZXIxNHV6OGR0NzlhMDNnOGFscjVxYTU2bGdhZDZkamNzdHZyeGt3cGcaHgoFcGVha2ESFTEwMDAwMDAwMDAwMDAwMDAwMDAwMBJ0ClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECjfKtJVR2KOQV9k+bXwitkDhpyHyMGNMKXLpv8vqU3lkSBAoCCAEYARIgChoKBXBlYWthEhExMDAwMDAwMDAwMDAwMDAwMBCgwh4aQKJcBksHRgUzcElTmSvb09iVVlbSEOMgi7uOaFUEcVd2IypdqiIxQcdjN9KddG7PQHHuXZsBu6a7598rHTMTRhY="
+}

@@ -1,0 +1,12 @@
+{
+  "registry": {
+    "count": "1",
+    "latest_height": "17249944",
+    "error": null
+  },
+  "all_wasm": {
+    "count": "2",
+    "latest_height": "17249958",
+    "error": null
+  }
+}

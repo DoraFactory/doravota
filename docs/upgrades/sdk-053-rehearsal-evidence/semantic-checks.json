@@ -1,0 +1,16 @@
+{
+  "missed_bits_preserved": 605,
+  "signing_infos_normal_one_block_increment": 4,
+  "denom_paths_and_hashes_preserved": 14,
+  "account_counter": {
+    "new": 1427130,
+    "old": 1427130
+  },
+  "staking_historical_preserved": 9997,
+  "historical_window_removed": [
+    17240460
+  ],
+  "historical_window_added": [
+    17250460
+  ]
+}

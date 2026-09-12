@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": -1,
+  "result": {
+    "response": {
+      "code": 0,
+      "log": "",
+      "info": "",
+      "index": "0",
+      "key": "bG9ja2Vk",
+      "value": null,
+      "proofOps": {
+        "ops": [
+          {
+            "type": "ics23:iavl",
+            "key": "bG9ja2Vk",
+            "data": "EggKBmxvY2tlZA=="
+          },
+          {
+            "type": "ics23:simple",
+            "key": "ZmVlaWJj",
+            "data": "CoACCgZmZWVpYmMSIOOwxEKY/BwUmvv0yJlvuSQnrkHkZJuTTKSVmRt4UrhVGgkIARgBIAEqAQAiJwgBEgEBGiBuTK06RR8swCwTCTmXOGUFgw9bOBuoGNVEVKBZ8c61YyInCAESAQEaIKRcE0fZbSd5VN/FRo30T6SpWXI/sPQpOTtcf2Hq7QWwIicIARIBARogo8xPB/gfUkj571lLu+p8H76z7h8QTGqBPb4jGjUPaq8iJQgBEiEBWKpGl3f/JfgTqpb0Od3Pu/0w+mzTyJ0E3hmNWOaLsLEiJwgBEgEBGiCyzlLtAU5Tya0Kvv1vvUS7ue31omJuamwz8wtyRs704w=="
+          }
+        ]
+      },
+      "height": "17236364",
+      "codespace": ""
+    }
+  }
+}

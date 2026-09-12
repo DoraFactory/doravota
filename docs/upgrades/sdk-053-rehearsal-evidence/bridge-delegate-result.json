@@ -1,0 +1,312 @@
+{
+  "hash": "A9976D9FA2865E5EF4DC56A072C04DA75A38755C5E21E2768281832F5D1639D1",
+  "height": "17250557",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "Ei0KKy9jb3Ntb3Muc3Rha2luZy52MWJldGExLk1zZ0RlbGVnYXRlUmVzcG9uc2U=",
+    "log": "",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "172717",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/7",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "TKfcj9vMr3LFQuZTEmcUkCNmDAJj8gl+Pz/iHR9L2VYn1n1+b3anB3LYQEwvIp4XytM9rgrg9uhrG4z2F34oAw==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.staking.v1beta1.MsgDelegate",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "staking",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8y9p37f",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "472987575000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "472987575000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8y9p37f",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "472987575000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8y9p37f",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "withdraw_rewards",
+        "attributes": [
+          {
+            "key": "amount",
+            "value": "472987575000peaka",
+            "index": true
+          },
+          {
+            "key": "validator",
+            "value": "doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg",
+            "index": true
+          },
+          {
+            "key": "delegator",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3kpvzwp",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "delegate",
+        "attributes": [
+          {
+            "key": "validator",
+            "value": "doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg",
+            "index": true
+          },
+          {
+            "key": "delegator",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "new_shares",
+            "value": "1000000000000000000.000000000000000000",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "CqkBCqYBCiMvY29zbW9zLnN0YWtpbmcudjFiZXRhMS5Nc2dEZWxlZ2F0ZRJ/Citkb3JhMW55NG53MzJ3emc3MHF4ZHR5eTlhNmZoa2w4MDllY2h1d2o0MGY0EjJkb3JhdmFsb3BlcjE0dXo4ZHQ3OWEwM2c4YWxyNXFhNTZsZ2FkNmRqY3N0dnJ4a3dwZxocCgVwZWFrYRITMTAwMDAwMDAwMDAwMDAwMDAwMBJ0ClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECjfKtJVR2KOQV9k+bXwitkDhpyHyMGNMKXLpv8vqU3lkSBAoCCAEYBxIgChoKBXBlYWthEhExMDAwMDAwMDAwMDAwMDAwMBCgwh4aQEyn3I/bzK9yxULmUxJnFJAjZgwCY/IJfj8/4h0fS9lWJ9Z9fm92pwdy2EBMLyKeF8rTPa4K4PboaxuM9hd+KAM="
+}

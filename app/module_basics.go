@@ -3,11 +3,15 @@ package app
 import (
 	"github.com/spf13/cobra"
 
+	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
+	feegrantmodule "cosmossdk.io/x/feegrant/module"
 	"cosmossdk.io/x/upgrade"
 	upgradecli "cosmossdk.io/x/upgrade/client/cli"
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	vesting "github.com/cosmos/cosmos-sdk/x/auth/vesting"
 	vestingcli "github.com/cosmos/cosmos-sdk/x/auth/vesting/client/cli"
+	authzcli "github.com/cosmos/cosmos-sdk/x/authz/client/cli"
+	authzmodule "github.com/cosmos/cosmos-sdk/x/authz/module"
 	"github.com/cosmos/cosmos-sdk/x/bank"
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/distribution"
@@ -20,13 +24,25 @@ import (
 	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
 )
 
-// Cosmos SDK v0.55's keeper-backed AppModules populate private address-codec
+// Cosmos SDK v0.53's keeper-backed AppModules populate private address-codec
 // fields in their AppModuleBasic values. Doravota keeps a static BasicManager
 // for genesis and codec registration, so these wrappers provide the same CLI
 // codecs without requiring a temporary application instance.
 
 func accountAddressCodec() address.Bech32Codec {
 	return address.Bech32Codec{Bech32Prefix: Bech32PrefixAccAddr}
+}
+
+type feegrantAppModuleBasic struct{ feegrantmodule.AppModuleBasic }
+
+func (feegrantAppModuleBasic) GetTxCmd() *cobra.Command {
+	return feegrantcli.GetTxCmd(accountAddressCodec())
+}
+
+type authzAppModuleBasic struct{ authzmodule.AppModuleBasic }
+
+func (authzAppModuleBasic) GetTxCmd() *cobra.Command {
+	return authzcli.GetTxCmd(accountAddressCodec())
 }
 
 func validatorAddressCodec() address.Bech32Codec {

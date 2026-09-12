@@ -1,0 +1,12 @@
+            
+{
+  "snapshot_name": "doravota_2026-09-11_17249823_snap.tar.lz4",
+  "snapshot_height": "17249823",
+  "snapshot_size": "4.8G",
+  "snapshot_block_time": "2026-09-11T10:09:16.973431916+04",
+  "sleep_duration": "4h",
+  "pruning": "custom: 100/0/19",
+  "indexer": "null",
+  "db_backend": "goleveldb",
+  "wasm_path": ".dora"
+}

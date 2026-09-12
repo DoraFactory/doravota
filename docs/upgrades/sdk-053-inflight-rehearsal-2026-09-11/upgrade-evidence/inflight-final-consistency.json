@@ -1,0 +1,26 @@
+{
+  "height": 17250474,
+  "latest_heights": [
+    17250476,
+    17250476,
+    17250476,
+    17250476
+  ],
+  "block_hash": "E661039C4226E3F9BA603CB5C86065D801E3D8F5C6FA804783F92151456F0825",
+  "app_hash": "F03E205673EE799C8566F485CCF48EA1F2FEB0245549F3ADE4DD97267DCE3B70",
+  "cache_moved": [
+    "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/node3/wasm/wasm/cache"
+  ],
+  "cold_queries": {
+    "dora1smg5qp5trjdkcekdjssqpjehdjf6n4cjss0clyvqcud3t3u3948s8rmgg4:get_next_poll_id": {
+      "data": 673
+    },
+    "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w:get_num_sign_up": {
+      "data": "2"
+    },
+    "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w:get_msg_chain_length": {
+      "data": "1"
+    }
+  },
+  "binary_sha256": "066360c4ff46696bb41162b7ce5a505e58325311a3b73fefef07a90f5057bfe1"
+}

@@ -1,0 +1,24 @@
+{
+  "vota": [
+    {
+      "denom": "peaka",
+      "amount": "803712000000000000000"
+    }
+  ],
+  "peer": {
+    "balances": [
+      {
+        "denom": "peaka",
+        "amount": "899949960000000000000000"
+      }
+    ],
+    "pagination": {
+      "total": "1"
+    }
+  },
+  "native_principal_restored": true,
+  "voucher_balances_zero": true,
+  "fees_vota": "100000000000000000",
+  "test_delegation": "100000000000000000000",
+  "fees_peer": "30000000000000000"
+}

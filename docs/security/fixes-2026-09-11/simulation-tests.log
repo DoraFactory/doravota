@@ -1,0 +1,3454 @@
+=== RUN   TestAppStateDeterminism
+running non-determinism simulation; seed 3440579354231278675: 1/3, attempt: 1/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "pxqbzmnajvftfcwvrggr",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/6. Simulating... block 4/10, operation 0/6.Simulating... block 4/10, operation 0/5. Simulating... block 5/10, operation 0/5.Simulating... block 6/10, operation 0/0.Simulating... block 6/10, operation 0/16. Simulating... block 7/10, operation 0/16.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/8. Simulating... block 9/10, operation 0/8.Simulating... block 9/10, operation 0/4. Simulating... block 10/10, operation 0/4.Simulating... block 10/10, operation 0/9.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T10:40:58+08:00 height=11 opsCount=63 run-time=417.660084
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 11
+  },
+  "signing": {
+   "missed": 5,
+   "signed": 72
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "failure": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 3
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 8,
+   "kicked": 8
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 20
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "ok": 6
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 2
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 3440579354231278675: 1/3, attempt: 2/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "pxqbzmnajvftfcwvrggr",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/6. Simulating... block 4/10, operation 0/6.Simulating... block 4/10, operation 0/5. Simulating... block 5/10, operation 0/5.Simulating... block 6/10, operation 0/0.Simulating... block 6/10, operation 0/16. Simulating... block 7/10, operation 0/16.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/8. Simulating... block 9/10, operation 0/8.Simulating... block 9/10, operation 0/4. Simulating... block 10/10, operation 0/4.Simulating... block 10/10, operation 0/9.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T10:40:58+08:00 height=11 opsCount=63 run-time=375.455042
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 11
+  },
+  "signing": {
+   "missed": 5,
+   "signed": 72
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "failure": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 3
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 8,
+   "kicked": 8
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 20
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "ok": 6
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 2
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 3440579354231278675: 1/3, attempt: 3/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "pxqbzmnajvftfcwvrggr",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/6. Simulating... block 4/10, operation 0/6.Simulating... block 4/10, operation 0/5. Simulating... block 5/10, operation 0/5.Simulating... block 6/10, operation 0/0.Simulating... block 6/10, operation 0/16. Simulating... block 7/10, operation 0/16.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/8. Simulating... block 9/10, operation 0/8.Simulating... block 9/10, operation 0/4. Simulating... block 10/10, operation 0/4.Simulating... block 10/10, operation 0/9.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T10:40:58+08:00 height=11 opsCount=63 run-time=466.338084
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 11
+  },
+  "signing": {
+   "missed": 5,
+   "signed": 72
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "failure": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 3
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 8,
+   "kicked": 8
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 20
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "ok": 6
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 2
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 3440579354231278675: 1/3, attempt: 4/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "pxqbzmnajvftfcwvrggr",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/6. Simulating... block 4/10, operation 0/6.Simulating... block 4/10, operation 0/5. Simulating... block 5/10, operation 0/5.Simulating... block 6/10, operation 0/0.Simulating... block 6/10, operation 0/16. Simulating... block 7/10, operation 0/16.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/8. Simulating... block 9/10, operation 0/8.Simulating... block 9/10, operation 0/4. Simulating... block 10/10, operation 0/4.Simulating... block 10/10, operation 0/9.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T10:40:58+08:00 height=11 opsCount=63 run-time=366.193834
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 11
+  },
+  "signing": {
+   "missed": 5,
+   "signed": 72
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "failure": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 3
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 8,
+   "kicked": 8
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 20
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "ok": 6
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 2
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 3440579354231278675: 1/3, attempt: 5/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "pxqbzmnajvftfcwvrggr",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/6. Simulating... block 4/10, operation 0/6.Simulating... block 4/10, operation 0/5. Simulating... block 5/10, operation 0/5.Simulating... block 6/10, operation 0/0.Simulating... block 6/10, operation 0/16. Simulating... block 7/10, operation 0/16.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/8. Simulating... block 9/10, operation 0/8.Simulating... block 9/10, operation 0/4. Simulating... block 10/10, operation 0/4.Simulating... block 10/10, operation 0/9.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T10:40:58+08:00 height=11 opsCount=63 run-time=352.855708
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 11
+  },
+  "signing": {
+   "missed": 5,
+   "signed": 72
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "failure": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 3
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 8,
+   "kicked": 8
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 20
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "failure": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "ok": 6
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 2
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1,
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 608747136543856411: 2/3, attempt: 1/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "vistbhbnwztutldzbvum",
+ "denoms": [],
+ "params": {
+  "send_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/8. Simulating... block 2/10, operation 0/8.Simulating... block 2/10, operation 0/5. Simulating... block 3/10, operation 0/5.Simulating... block 3/10, operation 0/1. Simulating... block 4/10, operation 0/1.Simulating... block 4/10, operation 0/19. Simulating... block 5/10, operation 0/19.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/8. Simulating... block 7/10, operation 0/8.Simulating... block 7/10, operation 0/7. Simulating... block 8/10, operation 0/7.Simulating... block 8/10, operation 0/9. Simulating... block 9/10, operation 0/9.Simulating... block 9/10, operation 0/9. Simulating... block 10/10, operation 0/9.Simulating... block 10/10, operation 0/12.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:13:46+08:00 height=11 opsCount=81 run-time=274.9655
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 1
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 3
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 85
+  },
+  "signing": {
+   "signed": 44
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 15,
+   "kicked": 15
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 3
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 28
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "ok": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 3
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 2
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 4
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 608747136543856411: 2/3, attempt: 2/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "vistbhbnwztutldzbvum",
+ "denoms": [],
+ "params": {
+  "send_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/8. Simulating... block 2/10, operation 0/8.Simulating... block 2/10, operation 0/5. Simulating... block 3/10, operation 0/5.Simulating... block 3/10, operation 0/1. Simulating... block 4/10, operation 0/1.Simulating... block 4/10, operation 0/19. Simulating... block 5/10, operation 0/19.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/8. Simulating... block 7/10, operation 0/8.Simulating... block 7/10, operation 0/7. Simulating... block 8/10, operation 0/7.Simulating... block 8/10, operation 0/9. Simulating... block 9/10, operation 0/9.Simulating... block 9/10, operation 0/9. Simulating... block 10/10, operation 0/9.Simulating... block 10/10, operation 0/12.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:13:46+08:00 height=11 opsCount=81 run-time=268.258542
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 1
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 3
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 85
+  },
+  "signing": {
+   "signed": 44
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 15,
+   "kicked": 15
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 3
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 28
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "ok": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 3
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 2
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 4
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 608747136543856411: 2/3, attempt: 3/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "vistbhbnwztutldzbvum",
+ "denoms": [],
+ "params": {
+  "send_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/8. Simulating... block 2/10, operation 0/8.Simulating... block 2/10, operation 0/5. Simulating... block 3/10, operation 0/5.Simulating... block 3/10, operation 0/1. Simulating... block 4/10, operation 0/1.Simulating... block 4/10, operation 0/19. Simulating... block 5/10, operation 0/19.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/8. Simulating... block 7/10, operation 0/8.Simulating... block 7/10, operation 0/7. Simulating... block 8/10, operation 0/7.Simulating... block 8/10, operation 0/9. Simulating... block 9/10, operation 0/9.Simulating... block 9/10, operation 0/9. Simulating... block 10/10, operation 0/9.Simulating... block 10/10, operation 0/12.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:13:46+08:00 height=11 opsCount=81 run-time=262.023792
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 1
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 3
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 85
+  },
+  "signing": {
+   "signed": 44
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 15,
+   "kicked": 15
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 3
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 28
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "ok": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 3
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 2
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 4
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 608747136543856411: 2/3, attempt: 4/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "vistbhbnwztutldzbvum",
+ "denoms": [],
+ "params": {
+  "send_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/8. Simulating... block 2/10, operation 0/8.Simulating... block 2/10, operation 0/5. Simulating... block 3/10, operation 0/5.Simulating... block 3/10, operation 0/1. Simulating... block 4/10, operation 0/1.Simulating... block 4/10, operation 0/19. Simulating... block 5/10, operation 0/19.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/8. Simulating... block 7/10, operation 0/8.Simulating... block 7/10, operation 0/7. Simulating... block 8/10, operation 0/7.Simulating... block 8/10, operation 0/9. Simulating... block 9/10, operation 0/9.Simulating... block 9/10, operation 0/9. Simulating... block 10/10, operation 0/9.Simulating... block 10/10, operation 0/12.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:13:46+08:00 height=11 opsCount=81 run-time=265.624417
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 1
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 3
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 85
+  },
+  "signing": {
+   "signed": 44
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 15,
+   "kicked": 15
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 3
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 28
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "ok": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 3
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 2
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 4
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 608747136543856411: 2/3, attempt: 5/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "vistbhbnwztutldzbvum",
+ "denoms": [],
+ "params": {
+  "send_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/8. Simulating... block 2/10, operation 0/8.Simulating... block 2/10, operation 0/5. Simulating... block 3/10, operation 0/5.Simulating... block 3/10, operation 0/1. Simulating... block 4/10, operation 0/1.Simulating... block 4/10, operation 0/19. Simulating... block 5/10, operation 0/19.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/8. Simulating... block 7/10, operation 0/8.Simulating... block 7/10, operation 0/7. Simulating... block 8/10, operation 0/7.Simulating... block 8/10, operation 0/9. Simulating... block 9/10, operation 0/9.Simulating... block 9/10, operation 0/9. Simulating... block 10/10, operation 0/9.Simulating... block 10/10, operation 0/12.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:13:46+08:00 height=11 opsCount=81 run-time=264.231208
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgMultiSend": {
+   "ok": 1
+  },
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "ok": 3
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 85
+  },
+  "signing": {
+   "signed": 44
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "added": 15,
+   "kicked": 15
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 3
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 28
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 1
+  },
+  "/cosmos.gov.v1.MsgVoteWeighted": {
+   "ok": 1
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgCreateGroupWithPolicy": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 3
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 2
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgExecuteContract": {
+   "ok": 1
+  },
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 3
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 4
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 5571782338101878760: 3/3, attempt: 1/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "ufhjtkwdcaxmjbzbsaev",
+ "denoms": [],
+ "params": {
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/18. Simulating... block 2/10, operation 0/18.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/11. Simulating... block 4/10, operation 0/11.Simulating... block 4/10, operation 0/11. Simulating... block 5/10, operation 0/11.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/19. Simulating... block 7/10, operation 0/19.Simulating... block 7/10, operation 0/11. Simulating... block 8/10, operation 0/11.Simulating... block 8/10, operation 0/17. Simulating... block 9/10, operation 0/17.Simulating... block 9/10, operation 0/5. Simulating... block 10/10, operation 0/5.Simulating... block 10/10, operation 0/10.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:45:47+08:00 height=11 opsCount=107 run-time=301.529917
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 2
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 745,
+   "signed": 219
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 1,
+   "ok": 2
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 14
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 3
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 6
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 4
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 35
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 5
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 4
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 5
+  },
+  "/cosmos.staking.v1beta1.MsgEditValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 5
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 2
+  },
+  "execute": {
+   "failure": 5
+  },
+  "instantiate": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 2
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 5571782338101878760: 3/3, attempt: 2/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "ufhjtkwdcaxmjbzbsaev",
+ "denoms": [],
+ "params": {
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/18. Simulating... block 2/10, operation 0/18.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/11. Simulating... block 4/10, operation 0/11.Simulating... block 4/10, operation 0/11. Simulating... block 5/10, operation 0/11.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/19. Simulating... block 7/10, operation 0/19.Simulating... block 7/10, operation 0/11. Simulating... block 8/10, operation 0/11.Simulating... block 8/10, operation 0/17. Simulating... block 9/10, operation 0/17.Simulating... block 9/10, operation 0/5. Simulating... block 10/10, operation 0/5.Simulating... block 10/10, operation 0/10.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:45:47+08:00 height=11 opsCount=107 run-time=292.7525
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 2
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 745,
+   "signed": 219
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 1,
+   "ok": 2
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 14
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 3
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 6
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 4
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 35
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 5
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 4
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 5
+  },
+  "/cosmos.staking.v1beta1.MsgEditValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 5
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 2
+  },
+  "execute": {
+   "failure": 5
+  },
+  "instantiate": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 2
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 5571782338101878760: 3/3, attempt: 3/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "ufhjtkwdcaxmjbzbsaev",
+ "denoms": [],
+ "params": {
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/18. Simulating... block 2/10, operation 0/18.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/11. Simulating... block 4/10, operation 0/11.Simulating... block 4/10, operation 0/11. Simulating... block 5/10, operation 0/11.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/19. Simulating... block 7/10, operation 0/19.Simulating... block 7/10, operation 0/11. Simulating... block 8/10, operation 0/11.Simulating... block 8/10, operation 0/17. Simulating... block 9/10, operation 0/17.Simulating... block 9/10, operation 0/5. Simulating... block 10/10, operation 0/5.Simulating... block 10/10, operation 0/10.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:45:47+08:00 height=11 opsCount=107 run-time=295.779792
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 2
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 745,
+   "signed": 219
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 1,
+   "ok": 2
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 14
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 3
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 6
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 4
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 35
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 5
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 4
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 5
+  },
+  "/cosmos.staking.v1beta1.MsgEditValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 5
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 2
+  },
+  "execute": {
+   "failure": 5
+  },
+  "instantiate": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 2
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 5571782338101878760: 3/3, attempt: 4/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "ufhjtkwdcaxmjbzbsaev",
+ "denoms": [],
+ "params": {
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/18. Simulating... block 2/10, operation 0/18.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/11. Simulating... block 4/10, operation 0/11.Simulating... block 4/10, operation 0/11. Simulating... block 5/10, operation 0/11.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/19. Simulating... block 7/10, operation 0/19.Simulating... block 7/10, operation 0/11. Simulating... block 8/10, operation 0/11.Simulating... block 8/10, operation 0/17. Simulating... block 9/10, operation 0/17.Simulating... block 9/10, operation 0/5. Simulating... block 10/10, operation 0/5.Simulating... block 10/10, operation 0/10.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:45:47+08:00 height=11 opsCount=107 run-time=281.669167
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 2
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 745,
+   "signed": 219
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 1,
+   "ok": 2
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 14
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 3
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 6
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 4
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 35
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 5
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 4
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 5
+  },
+  "/cosmos.staking.v1beta1.MsgEditValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 5
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 2
+  },
+  "execute": {
+   "failure": 5
+  },
+  "instantiate": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 2
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+running non-determinism simulation; seed 5571782338101878760: 3/3, attempt: 5/5
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "ufhjtkwdcaxmjbzbsaev",
+ "denoms": [],
+ "params": {
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/18. Simulating... block 2/10, operation 0/18.Simulating... block 2/10, operation 0/2. Simulating... block 3/10, operation 0/2.Simulating... block 3/10, operation 0/11. Simulating... block 4/10, operation 0/11.Simulating... block 4/10, operation 0/11. Simulating... block 5/10, operation 0/11.Simulating... block 5/10, operation 0/3. Simulating... block 6/10, operation 0/3.Simulating... block 6/10, operation 0/19. Simulating... block 7/10, operation 0/19.Simulating... block 7/10, operation 0/11. Simulating... block 8/10, operation 0/11.Simulating... block 8/10, operation 0/17. Simulating... block 9/10, operation 0/17.Simulating... block 9/10, operation 0/5. Simulating... block 10/10, operation 0/5.Simulating... block 10/10, operation 0/10.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T12:45:47+08:00 height=11 opsCount=107 run-time=285.928208
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 1
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 2
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 6
+  },
+  "signing": {
+   "missed": 745,
+   "signed": 219
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 3
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward": {
+   "ok": 2
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "failure": 1,
+   "ok": 2
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 14
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 3
+  },
+  "/cosmos.feegrant.v1beta1.MsgRevokeAllowance": {
+   "ok": 6
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgDeposit": {
+   "failure": 1,
+   "ok": 4
+  },
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 35
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 1
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 5
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 1,
+   "ok": 3
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 4
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 3
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "failure": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 5
+  },
+  "/cosmos.staking.v1beta1.MsgEditValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 5
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 2
+  },
+  "execute": {
+   "failure": 5
+  },
+  "instantiate": {
+   "failure": 3
+  },
+  "migrate": {
+   "failure": 2
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+--- PASS: TestAppStateDeterminism (5.28s)
+=== RUN   TestAppImportExport
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "fssjkkmqzthxwpqjvttv",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/9. Simulating... block 3/10, operation 0/9.Simulating... block 3/10, operation 0/2. Simulating... block 4/10, operation 0/2.Simulating... block 4/10, operation 0/8. Simulating... block 5/10, operation 0/8.Simulating... block 5/10, operation 0/7. Simulating... block 6/10, operation 0/7.Simulating... block 6/10, operation 0/4. Simulating... block 7/10, operation 0/4.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/4. Simulating... block 9/10, operation 0/4.Simulating... block 9/10, operation 0/2. Simulating... block 10/10, operation 0/2.Simulating... block 10/10, operation 0/6.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=d9f1144011e80bc96ec0a61f5826ec8d019152519a60559db0d9c1c11f56fa65 block-time=2026-09-12T11:07:23+08:00 height=11 opsCount=55 run-time=757.411166
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "failure": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 15
+  },
+  "signing": {
+   "missed": 480,
+   "signed": 1132
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 13
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 16
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 4
+  },
+  "/cosmos.group.v1.MsgCreateGroupPolicy": {
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 2,
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 1
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+exporting genesis...
+importing genesis...
+comparing stores...
+compared 0 different key/value pairs between KVStoreKey{0xc0041be430, acc} and KVStoreKey{0xc001a59290, acc}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be450, staking} and KVStoreKey{0xc001a592b0, staking}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be480, slashing} and KVStoreKey{0xc001a592e0, slashing}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be460, mint} and KVStoreKey{0xc001a592c0, mint}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be470, distribution} and KVStoreKey{0xc001a592d0, distribution}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be440, bank} and KVStoreKey{0xc001a592a0, bank}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be4a0, params} and KVStoreKey{0xc001a59300, params}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be490, gov} and KVStoreKey{0xc001a592f0, gov}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be4e0, evidence} and KVStoreKey{0xc001a59340, evidence}
+compared 0 different key/value pairs between KVStoreKey{0xc0041be4f0, authz} and KVStoreKey{0xc001a59350, authz}
+--- PASS: TestAppImportExport (1.18s)
+=== RUN   TestAppSimulationAfterImport
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "fssjkkmqzthxwpqjvttv",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/9. Simulating... block 3/10, operation 0/9.Simulating... block 3/10, operation 0/2. Simulating... block 4/10, operation 0/2.Simulating... block 4/10, operation 0/8. Simulating... block 5/10, operation 0/8.Simulating... block 5/10, operation 0/7. Simulating... block 6/10, operation 0/7.Simulating... block 6/10, operation 0/4. Simulating... block 7/10, operation 0/4.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/4. Simulating... block 9/10, operation 0/4.Simulating... block 9/10, operation 0/2. Simulating... block 10/10, operation 0/2.Simulating... block 10/10, operation 0/6.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T11:07:23+08:00 height=11 opsCount=55 run-time=554.835708
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "failure": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 15
+  },
+  "signing": {
+   "missed": 480,
+   "signed": 1132
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 13
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 16
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 4
+  },
+  "/cosmos.group.v1.MsgCreateGroupPolicy": {
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 2,
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 1
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+
+LevelDB Stats
+
+LevelDB cached block size 
+exporting genesis...
+importing genesis...
+    buffer.go:261: simulate.go:100: 3:08PM INF Starting SimulateFromSeed with randomness
+    buffer.go:261: simulate.go:101: <nil> DBG Randomized simulation setup params={}
+Selected randomly generated ibc parameters:
+{
+ "client_genesis": {
+  "clients": [],
+  "clients_consensus": [],
+  "clients_metadata": null,
+  "params": {
+   "allowed_clients": [
+    "*"
+   ]
+  }
+ },
+ "connection_genesis": {
+  "connections": [],
+  "client_connection_paths": [],
+  "params": {
+   "max_expected_time_per_block": 30000000000
+  }
+ },
+ "channel_genesis": {
+  "channels": [],
+  "acknowledgements": [],
+  "commitments": [],
+  "receipts": [],
+  "send_sequences": [],
+  "recv_sequences": [],
+  "ack_sequences": []
+ },
+ "client_v2_genesis": {
+  "counterparty_infos": null
+ },
+ "channel_v2_genesis": {
+  "acknowledgements": null,
+  "commitments": null,
+  "receipts": null,
+  "async_packets": null,
+  "send_sequences": null
+ }
+}
+Selected randomly generated interchainaccounts parameters:
+{
+ "controller_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "params": {
+   "controller_enabled": true
+  }
+ },
+ "host_genesis_state": {
+  "active_channels": null,
+  "interchain_accounts": null,
+  "port": "icahost",
+  "params": {
+   "host_enabled": true,
+   "allow_messages": [
+    "*"
+   ]
+  }
+ }
+}
+Selected randomly generated transfer parameters:
+{
+ "port_id": "fssjkkmqzthxwpqjvttv",
+ "denoms": [],
+ "params": {
+  "send_enabled": true,
+  "receive_enabled": true
+ },
+ "total_escrowed": []
+}
+Simulating... block 1/10, operation 0/0.Simulating... block 1/10, operation 0/7. Simulating... block 2/10, operation 0/7.Simulating... block 2/10, operation 0/9. Simulating... block 3/10, operation 0/9.Simulating... block 3/10, operation 0/2. Simulating... block 4/10, operation 0/2.Simulating... block 4/10, operation 0/8. Simulating... block 5/10, operation 0/8.Simulating... block 5/10, operation 0/7. Simulating... block 6/10, operation 0/7.Simulating... block 6/10, operation 0/4. Simulating... block 7/10, operation 0/4.Simulating... block 7/10, operation 0/6. Simulating... block 8/10, operation 0/6.Simulating... block 8/10, operation 0/4. Simulating... block 9/10, operation 0/4.Simulating... block 9/10, operation 0/2. Simulating... block 10/10, operation 0/2.Simulating... block 10/10, operation 0/6.     buffer.go:261: simulate.go:276: <nil> INF Simulation complete app-hash=9998c3d3268a5f2ce646c65fc25e35fda4d82e30197f8183e3f477f790f5fd3a block-time=2026-09-12T11:07:23+08:00 height=11 opsCount=55 run-time=590.121875
+{
+ "authz": {
+  "/cosmos.authz.v1beta1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.authz.v1beta1.MsgGrant": {
+   "ok": 1
+  },
+  "/cosmos.authz.v1beta1.MsgRevoke": {
+   "ok": 1
+  }
+ },
+ "bank": {
+  "/cosmos.bank.v1beta1.MsgSend": {
+   "failure": 1
+  }
+ },
+ "begin_block": {
+  "evidence": {
+   "ok": 15
+  },
+  "signing": {
+   "missed": 480,
+   "signed": 1132
+  }
+ },
+ "distribution": {
+  "/cosmos.distribution.v1beta1.MsgFundCommunityPool": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgSetWithdrawAddress": {
+   "ok": 1
+  },
+  "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommission": {
+   "ok": 1
+  }
+ },
+ "end_block": {
+  "validator_updates": {
+   "kicked": 13
+  }
+ },
+ "feegrant": {
+  "/cosmos.feegrant.v1beta1.MsgGrantAllowance": {
+   "ok": 2
+  }
+ },
+ "gov": {
+  "/cosmos.gov.v1.MsgSubmitProposal": {
+   "ok": 16
+  },
+  "/cosmos.gov.v1.MsgVote": {
+   "failure": 2
+  }
+ },
+ "group": {
+  "/cosmos.group.v1.MsgCreateGroup": {
+   "ok": 4
+  },
+  "/cosmos.group.v1.MsgCreateGroupPolicy": {
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgExec": {
+   "failure": 2
+  },
+  "/cosmos.group.v1.MsgSubmitProposal": {
+   "failure": 2,
+   "ok": 2
+  },
+  "/cosmos.group.v1.MsgVote": {
+   "failure": 1
+  }
+ },
+ "slashing": {
+  "/cosmos.slashing.v1beta1.MsgUnjail": {
+   "failure": 1
+  }
+ },
+ "staking": {
+  "/cosmos.staking.v1beta1.MsgBeginRedelegate": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgCancelUnbondingDelegation": {
+   "failure": 2
+  },
+  "/cosmos.staking.v1beta1.MsgCreateValidator": {
+   "ok": 1
+  },
+  "/cosmos.staking.v1beta1.MsgDelegate": {
+   "ok": 2
+  },
+  "/cosmos.staking.v1beta1.MsgUndelegate": {
+   "ok": 1
+  }
+ },
+ "wasm": {
+  "/cosmwasm.wasm.v1.MsgInstantiateContract": {
+   "ok": 2
+  },
+  "/cosmwasm.wasm.v1.MsgStoreCode": {
+   "ok": 1
+  },
+  "execute": {
+   "failure": 1
+  },
+  "instantiate": {
+   "failure": 1
+  },
+  "migrate": {
+   "failure": 1
+  }
+ }
+}
+--- PASS: TestAppSimulationAfterImport (1.54s)
+PASS
+ok  	github.com/DoraFactory/doravota/app	13.251s

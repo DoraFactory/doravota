@@ -29,14 +29,16 @@ var emptyIAVLHash = sha256.Sum256(nil)
 // performs an exact iterator lookup for IAVL root keys whose normal lookup
 // returned nil; every other database operation remains unchanged.
 //
-// Before enabling the view at the bridge boundary, this function validates
+// The read view is always enabled, including after upgrade metadata is removed.
+// It only restores existing empty values; missing keys remain missing.
+// At the bridge boundary, this function additionally validates
 // that every committed empty substore has exactly the expected empty legacy
 // root. No application state is written or rewritten.
 func WrapLegacyEmptyIAVLDB(logger log.Logger, db dbm.DB, homeDir string) (dbm.DB, []string, error) {
 	upgradeInfoPath := filepath.Join(homeDir, "data", upgradetypes.UpgradeInfoFilename)
 	bz, err := os.ReadFile(upgradeInfoPath)
 	if os.IsNotExist(err) {
-		return db, nil, nil
+		return &emptyIAVLRootAwareDB{DB: db}, nil, nil
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("read bridge upgrade info: %w", err)
@@ -47,12 +49,12 @@ func WrapLegacyEmptyIAVLDB(logger log.Logger, db dbm.DB, homeDir string) (dbm.DB
 		return nil, nil, fmt.Errorf("decode bridge upgrade info: %w", err)
 	}
 	if plan.Name != UpgradeName {
-		return db, nil, nil
+		return &emptyIAVLRootAwareDB{DB: db}, nil, nil
 	}
 
 	latestVersion := rootmulti.GetLatestVersion(db)
 	if latestVersion < plan.Height-1 {
-		return db, nil, nil
+		return &emptyIAVLRootAwareDB{DB: db}, nil, nil
 	}
 
 	stores, err := validateLegacyEmptyIAVLStoresAtHeight(logger, db, plan.Height)
@@ -132,11 +134,15 @@ func (db *emptyIAVLRootAwareDB) Has(key []byte) (bool, error) {
 }
 
 func isIAVLRootKey(key []byte) bool {
-	separator := bytes.LastIndexByte(key, '/')
-	if separator < 0 || !bytes.HasPrefix(key, []byte(iavlStorePrefix)) {
+	if !bytes.HasPrefix(key, []byte(iavlStorePrefix)) {
 		return false
 	}
-	suffix := key[separator+1:]
+	// The version is binary and may itself contain a slash byte.
+	separator := bytes.IndexByte(key[len(iavlStorePrefix):], '/')
+	if separator <= 0 {
+		return false
+	}
+	suffix := key[len(iavlStorePrefix)+separator+1:]
 	if len(suffix) == 9 && suffix[0] == 'r' {
 		return true
 	}

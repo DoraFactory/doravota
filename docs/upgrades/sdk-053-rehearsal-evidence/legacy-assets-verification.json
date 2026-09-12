@@ -1,0 +1,16 @@
+{
+  "pre_upgrade_export_initial_height": "17250460",
+  "post_upgrade_export_initial_height": 17250511,
+  "current_query_height": "17252862",
+  "escrow_balances_unchanged": true,
+  "selected_channel_records_receipts_acknowledgements_sequences_unchanged": true,
+  "selected_local_outbound_commitments": 0,
+  "acknowledgements_preserved": 7993,
+  "receipts_preserved": 7993,
+  "migration_boundary_evidence": "boundary-stores.summary.json",
+  "limitations": [
+    "No counterparty pending-packet query; zero local commitments does not prove no remote pending packets.",
+    "No old-channel end-to-end transfers executed in this check.",
+    "All observations are of isolated snapshot chain, not live mainnet."
+  ]
+}

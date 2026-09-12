@@ -1,0 +1,162 @@
+{
+  "hash": "FBD85C882A4667F31CDE71CC41CCE795DE555AA1275C973D2992397FD7C413E9",
+  "height": "17251427",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EikKJy9jb3Ntb3MuYXV0aHoudjFiZXRhMS5Nc2dSZXZva2VSZXNwb25zZQ==",
+    "log": "",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "53881",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/23",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "9VY3q122Rmvh6G2Dlk/ciFrCnPdA7fcGi1CzkF+4CMRZ1fNM1tfYQVWG0BYt0totdiqnLZ7CA+wQXNszmZk5fA==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.authz.v1beta1.MsgRevoke",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "authz",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "cosmos.authz.v1beta1.EventRevoke",
+        "attributes": [
+          {
+            "key": "grantee",
+            "value": "\"dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3\"",
+            "index": true
+          },
+          {
+            "key": "granter",
+            "value": "\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"",
+            "index": true
+          },
+          {
+            "key": "msg_type_url",
+            "value": "\"/cosmos.bank.v1beta1.MsgSend\"",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Cp4BCpsBCh8vY29zbW9zLmF1dGh6LnYxYmV0YTEuTXNnUmV2b2tlEngKK2RvcmExbnk0bnczMnd6ZzcwcXhkdHl5OWE2ZmhrbDgwOWVjaHV3ajQwZjQSK2RvcmExbHBwMG11aGMwOXNlNXNqa2RjdzU2cW12bDk3amVleHh4enJmeTMaHC9jb3Ntb3MuYmFuay52MWJldGExLk1zZ1NlbmQSdApQCkYKHy9jb3Ntb3MuY3J5cHRvLnNlY3AyNTZrMS5QdWJLZXkSIwohAo3yrSVUdijkFfZPm18IrZA4ach8jBjTCly6b/L6lN5ZEgQKAggBGBcSIAoaCgVwZWFrYRIRMTAwMDAwMDAwMDAwMDAwMDAQoMIeGkD1VjerXbZGa+HobYOWT9yIWsKc90Dt9waLULOQX7gIxFnV80zW19hBVYbQFi3S2i12KqctnsID7BBc2zOZmTl8"
+}

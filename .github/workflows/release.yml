@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
 
 jobs:
   release:
@@ -20,6 +22,7 @@ jobs:
         id: changelog
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
+          TAG_NAME=${TAG_NAME#v}
           echo "Current Tag: $TAG_NAME"
           awk "/^## \\[${TAG_NAME}\\]/ {flag=1; next} /^## / {flag=0} flag" CHANGELOG.md > release_notes.md
           sed -i "s/^## \\[${TAG_NAME}\\]/## ${TAG_NAME}/" release_notes.md
@@ -33,12 +36,25 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version-file: go.mod
 
-      - name: Install cross-compilation tools
+      - name: Test application and enabled simulations
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+          go test ./... -count=1
+          go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s -json > simulation-results.json
+          python3 - <<'PYTEST'
+          import json
+          expected = {"TestAppStateDeterminism", "TestAppImportExport", "TestAppSimulationAfterImport"}
+          passed = set()
+          for line in open("simulation-results.json"):
+              event = json.loads(line)
+              if event.get("Action") == "pass" and event.get("Test") in expected:
+                  passed.add(event["Test"])
+          assert passed == expected, f"Simulations did not all pass: {expected - passed}"
+          PYTEST
+
+      - name: Enable target architecture emulation
+        uses: docker/setup-qemu-action@v3
 
       - name: Verify Git state
         run: |
@@ -47,56 +63,20 @@ jobs:
           git describe --tags || echo "No tags found"
           git log -1 --oneline
 
-      - name: Build binaries using Makefile
-        working-directory: ${{ github.workspace }}
+      - name: Build and smoke-test musl release binaries
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          VERSION=${TAG_NAME}
-
-          echo "🔧 Building project for version: ${VERSION}"
-          mkdir -p release
-
-          # ===== AMD PART =====
-          WASMVM_VERSION="v1.5.1"
-          echo "Downloading libwasmvm ${WASMVM_VERSION} static library for AMD64..."
-          curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.x86_64.a > /tmp/libwasmvm_muslc.a
-          sudo mv /tmp/libwasmvm_muslc.a /usr/local/lib/libwasmvm_muslc.a
-
-          export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static -L/usr/local/lib -lm'"
-          export BUILD_TAGS="muslc,netgo,osusergo,static_build"
-
-          echo "Building for linux-amd64..."
-          go build -tags "${BUILD_TAGS}" -ldflags "${LDFLAGS}" -o release/dorad-${VERSION}-linux-amd ./cmd/dorad
-          
-          echo "Verifying static linking for AMD64 binary..."
-          ldd release/dorad-${VERSION}-linux-amd || echo "Binary is statically linked (no dependencies)"
-          
-          # Release AMD64 binary
-          tar -czvf release/dorad-${VERSION}-linux-amd.tar.gz -C release dorad-${VERSION}-linux-amd
-
-          # ===== ARM64 PART =====
-          
-          echo "Downloading libwasmvm ${WASMVM_VERSION} static library for ARM64..."
-          curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm_muslc.aarch64.a > /tmp/libwasmvm_muslc.aarch64.a
-          
-          mkdir -p /tmp/arm64-lib/
-          cp /tmp/libwasmvm_muslc.aarch64.a /tmp/arm64-lib/libwasmvm_muslc.a
-          
-          export GOOS=linux
-          export GOARCH=arm64
-          export CC=aarch64-linux-gnu-gcc
-          export CGO_ENABLED=1
-          export LDFLAGS="-linkmode external -extldflags '-static -L/tmp/arm64-lib -lm'"
-          
-          echo "Building for linux-arm64..."
-          go build -tags "${BUILD_TAGS}" -ldflags "${LDFLAGS}" -o release/dorad-${VERSION}-linux-arm64 ./cmd/dorad
-          
-          # Release ARM64 binary
-          tar -czvf release/dorad-${VERSION}-linux-arm64.tar.gz -C release dorad-${VERSION}-linux-arm64
-
-          echo "Generating SHA256 checksums..."
-          sha256sum release/* > release/sha256sum.txt
+          set -euo pipefail
+          GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
+          for PLATFORM in linux/amd64 linux/arm64; do
+            docker run --rm --platform "$PLATFORM" \
+              -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
+              -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
+              sh -ec 'apk add --no-cache bash build-base binutils curl git; bash scripts/build-bridge-release.sh'
+          done
+          (cd release && sha256sum dorad-*.tar.gz > sha256sum.txt)
 
       - name: Set Release Date
         run: echo "RELEASE_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
@@ -106,6 +86,8 @@ jobs:
         with:
           name: ${{ github.ref_name }} - ${{ env.RELEASE_DATE }}
           tag_name: ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+          draft: ${{ contains(github.ref_name, '-rc.') }}
           body_path: ./release_notes.md
           files: |
             release/dorad-*linux-amd*

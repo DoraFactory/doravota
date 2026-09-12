@@ -14,7 +14,6 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	tmcfg "github.com/cometbft/cometbft/config"
 	tmcli "github.com/cometbft/cometbft/libs/cli"
-	tmtypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -89,6 +88,14 @@ func NewRootCmd() (*cobra.Command, appparams.EncodingConfig) {
 
 			customAppTemplate, customAppConfig := initAppConfig()
 			customTMConfig := initTendermintConfig()
+			// Comet's config.toml "version" is not the ICA protocol metadata.
+			// Prevent SDK bindFlags from substituting it for the CLI default.
+			if cmd.Name() == "register" && cmd.Parent() != nil && cmd.Parent().Name() == "controller" {
+				if versionFlag := cmd.Flags().Lookup("version"); versionFlag != nil && !versionFlag.Changed {
+					versionFlag.Changed = true
+					defer func() { versionFlag.Changed = false }()
+				}
+			}
 			return server.InterceptConfigsPreRunHandler(
 				cmd, customAppTemplate, customAppConfig, customTMConfig,
 			)
@@ -289,7 +296,9 @@ func (a appCreator) newApp(
 	chainID := cast.ToString(appOpts.Get(flags.FlagChainID))
 	if chainID == "" {
 		// fallback to genesis chain-id
-		appGenesis, err := tmtypes.GenesisDocFromFile(filepath.Join(homeDir, "config", "genesis.json"))
+		// SDK genesis uses numeric initial_height; legacy Comet genesis uses a
+		// string. The SDK reader accepts both, including existing mainnet files.
+		appGenesis, err := genutiltypes.AppGenesisFromFile(filepath.Join(homeDir, "config", "genesis.json"))
 		if err != nil {
 			panic(err)
 		}

@@ -1,0 +1,5 @@
+{
+  "result": "expired packet rejected in CheckTx",
+  "code": 40,
+  "limitation": "Does not cover replay of a still-valid packet."
+}

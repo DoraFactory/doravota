@@ -1,0 +1,64 @@
+{
+  "admin": {
+    "data": {
+      "admin": "dora1yu80rw3edxzc70sjunr5l7d8y7me0tnc2k8n3x"
+    }
+  },
+  "operator": {
+    "data": "dora1l8ptlxavtum53gcdhzl3sju5k9m5xxszx2f8ht"
+  },
+  "get_validators": {
+    "data": {
+      "addresses": [
+        "dora14uz8dt79a03g8alr5qa56lgad6djcstvssnchh",
+        "dora1t82jnx3cy38cmqs6este696v0al239j9v5a7zr",
+        "dora1vsq4dwt8qpwr2mqeg2aww096l9tu0ryxskrr9f",
+        "dora1arep488045nr8ka2tvnym6gswtqw04gg9ahm7n",
+        "dora1z6kfew2nhuh02szc2hdecw4fqey2d32a02a62e",
+        "dora1ddewp74vd2w8jhth2p0uazmc8ajgtcufz9wk7v",
+        "dora1gh8j89jtc2vx6d3y4ehllcdlvluwa49wfs7yxy",
+        "dora1gerunjnh6umehq6zm0gphrc87u37veuv8jqmq3",
+        "dora12yk434ut3un4wx0rult2aww89rsrel8nydy83p",
+        "dora15frh0nn3v4yp3vv6sk4pn6jg9l8rt82fd29lqt",
+        "dora1l5zz0kkjt2n7nllsrymy96mc2v2gehdau5a3z0",
+        "dora1j8ru7p8zctup6grfwuga6ndrjj7v88wzqr2gsp",
+        "dora1m9v3txhhtadjxpv09gwjhhs344qsxgfstcryqh",
+        "dora104syr0dwe5x8nl03jxm7s0ut2j8dhr3pj4995v",
+        "dora1zlaq8ennxz775t6e072cyzm6s7zwl3gay0c95h",
+        "dora1tw9xra5zua5npq3tvcfgmysklerrjspeuc5zhh",
+        "dora1ajlxk6rxm9usr598tkhmcfmtwa3wwsz4f48gte",
+        "dora10wygchf7sk6mhhxvsfmax7tzz4z3psx9razu3u",
+        "dora1tudltgheh93xdqe76afejljl8hx8kpq8ua6uck",
+        "dora19z5mskzdfu37tavguckfa0j2z2uzg9wgcax5ca",
+        "dora1krzfz3tm8pjjhul66q8sxsslnwkvkyewk9mlcf"
+      ]
+    }
+  },
+  "get_circuit_charge_config": {
+    "data": {
+      "fee_rate": "0.1"
+    }
+  },
+  "get_fee_config": {
+    "data": {
+      "base_fee": "46000000000000000000",
+      "message_fee": "121000000000000000",
+      "deactivate_fee": "10000000000000000000",
+      "signup_fee": "48000000000000000"
+    }
+  },
+  "get_delay_config": {
+    "data": {
+      "base_delay": 200,
+      "message_delay": 2,
+      "signup_delay": 1,
+      "deactivate_delay": 600
+    }
+  },
+  "get_amaci_code_id": {
+    "data": 153
+  },
+  "get_next_poll_id": {
+    "data": 671
+  }
+}

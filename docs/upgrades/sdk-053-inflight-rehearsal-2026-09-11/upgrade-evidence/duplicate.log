@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/vota-inflight-duplicate.py", line 7, in <module>
+    x=json.loads(subprocess.check_output([b,'tx','broadcast',str(signed),'--node','tcp://127.0.0.1:43751','-o','json'],text=True));assert x.get('code',0)==0
+AssertionError

@@ -1,0 +1,9 @@
+pre-ack-pending-send height 17250005 hash 060F4A0D933E9CF91DD6C0E59F6B89CB485BBBEC0BF22C7EE3A6EF9E0E0A723F
+2026-09-11T14:29:29.911643Z	warn	This command is deprecated. Please use 'tx flush' command instead
+Error: flag accessed but not defined: stuck-packet-chain-id
+Traceback (most recent call last):
+  File "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/vota-inflight-packets.py", line 11, in <module>
+    subprocess.run(['docker','run','--rm','--network','host','--user','0:0','-v',str(T)+':/work','--entrypoint','rly','ghcr.io/cosmos/relayer:latest','tx','relay-packets','bridge-transfer','channel-18','--home','/work/relayer-bridge'],check=True)
+  File "/usr/lib/python3.10/subprocess.py", line 526, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['docker', 'run', '--rm', '--network', 'host', '--user', '0:0', '-v', '/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal:/work', '--entrypoint', 'rly', 'ghcr.io/cosmos/relayer:latest', 'tx', 'relay-packets', 'bridge-transfer', 'channel-18', '--home', '/work/relayer-bridge']' returned non-zero exit status 1.

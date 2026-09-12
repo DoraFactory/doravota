@@ -1,0 +1,7 @@
+inflight-upgrade-proposal height 17250207 hash 4AF3791BF41E6AC2FD13FC1C2F9571B3373B42C528470F7DF970B14EC5AA7CDD
+inflight-upgrade-vote height 17250208 hash 907F4575150381E3BF1D80A259708E12B992585817FC44202B668DECE16A5FF4
+WAIT HEIGHT 17250271
+Traceback (most recent call last):
+  File "/root/doravota-snapshot-rehearsal-20260911/inflight-snapshot-rehearsal/vota-inflight-upgrade.py", line 29, in <module>
+    else:raise Exception('no old halt evidence')
+Exception: no old halt evidence

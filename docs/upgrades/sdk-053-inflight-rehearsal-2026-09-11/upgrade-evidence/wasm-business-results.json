@@ -1,0 +1,24 @@
+{
+  "old_round": "dora142s0fphx80v66z34j4tspl6ptme59mcn3mp2aydu60y8f5g0nsmsj2m29w",
+  "signups": "2",
+  "messages": "1",
+  "new_round": "dora1cl0tlgf8v47vgk8z79k0nxyqwdgvd6tv8yx877rs6r2mqcazncusvwhs43",
+  "new_poll_id": 672,
+  "negative_checks": [
+    {
+      "label": "post-registry-unauthorized",
+      "code": 5,
+      "log": "failed to execute message; message index: 0: Unauthorized: execute wasm contract failed"
+    },
+    {
+      "label": "post-round-underpaid-message",
+      "code": 5,
+      "log": "failed to execute message; message index: 0: Incorrect funds sent: payment must exactly equal the required fee: execute wasm contract failed"
+    }
+  ],
+  "limitations": [
+    "Encrypted message payload is synthetic, not a valid decrypted vote.",
+    "Successful Groth16 processing/tally/claim have not been tested.",
+    "Historical privileged operations are not impersonated."
+  ]
+}

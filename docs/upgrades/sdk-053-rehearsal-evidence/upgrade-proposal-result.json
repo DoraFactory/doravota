@@ -1,0 +1,232 @@
+{
+  "hash": "468A27C90E03C5E74165D647627313149248C1845B734E7A205749C9BB1FFD36",
+  "height": "17250401",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EjMKLS9jb3Ntb3MuZ292LnYxYmV0YTEuTXNnU3VibWl0UHJvcG9zYWxSZXNwb25zZRICCBM=",
+    "log": "[{\"msg_index\":0,\"events\":[{\"type\":\"message\",\"attributes\":[{\"key\":\"action\",\"value\":\"/cosmos.gov.v1beta1.MsgSubmitProposal\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"module\",\"value\":\"gov\"}]},{\"type\":\"submit_proposal\",\"attributes\":[{\"key\":\"proposal_id\",\"value\":\"19\"},{\"key\":\"proposal_messages\",\"value\":\",/cosmos.gov.v1.MsgExecLegacyContent\"}]},{\"type\":\"coin_spent\",\"attributes\":[{\"key\":\"spender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"1000000000000000000peaka\"}]},{\"type\":\"coin_received\",\"attributes\":[{\"key\":\"receiver\",\"value\":\"dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9\"},{\"key\":\"amount\",\"value\":\"1000000000000000000peaka\"}]},{\"type\":\"transfer\",\"attributes\":[{\"key\":\"recipient\",\"value\":\"dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9\"},{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"},{\"key\":\"amount\",\"value\":\"1000000000000000000peaka\"}]},{\"type\":\"message\",\"attributes\":[{\"key\":\"sender\",\"value\":\"dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4\"}]},{\"type\":\"proposal_deposit\",\"attributes\":[{\"key\":\"amount\",\"value\":\"1000000000000000000peaka\"},{\"key\":\"proposal_id\",\"value\":\"19\"}]},{\"type\":\"submit_proposal\",\"attributes\":[{\"key\":\"voting_period_start\",\"value\":\"19\"}]}]}]",
+    "info": "",
+    "gas_wanted": "500000",
+    "gas_used": "240040",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "10000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "10000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "Ohye5Pgvx+JcEbFMfqTC3FLS+qKR5jN8t7Gcpm8o4wolvIRylkGlG20ANdfTsDDJ0S8S4ZrixEpdAzFl6zBIDg==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.gov.v1beta1.MsgSubmitProposal",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "gov",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "submit_proposal",
+        "attributes": [
+          {
+            "key": "proposal_id",
+            "value": "19",
+            "index": true
+          },
+          {
+            "key": "proposal_messages",
+            "value": ",/cosmos.gov.v1.MsgExecLegacyContent",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "proposal_deposit",
+        "attributes": [
+          {
+            "key": "amount",
+            "value": "1000000000000000000peaka",
+            "index": true
+          },
+          {
+            "key": "proposal_id",
+            "value": "19",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "submit_proposal",
+        "attributes": [
+          {
+            "key": "voting_period_start",
+            "value": "19",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Cu4DCusDCiUvY29zbW9zLmdvdi52MWJldGExLk1zZ1N1Ym1pdFByb3Bvc2FsEsEDCvMCCi8vY29zbW9zLnVwZ3JhZGUudjFiZXRhMS5Tb2Z0d2FyZVVwZ3JhZGVQcm9wb3NhbBK/AgokU0RLIDAuNTMgaXNvbGF0ZWQgc25hcHNob3QgcmVoZWFyc2FsEktUZXN0LW9ubHkgdXBncmFkZSBvZiB0aGUgaXNvbGF0ZWQgbWFpbm5ldCBzbmFwc2hvdCBmb3JrLiBObyBtYWlubmV0IGFjdGlvbi4ayQEKEHNkay12MC41My1icmlkZ2USCwiAkrjDmP7///8BGJzxnAgiogF7ImJpbmFyaWVzIjogeyJsaW51eC9hbWQ2NCI6ICJodHRwOi8vNzcuNDIuMy4xNDE6MTgwODAvcmVoZWFyc2FsLWJyaWRnZS50YXIuZ3o/Y2hlY2tzdW09c2hhMjU2OjU1ZGQ0ZTljZTdlYmNkNzMzYzEyNjAwMmM2ZjllMDRkY2RjNGFkOWY3NDI4YTkyZDBmMzcxMWY2MjU0MWQ4ZTQifX0SHAoFcGVha2ESEzEwMDAwMDAwMDAwMDAwMDAwMDAaK2RvcmExbnk0bnczMnd6ZzcwcXhkdHl5OWE2ZmhrbDgwOWVjaHV3ajQwZjQSdApQCkYKHy9jb3Ntb3MuY3J5cHRvLnNlY3AyNTZrMS5QdWJLZXkSIwohAo3yrSVUdijkFfZPm18IrZA4ach8jBjTCly6b/L6lN5ZEgQKAggBGAQSIAoaCgVwZWFrYRIRMTAwMDAwMDAwMDAwMDAwMDAQoMIeGkA6HJ7k+C/H4lwRsUx+pMLcUtL6opHmM3y3sZymbyjjCiW8hHKWQaUbbQA119OwMMnRLxLhmuLESl0DMWXrMEgO"
+}

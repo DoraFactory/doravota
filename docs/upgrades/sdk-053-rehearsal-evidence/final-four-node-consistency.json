@@ -1,0 +1,20 @@
+{
+  "time_utc": "2026-09-11T10:18:13.391671+00:00",
+  "height": 17251520,
+  "latest_heights": [
+    17251522,
+    17251522,
+    17251522,
+    17251522
+  ],
+  "blocks_since_upgrade": 1060,
+  "block_hash": "2D8120B7860AEDFBDD2240F5E08C82C5AA77F448E443F042F54544701B3BF7FA",
+  "app_hash": "AD24EF48AD1E5D325A170147A685D5AA06F3B3592E184FE478744309FE1D53B6",
+  "versions": [
+    "bridge-6d03e3b-review5",
+    "bridge-6d03e3b-review5",
+    "bridge-6d03e3b-review5",
+    "bridge-6d03e3b-review5"
+  ],
+  "peers_per_node": 3
+}

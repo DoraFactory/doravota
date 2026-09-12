@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": -1,
+  "result": {
+    "response": {
+      "code": 0,
+      "log": "",
+      "info": "",
+      "index": "0",
+      "key": "Y2FwYWJpbGl0eV9pbmRleAAAAAAAAAAC",
+      "value": "ChQKA2liYxINcG9ydHMvaWNhaG9zdAoYCgdpY2Fob3N0Eg1wb3J0cy9pY2Fob3N0",
+      "proofOps": {
+        "ops": [
+          {
+            "type": "ics23:iavl",
+            "key": "Y2FwYWJpbGl0eV9pbmRleAAAAAAAAAAC",
+            "data": "CpYCChhjYXBhYmlsaXR5X2luZGV4AAAAAAAAAAISMAoUCgNpYmMSDXBvcnRzL2ljYWhvc3QKGAoHaWNhaG9zdBINcG9ydHMvaWNhaG9zdBoLCAEYASABKgMAAgIiKwgBEicCBOagAiB0iaUNP7jGexvmL12ZNt6QRoejZw6V6Cq6sYASL52flSAiLggBEgcECLyBxgEgGiEgn1IXf9rPI3r9CrKHndxJE2Nt68Ay5gtaU70E9DwayY8iLggBEgcGEPCzrQIgGiEgGmRd6eM4l4lWi0a/anW5M0R4MuG/INckVdbTH4uwrgEiLggBEgcKLOCk+QogGiEgQekBFmojDDBe3m6NYY9i6Vyy7ussxSrInA4ej2zTJmU="
+          },
+          {
+            "type": "ics23:simple",
+            "key": "Y2FwYWJpbGl0eQ==",
+            "data": "CoICCgpjYXBhYmlsaXR5EiDetVg58/4XCF/fnkw/6EDpFaXibkiblE3jrIDHHhWxOhoJCAEYASABKgEAIiUIARIhAT948UZJ4xMKcoW5Fb+3iNkcytXtqeGybbS7CEr1ty5CIiUIARIhAarirCzcZUeN5Mz3xlxmobQG3Go16J6BgVTi1oNu2EeHIicIARIBARogOUlaTGvfmdko1DHLRuscT0R+LQACb/mRG0WxY7+YZPIiJwgBEgEBGiAAUDYYxt7bVCVG4eGRDvozFEXCfE0h0lzQ3u45ktVL+yInCAESAQEaILLOUu0BTlPJrQq+/W+9RLu57fWiYm5qbDPzC3JGzvTj"
+          }
+        ]
+      },
+      "height": "17236364",
+      "codespace": ""
+    }
+  }
+}
