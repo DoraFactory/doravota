@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [Unreleased]
+
+### Upgrade naming
+- Rename the upgrade package to `app/upgrades/v0_5_0` and set the on-chain plan name to `0.5.0`, matching the existing version-based convention.
+- Operators must use `plan.name = "0.5.0"` and `cosmovisor/upgrades/0.5.0/bin/dorad`. Previous RC1 artifacts use `sdk-v0.53-bridge` and are not valid for this newly named plan. Rebuild and rehearse from a pre-upgrade checkpoint before release.
+
 ## [0.5.0-rc.1] - 2026-09-12
 Release candidate for long-running testnet validation; not approved for mainnet deployment.
 

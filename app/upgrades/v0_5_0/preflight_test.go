@@ -1,4 +1,4 @@
-package sdk_v053_bridge
+package v0_5_0
 
 import (
 	"encoding/binary"
@@ -110,7 +110,7 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			}
 			home := t.TempDir()
 			require.NoError(t, os.MkdirAll(filepath.Join(home, "data"), 0700))
-			require.NoError(t, os.WriteFile(filepath.Join(home, "data", "upgrade-info.json"), []byte(`{"name":"sdk-v0.53-bridge","height":10}`), 0600))
+			require.NoError(t, os.WriteFile(filepath.Join(home, "data", "upgrade-info.json"), []byte(`{"name":"0.5.0","height":10}`), 0600))
 			before := dumpDB(t, db)
 			err = ValidateUpgradeBoundary(log.NewNopLogger(), db, home)
 			if tc.name == "corrupt consensus" {

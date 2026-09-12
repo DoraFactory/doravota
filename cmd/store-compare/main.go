@@ -13,7 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	bridge "github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge"
+	bridge "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/iavl"
 	"os"

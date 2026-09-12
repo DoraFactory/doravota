@@ -1,4 +1,4 @@
-package sdk_v053_bridge
+package v0_5_0
 
 import (
 	"fmt"

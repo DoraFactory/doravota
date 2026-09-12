@@ -1,4 +1,4 @@
-package sdk_v053_bridge
+package v0_5_0
 
 import (
 	"os"
@@ -116,7 +116,7 @@ func TestLegacyEmptyRootIndependentOfLocalPlan(t *testing.T) {
 	for _, tc := range []struct {
 		name, plan string
 	}{
-		{"bridge plan", `{"name":"sdk-v0.53-bridge","height":10}`},
+		{"bridge plan", `{"name":"0.5.0","height":10}`},
 		{"missing plan", ""},
 		{"replaced plan", `{"name":"next-upgrade","height":100}`},
 	} {

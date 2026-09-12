@@ -46,7 +46,7 @@ import (
 
 	"github.com/DoraFactory/doravota/app"
 	appparams "github.com/DoraFactory/doravota/app/params"
-	sdk_v053_bridge "github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge"
+	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application
@@ -281,14 +281,14 @@ func (a appCreator) newApp(
 	}
 
 	homeDir := cast.ToString(appOpts.Get(flags.FlagHome))
-	appDB, compatibleStores, err := sdk_v053_bridge.WrapLegacyEmptyIAVLDB(logger, db, homeDir)
+	appDB, compatibleStores, err := v0_5_0.WrapLegacyEmptyIAVLDB(logger, db, homeDir)
 	if err != nil {
 		panic(err)
 	}
 	if len(compatibleStores) != 0 {
 		logger.Info(
 			"enabled read compatibility for legacy empty IAVL stores",
-			"upgrade", sdk_v053_bridge.UpgradeName,
+			"upgrade", v0_5_0.UpgradeName,
 			"stores", compatibleStores,
 		)
 	}
@@ -364,7 +364,7 @@ func (a appCreator) appExport(
 		return servertypes.ExportedApp{}, errors.New("application home not set")
 	}
 
-	appDB, _, err := sdk_v053_bridge.WrapLegacyEmptyIAVLDB(logger, db, homePath)
+	appDB, _, err := v0_5_0.WrapLegacyEmptyIAVLDB(logger, db, homePath)
 	if err != nil {
 		return servertypes.ExportedApp{}, err
 	}

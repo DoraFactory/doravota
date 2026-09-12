@@ -25,11 +25,11 @@ import (
 	"cosmossdk.io/x/upgrade"
 	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
-	sdk_v053_bridge "github.com/DoraFactory/doravota/app/upgrades/sdk_v053_bridge"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
+	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -316,7 +316,7 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	if err := sdk_v053_bridge.ValidateUpgradeBoundary(logger, db, homePath); err != nil {
+	if err := v0_5_0.ValidateUpgradeBoundary(logger, db, homePath); err != nil {
 		panic(fmt.Errorf("bridge preflight failed before store loading: %w", err))
 	}
 	overrideWasmVariables()
@@ -1159,12 +1159,12 @@ func (app *App) setupUpgradeHandlers() {
 	// IBC-Go v7 -> v10, and Wasmd v0.43 -> v0.61 migrations while every
 	// legacy x/params subspace is still available.
 	app.UpgradeKeeper.SetUpgradeHandler(
-		sdk_v053_bridge.UpgradeName,
+		v0_5_0.UpgradeName,
 		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
 			ctx := sdk.UnwrapSDKContext(goCtx)
-			logger := ctx.Logger().With("upgrade", sdk_v053_bridge.UpgradeName)
+			logger := ctx.Logger().With("upgrade", v0_5_0.UpgradeName)
 			logger.Info("Upgrading production state to Cosmos SDK v0.53 and IBC-Go v10")
-			if err := sdk_v053_bridge.ValidateSourceVersionMap(fromVM); err != nil {
+			if err := v0_5_0.ValidateSourceVersionMap(fromVM); err != nil {
 				return nil, err
 			}
 
@@ -1172,7 +1172,7 @@ func (app *App) setupUpgradeHandlers() {
 			// x/upgrade store key. Seed the SDK v0.53 x/consensus collection from
 			// that exact legacy record before migrations. Fall back to the SDK's
 			// older baseapp x/params layout for non-production/dev snapshots.
-			legacyConsensusParams, foundLegacyConsensusParams, err := sdk_v053_bridge.LoadLegacyConsensusParams(
+			legacyConsensusParams, foundLegacyConsensusParams, err := v0_5_0.LoadLegacyConsensusParams(
 				ctx,
 				app.GetKey(upgradetypes.StoreKey),
 				app.appCodec,
@@ -1188,7 +1188,7 @@ func (app *App) setupUpgradeHandlers() {
 				}
 			}
 			if foundLegacyConsensusParams {
-				if err := sdk_v053_bridge.ValidateLegacyConsensusParams(legacyConsensusParams); err != nil {
+				if err := v0_5_0.ValidateLegacyConsensusParams(legacyConsensusParams); err != nil {
 					return nil, err
 				}
 				if err := app.StoreConsensusParams(ctx, legacyConsensusParams); err != nil {
@@ -1248,7 +1248,7 @@ func (app *App) setupUpgradeHandlers() {
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_4_3.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
-	case sdk_v053_bridge.UpgradeName:
+	case v0_5_0.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{
 			Deleted: []string{"capability", "feeibc"},
 		}
