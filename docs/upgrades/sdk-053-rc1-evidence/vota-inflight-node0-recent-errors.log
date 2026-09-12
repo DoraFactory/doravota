@@ -1,0 +1,12 @@
+2026-09-12T02:50:54.922930493Z 2:50AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269185" module=rpc
+2026-09-12T02:51:06.566219538Z 2:51AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:45596} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 in}"
+2026-09-12T02:51:06.641153803Z 2:51AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:43680} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 out}"
+2026-09-12T02:51:06.641240317Z 2:51AM INF Error reconnecting to peer. Trying again addr=47d7d9e9c826a0c2fb03534a07df54b3a7ddb427@127.0.0.1:43680 err="dial tcp 127.0.0.1:43680: connect: connection refused" module=p2p tries=0
+2026-09-12T02:53:05.991473860Z 2:53AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269241" module=rpc
+2026-09-12T02:56:42.113676521Z 2:56AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269333" module=rpc
+2026-09-12T02:56:47.137962008Z 2:56AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269335" module=rpc
+2026-09-12T03:03:26.444453438Z 3:03AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269504" module=rpc
+2026-09-12T03:04:57.725454933Z 3:04AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269543" module=rpc
+2026-09-12T03:05:16.735900904Z 3:05AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269551" module=rpc
+2026-09-12T03:05:45.781284068Z 3:05AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269563" module=rpc
+2026-09-12T03:06:30.774728388Z 3:06AM ERR failed to LoadFinalizeBlockResponse err="could not find results for height #17269582" module=rpc

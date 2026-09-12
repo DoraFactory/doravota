@@ -1,0 +1,24 @@
+{
+  "code": 0,
+  "log": "",
+  "info": "",
+  "index": "0",
+  "key": "Y29tbWl0bWVudHMvcG9ydHMvdHJhbnNmZXIvY2hhbm5lbHMvY2hhbm5lbC0wL3NlcXVlbmNlcy8z",
+  "value": "bV95wlRoN9JCjD5zC5q7gnKxLo2qH0sAQHPreYQsbuU=",
+  "proofOps": {
+    "ops": [
+      {
+        "type": "ics23:iavl",
+        "key": "Y29tbWl0bWVudHMvcG9ydHMvdHJhbnNmZXIvY2hhbm5lbHMvY2hhbm5lbC0wL3NlcXVlbmNlcy8z",
+        "data": "CtoDCjljb21taXRtZW50cy9wb3J0cy90cmFuc2Zlci9jaGFubmVscy9jaGFubmVsLTAvc2VxdWVuY2VzLzMSIG1fecJUaDfSQow+cwuau4JysS6Nqh9LAEBz63mELG7lGg0IARgBIAEqBQACyL8FIisIARInAgTIvwUgioBENUboK20WuPJggaGEEWP+NfomNnEfAJ+oz0WKo0IgIi0IARIGBAjIvwUgGiEg+waGB1f9UyIcvAGlf4PdbKXprRJG908ECn4bbZNjb4ciKwgBEicGDsi/BSC7q+oKu7aC0FX8T2OfpvRqNYEBNVDeXj0JNfSn/29xSyAiKwgBEicIGsi/BSDXBvtEOQR7x9pLXlAU3qUAFopIr1EvQtLfFm0Mn90pQiAiKwgBEicKJsi/BSARuREAqtKCKnYh2/M2D3vhbyXeVcnAFUX2mPks5kohcCAiLQgBEgYMRsi/BSAaISCOZlrQTeOCy90iw5ny2Otw9hEL+QUQ9CLjm9DQuOARHSIsCAESKA6CAci/BSDrx+OkxLh8iAIs7+FUARl+aEvhXmEXe7QxDFDZXJx2wyAiLAgBEigQygHIvwUgziYW0PPnIJaj2rHqQyw7gRK18fmhtkT/FEeFCSSjajIg"
+      },
+      {
+        "type": "ics23:simple",
+        "key": "aWJj",
+        "data": "CvsBCgNpYmMSIF2qvggtXLo0RmJ7EoLf2ay9gy7Ft1MrEqZo+jTUTVkVGgkIARgBIAEqAQAiJQgBEiEBBrmcDYEZ/x7by+Fl0PGTN9u8CA5nfIjleqKudn6/Dw8iJwgBEgEBGiAQK+JQngLIhcdJPW4PonkrCN5rzHFXcH8585Fj9uaO/SInCAESAQEaIBjKN+R0+zpCcuyTAsK9fU9UB+Lmyy664ZWCSlNEBrGWIiUIARIhAca1ZZu96GrPYv7aHmR3CMNfzYLhTJZTMc9pq1rGerwNIicIARIBARog7OSwJIGVzzrxOpyYJBKJdQBPA7TCyAKbJUdFBItHWik="
+      }
+    ]
+  },
+  "height": "45033",
+  "codespace": ""
+}

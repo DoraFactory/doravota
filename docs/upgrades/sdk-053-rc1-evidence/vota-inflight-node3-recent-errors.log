@@ -1,0 +1,18 @@
+2026-09-12T02:51:06.565756538Z 2:51AM INF RPC HTTP server stopped err="accept tcp 127.0.0.1:43684: use of closed network connection" module=api-server
+2026-09-12T02:51:06.566212469Z 2:51AM ERR Stopping peer for error err="read tcp 127.0.0.1:36586->127.0.0.1:43670: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:43670} bb05b8926ee7bce6ecc7000fbe0958faf10df191 out}"
+2026-09-12T02:51:06.566219441Z 2:51AM ERR error while stopping peer error="already stopped" module=p2p
+2026-09-12T02:51:06.566222978Z 2:51AM ERR Stopping peer for error err="read tcp 127.0.0.1:56684->127.0.0.1:43660: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:43660} 9202f5b16dd98ba6e3d56f9a6e8c01840dac97fe out}"
+2026-09-12T02:51:06.566224506Z 2:51AM ERR error while stopping peer error="already stopped" module=p2p
+2026-09-12T02:51:06.566231824Z 2:51AM ERR Stopping peer for error err="read tcp 127.0.0.1:45596->127.0.0.1:43650: use of closed network connection" module=p2p peer="Peer{MConn{127.0.0.1:43650} 1d491696e381dbe984ee0abb7d09784928d6f5dd out}"
+2026-09-12T02:51:06.566237899Z 2:51AM ERR error while stopping peer error="already stopped" module=p2p
+2026-09-12T02:51:06.566243062Z 2:51AM ERR Error stopping pool err="already stopped" module=blocksync
+2026-09-12T02:51:06.566629819Z 2:51AM ERR Won't start a peer - switch is not running module=p2p peer="Peer{MConn{127.0.0.1:57504} 9202f5b16dd98ba6e3d56f9a6e8c01840dac97fe in}"
+2026-09-12T02:51:06.566689370Z 2:51AM ERR Won't start a peer - switch is not running module=p2p peer="Peer{MConn{127.0.0.1:57496} bb05b8926ee7bce6ecc7000fbe0958faf10df191 in}"
+2026-09-12T02:51:06.566988648Z 2:51AM ERR Won't start a peer - switch is not running module=p2p peer="Peer{MConn{127.0.0.1:57514} 1d491696e381dbe984ee0abb7d09784928d6f5dd in}"
+2026-09-12T02:51:06.567960875Z 2:51AM ERR Stopped accept routine, as transport is closed module=p2p numPeers=0
+2026-09-12T02:51:06.568942221Z 2:51AM INF RPC HTTP server stopped err="accept tcp 127.0.0.1:43681: use of closed network connection" module=rpc-server
+2026-09-12T02:51:06.568959431Z 2:51AM ERR Error serving server err="accept tcp 127.0.0.1:43681: use of closed network connection" module=server
+2026-09-12T02:51:06.570547141Z 2:51AM ERR leveldb: closed
+2026-09-12T02:51:25.002571544Z 2:51AM ERR SendTimeout module=blocksync peer=bb05b8926ee7bce6ecc7000fbe0958faf10df191 reason="peer did not send us anything" timeout=15000
+2026-09-12T02:55:22.781111064Z 2:55AM ERR failed to create state snapshot err="a snapshot operation is in progress: conflict" height=17269300 module=baseapp
+2026-09-12T03:03:16.965203209Z 3:03AM ERR failed to create state snapshot err="a snapshot operation is in progress: conflict" height=17269500 module=baseapp

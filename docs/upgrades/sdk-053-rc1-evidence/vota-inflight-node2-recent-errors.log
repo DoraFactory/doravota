@@ -1,0 +1,3 @@
+2026-09-12T02:51:06.566238831Z 2:51AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:36586} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 in}"
+2026-09-12T02:51:06.641176929Z 2:51AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:43680} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 out}"
+2026-09-12T02:51:06.641306515Z 2:51AM INF Error reconnecting to peer. Trying again addr=47d7d9e9c826a0c2fb03534a07df54b3a7ddb427@127.0.0.1:43680 err="dial tcp 127.0.0.1:43680: connect: connection refused" module=p2p tries=0

@@ -1,0 +1,41 @@
+{
+  "binary_sha256": "46e628bd26446aebfc66b4e49fb4defab3b1db14d0279d899f07becc4689396e",
+  "commit": "c529f8d61791c0e78bf6df61e1dbd58199ef3ddf",
+  "nodes": [
+    {
+      "node": "vota-inflight-node0",
+      "version": "v0.5.0-rc.1",
+      "height_before": 17270008,
+      "height_after": 17270010,
+      "old_container": "vota-inflight-node0-pre-rc1"
+    },
+    {
+      "node": "vota-inflight-node1",
+      "version": "v0.5.0-rc.1",
+      "height_before": 17270010,
+      "height_after": 17270012,
+      "old_container": "vota-inflight-node1-pre-rc1"
+    },
+    {
+      "node": "vota-inflight-node2",
+      "version": "v0.5.0-rc.1",
+      "height_before": 17270012,
+      "height_after": 17270014,
+      "old_container": "vota-inflight-node2-pre-rc1"
+    },
+    {
+      "node": "vota-inflight-node3",
+      "version": "v0.5.0-rc.1",
+      "height_before": 17270014,
+      "height_after": 17270016,
+      "old_container": "vota-inflight-node3-pre-rc1"
+    },
+    {
+      "node": "vota-rc-state-sync",
+      "version": "v0.5.0-rc.1",
+      "height_before": 17270016,
+      "height_after": 17270018,
+      "old_container": "vota-rc-state-sync-pre-rc1"
+    }
+  ]
+}

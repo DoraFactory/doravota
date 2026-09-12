@@ -1,0 +1,42 @@
+{
+  "captured_at": 1789183497.261089,
+  "heights": [
+    17270053,
+    17270053,
+    17270053,
+    17270053,
+    17270053
+  ],
+  "compared_height": 17270051,
+  "block_hash": "CDAD509F16550809C245BCD67C9FD19072EBF14A4825FF092F877F57841B6AC9",
+  "app_hash": "71D03A5890FEE9F24B29040B73BFED9068B0493E398B60EF3D3BD1E2DA21434D",
+  "registry_queries": [
+    {
+      "query": {
+        "admin": {}
+      },
+      "response": {
+        "data": {
+          "admin": "dora1yu80rw3edxzc70sjunr5l7d8y7me0tnc2k8n3x"
+        }
+      }
+    },
+    {
+      "query": {
+        "get_next_poll_id": {}
+      },
+      "response": {
+        "data": 673
+      }
+    },
+    {
+      "query": {
+        "get_amaci_code_id": {}
+      },
+      "response": {
+        "data": 153
+      }
+    }
+  ],
+  "snapshot_height": 17269200
+}

@@ -12,7 +12,7 @@
 
 候选配置已统一到 `VERSION`、CLI 默认值、Docker 与 CI。发布包嵌入构建 commit；RC tag 的发布工作流生成草稿预发布。当前尚未创建 tag 或正式 Release。
 
-本次候选源码的 `go test ./... -count=1` 和显式启用的三项模拟（StateDeterminism、ImportExport、SimulationAfterImport，Seed 42、10 blocks、5 block size）在 Linux/Go 1.24.7 通过。底层收尾正在补有效期内重复包、空节点 state-sync、受控负载与资源记录；通过结果另附证据，不以节点在线时长替代稳定性验收。远程 CI、实际架构产物和最终 SHA-256 完成前，不能称为已冻结发布包。
+本次候选源码的 `go test ./... -count=1` 和显式启用的三项模拟（StateDeterminism、ImportExport、SimulationAfterImport，Seed 42、10 blocks、5 block size）在 Linux/Go 1.24.7 通过。有效期内双向重复包、空数据库 state-sync、600 笔持续负载和资源采样均已完成，并在 RC 包上补查重启、出块一致性和旧合约查询。详见 [RC1 验收记录](sdk-053-rc1-2026-09-12.md)。这不替代 24 小时有证据的稳定性观察；最终包哈希以该记录与 CI 产物为准。
 
 ## 当前执行进度（2026-09-11）
 
@@ -82,7 +82,8 @@ channel-16 的合约 creator/admin 为 `dora16t9fn0rpqldu5dgz30hqhnjeqrvmdme7k58
 | 源 release | 0.4.4；仍须核实实际运行节点的二进制版本与校验值 |
 | 源代码基线 | `1b0774785111d8a6e693cd155053c19a5a1d8bdc` |
 | 工作分支 | `sdk-053-bridge` |
-| 已审查 commit | `6d03e3b7f80b485cbc2e10665657056e8613e5de`，不是最终发布候选 |
+| 初始桥接 commit | `6d03e3b7f80b485cbc2e10665657056e8613e5de`，后续修复已包含在 RC 中 |
+| RC 源码 commit | `c529f8d61791c0e78bf6df61e1dbd58199ef3ddf`；三项 GitHub CI job 已通过 |
 | 链上升级计划名 | `sdk-v0.53-bridge`，必须与 handler 和 Cosmovisor 目录一致 |
 | SDK / CometBFT | 0.53.6 / 0.38.21 |
 | IBC-Go / Wasmd / WasmVM | 10.5.0 / 0.61.14 / 3.0.7 |

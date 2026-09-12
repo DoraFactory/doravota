@@ -1,0 +1,2 @@
+2026-09-12T03:23:31.598448668Z 3:23AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:34842} 9d3a155f19fbb6cfe13c3d4220c295e1d6a844a8 in}"
+2026-09-12T03:23:43.764974282Z 3:23AM ERR SendTimeout module=blocksync peer=9202f5b16dd98ba6e3d56f9a6e8c01840dac97fe reason="peer did not send us anything" timeout=15000

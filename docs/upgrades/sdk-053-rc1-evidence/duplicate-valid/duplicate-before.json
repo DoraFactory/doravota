@@ -1,0 +1,15 @@
+{
+  "balances": [
+    {
+      "denom": "ibc/47C6D1A5EEC103C82BE3B7F9185FC3CD0EAE89FBE44FAC3BB12F94895387A742",
+      "amount": "1000000000000000000"
+    },
+    {
+      "denom": "peaka",
+      "amount": "899949960000000000000000"
+    }
+  ],
+  "pagination": {
+    "total": "2"
+  }
+}

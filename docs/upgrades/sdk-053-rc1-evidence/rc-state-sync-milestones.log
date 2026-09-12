@@ -1,0 +1,2 @@
+2026-09-12T03:23:32.106782135Z 3:23AM INF service start connection=snapshot impl=localClient module=abci-client msg="Starting localClient service"
+2026-09-12T03:23:32.286714869Z 3:23AM INF Found local state with non-zero height, skipping state sync module=server

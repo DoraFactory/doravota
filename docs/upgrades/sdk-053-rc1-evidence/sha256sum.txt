@@ -1,0 +1,2 @@
+ec95debdf9f096e9f1c4a3e19f5efc80fff221870133395e518e4d50500294a3  dorad-v0.5.0-rc.1-linux-amd.tar.gz
+d9ae10b7b0217158773e45426afd5bb152d6bc57c497a163a6a4640854ec15fe  dorad-v0.5.0-rc.1-linux-arm64.tar.gz

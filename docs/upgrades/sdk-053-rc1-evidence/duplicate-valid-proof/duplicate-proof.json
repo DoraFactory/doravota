@@ -1,0 +1,24 @@
+{
+  "code": 0,
+  "log": "",
+  "info": "",
+  "index": "0",
+  "key": "Y29tbWl0bWVudHMvcG9ydHMvdHJhbnNmZXIvY2hhbm5lbHMvY2hhbm5lbC0xOC9zZXF1ZW5jZXMvOQ==",
+  "value": "B0Z15jr8SId/4TJs44kJBdHf8hH1Dq5QJDGn4/dOzY4=",
+  "proofOps": {
+    "ops": [
+      {
+        "type": "ics23:iavl",
+        "key": "Y29tbWl0bWVudHMvcG9ydHMvdHJhbnNmZXIvY2hhbm5lbHMvY2hhbm5lbC0xOC9zZXF1ZW5jZXMvOQ==",
+        "data": "CpgHCjpjb21taXRtZW50cy9wb3J0cy90cmFuc2Zlci9jaGFubmVscy9jaGFubmVsLTE4L3NlcXVlbmNlcy85EiAHRnXmOvxIh3/hMmzjiQkF0d/yEfUOrlAkMafj907NjhoOCAEYASABKgYAAuqLvBAiLAgBEigCBOqLvBAgWvMMgJPc4q6mFa8R1+oVDS5x6YNgRkFROMwIwALxllkgIiwIARIoBAjqi7wQIF47OyEzfm9xMu/LEavjap8FYCoJXUjoEA1dSTxXy6XUICIsCAESKAYM6ou8ECC4li4JkPdsodqUSldwWq9KiEwc2X/SdzAMs22IMuS1yiAiLggBEgcIEuqLvBAgGiEgmvG8JrYwsONapjVU9oDbGyux1kuIZ+KrsWHbV67Tb/YiLAgBEigKIuqLvBAgGZFW04yDHJOQbePjltBfLB3ydAzlPEEzn6r9YutACjAgIi4IARIHDErqi7wQIBohIKGX6z490tTH6cbS5X0MKaJYW/zwOkrMB2DjMMxmFfsmIi8IARIIDpAB6ou8ECAaISCP2PiYwjwkillYeM4w+kLd4QJLCYm131FTcYSNVFnpayItCAESKRKKA+qLvBAgucJbeW74Mh9YIa1HjpXIOkd0vhoqp3OT4imPEeZ6lZwgIi0IARIpFOgF6ou8ECBjI5wpAKp5KOWwHp+N894Dopp4Z1a3n4FkxFGeCCwieyAiLwgBEggWognqi7wQIBohINY+eLFLT9z7woUzf4a2BSt0uyTWp0qyyLDqp/IG8UfmIi0IARIpGLAQ6ou8ECAyt/610upbwsc2ULW0uDuR9DkkvCWBrlmc0PKsE8s6LiAiLwgBEgga6C3qi7wQIBohIBxA+cpIHNC4zmXfKMzrVl7QngPgcHl2o7iIanw017HsIi4IARIqHoLVAeqLvBAgQi20GhbKlYTlw83xRIz622G4BxppMrUeU+4CGE/dTVAgIi4IARIqIMDKAuqLvBAg5IqJgKGsfRd2Yf9EGqvv+sHLfscf6oFl0PxF8sCIH+sgIjAIARIJIvqnA+qLvBAgGiEgPM2zQg/mFYVZ5wjQcv5ccGW6p6rFC6m6i1jcS0fyr4YiLggBEiok/P8M6ou8ECClYkgBSxIVlaS6we2xFJrgKd7vtVI657+w5AzXLGQERyAiLggBEiom0pYd6ou8ECBWZq8FnRguAZxyRUZbaFDp5fr+mYbxSQzZjiCLlbpFlyA="
+      },
+      {
+        "type": "ics23:simple",
+        "key": "aWJj",
+        "data": "CvsBCgNpYmMSIDX6/aYrT3GYkTWVhyUp+XxBLynwZsvClIou0U8M80zgGgkIARgBIAEqAQAiJQgBEiEBBrmcDYEZ/x7by+Fl0PGTN9u8CA5nfIjleqKudn6/Dw8iJwgBEgEBGiBFB7ATtM8qHjR/Uz0KRXxkiEMc5hCH83gFdCcY4DWWCiInCAESAQEaIOvniMgujCt5nBNfcWINkomKDXfvvmac97xmyTgPhQgWIiUIARIhAQQ/b70wKOkou+TV3rWeFI79g/cap88C6+CJ+m0mzUMKIicIARIBARogoU91HRg8EaUR9FuH7PBTZlhOiRYatYyo2prLIheYPuw="
+      }
+    ]
+  },
+  "height": "17269494",
+  "codespace": ""
+}

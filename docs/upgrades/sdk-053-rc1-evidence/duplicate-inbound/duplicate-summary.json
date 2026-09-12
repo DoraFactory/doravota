@@ -1,0 +1,453 @@
+{
+  "sequence": "3",
+  "timeout_timestamp": "1789186044350797755",
+  "checked_at_ns": 1789182457876882260,
+  "first": {
+    "hash": "CA0FA16F18104BD9D926A76AECA178B51B9129059FA0BE94D17F25CFE5B1A005",
+    "height": "17269610",
+    "index": 0,
+    "tx_result": {
+      "code": 0,
+      "data": "EjAKKi9pYmMuY29yZS5jaGFubmVsLnYxLk1zZ1JlY3ZQYWNrZXRSZXNwb25zZRICCAI=",
+      "log": "",
+      "info": "",
+      "gas_wanted": "1000000",
+      "gas_used": "107147",
+      "events": [
+        {
+          "type": "coin_spent",
+          "attributes": [
+            {
+              "key": "spender",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "10000000000000000peaka",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "coin_received",
+          "attributes": [
+            {
+              "key": "receiver",
+              "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "10000000000000000peaka",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "transfer",
+          "attributes": [
+            {
+              "key": "recipient",
+              "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+              "index": true
+            },
+            {
+              "key": "sender",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "10000000000000000peaka",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "sender",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "tx",
+          "attributes": [
+            {
+              "key": "fee",
+              "value": "10000000000000000peaka",
+              "index": true
+            },
+            {
+              "key": "fee_payer",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "tx",
+          "attributes": [
+            {
+              "key": "acc_seq",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4/103",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "tx",
+          "attributes": [
+            {
+              "key": "signature",
+              "value": "5P90vA9bscLvrSg6/Ni1MUZCzRPfWC1wUzlZOfhoCxd/PP3y0OjnwYKpopHBCZrggBHsR5f/Km+kjZZ0W1+h1Q==",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "action",
+              "value": "/ibc.core.channel.v1.MsgRecvPacket",
+              "index": true
+            },
+            {
+              "key": "sender",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "recv_packet",
+          "attributes": [
+            {
+              "key": "packet_data_hex",
+              "value": "7b2264656e6f6d223a227472616e736665722f6368616e6e656c2d302f7065616b61222c22616d6f756e74223a2235303030303030303030303030303030303030222c2273656e646572223a22646f7261313666703078387a687a6d6a363232757871703330686634776a786c3230336733666a70727276222c227265636569766572223a22646f7261316e79346e773332777a67373071786474797939613666686b6c38303965636875776a34306634227d",
+              "index": true
+            },
+            {
+              "key": "packet_timeout_height",
+              "value": "0-0",
+              "index": true
+            },
+            {
+              "key": "packet_timeout_timestamp",
+              "value": "1789186044350797755",
+              "index": true
+            },
+            {
+              "key": "packet_sequence",
+              "value": "3",
+              "index": true
+            },
+            {
+              "key": "packet_src_port",
+              "value": "transfer",
+              "index": true
+            },
+            {
+              "key": "packet_src_channel",
+              "value": "channel-0",
+              "index": true
+            },
+            {
+              "key": "packet_dst_port",
+              "value": "transfer",
+              "index": true
+            },
+            {
+              "key": "packet_dst_channel",
+              "value": "channel-18",
+              "index": true
+            },
+            {
+              "key": "packet_channel_ordering",
+              "value": "ORDER_UNORDERED",
+              "index": true
+            },
+            {
+              "key": "packet_connection",
+              "value": "connection-54",
+              "index": true
+            },
+            {
+              "key": "connection_id",
+              "value": "connection-54",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "module",
+              "value": "ibc_channel",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "coin_spent",
+          "attributes": [
+            {
+              "key": "spender",
+              "value": "dora1gw2v3j8jxpmnq73rmu3vjz5egle5eep4d4uhyy",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "5000000000000000000peaka",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "coin_received",
+          "attributes": [
+            {
+              "key": "receiver",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "5000000000000000000peaka",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "transfer",
+          "attributes": [
+            {
+              "key": "recipient",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "sender",
+              "value": "dora1gw2v3j8jxpmnq73rmu3vjz5egle5eep4d4uhyy",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "5000000000000000000peaka",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "sender",
+              "value": "dora1gw2v3j8jxpmnq73rmu3vjz5egle5eep4d4uhyy",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "fungible_token_packet",
+          "attributes": [
+            {
+              "key": "sender",
+              "value": "dora16fp0x8zhzmj622uxqp30hf4wjxl203g3fjprrv",
+              "index": true
+            },
+            {
+              "key": "receiver",
+              "value": "dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4",
+              "index": true
+            },
+            {
+              "key": "denom",
+              "value": "transfer/channel-0/peaka",
+              "index": true
+            },
+            {
+              "key": "amount",
+              "value": "5000000000000000000",
+              "index": true
+            },
+            {
+              "key": "memo",
+              "value": "",
+              "index": true
+            },
+            {
+              "key": "success",
+              "value": "true",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "module",
+              "value": "transfer",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "write_acknowledgement",
+          "attributes": [
+            {
+              "key": "packet_data_hex",
+              "value": "7b2264656e6f6d223a227472616e736665722f6368616e6e656c2d302f7065616b61222c22616d6f756e74223a2235303030303030303030303030303030303030222c2273656e646572223a22646f7261313666703078387a687a6d6a363232757871703330686634776a786c3230336733666a70727276222c227265636569766572223a22646f7261316e79346e773332777a67373071786474797939613666686b6c38303965636875776a34306634227d",
+              "index": true
+            },
+            {
+              "key": "packet_timeout_height",
+              "value": "0-0",
+              "index": true
+            },
+            {
+              "key": "packet_timeout_timestamp",
+              "value": "1789186044350797755",
+              "index": true
+            },
+            {
+              "key": "packet_sequence",
+              "value": "3",
+              "index": true
+            },
+            {
+              "key": "packet_src_port",
+              "value": "transfer",
+              "index": true
+            },
+            {
+              "key": "packet_src_channel",
+              "value": "channel-0",
+              "index": true
+            },
+            {
+              "key": "packet_dst_port",
+              "value": "transfer",
+              "index": true
+            },
+            {
+              "key": "packet_dst_channel",
+              "value": "channel-18",
+              "index": true
+            },
+            {
+              "key": "packet_ack_hex",
+              "value": "7b22726573756c74223a2241513d3d227d",
+              "index": true
+            },
+            {
+              "key": "packet_channel_ordering",
+              "value": "ORDER_UNORDERED",
+              "index": true
+            },
+            {
+              "key": "packet_connection",
+              "value": "connection-54",
+              "index": true
+            },
+            {
+              "key": "connection_id",
+              "value": "connection-54",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "attributes": [
+            {
+              "key": "module",
+              "value": "ibc_channel",
+              "index": true
+            },
+            {
+              "key": "msg_index",
+              "value": "0",
+              "index": true
+            }
+          ]
+        }
+      ],
+      "codespace": ""
+    },
+    "tx": "CtUICrIICiIvaWJjLmNvcmUuY2hhbm5lbC52MS5Nc2dSZWN2UGFja2V0EosICu8BCAMSCHRyYW5zZmVyGgljaGFubmVsLTAiCHRyYW5zZmVyKgpjaGFubmVsLTE4MrMBeyJkZW5vbSI6InRyYW5zZmVyL2NoYW5uZWwtMC9wZWFrYSIsImFtb3VudCI6IjUwMDAwMDAwMDAwMDAwMDAwMDAiLCJzZW5kZXIiOiJkb3JhMTZmcDB4OHpoem1qNjIydXhxcDMwaGY0d2p4bDIwM2czZmpwcnJ2IiwicmVjZWl2ZXIiOiJkb3JhMW55NG53MzJ3emc3MHF4ZHR5eTlhNmZoa2w4MDllY2h1d2o0MGY0In06AEC7r/aUpeed6hgS4QUK3QMK2gMKOWNvbW1pdG1lbnRzL3BvcnRzL3RyYW5zZmVyL2NoYW5uZWxzL2NoYW5uZWwtMC9zZXF1ZW5jZXMvMxIgbV95wlRoN9JCjD5zC5q7gnKxLo2qH0sAQHPreYQsbuUaDQgBGAEgASoFAALIvwUiKwgBEicCBMi/BSCKgEQ1RugrbRa48mCBoYQRY/41+iY2cR8An6jPRYqjQiAiLQgBEgYECMi/BSAaISD7BoYHV/1TIhy8AaV/g91spemtEkb3TwQKfhttk2NvhyIrCAESJwYOyL8FILur6gq7toLQVfxPY5+m9Go1gQE1UN5ePQk19Kf/b3FLICIrCAESJwgayL8FINcG+0Q5BHvH2kteUBTepQAWikivUS9C0t8WbQyf3SlCICIrCAESJwomyL8FIBG5EQCq0oIqdiHb8zYPe+FvJd5VycAVRfaY+SzmSiFwICItCAESBgxGyL8FIBohII5mWtBN44LL3SLDmfLY63D2EQv5BRD0IuOb0NC44BEdIiwIARIoDoIByL8FIOvH46TEuHyIAizv4VQBGX5oS+FeYRd7tDEMUNlcnHbDICIsCAESKBDKAci/BSDOJhbQ8+cglqPasepDLDuBErXx+aG2RP8UR4UJJKNqMiAK/gEK+wEKA2liYxIgXaq+CC1cujRGYnsSgt/ZrL2DLsW3UysSpmj6NNRNWRUaCQgBGAEgASoBACIlCAESIQEGuZwNgRn/HtvL4WXQ8ZM327wIDmd8iOV6oq52fr8PDyInCAESAQEaIBAr4lCeAsiFx0k9bg+ieSsI3mvMcVdwfznzkWP25o79IicIARIBARogGMo35HT7OkJy7JMCwr19T1QH4ubLLrrhlYJKU0QGsZYiJQgBEiEBxrVlm73oas9i/toeZHcIw1/NguFMllMxz2mrWsZ6vA0iJwgBEgEBGiDs5LAkgZXPOvE6nJgkEol1AE8DtMLIApslR0UEi0daKRoGCAEQ6t8CIitkb3JhMW55NG53MzJ3emc3MHF4ZHR5eTlhNmZoa2w4MDllY2h1d2o0MGY0Eh5pc29sYXRlZCB2YWxpZCBkdXBsaWNhdGUgY2hlY2sSdApQCkYKHy9jb3Ntb3MuY3J5cHRvLnNlY3AyNTZrMS5QdWJLZXkSIwohAo3yrSVUdijkFfZPm18IrZA4ach8jBjTCly6b/L6lN5ZEgQKAggBGGcSIAoaCgVwZWFrYRIRMTAwMDAwMDAwMDAwMDAwMDAQwIQ9GkDk/3S8D1uxwu+tKDr82LUxRkLNE99YLXBTOVk5+GgLF388/fLQ6OfBgqmikcEJmuCAEexHl/8qb6SNlnRbX6HV"
+  },
+  "second": {
+    "height": "0",
+    "txhash": "1219DA6BF0D4AA91A15933A96A9B036DEEB8F6C23FADEC81A87F83A653156428",
+    "codespace": "channel",
+    "code": 22,
+    "data": "",
+    "raw_log": "packet messages are redundant",
+    "logs": [],
+    "info": "",
+    "gas_wanted": "0",
+    "gas_used": "0",
+    "tx": null,
+    "timestamp": "",
+    "events": []
+  },
+  "vouchers_unchanged": true
+}

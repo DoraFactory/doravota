@@ -1,0 +1,4 @@
+2026-09-12T03:23:24.755437933Z 3:23AM ERR Stopping peer for error err=EOF module=p2p peer="Peer{MConn{127.0.0.1:43680} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 out}"
+2026-09-12T03:23:24.997271385Z 3:23AM ERR Stopping peer for error err="read tcp 127.0.0.1:34798->127.0.0.1:43680: read: connection reset by peer" module=p2p peer="Peer{MConn{127.0.0.1:43680} 47d7d9e9c826a0c2fb03534a07df54b3a7ddb427 out}"
+2026-09-12T03:23:24.997472634Z 3:23AM INF Error reconnecting to peer. Trying again addr=47d7d9e9c826a0c2fb03534a07df54b3a7ddb427@127.0.0.1:43680 err="dial tcp 127.0.0.1:43680: connect: connection refused" module=p2p tries=0
+2026-09-12T03:23:36.605820641Z 3:23AM ERR SendTimeout module=blocksync peer=9202f5b16dd98ba6e3d56f9a6e8c01840dac97fe reason="peer did not send us anything" timeout=15000

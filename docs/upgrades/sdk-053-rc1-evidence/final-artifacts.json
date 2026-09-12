@@ -1,0 +1,16 @@
+[
+  {
+    "arch": "amd64",
+    "file": "dorad-v0.5.0-rc.1-linux-amd.tar.gz",
+    "sha256": "ec95debdf9f096e9f1c4a3e19f5efc80fff221870133395e518e4d50500294a3",
+    "binary_sha256": "46e628bd26446aebfc66b4e49fb4defab3b1db14d0279d899f07becc4689396e",
+    "build_info": "commit=c529f8d61791c0e78bf6df61e1dbd58199ef3ddf\narch=amd64\ngo=1.24.7\n"
+  },
+  {
+    "arch": "arm64",
+    "file": "dorad-v0.5.0-rc.1-linux-arm64.tar.gz",
+    "sha256": "d9ae10b7b0217158773e45426afd5bb152d6bc57c497a163a6a4640854ec15fe",
+    "binary_sha256": "6ee263a27042883aed9d54cb27e03f60ca3520f611528c2fc6211897d89cc46e",
+    "build_info": "commit=c529f8d61791c0e78bf6df61e1dbd58199ef3ddf\narch=arm64\ngo=1.24.7\n"
+  }
+]

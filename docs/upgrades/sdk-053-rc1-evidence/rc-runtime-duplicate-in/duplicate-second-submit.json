@@ -1,0 +1,15 @@
+{
+  "height": "0",
+  "txhash": "385D5ACA45DE3C476B667246A1A0DCA5471A888ADCBD25298F14414E63DDCF9E",
+  "codespace": "channel",
+  "code": 22,
+  "data": "",
+  "raw_log": "packet messages are redundant",
+  "logs": [],
+  "info": "",
+  "gas_wanted": "0",
+  "gas_used": "0",
+  "tx": null,
+  "timestamp": "",
+  "events": []
+}

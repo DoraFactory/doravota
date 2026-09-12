@@ -1,0 +1,122 @@
+2026-09-12T02:56:53.052906861Z 2:56AM INF service start connection=snapshot impl=localClient module=abci-client msg="Starting localClient service"
+2026-09-12T02:56:53.067023407Z 2:56AM INF Starting state sync module=statesync
+2026-09-12T02:56:53.070074001Z 2:56AM INF Discovering snapshots discoverTime=15000 module=statesync
+2026-09-12T02:57:08.070439062Z 2:57AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:57:23.070977217Z 2:57AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:57:38.071348247Z 2:57AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:57:53.071629671Z 2:57AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:58:08.072036749Z 2:58AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:58:23.073101305Z 2:58AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:58:38.073357102Z 2:58AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:58:53.073659304Z 2:58AM INF sync any module=statesync msg="Discovering snapshots for 15s"
+2026-09-12T02:58:53.275114032Z 2:58AM INF Discovered new snapshot format=3 hash=FE0D278B8AD883BA8188BD11D94B81EFB9A92D6909B6BE0FC161F532AE18941C height=17269200 module=statesync
+2026-09-12T02:59:08.150993101Z 2:59AM INF Offering snapshot to ABCI app format=3 hash=FE0D278B8AD883BA8188BD11D94B81EFB9A92D6909B6BE0FC161F532AE18941C height=17269200 module=statesync
+2026-09-12T02:59:08.151543586Z 2:59AM INF Snapshot accepted, restoring format=3 hash=FE0D278B8AD883BA8188BD11D94B81EFB9A92D6909B6BE0FC161F532AE18941C height=17269200 module=statesync
+2026-09-12T02:59:08.151631304Z 2:59AM INF Fetching snapshot chunk chunk=0 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:08.151636319Z 2:59AM INF Fetching snapshot chunk chunk=3 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:08.151650441Z 2:59AM INF Fetching snapshot chunk chunk=2 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:08.151686407Z 2:59AM INF Fetching snapshot chunk chunk=1 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:08.153076641Z 2:59AM INF Header has already been verified hash=BE75D6D57ADD51C0046DD975FEF7C1560B6F05B3BB235C947777AB38BD06C550 height=17269201 module=light
+2026-09-12T02:59:08.153114986Z 2:59AM INF Header has already been verified hash=EA4CEAF814B82369C2BD5AF9000CE69FC102B11513F3E58808F3D1DA8A5E0968 height=17269202 module=light
+2026-09-12T02:59:08.153440819Z 2:59AM INF Header has already been verified hash=BE75D6D57ADD51C0046DD975FEF7C1560B6F05B3BB235C947777AB38BD06C550 height=17269201 module=light
+2026-09-12T02:59:08.153486211Z 2:59AM INF Header has already been verified hash=06EBB5A3D533EF09F4FB40049E01DE3F426928A1EE6672882DA9CBBD1AF14FD4 height=17269200 module=light
+2026-09-12T02:59:10.193810615Z 2:59AM INF Fetching snapshot chunk chunk=4 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:10.202480773Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=0 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:12.206267415Z 2:59AM INF Fetching snapshot chunk chunk=5 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:14.211420167Z 2:59AM INF Fetching snapshot chunk chunk=6 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:16.111344977Z 2:59AM INF Fetching snapshot chunk chunk=7 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:16.119884762Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=1 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:16.128770701Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=2 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:16.137089624Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=3 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:18.137882848Z 2:59AM INF Fetching snapshot chunk chunk=8 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:18.147207000Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=4 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:20.148028852Z 2:59AM INF Fetching snapshot chunk chunk=9 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:20.160198414Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=5 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:22.044895048Z 2:59AM INF Fetching snapshot chunk chunk=10 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:22.053505368Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=6 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:24.078870875Z 2:59AM INF Fetching snapshot chunk chunk=11 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:24.086252645Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=7 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:26.092561641Z 2:59AM INF Fetching snapshot chunk chunk=12 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:26.133408536Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=8 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:27.982417190Z 2:59AM INF Fetching snapshot chunk chunk=13 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:27.993011873Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=9 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:29.994251256Z 2:59AM INF Fetching snapshot chunk chunk=14 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:30.023128134Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=10 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:31.984757394Z 2:59AM INF Fetching snapshot chunk chunk=15 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:31.995638896Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=11 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:33.996767218Z 2:59AM INF Fetching snapshot chunk chunk=16 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:34.007616659Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=12 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:35.886806985Z 2:59AM INF Fetching snapshot chunk chunk=17 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:35.895981396Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=13 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:37.894220915Z 2:59AM INF Fetching snapshot chunk chunk=18 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:37.904820509Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=14 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:39.886189833Z 2:59AM INF Fetching snapshot chunk chunk=19 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:39.894510862Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=15 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:41.815997910Z 2:59AM INF Fetching snapshot chunk chunk=20 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:41.823908513Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=16 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:43.845860721Z 2:59AM INF Fetching snapshot chunk chunk=21 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:43.854326907Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=17 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:45.851090361Z 2:59AM INF Fetching snapshot chunk chunk=22 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:45.859413785Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=18 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:47.773091099Z 2:59AM INF Fetching snapshot chunk chunk=23 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:47.781281632Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=19 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:49.769337571Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=20 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:49.769365492Z 2:59AM INF Fetching snapshot chunk chunk=24 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:51.794943396Z 2:59AM INF Fetching snapshot chunk chunk=25 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:51.804442783Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=21 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:53.694976321Z 2:59AM INF Fetching snapshot chunk chunk=26 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:53.703232785Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=22 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:55.687330512Z 2:59AM INF Fetching snapshot chunk chunk=27 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:55.695913266Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=23 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:57.696882958Z 2:59AM INF Fetching snapshot chunk chunk=28 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:57.705623258Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=24 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:59.717688590Z 2:59AM INF Fetching snapshot chunk chunk=29 format=3 height=17269200 module=statesync total=51
+2026-09-12T02:59:59.726991965Z 2:59AM INF Applied snapshot chunk to ABCI app chunk=25 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:01.654245180Z 3:00AM INF Fetching snapshot chunk chunk=30 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:01.662773587Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=26 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:03.648768794Z 3:00AM INF Fetching snapshot chunk chunk=31 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:03.658681671Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=27 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:05.662365315Z 3:00AM INF Fetching snapshot chunk chunk=32 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:05.670783831Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=28 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:07.575109335Z 3:00AM INF Fetching snapshot chunk chunk=33 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:07.583755681Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=29 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:09.587880222Z 3:00AM INF Fetching snapshot chunk chunk=34 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:09.606181683Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=30 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:11.582037053Z 3:00AM INF Fetching snapshot chunk chunk=35 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:11.591119618Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=31 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:13.494957086Z 3:00AM INF Fetching snapshot chunk chunk=36 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:13.500430895Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=32 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:15.505276068Z 3:00AM INF Fetching snapshot chunk chunk=37 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:15.512791269Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=33 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:17.522716232Z 3:00AM INF Fetching snapshot chunk chunk=38 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:17.531099076Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=34 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:19.453111950Z 3:00AM INF Fetching snapshot chunk chunk=39 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:19.461001534Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=35 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:21.465870761Z 3:00AM INF Fetching snapshot chunk chunk=40 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:21.472990598Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=36 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:23.468587176Z 3:00AM INF Fetching snapshot chunk chunk=41 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:23.478096174Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=37 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:25.378744067Z 3:00AM INF Fetching snapshot chunk chunk=42 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:25.384527888Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=38 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:27.389970950Z 3:00AM INF Fetching snapshot chunk chunk=43 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:27.398140283Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=39 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:29.409380082Z 3:00AM INF Fetching snapshot chunk chunk=44 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:29.416970877Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=40 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:31.411555534Z 3:00AM INF Fetching snapshot chunk chunk=45 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:31.419717799Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=41 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:33.306290236Z 3:00AM INF Fetching snapshot chunk chunk=46 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:33.313095637Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=42 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:35.316672664Z 3:00AM INF Fetching snapshot chunk chunk=47 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:35.324501889Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=43 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:37.333390276Z 3:00AM INF Fetching snapshot chunk chunk=48 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:37.339424367Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=44 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:39.219557420Z 3:00AM INF Fetching snapshot chunk chunk=49 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:39.227001894Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=45 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:41.215939179Z 3:00AM INF Fetching snapshot chunk chunk=50 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:41.224312687Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=46 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:43.238856806Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=47 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:45.123913228Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=48 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:00:47.139868319Z 3:00AM INF Applied snapshot chunk to ABCI app chunk=49 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:08:53.864837607Z 3:08AM INF Applied snapshot chunk to ABCI app chunk=50 format=3 height=17269200 module=statesync total=51
+2026-09-12T03:08:53.864945904Z 3:08AM INF Verified ABCI app appHash=00BDBB113F055B6C8FF144737814C7E3DA5E4318861D996A5EDEDB9B8B54A152 height=17269200 module=statesync
+2026-09-12T03:08:53.864952504Z 3:08AM INF Snapshot restored format=3 hash=FE0D278B8AD883BA8188BD11D94B81EFB9A92D6909B6BE0FC161F532AE18941C height=17269200 module=statesync

@@ -1,0 +1,11 @@
+{
+  "balances": [
+    {
+      "denom": "peaka",
+      "amount": "899949960000000000000000"
+    }
+  ],
+  "pagination": {
+    "total": "1"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "source": {
+    "commitments": [],
+    "pagination": {
+      "next_key": null,
+      "total": "0"
+    },
+    "height": {
+      "revision_number": "20260911",
+      "revision_height": "17269919"
+    }
+  },
+  "peer": {
+    "commitments": [],
+    "pagination": {
+      "next_key": null,
+      "total": "0"
+    },
+    "height": {
+      "revision_number": "1",
+      "revision_height": "45744"
+    }
+  },
+  "peer_balances": {
+    "balances": [
+      {
+        "denom": "peaka",
+        "amount": "899949940000000000000000"
+      }
+    ],
+    "pagination": {
+      "total": "1"
+    }
+  }
+}
