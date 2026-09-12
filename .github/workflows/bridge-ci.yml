@@ -71,6 +71,8 @@ jobs:
           test "$VERSION" = "v0.5.0-rc.1"
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
+          # Keep the output directory owned by the runner, not container root.
+          mkdir -p release
           docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
             sh -ec 'apk add --no-cache bash build-base binutils curl git; bash scripts/build-bridge-release.sh'

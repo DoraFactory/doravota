@@ -70,6 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
+          mkdir -p release
           for PLATFORM in linux/amd64 linux/arm64; do
             docker run --rm --platform "$PLATFORM" \
               -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
