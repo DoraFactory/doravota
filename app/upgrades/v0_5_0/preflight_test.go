@@ -114,6 +114,8 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			require.NoError(t, err)
 			stores["upgrade"].Set([]byte("Consensus"), b)
 			govParams := govv1.DefaultParams()
+			voting := 24 * time.Hour
+			govParams.VotingPeriod = &voting
 			govRaw, err := govParams.Marshal()
 			require.NoError(t, err)
 			stores["gov"].Set(govv5.ParamsKey, govRaw)

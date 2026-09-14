@@ -112,7 +112,7 @@ func TestInitChainPreservesConsensusGas(t *testing.T) {
 func TestGovernanceSDKMigrationPreservesAllLegacyFields(t *testing.T) {
 	a := policyTestApp(t)
 	ctx := a.NewUncachedContext(false, tmproto.Header{})
-	voting, deposit := 5*24*time.Hour, 3*24*time.Hour
+	voting, deposit := 24*time.Hour, 24*time.Hour
 	old := govv1.Params{
 		MinDeposit:       sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100_000).Mul(sdkmath.NewInt(1_000_000_000_000_000_000)))),
 		MaxDepositPeriod: &deposit, VotingPeriod: &voting,
@@ -135,7 +135,7 @@ func TestGovernanceSDKMigrationPreservesAllLegacyFields(t *testing.T) {
 	require.Equal(t, "0.000000000000000000", got.MinDepositRatio)
 	require.Equal(t, "0.000000000000000000", got.ProposalCancelRatio)
 	require.Equal(t, "110000000000000000000000peaka", sdk.Coins(got.ExpeditedMinDeposit).String())
-	require.Equal(t, 24*time.Hour, *got.ExpeditedVotingPeriod)
+	require.Equal(t, 23*time.Hour, *got.ExpeditedVotingPeriod)
 	require.Equal(t, "0.667000000000000000", got.ExpeditedThreshold)
 	require.Empty(t, got.ProposalCancelDest)
 	// Remove only the SDK-added fields; every old parameter must still match.

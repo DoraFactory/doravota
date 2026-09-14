@@ -23,6 +23,10 @@ func TestApprovedGovernanceParamsDoesNotRepairConflictingLegacyPolicy(t *testing
 			d := time.Minute
 			p.VotingPeriod = &d
 		}, "strictly less"},
+		{"ordinary voting period equals expedited", func(p *govv1.Params) {
+			d := 23 * time.Hour
+			p.VotingPeriod = &d
+		}, "strictly less"},
 		{"higher ordinary threshold", func(p *govv1.Params) { p.Threshold = "0.75" }, "greater than the regular threshold"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

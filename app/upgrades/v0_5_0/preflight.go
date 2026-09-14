@@ -153,7 +153,7 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		return err
 	}
 	// Check the approved expedited policy against the real legacy governance
-	// values before StoreLoader deletes anything. These two new SDK defaults
+	// values before StoreLoader deletes anything. The new expedited policy values
 	// participate in cross-field validation; never shorten the old voting period
 	// or lower the old threshold/deposit just to make the new values fit.
 	if err = read("gov", func(tree *iavl.ImmutableTree) error {
@@ -169,7 +169,6 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 			return fmt.Errorf("decode legacy governance parameters: %w", err)
 		}
 		defaults := govv1.DefaultParams()
-		params.ExpeditedVotingPeriod = defaults.ExpeditedVotingPeriod
 		params.ExpeditedThreshold = defaults.ExpeditedThreshold
 		_, err = ApprovedGovernanceParams(params)
 		return err
