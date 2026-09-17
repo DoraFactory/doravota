@@ -202,8 +202,6 @@ The tested relay sequence preserved the light client’s trust transition by fir
 
 The relayer used in the test supported ML-DSA header encoding, and its native ML-DSA account signed relay transactions. Account signing and light-client verification are separate requirements. Before rotating production consensus keys, verify that each counterparty's on-chain light-client implementation supports the ML-DSA public keys and signatures it will receive. Relayer encoding support or a native ML-DSA relay account alone is insufficient. The transition still depends on the existing trusted state and its security assumptions; it does not retroactively make historical trust roots post-quantum.
 
-**Experiment source.** The [August 31 two-chain report, pinned to the reviewed repository revision](https://github.com/DoraFactory/doravota/blob/ee9972db79826a15ce6fa746c417c97fa891a94d/docs/pqcauth/pqc-ibc-real-node-simulation-2026-08-31.md) records the chain IDs, transaction hashes, rotation sequence, and server-side artifact paths. Pinning that report does not identify the tested binary's exact build commit, which still needs to be recorded with its checksum and configuration. Its running-service statements are historical, not a current availability claim.
-
 | Check or measurement | Test result |
 |---|---|
 | ICS-20 transfer, client update, `RecvPacket`, and `Acknowledgement` | Successful before rotation; successful in both directions after rotation |
