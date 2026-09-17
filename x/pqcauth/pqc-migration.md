@@ -4,7 +4,7 @@ Dora Vota’s post-quantum migration introduces two complementary paths for tran
 
 This article describes the architecture, security boundaries, migration dependencies, and functional evaluation of the implementation. Post-quantum cryptography (PQC) here refers primarily to digital signatures for authentication and integrity; it does not imply encryption of transaction data.
 
-**Scope and status.** This revision, dated September 8, 2026, describes the SDK v0.55.0 / CometBFT v0.40.0 target implementation. The reported results were obtained in controlled, single-server test networks. Implemented capabilities and observed test outcomes are distinct from production activation: this article is not a statement that all accounts, validators, or interchain connections have completed migration. Production readiness and deployment require separate operational and security assessment.
+**Scope and status.** This revision, updated September 17, 2026, describes the SDK v0.55.0 / CometBFT v0.40.0 target implementation. Implementation statements were checked against commit `ee9972db79826a15ce6fa746c417c97fa891a94d`; this document review did not rerun the experiments. The reported results were obtained in controlled, single-server test networks. Implemented capabilities and observed test outcomes are distinct from production activation: this article is not a statement that all accounts, validators, or interchain connections have completed migration. Production readiness and deployment require separate operational and security assessment.
 
 ## 1. Migration Rationale and Account Paths
 
@@ -16,7 +16,9 @@ For an existing chain, changing the signature algorithm also changes how users c
 |---|---|---|
 | New account | Use native ML-DSA-65 through the SDK | New ML-DSA address |
 | Existing account whose assets and permissions can move | Create a native account, then migrate each supported asset and permission | New ML-DSA address |
-| Existing account that must retain its address | Register ML-DSA keys with `x/pqcauth` and require hybrid transaction authentication | Existing address retained |
+| Eligible classical account that must retain its address | Register ML-DSA keys with `x/pqcauth` and require hybrid transaction authentication | Existing address retained |
+
+The current [account classifier](https://github.com/DoraFactory/doravota/blob/ee9972db79826a15ce6fa746c417c97fa891a94d/x/pqcauth/types/account_authentication.go) admits `secp256k1`, `ed25519`, and `secp256r1` public keys to the hybrid path. Composite multisig public keys and unknown key types are not supported. A transaction with multiple independent signers is distinct from a single account controlled by a composite multisig key; signer-index binding supports the former, not the latter.
 
 Validator consensus keys follow a separate migration path. Rotating them changes the validator's consensus address, while preserving its staking operator identity. Protecting an operator account's transactions and protecting the validator's consensus votes are distinct tasks.
 
@@ -44,7 +46,7 @@ dorad keys add alice-pqc \
 
 The SDK derives the account address from the ML-DSA public key, signs transactions with the corresponding private key, and verifies them through `x/auth`.
 
-**Native ML-DSA accounts do not require an additional `x/pqcauth` signature.** The current [Ante implementation](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go) recognizes a verified native ML-DSA signature as satisfying the global PQC requirement, including `REQUIRED` mode. Such accounts cannot register `pqcauth` keys or attach a `pqcauth` authorization for themselves. This keeps the native and legacy authentication paths distinct.
+**Native ML-DSA accounts do not require an additional `x/pqcauth` signature.** The current [Ante implementation](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/ante/verify.go) recognizes a verified native ML-DSA signature as satisfying the global PQC requirement, including `REQUIRED` mode. Such accounts cannot register `pqcauth` keys or attach a `pqcauth` authorization for themselves. Native accounts do not thereby acquire the dual-key registration, signing-key rotation, or recovery lifecycle supplied by `x/pqcauth` to legacy accounts.
 
 ### 2.2 Native Consensus Signing
 
@@ -68,6 +70,17 @@ The [AnteHandler](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/ante
 
 The ML-DSA signature covers a deterministic [`PQCSignDocV1`](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/types/canonical_tx.go). It binds the network and chain, account number and sequence, signer identity and order, key ID, policy version, transaction body, and `AuthInfo`, including fee and gas. The PQC extension itself is removed from the canonical body to avoid signing a document that contains its own signature. Clients add the resulting extension before producing the standard Cosmos signature over the final transaction.
 
+The [cryptographic adapter](https://github.com/DoraFactory/doravota/blob/ee9972db79826a15ce6fa746c417c97fa891a94d/x/pqcauth/crypto/mldsa65.go) signs an application-level domain-separated envelope:
+
+```text
+D = ASCII application domain label (for transactions: "doravota/pqcauth/tx/v1")
+M = canonical PQCSignDocV1 bytes
+E = 0x00 || uint8(len(D)) || D || M
+signature = ML-DSA-65.Sign(private_key, E, ctx=empty)
+```
+
+`D` is part of the message, not the FIPS 204 `ctx` argument. Passing `D` as `ctx` while signing `M` produces a different protocol and will not interoperate. Lifecycle proofs use the same envelope with their own domain labels and canonical messages. This SDK-native format is incompatible with the earlier direct-context format; an already deployed old format requires an explicitly coordinated protocol migration. Pure ML-DSA, an empty context, and deterministic signing are separate choices. The current wrapper uses all three; pure ML-DSA itself does not require the latter two. See the [adapter contract and deterministic vector](README.md#crypto).
+
 These bindings are designed to prevent cross-context replay and transaction substitution: verification checks the authorization against the chain, account, sequence, key-policy version, and transaction being processed. Protected transactions use `SIGN_MODE_DIRECT`.
 
 ### 3.2 Registration, Key Rotation, and Signing-Key Recovery
@@ -82,7 +95,9 @@ First registration has a separate trust boundary: no PQC key is yet bound to the
 
 ### 3.3 Security Scope and Enforcement Boundaries
 
-`x/pqcauth` protects account-initiated SDK transactions. It does not itself replace consensus signatures, IBC light-client verification, P2P identities, or signature checks implemented inside contracts. Existing delegated permissions also need review; registering a key does not automatically revoke them.
+`x/pqcauth` protects account-initiated SDK transactions. It does not itself replace consensus signatures, IBC light-client verification, P2P identities, or signature checks implemented inside contracts. Registration does not automatically revoke delegated permissions. Instead, [`AuthzPQCDecorator`](https://github.com/DoraFactory/doravota/blob/ee9972db79826a15ce6fa746c417c97fa891a94d/x/pqcauth/ante/authz.go) rejects registration while the account still has outgoing `authz` grants or `feegrant` allowances. These are permissions granted **by** the registering account, not permissions it received from others. Enabling self-protection on a previously unprotected account also performs this check.
+
+While self-protection is pending, new outgoing grants are frozen. Once effective, protected accounts may grant these capabilities only to recipients that satisfy the module's PQC-enforcement checks; delegated execution and fee-payment paths also recheck the applicable protection requirements. These controls do not automatically cover independently implemented contract, DAO, or group permissions, which require separate review.
 
 [`PrepareProposal` and `ProcessProposal`](https://github.com/DoraFactory/doravota/blob/pqc-auth/app/proposal.go) enforce transaction verification and aggregate resource limits as well. Under these handlers, transactions that fail the required proposal-stage authentication checks cause proposal rejection; bypassing mempool admission does not bypass those checks. Proposal acceptance does not guarantee that every business message will execute successfully.
 
@@ -119,7 +134,15 @@ In our four-validator tests, we rotated one validator at a time while the other 
 
 ### 4.3 Migrate Accounts and Tighten Policy
 
-New accounts can use native ML-DSA as soon as compatible signing tools are available. Existing users who can change addresses need explicit procedures for balances, staking, contract administration, and delegated permissions. Users who must retain their addresses register `x/pqcauth` keys before the enrollment cutoff.
+New accounts can use native ML-DSA as soon as compatible signing tools are available. Existing users who can change addresses need explicit procedures for balances, staking, contract administration, and delegated permissions. Eligible classical users who must retain their addresses register `x/pqcauth` keys before the enrollment cutoff:
+
+1. Inventory and revoke outgoing `authz` grants and `feegrant` allowances.
+2. Confirm the revocations are committed and the corresponding grants are absent before submitting registration; do not rely on bundling revocation with registration.
+3. Submit the direct registration transaction with proofs for distinct signing and recovery keys.
+4. Wait until H+1 and query the effective keys and protection policy.
+5. Recreate only the required grants to recipients that satisfy the new enforcement rules.
+
+Before governance enables `REQUIRED`, inventory unsupported public-key types, including composite multisig accounts, and complete an asset/permission migration or an explicitly reviewed compatibility solution. The current verifier rejects such signers in `REQUIRED`; enabling it first can prevent those accounts from transacting. Registration is not an escape path for an unsupported key type.
 
 The relevant enforcement modes apply as follows to ordinary transactions:
 
@@ -132,6 +155,8 @@ The relevant enforcement modes apply as follows to ordinary transactions:
 An extension that is present must verify even in `OPTIONAL` mode. New registrations enable self-protection at H+1, so optional network-wide enforcement does not mean those accounts are unprotected. Policy tightening, wallet readiness, registration rules, and recovery procedures must be coordinated before enforcement expands.
 
 ## 5. Functional Evaluation and Measured Costs
+
+**Evidence status.** The four-validator transaction counts and gas figures below are historical measurements, not results reproduced at the reviewed commit. Their exact binary commits, configuration snapshots, and raw result artifacts still need to be attached to this article for independent reproduction.
 
 We tested the migration with four isolated validator processes on one server, each with its own home, database, ports, and consensus key. The setup also included four user wallets and four operator accounts.
 
@@ -175,7 +200,9 @@ The tested relay sequence preserved the light client’s trust transition by fir
 
 *Figure 3. Header order in the tested single-validator transition. N denotes the transition header height, not the rotation transaction height. The relayer submits evidence; the counterparty light client verifies it.* [Diagram source](https://github.com/DoraFactory/doravota/blob/pqc-auth/x/pqcauth/diagrams/ibc-key-transition.mmd).
 
-The relayer used in the test supported ML-DSA header encoding, and its native ML-DSA account signed relay transactions. Account signing and light-client verification are separate requirements.
+The relayer used in the test supported ML-DSA header encoding, and its native ML-DSA account signed relay transactions. Account signing and light-client verification are separate requirements. Before rotating production consensus keys, verify that each counterparty's on-chain light-client implementation supports the ML-DSA public keys and signatures it will receive. Relayer encoding support or a native ML-DSA relay account alone is insufficient. The transition still depends on the existing trusted state and its security assumptions; it does not retroactively make historical trust roots post-quantum.
+
+**Experiment source.** The [August 31 two-chain report, pinned to the reviewed repository revision](https://github.com/DoraFactory/doravota/blob/ee9972db79826a15ce6fa746c417c97fa891a94d/docs/pqcauth/pqc-ibc-real-node-simulation-2026-08-31.md) records the chain IDs, transaction hashes, rotation sequence, and server-side artifact paths. Pinning that report does not identify the tested binary's exact build commit, which still needs to be recorded with its checksum and configuration. Its running-service statements are historical, not a current availability claim.
 
 | Check or measurement | Test result |
 |---|---|
