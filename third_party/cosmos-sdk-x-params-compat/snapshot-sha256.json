@@ -1,0 +1,11 @@
+{
+  "LICENSE": "2e5f34bd95a67b6f918f8282a903ed9d5af29ad0c68a0cde21e229040935995b",
+  "PROVENANCE.md": "ccafae887bc9a8ee4e7986bad98b096c70fa10aced5a89c0c8fa709490f9990d",
+  "go.mod": "8c0a7912ada2de2c2d3f46ed92566562f11e3d6595e77c3098e8da4b1cb7dead",
+  "types/paramset.go": "0db7e0f0e201de124eddf089be69d8aaa5bf26ab90f63664f2932ac9eccaeb34",
+  "types/proposal/codec.go": "056cf7289039207d4345cd5ff3dc51891dc1287f340f6cebc5474a6391ba939e",
+  "types/proposal/errors.go": "822601c9fbf1a5c14daf6774e485029ab8442cc7cf9d24f904379d72b9cfc1e0",
+  "types/proposal/keys.go": "01ce81596ba7216766ca4c773d4b4461add6cf93b139e3c80e7a4f6066948a71",
+  "types/proposal/params.pb.go": "db98eb2b62579b8bfd076fcfd5ce92a98fbf5e8e9f510057355096a85f4a748e",
+  "types/proposal/proposal.go": "7b2131c6f54b0729e01c3abf5dca5813f9b86179fa5b36dd6484179403b47c49"
+}

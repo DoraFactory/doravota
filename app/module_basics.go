@@ -3,10 +3,6 @@ package app
 import (
 	"github.com/spf13/cobra"
 
-	feegrantcli "cosmossdk.io/x/feegrant/client/cli"
-	feegrantmodule "cosmossdk.io/x/feegrant/module"
-	"cosmossdk.io/x/upgrade"
-	upgradecli "cosmossdk.io/x/upgrade/client/cli"
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	vesting "github.com/cosmos/cosmos-sdk/x/auth/vesting"
 	vestingcli "github.com/cosmos/cosmos-sdk/x/auth/vesting/client/cli"
@@ -16,12 +12,16 @@ import (
 	bankcli "github.com/cosmos/cosmos-sdk/x/bank/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/distribution"
 	distrcli "github.com/cosmos/cosmos-sdk/x/distribution/client/cli"
+	feegrantcli "github.com/cosmos/cosmos-sdk/x/feegrant/client/cli"
+	feegrantmodule "github.com/cosmos/cosmos-sdk/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingcli "github.com/cosmos/cosmos-sdk/x/staking/client/cli"
+	"github.com/cosmos/cosmos-sdk/x/upgrade"
+	upgradecli "github.com/cosmos/cosmos-sdk/x/upgrade/client/cli"
 
-	"github.com/cosmos/cosmos-sdk/x/group"
-	groupcli "github.com/cosmos/cosmos-sdk/x/group/client/cli"
-	groupmodule "github.com/cosmos/cosmos-sdk/x/group/module"
+	"github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
+	groupcli "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/client/cli"
+	groupmodule "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/module"
 )
 
 // Cosmos SDK v0.53's keeper-backed AppModules populate private address-codec

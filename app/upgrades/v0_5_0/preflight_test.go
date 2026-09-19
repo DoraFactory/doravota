@@ -6,15 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
-	storetypes "cosmossdk.io/store/types"
+	"cosmossdk.io/log/v2"
 	tmtypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	govv5 "github.com/cosmos/cosmos-sdk/x/gov/migrations/v5"
 	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"github.com/stretchr/testify/require"
 	"time"
@@ -64,14 +62,14 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 		want   string
 	}{
 		{"empty fees", func(map[string]storetypes.KVStore) {}, ""},
-		{"missing governance", func(s map[string]storetypes.KVStore) { s["gov"].Delete(govv5.ParamsKey) }, "governance parameters are missing"},
+		{"missing governance", func(s map[string]storetypes.KVStore) { s["gov"].Delete(legacyGovParamsKey) }, "governance parameters are missing"},
 		{"incompatible rehearsal governance", func(s map[string]storetypes.KVStore) {
 			p := govv1.DefaultParams()
 			d := time.Minute
 			p.VotingPeriod = &d
 			b, err := p.Marshal()
 			require.NoError(t, err)
-			s["gov"].Set(govv5.ParamsKey, b)
+			s["gov"].Set(legacyGovParamsKey, b)
 		}, "strictly less"},
 		{"legacy empty fee root", func(map[string]storetypes.KVStore) {}, ""},
 		{"escrow", func(s map[string]storetypes.KVStore) {
@@ -92,7 +90,7 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			db, err := dbm.NewDB("preflight", dbm.GoLevelDBBackend, t.TempDir())
 			require.NoError(t, err)
 			t.Cleanup(func() { require.NoError(t, db.Close()) })
-			multi := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+			multi := rootmulti.NewStore(db, log.NewNopLogger())
 			keys := map[string]*storetypes.KVStoreKey{}
 			for _, name := range []string{"feeibc", "bank", "upgrade", "gov"} {
 				keys[name] = storetypes.NewKVStoreKey(name)
@@ -118,7 +116,7 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			govParams.VotingPeriod = &voting
 			govRaw, err := govParams.Marshal()
 			require.NoError(t, err)
-			stores["gov"].Set(govv5.ParamsKey, govRaw)
+			stores["gov"].Set(legacyGovParamsKey, govRaw)
 			tc.change(stores)
 			multi.Commit()
 			if tc.name == "legacy empty fee root" {

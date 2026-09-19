@@ -9,11 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 )
 
 const iavlStorePrefix = "s/k:"
@@ -73,7 +72,7 @@ func validateLegacyEmptyIAVLStoresAtHeight(logger log.Logger, db dbm.DB, upgrade
 		return nil, nil
 	}
 
-	rootStore := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
+	rootStore := rootmulti.NewStore(db, logger)
 	commitInfo, err := rootStore.GetCommitInfo(latestVersion)
 	if err != nil {
 		return nil, fmt.Errorf("read multistore commit info at height %d: %w", latestVersion, err)

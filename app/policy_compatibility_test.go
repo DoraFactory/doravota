@@ -2,10 +2,12 @@ package app_test
 
 import (
 	"encoding/json"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	"testing"
 	"time"
 
-	"cosmossdk.io/log"
+	"cosmossdk.io/log/v2"
 	sdkmath "cosmossdk.io/math"
 	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -17,12 +19,11 @@ import (
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	govkeeper "github.com/cosmos/cosmos-sdk/x/gov/keeper"
 	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
-	"github.com/cosmos/ibc-go/v10/modules/apps/transfer"
-	clienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
-	solomachine "github.com/cosmos/ibc-go/v10/modules/light-clients/06-solomachine"
+	"github.com/cosmos/ibc-go/v11/modules/apps/transfer"
+	clienttypes "github.com/cosmos/ibc-go/v11/modules/core/02-client/types"
+	solomachine "github.com/cosmos/ibc-go/v11/modules/light-clients/06-solomachine"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/app"
@@ -52,11 +53,13 @@ func TestSDKProposalPolicyWithoutBridgeOverrides(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := policyTestApp(t)
-			ctx := a.NewUncachedContext(true, tmproto.Header{})
+			ctx := a.NewNextBlockContext(tmproto.Header{})
 			if tc.gas != nil {
 				cp := tmtypes.DefaultConsensusParams().ToProto()
 				cp.Block.MaxGas = *tc.gas
 				require.NoError(t, a.StoreConsensusParams(ctx, cp))
+				// Publish the test branch before PrepareProposal creates its own state.
+				a.SimWriteState()
 			}
 			var txs [][]byte
 			for _, gas := range []uint64{150_000_000, 500_000_000} {
@@ -107,11 +110,11 @@ func TestInitChainPreservesConsensusGas(t *testing.T) {
 	}
 }
 
-// This invokes the pinned SDK's actual v4 -> v5 governance migration, then
-// applies our approved choices. It is not a full mainnet-store upgrade drill.
-func TestGovernanceSDKMigrationPreservesAllLegacyFields(t *testing.T) {
+// The v4 -> v5 migration is tested by the 0.5.0 baseline. SDK 0.55 removed
+// that path; retain coverage for representing the approved legacy policy.
+func TestApprovedGovernanceFieldsRemainRepresentable(t *testing.T) {
 	a := policyTestApp(t)
-	ctx := a.NewUncachedContext(false, tmproto.Header{})
+	ctx := a.NewNextBlockContext(tmproto.Header{})
 	voting, deposit := 24*time.Hour, 24*time.Hour
 	old := govv1.Params{
 		MinDeposit:       sdk.NewCoins(sdk.NewCoin("peaka", sdkmath.NewInt(100_000).Mul(sdkmath.NewInt(1_000_000_000_000_000_000)))),
@@ -121,11 +124,10 @@ func TestGovernanceSDKMigrationPreservesAllLegacyFields(t *testing.T) {
 		BurnVoteQuorum: true, BurnProposalDepositPrevote: true, BurnVoteVeto: false,
 	}
 	require.NoError(t, a.GovKeeper.Params.Set(ctx, old))
-	require.NoError(t, govkeeper.NewMigrator(&a.GovKeeper, a.GetSubspace("gov")).Migrate4to5(ctx))
+
 	migrated, err := a.GovKeeper.Params.Get(ctx)
 	require.NoError(t, err)
-	require.Equal(t, "0.010000000000000000", migrated.MinDepositRatio)
-	require.Equal(t, "0.500000000000000000", migrated.ProposalCancelRatio)
+	migrated.ExpeditedThreshold = govv1.DefaultParams().ExpeditedThreshold
 	approved, err := upgrade.ApprovedGovernanceParams(migrated)
 	require.NoError(t, err)
 	require.NoError(t, a.GovKeeper.Params.Set(ctx, approved))
@@ -150,14 +152,14 @@ func TestGovernanceSDKMigrationPreservesAllLegacyFields(t *testing.T) {
 
 func TestBaselineIBCWiring(t *testing.T) {
 	a := policyTestApp(t)
-	ctx := a.NewUncachedContext(false, tmproto.Header{})
+	ctx := a.NewNextBlockContext(tmproto.Header{})
 	a.IBCKeeper.ClientKeeper.SetParams(ctx, clienttypes.DefaultParams())
 	route, err := a.IBCKeeper.ClientKeeper.Route(ctx, "06-solomachine-0")
 	require.NoError(t, err)
 	require.IsType(t, &solomachine.LightClientModule{}, route)
 	transferRoute, found := a.IBCKeeper.PortKeeper.Router.Route("transfer")
 	require.True(t, found)
-	require.IsType(t, transfer.IBCModule{}, transferRoute)
+	require.IsType(t, &transfer.IBCModule{}, transferRoute)
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("wasm"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icahost"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icacontroller"))
@@ -171,14 +173,19 @@ func TestBaselineIBCWiring(t *testing.T) {
 	require.NotContains(t, app.GetMaccPerms(), "feeibc")
 }
 
-func TestLegacyParameterProposalRouteRetained(t *testing.T) {
+func TestLegacyParameterProposalDecodeAndExecutionBoundary(t *testing.T) {
 	a := policyTestApp(t)
-	ctx := a.NewUncachedContext(true, tmproto.Header{})
+	ctx := a.NewContextLegacy(true, tmproto.Header{})
 	router := a.GovKeeper.LegacyRouter()
 	require.True(t, router.HasRoute(paramproposal.RouterKey))
 	proposal := paramproposal.NewParameterChangeProposal("legacy", "unsupported subspace returns the module error", []paramproposal.ParamChange{
 		{Subspace: "missing-subspace", Key: "MissingKey", Value: "1"},
 	})
 	err := router.GetRoute(paramproposal.RouterKey)(ctx, proposal)
-	require.ErrorIs(t, err, paramproposal.ErrUnknownSubspace)
+	require.ErrorContains(t, err, "no longer executable")
+	any, err := codectypes.NewAnyWithValue(proposal)
+	require.NoError(t, err)
+	var decoded govv1beta1.Content
+	require.NoError(t, a.AppCodec().UnpackAny(any, &decoded))
+	require.Equal(t, proposal, decoded)
 }
