@@ -3,19 +3,19 @@ package app_test
 import (
 	"testing"
 
-	"cosmossdk.io/log"
+	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/core/header"
-	upgrade "cosmossdk.io/x/upgrade"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"encoding/binary"
 	"github.com/DoraFactory/doravota/app"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 )
 
 // The actual application must recognize the exact proposal/Cosmovisor name.
@@ -39,7 +39,7 @@ func TestCompletedLegacyUpgradeRemainsRecognized(t *testing.T) {
 	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4"} {
 		t.Run(name, func(t *testing.T) {
 			a := policyTestApp(t)
-			ctx := a.NewUncachedContext(true, tmproto.Header{}).WithHeaderInfo(header.Info{Height: 101})
+			ctx := a.NewContextLegacy(true, tmproto.Header{}).WithHeaderInfo(header.Info{Height: 101})
 			// The SDK's persisted done-key format is prefix, big-endian height, name.
 			key := make([]byte, 9+len(name))
 			key[0] = upgradetypes.DoneByte

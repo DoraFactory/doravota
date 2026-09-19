@@ -1,14 +1,15 @@
 package app
 
 import (
-	"cosmossdk.io/x/tx/signing"
-	"github.com/cosmos/gogoproto/proto"
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/codec/address"
+	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/tx"
+	paramproposal "github.com/cosmos/cosmos-sdk/x/params/types/proposal"
+	"github.com/cosmos/cosmos-sdk/x/tx/signing"
+	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/DoraFactory/doravota/app/params"
 )
@@ -48,5 +49,7 @@ func MakeEncodingConfig() params.EncodingConfig {
 	std.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	ModuleBasics.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	ModuleBasics.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	paramproposal.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	paramproposal.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	return encodingConfig
 }

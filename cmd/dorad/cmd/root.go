@@ -2,32 +2,31 @@ package cmd
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
 
-	dbm "github.com/cosmos/cosmos-db"
+	"cosmossdk.io/log/v2"
 	tmcfg "github.com/cometbft/cometbft/config"
 	tmcli "github.com/cometbft/cometbft/libs/cli"
-	"cosmossdk.io/log"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/client/debug"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
+	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/server"
-	"github.com/cosmos/cosmos-sdk/version"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	"github.com/cosmos/cosmos-sdk/store/v2"
+	"github.com/cosmos/cosmos-sdk/store/v2/snapshots"
+	snapshottypes "github.com/cosmos/cosmos-sdk/store/v2/snapshots/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
-	"cosmossdk.io/store/snapshots"
-	storetypes "cosmossdk.io/store/types"
-	snapshottypes "cosmossdk.io/store/snapshots/types"
-	"cosmossdk.io/store"
+	"github.com/cosmos/cosmos-sdk/version"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -45,8 +44,8 @@ import (
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 
 	"github.com/DoraFactory/doravota/app"
-	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 	appparams "github.com/DoraFactory/doravota/app/params"
+	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application
@@ -247,7 +246,6 @@ func genesisCommand(encodingConfig params.EncodingConfig, cmds ...*cobra.Command
 	return cmd
 }
 
-
 type appCreator struct {
 	encodingConfig appparams.EncodingConfig
 }
@@ -256,7 +254,6 @@ type appCreator struct {
 func (a appCreator) newApp(
 	logger log.Logger,
 	db dbm.DB,
-	traceStore io.Writer,
 	appOpts servertypes.AppOptions,
 ) servertypes.Application {
 
@@ -325,7 +322,7 @@ func (a appCreator) newApp(
 	return app.New(
 		logger,
 		appDB,
-		traceStore,
+		nil,
 		true,
 		skipUpgradeHeights,
 		cast.ToString(appOpts.Get(flags.FlagHome)),
@@ -354,7 +351,6 @@ func (a appCreator) newApp(
 func (a appCreator) appExport(
 	logger log.Logger,
 	db dbm.DB,
-	traceStore io.Writer,
 	height int64,
 	forZeroHeight bool,
 	jailAllowedAddrs []string,
@@ -375,7 +371,7 @@ func (a appCreator) appExport(
 	app := app.New(
 		logger,
 		appDB,
-		traceStore,
+		nil,
 		height == -1, // -1: no height provided
 		map[int64]bool{},
 		homePath,

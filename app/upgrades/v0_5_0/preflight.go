@@ -9,19 +9,17 @@ import (
 	"path/filepath"
 	"sort"
 
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
-	storetypes "cosmossdk.io/store/types"
-	"cosmossdk.io/store/wrapper"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
+	"cosmossdk.io/log/v2"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	tmtypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
+	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	govv5 "github.com/cosmos/cosmos-sdk/x/gov/migrations/v5"
 	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	"github.com/cosmos/iavl"
 )
 
@@ -102,7 +100,7 @@ func ValidateUpgradeBoundary(logger log.Logger, db dbm.DB, home string) error {
 }
 
 func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
-	multi := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
+	multi := rootmulti.NewStore(db, logger)
 	info, err := multi.GetCommitInfo(height)
 	if err != nil {
 		return err
@@ -157,7 +155,7 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 	// participate in cross-field validation; never shorten the old voting period
 	// or lower the old threshold/deposit just to make the new values fit.
 	if err = read("gov", func(tree *iavl.ImmutableTree) error {
-		raw, err := tree.Get(govv5.ParamsKey)
+		raw, err := tree.Get(legacyGovParamsKey)
 		if err != nil {
 			return err
 		}
@@ -210,3 +208,6 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		return ValidateLegacyConsensusParams(params)
 	})
 }
+
+// SDK v0.53.6 x/gov/migrations/v5 ParamsKey; retained for legacy source inspection.
+var legacyGovParamsKey = []byte{0x30}

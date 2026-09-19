@@ -4,17 +4,16 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
-	st "cosmossdk.io/store/types"
-	"cosmossdk.io/store/wrapper"
+	"cosmossdk.io/log/v2"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	bridge "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	st "github.com/cosmos/cosmos-sdk/store/v2/types"
+	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
 	"github.com/cosmos/iavl"
 	"os"
 	"path/filepath"
@@ -34,7 +33,7 @@ func open(home string, h int64) (dbm.DB, map[string]st.CommitID) {
 	must(e)
 	view, _, e := bridge.WrapLegacyEmptyIAVLDB(log.NewNopLogger(), db, home)
 	must(e)
-	r := rootmulti.NewStore(view, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	r := rootmulti.NewStore(view, log.NewNopLogger())
 	info, e := r.GetCommitInfo(h)
 	must(e)
 	m := map[string]st.CommitID{}

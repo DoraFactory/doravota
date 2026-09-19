@@ -5,12 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
-	storetypes "cosmossdk.io/store/types"
-	"cosmossdk.io/store/wrapper"
+	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
+	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
 	"github.com/cosmos/iavl"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +20,7 @@ func TestLegacyEmptyIAVLDBLoadsOldEmptyRootWithoutMutation(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	logger := log.NewNopLogger()
 	key := storetypes.NewKVStoreKey("empty")
-	store := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
+	store := rootmulti.NewStore(db, logger)
 	store.MountStoreWithDB(key, storetypes.StoreTypeIAVL, nil)
 	require.NoError(t, store.LoadLatestVersion())
 	require.NoError(t, store.SetInitialVersion(9))
@@ -105,7 +104,7 @@ func TestLegacyEmptyRootIndependentOfLocalPlan(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	logger := log.NewNopLogger()
 	key := storetypes.NewKVStoreKey("empty")
-	store := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
+	store := rootmulti.NewStore(db, logger)
 	store.MountStoreWithDB(key, storetypes.StoreTypeIAVL, nil)
 	require.NoError(t, store.LoadLatestVersion())
 	require.NoError(t, store.SetInitialVersion(9))
@@ -160,7 +159,7 @@ func TestEmptyStoreCommitAndRestartWithoutPlan(t *testing.T) {
 	for height := int64(1); height <= 3; height++ {
 		view, _, err := WrapLegacyEmptyIAVLDB(log.NewNopLogger(), db, t.TempDir())
 		require.NoError(t, err)
-		store := rootmulti.NewStore(view, log.NewNopLogger(), metrics.NewNoOpMetrics())
+		store := rootmulti.NewStore(view, log.NewNopLogger())
 		store.MountStoreWithDB(storetypes.NewKVStoreKey("empty"), storetypes.StoreTypeIAVL, nil)
 		require.NoError(t, store.LoadLatestVersion())
 		require.Equal(t, height, store.Commit().Version)

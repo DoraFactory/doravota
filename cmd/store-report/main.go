@@ -8,10 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"cosmossdk.io/log"
-	"cosmossdk.io/store/metrics"
-	"cosmossdk.io/store/rootmulti"
+	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
+	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
 )
 
 func main() {
@@ -37,7 +36,7 @@ func main() {
 	if h == 0 {
 		h = rootmulti.GetLatestVersion(db)
 	}
-	s := rootmulti.NewStore(db, log.NewNopLogger(), metrics.NewNoOpMetrics())
+	s := rootmulti.NewStore(db, log.NewNopLogger())
 	info, err := s.GetCommitInfo(h)
 	if err != nil {
 		panic(err)

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"cosmossdk.io/log"
+	"cosmossdk.io/log/v2"
 	"github.com/DoraFactory/doravota/app"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
@@ -33,7 +33,7 @@ func TestDaemonQueryGasLimitConfiguration(t *testing.T) {
 				server.FlagMempoolMaxTxs: 5000,
 			}
 			creator := appCreator{encodingConfig: app.MakeEncodingConfig()}
-			a := creator.newApp(log.NewNopLogger(), dbm.NewMemDB(), nil, opts).(*app.App)
+			a := creator.newApp(log.NewNopLogger(), dbm.NewMemDB(), opts).(*app.App)
 			t.Cleanup(func() { require.NoError(t, a.Close()) })
 			require.IsType(t, mempool.NoOpMempool{}, a.Mempool())
 			pub := ed25519.GenPrivKey().PubKey()

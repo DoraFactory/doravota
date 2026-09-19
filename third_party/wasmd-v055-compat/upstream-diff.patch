@@ -1,0 +1,21 @@
+--- upstream/x/wasm/alias.go
++++ local/x/wasm/alias.go
+@@ -84,9 +84,7 @@
+ 	// Deprecated: Do not use.
+ 	WasmQuerier = keeper.WasmQuerier
+ 	// Deprecated: Do not use.
+-	CreateTestInput = keeper.CreateTestInput
+-	// Deprecated: Do not use.
+-	TestHandler = keeper.TestHandler
++	// Deprecated: Do not use.
+ 	// Deprecated: Do not use.
+ 	NewQuerier = keeper.Querier
+ 	// Deprecated: Do not use.
+--- upstream/x/wasm/keeper/test_common.go
++++ local/x/wasm/keeper/test_common.go
+@@ -1,3 +1,5 @@
++//go:build ignore
++
+ package keeper
+ 
+ import (
