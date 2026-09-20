@@ -48,14 +48,14 @@ grep -q 'MsgGrantAllowance' "${smoke_home}/feegrant.json"
 "release/${binary}" tx authz grant "$smoke_recipient" send --from "$smoke_sender" \
   --spend-limit 1peaka --generate-only --home "$smoke_home" >"${smoke_home}/authz.json"
 grep -q 'MsgGrant' "${smoke_home}/authz.json"
-printf '{"members":[{"address":"%s","weight":"1","metadata":""}]}' "$smoke_sender" >"${smoke_home}/members.json"
-"release/${binary}" tx group create-group "$smoke_sender" smoke "${smoke_home}/members.json" \
-  --generate-only --home "$smoke_home" >"${smoke_home}/group.json"
-grep -q 'MsgCreateGroup' "${smoke_home}/group.json"
+# The retired group module must not expose executable CLI commands.
+if "release/${binary}" tx group --help 2>&1 | grep -q 'create-group'; then
+  echo 'Retired group transaction commands are still registered' >&2; exit 1
+fi
 # Exercise the generated SDK genesis through the real startup path. Supplying
 # --chain-id here would hide failures in the application's genesis fallback.
 set +e
-timeout 8 "release/${binary}" start --with-tendermint=false --home "$smoke_home" >"${smoke_home}/startup.log" 2>&1
+timeout 8 "release/${binary}" start --with-comet=false --home "$smoke_home" >"${smoke_home}/startup.log" 2>&1
 startup_status=$?
 set -e
 # BusyBox timeout propagates a graceful child's zero exit; GNU returns 124.

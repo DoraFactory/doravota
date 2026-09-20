@@ -26,7 +26,7 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 	instance := app.New(log.NewNopLogger(), db, nil, true, map[int64]bool{},
 		simulationHome(t, opts), 0, app.MakeEncodingConfig(), opts,
 		simulationWasmOpts(t), baseapp.SetChainID("upgrade-name-test"))
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "sdk-055"} {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
 	require.False(t, instance.UpgradeKeeper.HasHandler("v0.5.0"))

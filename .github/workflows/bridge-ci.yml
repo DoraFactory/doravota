@@ -1,9 +1,9 @@
-name: SDK 0.53 candidate validation
+name: SDK candidate validation
 
 on:
   workflow_dispatch:
   push:
-    branches: [sdk-053-bridge]
+    branches: [sdk-053-bridge, upgrade/sdk-055-base]
   pull_request:
     paths:
       - '**/*.go'
