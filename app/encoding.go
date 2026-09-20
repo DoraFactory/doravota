@@ -12,6 +12,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/DoraFactory/doravota/app/params"
+	legacygroup "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
 )
 
 // makeEncodingConfig creates an EncodingConfig for an amino based test configuration.
@@ -49,6 +50,9 @@ func MakeEncodingConfig() params.EncodingConfig {
 	std.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	ModuleBasics.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	ModuleBasics.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	// Keep historical messages decodable; no group module, store or routes are mounted.
+	legacygroup.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	legacygroup.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	paramproposal.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	paramproposal.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	return encodingConfig

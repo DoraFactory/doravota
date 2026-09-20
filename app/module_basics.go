@@ -18,10 +18,6 @@ import (
 	stakingcli "github.com/cosmos/cosmos-sdk/x/staking/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/upgrade"
 	upgradecli "github.com/cosmos/cosmos-sdk/x/upgrade/client/cli"
-
-	"github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
-	groupcli "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/client/cli"
-	groupmodule "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/module"
 )
 
 // Cosmos SDK v0.53's keeper-backed AppModules populate private address-codec
@@ -77,10 +73,4 @@ type vestingAppModuleBasic struct{ vesting.AppModuleBasic }
 
 func (vestingAppModuleBasic) GetTxCmd() *cobra.Command {
 	return vestingcli.GetTxCmd(accountAddressCodec())
-}
-
-type groupAppModuleBasic struct{ groupmodule.AppModuleBasic }
-
-func (groupAppModuleBasic) GetTxCmd() *cobra.Command {
-	return groupcli.TxCmd(group.ModuleName, accountAddressCodec())
 }

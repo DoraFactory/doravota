@@ -10,15 +10,13 @@ import (
 	"cosmossdk.io/log/v2"
 	"encoding/json"
 	"fmt"
+	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
 	v0_4_4 "github.com/DoraFactory/doravota/app/upgrades/v0_4_4"
 	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
-	"github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
-	groupkeeper "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/keeper"
-	groupmodule "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/module"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -192,7 +190,6 @@ var (
 		gov.NewAppModuleBasic(getGovProposalHandlers()),
 		slashing.AppModuleBasic{},
 		feegrantAppModuleBasic{},
-		groupAppModuleBasic{},
 		ibc.AppModuleBasic{},
 		ibctm.AppModuleBasic{},
 		solomachine.AppModuleBasic{},
@@ -275,7 +272,6 @@ type App struct {
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
-	GroupKeeper           groupkeeper.Keeper
 
 	IBCKeeper           *ibckeeper.Keeper // IBC Keeper must be a pointer in the app, so we can SetRouter on it correctly
 	ICAControllerKeeper *icacontrollerkeeper.Keeper
@@ -308,7 +304,7 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	if err := validateSDK055DependencyBoundary(logger, db); err != nil {
+	if err := sdk055.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
 		panic(fmt.Errorf("SDK 0.55 source boundary: %w", err))
 	}
 	overrideWasmVariables()
@@ -337,7 +333,7 @@ func New(
 		minttypes.StoreKey, distrtypes.StoreKey, slashingtypes.StoreKey,
 		govtypes.StoreKey, consensusparamtypes.StoreKey, upgradetypes.StoreKey, feegrant.StoreKey,
 		evidencetypes.StoreKey,
-		authzkeeper.StoreKey, group.StoreKey,
+		authzkeeper.StoreKey,
 		// non sdk store keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		wasm.StoreKey, icahosttypes.StoreKey,
@@ -436,19 +432,6 @@ func New(
 		runtime.NewKVStoreService(keys[slashingtypes.StoreKey]),
 		app.StakingKeeper,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
-	)
-
-	groupConfig := group.DefaultConfig()
-	/*
-		Example of setting group params:
-		groupConfig.MaxMetadataLen = 1000
-	*/
-	app.GroupKeeper = groupkeeper.NewKeeper(
-		keys[group.StoreKey],
-		appCodec,
-		app.MsgServiceRouter(),
-		app.AccountKeeper,
-		groupConfig,
 	)
 
 	app.UpgradeKeeper = upgradekeeper.NewKeeper(
@@ -658,7 +641,6 @@ func New(
 		vesting.NewAppModule(app.AccountKeeper, app.BankKeeper),
 		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper),
 		feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
-		groupmodule.NewAppModule(appCodec, app.GroupKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
 		gov.NewAppModule(appCodec, &app.GovKeeper, app.AccountKeeper, app.BankKeeper),
 		mint.NewAppModule(appCodec, app.MintKeeper, app.AccountKeeper, nil),
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.interfaceRegistry),
@@ -690,7 +672,7 @@ func New(
 		minttypes.ModuleName, distrtypes.ModuleName, slashingtypes.ModuleName,
 		evidencetypes.ModuleName, stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, govtypes.ModuleName, genutiltypes.ModuleName,
-		authz.ModuleName, feegrant.ModuleName, group.ModuleName,
+		authz.ModuleName, feegrant.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -705,7 +687,7 @@ func New(
 		authtypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName, minttypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, group.ModuleName,
+		feegrant.ModuleName,
 		upgradetypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -720,7 +702,7 @@ func New(
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, group.ModuleName, upgradetypes.ModuleName,
+		feegrant.ModuleName, upgradetypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -1000,6 +982,26 @@ func (app *App) ModuleManager() *module.Manager {
 }
 
 func (app *App) setupUpgradeHandlers() {
+	app.UpgradeKeeper.SetUpgradeHandler(sdk055.UpgradeName,
+		func(ctx context.Context, plan upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			if err := sdk055.ValidateSourceVersionMap(fromVM); err != nil {
+				return nil, err
+			}
+			// Destructive store changes were guarded against committed source state
+			// before BaseApp loading. RunMigrations returns only currently wired modules.
+			updated, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
+			if err != nil {
+				return nil, err
+			}
+			// SetModuleVersionMap only upserts entries; absent modules otherwise
+			// remain in the persisted map after their stores have been removed.
+			store := sdk.UnwrapSDKContext(ctx).KVStore(app.keys[upgradetypes.StoreKey])
+			for _, name := range []string{"params", "group"} {
+				store.Delete(append([]byte{upgradetypes.VersionMapByte}, []byte(name)...))
+			}
+			return updated, nil
+		})
+
 	app.UpgradeKeeper.SetUpgradeHandler(
 		v0_3_1.UpgradeName,
 		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
@@ -1144,6 +1146,9 @@ func (app *App) setupUpgradeHandlers() {
 	var storeUpgrades *storetypes.StoreUpgrades
 
 	switch upgradeInfo.Name {
+	case sdk055.UpgradeName:
+		upgrades := sdk055.StoreUpgrades()
+		storeUpgrades = &upgrades
 	case v0_3_1.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_4_0.UpgradeName:

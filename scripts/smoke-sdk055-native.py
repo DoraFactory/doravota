@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local new-chain smoke only; all generated keys live in a temporary home."""
+"""Isolated new-chain smoke; run on the designated operator test host."""
 import base64
 import json
 import pathlib
@@ -47,7 +47,8 @@ def smoke(algo):
         with node_log.open('w') as log:
             process = subprocess.Popen([str(BIN), 'start', '--home', tmp, '--minimum-gas-prices', '0peaka',
                 '--rpc.laddr', f'tcp://127.0.0.1:{rpc}', '--p2p.laddr', f'tcp://127.0.0.1:{p2p}',
-                '--grpc.enable=false', '--grpc-web.enable=false', '--api.enable=false'], stdout=log, stderr=subprocess.STDOUT)
+                '--grpc.enable=false', '--grpc-web.enable=false', '--api.enable=false',
+                '--rpc.pprof_laddr', ''], stdout=log, stderr=subprocess.STDOUT)
             try:
                 deadline = time.monotonic()+90
                 status = None
@@ -85,7 +86,8 @@ def smoke(algo):
         with node_log.open('a') as log:
             restarted = subprocess.Popen([str(BIN), 'start', '--home', tmp, '--minimum-gas-prices', '0peaka',
                 '--rpc.laddr', f'tcp://127.0.0.1:{rpc}', '--p2p.laddr', f'tcp://127.0.0.1:{p2p}',
-                '--grpc.enable=false', '--grpc-web.enable=false', '--api.enable=false'], stdout=log, stderr=subprocess.STDOUT)
+                '--grpc.enable=false', '--grpc-web.enable=false', '--api.enable=false',
+                '--rpc.pprof_laddr', ''], stdout=log, stderr=subprocess.STDOUT)
             try:
                 deadline = time.monotonic()+60
                 while time.monotonic()<deadline:
