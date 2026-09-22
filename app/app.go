@@ -2,47 +2,58 @@ package app
 
 import (
 	"bytes"
+	"context"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
 	"cosmossdk.io/client/v2/autocli"
 	"cosmossdk.io/core/appmodule"
+	"cosmossdk.io/log"
+	storetypes "cosmossdk.io/store/types"
+	"cosmossdk.io/x/evidence"
+	evidencekeeper "cosmossdk.io/x/evidence/keeper"
+	evidencetypes "cosmossdk.io/x/evidence/types"
+	"cosmossdk.io/x/feegrant"
+	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
+	feegrantmodule "cosmossdk.io/x/feegrant/module"
+	"cosmossdk.io/x/upgrade"
+	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
+	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"encoding/json"
 	"fmt"
+	"github.com/DoraFactory/doravota/app/legacyics29"
 	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
 	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
 	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
 	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
 	v0_4_4 "github.com/DoraFactory/doravota/app/upgrades/v0_4_4"
 	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
-	dbm "github.com/cosmos/cosmos-db"
 	abci "github.com/cometbft/cometbft/abci/types"
-	"cosmossdk.io/log"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
-	nodeservice "github.com/cosmos/cosmos-sdk/client/grpc/node"
 	"github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
+	nodeservice "github.com/cosmos/cosmos-sdk/client/grpc/node"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	runtimeservices "github.com/cosmos/cosmos-sdk/runtime/services"
+	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
-	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
-	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
+	authcodec "github.com/cosmos/cosmos-sdk/x/auth/codec"
 	authkeeper "github.com/cosmos/cosmos-sdk/x/auth/keeper"
 	"github.com/cosmos/cosmos-sdk/x/auth/posthandler"
 	authsims "github.com/cosmos/cosmos-sdk/x/auth/simulation"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/cosmos-sdk/x/auth/vesting"
-	authcodec "github.com/cosmos/cosmos-sdk/x/auth/codec"
 	vestingtypes "github.com/cosmos/cosmos-sdk/x/auth/vesting/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
@@ -56,12 +67,6 @@ import (
 	distr "github.com/cosmos/cosmos-sdk/x/distribution"
 	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	"cosmossdk.io/x/evidence"
-	evidencekeeper "cosmossdk.io/x/evidence/keeper"
-	evidencetypes "cosmossdk.io/x/evidence/types"
-	"cosmossdk.io/x/feegrant"
-	feegrantkeeper "cosmossdk.io/x/feegrant/keeper"
-	feegrantmodule "cosmossdk.io/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -86,13 +91,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-	"cosmossdk.io/x/upgrade"
-	upgradekeeper "cosmossdk.io/x/upgrade/keeper"
-	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"io"
-	"os"
-	"context"
 	"maps"
+	"os"
 	"path/filepath"
 
 	ica "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts"
@@ -110,9 +111,9 @@ import (
 	ibcclienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types"
 	ibcconnectiontypes "github.com/cosmos/ibc-go/v10/modules/core/03-connection/types"
 	porttypes "github.com/cosmos/ibc-go/v10/modules/core/05-port/types"
+	ibcapi "github.com/cosmos/ibc-go/v10/modules/core/api"
 	ibcexported "github.com/cosmos/ibc-go/v10/modules/core/exported"
 	ibckeeper "github.com/cosmos/ibc-go/v10/modules/core/keeper"
-	ibcapi "github.com/cosmos/ibc-go/v10/modules/core/api"
 	solomachine "github.com/cosmos/ibc-go/v10/modules/light-clients/06-solomachine"
 	ibctm "github.com/cosmos/ibc-go/v10/modules/light-clients/07-tendermint"
 
@@ -197,6 +198,7 @@ var (
 	// non-dependant module elements, such as codec registration
 	// and genesis verification.
 	ModuleBasics = module.NewBasicManager(
+		legacyics29.Basic{},
 		auth.AppModuleBasic{},
 		authzAppModuleBasic{},
 		genutil.NewAppModuleBasic(genutiltypes.DefaultMessageValidator),
@@ -274,8 +276,8 @@ type App struct {
 	invCheckPeriod uint
 
 	// keys to access the substores
-	keys    map[string]*storetypes.KVStoreKey
-	tkeys   map[string]*storetypes.TransientStoreKey
+	keys  map[string]*storetypes.KVStoreKey
+	tkeys map[string]*storetypes.TransientStoreKey
 
 	// keepers
 	AccountKeeper         authkeeper.AccountKeeper
@@ -324,7 +326,7 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	if err := v0_5_0.ValidateUpgradeBoundary(logger, db, homePath); err != nil {
+	if err := v0_5_0.ValidateRecoveryBoundary(logger, db, homePath); err != nil {
 		panic(fmt.Errorf("bridge preflight failed before store loading: %w", err))
 	}
 	overrideWasmVariables()
@@ -354,7 +356,7 @@ func New(
 		// non sdk store keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		wasm.StoreKey, icahosttypes.StoreKey,
-		icacontrollertypes.StoreKey,
+		icacontrollertypes.StoreKey, legacyics29.StoreKey,
 	)
 	tkeys := storetypes.NewTransientStoreKeys(paramstypes.TStoreKey)
 	if err := bApp.RegisterStreamingServices(appOpts, keys); err != nil {
@@ -533,12 +535,14 @@ func New(
 	// If evidence needs to be handled for the app, set routes in router here and seal
 	app.EvidenceKeeper = *evidenceKeeper
 
+	legacyFeeWire := legacyics29.Keeper{ICS4Wrapper: app.IBCKeeper.ChannelKeeper, Key: keys[legacyics29.StoreKey]}
+
 	// Create Transfer Keepers
 	app.TransferKeeper = ibctransferkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[ibctransfertypes.StoreKey]),
 		app.GetSubspace(ibctransfertypes.ModuleName),
-		app.IBCKeeper.ChannelKeeper,
+		legacyFeeWire,
 		app.IBCKeeper.ChannelKeeper,
 		app.MsgServiceRouter(),
 		app.AccountKeeper,
@@ -550,7 +554,7 @@ func New(
 		appCodec,
 		runtime.NewKVStoreService(keys[icahosttypes.StoreKey]),
 		app.GetSubspace(icahosttypes.SubModuleName),
-		app.IBCKeeper.ChannelKeeper,
+		legacyFeeWire,
 		app.IBCKeeper.ChannelKeeper,
 		app.AccountKeeper,
 		app.MsgServiceRouter(),
@@ -561,7 +565,7 @@ func New(
 		appCodec,
 		runtime.NewKVStoreService(keys[icacontrollertypes.StoreKey]),
 		app.GetSubspace(icacontrollertypes.SubModuleName),
-		app.IBCKeeper.ChannelKeeper,
+		legacyFeeWire,
 		app.IBCKeeper.ChannelKeeper,
 		app.MsgServiceRouter(),
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
@@ -580,7 +584,7 @@ func New(
 		app.BankKeeper,
 		app.StakingKeeper,
 		distrkeeper.NewQuerier(app.DistrKeeper),
-		app.IBCKeeper.ChannelKeeper,
+		legacyFeeWire,
 		app.IBCKeeper.ChannelKeeper,
 		app.IBCKeeper.ChannelKeeperV2,
 		app.TransferKeeper,
@@ -602,7 +606,7 @@ func New(
 	// Set legacy router for backwards compatibility with gov v1beta1
 	app.GovKeeper.SetLegacyRouter(govRouter)
 
-	wasmStackIBCHandler := wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.TransferKeeper, app.IBCKeeper.ChannelKeeper)
+	wasmStackIBCHandler := wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.TransferKeeper, legacyFeeWire)
 
 	// Create Interchain Accounts Stack.
 	var icaControllerStack porttypes.IBCModule
@@ -614,10 +618,10 @@ func New(
 
 	icaHostStack := icahost.NewIBCModule(app.ICAHostKeeper)
 	ibcRouter := porttypes.NewRouter().
-		AddRoute(ibctransfertypes.ModuleName, transferStack).
-		AddRoute(wasmtypes.ModuleName, wasmStackIBCHandler).
-		AddRoute(icacontrollertypes.SubModuleName, icaControllerStack).
-		AddRoute(icahosttypes.SubModuleName, icaHostStack)
+		AddRoute(ibctransfertypes.ModuleName, legacyics29.Middleware{IBCModule: transferStack, Keeper: legacyFeeWire}).
+		AddRoute(wasmtypes.ModuleName, legacyics29.Middleware{IBCModule: wasmStackIBCHandler, Keeper: legacyFeeWire}).
+		AddRoute(icacontrollertypes.SubModuleName, legacyics29.Middleware{IBCModule: icaControllerStack, Keeper: legacyFeeWire}).
+		AddRoute(icahosttypes.SubModuleName, legacyics29.Middleware{IBCModule: icaHostStack, Keeper: legacyFeeWire})
 	app.IBCKeeper.SetRouter(ibcRouter)
 
 	// IBC v2 is an optional feature, outside the 0.4.4 migration scope.
@@ -665,6 +669,7 @@ func New(
 	)
 
 	app.mm = module.NewManager(
+		legacyics29.Module{Key: keys[legacyics29.StoreKey]},
 		genutil.NewAppModule(
 			app.AccountKeeper,
 			app.StakingKeeper,
@@ -735,6 +740,7 @@ func New(
 	// NOTE: The genutils module must occur after staking so that pools are
 	// properly initialized with tokens from genesis accounts.
 	genesisModuleOrder := []string{
+		legacyics29.StoreKey,
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
@@ -1181,8 +1187,12 @@ func (app *App) setupUpgradeHandlers() {
 	// legacy x/params subspace is still available.
 	app.UpgradeKeeper.SetUpgradeHandler(
 		v0_5_0.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
+		func(goCtx context.Context, plan upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			parent := sdk.UnwrapSDKContext(goCtx)
+			if plan.Name != v0_5_0.UpgradeName || parent.BlockHeight() != plan.Height {
+				return nil, fmt.Errorf("fee recovery requires the original 0.5.0 upgrade height")
+			}
+			ctx, commit := parent.CacheContext()
 			logger := ctx.Logger().With("upgrade", v0_5_0.UpgradeName)
 			logger.Info("Upgrading production state to Cosmos SDK v0.53 and IBC-Go v10")
 			if err := v0_5_0.ValidateSourceVersionMap(fromVM); err != nil {
@@ -1238,6 +1248,10 @@ func (app *App) setupUpgradeHandlers() {
 				return nil, fmt.Errorf("store approved governance parameters: %w", err)
 			}
 
+			if err := legacyics29.RefundAndRetire(ctx, app.GetKey(legacyics29.StoreKey), app.BankKeeper, app.IBCKeeper.ChannelKeeper); err != nil {
+				return nil, fmt.Errorf("retire legacy IBC fees: %w", err)
+			}
+			commit()
 			logger.Info("Upgrade completed successfully")
 			return vm, nil
 		},
@@ -1271,8 +1285,12 @@ func (app *App) setupUpgradeHandlers() {
 	case v0_4_4.UpgradeName:
 		storeUpgrades = &storetypes.StoreUpgrades{}
 	case v0_5_0.UpgradeName:
+		// Rename before loading the application. The handler reads the ledger
+		// here, refunds it, and retains only old-channel wire metadata. The old
+		// feeibc store disappears in the same commit as the refunds.
 		storeUpgrades = &storetypes.StoreUpgrades{
-			Deleted: []string{"capability", "feeibc"},
+			Deleted: []string{"capability"},
+			Renamed: []storetypes.StoreRename{{OldKey: "feeibc", NewKey: legacyics29.StoreKey}},
 		}
 	}
 

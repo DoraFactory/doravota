@@ -102,6 +102,10 @@ func ValidateUpgradeBoundary(logger log.Logger, db dbm.DB, home string) error {
 }
 
 func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
+	return validateSourceStoresForPlan(logger, db, height, false)
+}
+
+func validateSourceStoresForPlan(logger log.Logger, db dbm.DB, height int64, refundFees bool) error {
 	multi := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
 	info, err := multi.GetCommitInfo(height)
 	if err != nil {
@@ -128,8 +132,10 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		}
 		return check(immutable)
 	}
+	feeState, feeBalance := false, false
 	if err = read("feeibc", func(tree *iavl.ImmutableTree) error {
-		if tree.Size() != 0 {
+		feeState = tree.Size() != 0
+		if !refundFees && tree.Size() != 0 {
 			return fmt.Errorf("feeibc is not empty: refusing to delete legacy fee state")
 		}
 		return nil
@@ -145,12 +151,16 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 			return err
 		}
 		defer it.Close()
-		if it.Valid() {
+		feeBalance = it.Valid()
+		if !refundFees && feeBalance {
 			return fmt.Errorf("feeibc module has a balance entry: refusing fee store deletion")
 		}
 		return it.Error()
 	}); err != nil {
 		return err
+	}
+	if refundFees && !feeState && !feeBalance {
+		return fmt.Errorf("no fee state or balance to recover; use the original 0.5.0 binary")
 	}
 	// Check the approved expedited policy against the real legacy governance
 	// values before StoreLoader deletes anything. The new expedited policy values
@@ -176,6 +186,22 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		return err
 	}
 	return read("upgrade", func(tree *iavl.ImmutableTree) error {
+		if refundFees {
+			raw, err := tree.Get([]byte{upgradetypes.PlanByte})
+			if err != nil {
+				return err
+			}
+			if len(raw) == 0 {
+				return fmt.Errorf("on-chain recovery upgrade plan is missing")
+			}
+			var plan upgradetypes.Plan
+			if err := plan.Unmarshal(raw); err != nil {
+				return err
+			}
+			if plan.Name != UpgradeName || plan.Height != height+1 {
+				return fmt.Errorf("on-chain plan does not match the 0.5.0 recovery boundary")
+			}
+		}
 		it, err := tree.Iterator([]byte{2}, []byte{3}, true)
 		if err != nil {
 			return err

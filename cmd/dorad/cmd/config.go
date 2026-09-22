@@ -2,9 +2,10 @@ package cmd
 
 import (
 	sdkmath "cosmossdk.io/math"
+	"github.com/DoraFactory/doravota/app"
+	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
-	"github.com/DoraFactory/doravota/app"
 )
 
 const (
@@ -48,7 +49,7 @@ func initSDKConfig() {
 const (
 	name     = "doravota"
 	app_name = "dorad"
-	Version  = "0.5.0"
+	Version  = v0_5_0.RecoveryVersion
 )
 
 func setVersionInfo() {

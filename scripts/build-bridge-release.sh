@@ -2,6 +2,11 @@
 # Run inside a native or emulated Alpine Go container (musl, not glibc).
 set -euo pipefail
 : "${VERSION:?release version is required}"
+# Never label an emergency state transition as the original tested release.
+if [ "$VERSION" != "0.5.0-fee-recovery.1" ]; then
+  echo 'This source builds only 0.5.0-fee-recovery.1; the on-chain plan remains 0.5.0.' >&2
+  exit 1
+fi
 case "$(go env GOARCH)" in
   amd64) asset=x86_64; suffix=amd; expected=49ecd70da281b6ee08b31770a54bb529d1de96b3e54013e025df9f0c39fff7f4 ;;
   arm64) asset=aarch64; suffix=arm64; expected=ef3e3125e1ce588a9bc698f695a1a4793432b9903a0928018c0d7872e874cc97 ;;
