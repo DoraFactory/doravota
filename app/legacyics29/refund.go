@@ -253,9 +253,9 @@ func RefundAndRetire(ctx sdk.Context, key *storetypes.KVStoreKey, bank Bank, cha
 			remove = append(remove, k)
 		}
 	}
-	err := it.Error()
-	it.Close()
-	if err != nil {
+	// SDK cache iterators report Error on normal exhaustion as well.
+	// Close releases the iterator; do not mistake end-of-store for a read failure.
+	if err := it.Close(); err != nil {
 		return err
 	}
 	source := authtypes.NewModuleAddress("feeibc")

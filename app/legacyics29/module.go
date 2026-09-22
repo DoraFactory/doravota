@@ -84,9 +84,7 @@ func (m Module) ExportGenesis(ctx sdk.Context, _ codec.JSONCodec) json.RawMessag
 		}
 		entries = append(entries, Entry{append([]byte(nil), it.Key()...), append([]byte(nil), it.Value()...)})
 	}
-	if err := it.Error(); err != nil {
-		panic(err)
-	}
+	// Error on the SDK cache iterator also means normal exhaustion.
 	raw, err := json.Marshal(entries)
 	if err != nil {
 		panic(err)

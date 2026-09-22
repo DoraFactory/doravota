@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/DoraFactory/doravota/app"
+	"github.com/DoraFactory/doravota/app/legacyics29"
 	upgrade "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
 )
 
@@ -157,7 +158,8 @@ func TestBaselineIBCWiring(t *testing.T) {
 	require.IsType(t, &solomachine.LightClientModule{}, route)
 	transferRoute, found := a.IBCKeeper.PortKeeper.Router.Route("transfer")
 	require.True(t, found)
-	require.IsType(t, transfer.IBCModule{}, transferRoute)
+	require.IsType(t, legacyics29.Middleware{}, transferRoute)
+	require.IsType(t, transfer.IBCModule{}, transferRoute.(legacyics29.Middleware).IBCModule)
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("wasm"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icahost"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icacontroller"))
