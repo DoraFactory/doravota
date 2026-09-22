@@ -13,6 +13,7 @@ import (
 	"cosmossdk.io/store/metrics"
 	"cosmossdk.io/store/rootmulti"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+	v0_5_1 "github.com/DoraFactory/doravota/app/upgrades/v0_5_1"
 	dbm "github.com/cosmos/cosmos-db"
 )
 
@@ -48,7 +49,7 @@ func WrapLegacyEmptyIAVLDB(logger log.Logger, db dbm.DB, homeDir string) (dbm.DB
 	if err := json.Unmarshal(bz, &plan); err != nil {
 		return nil, nil, fmt.Errorf("decode bridge upgrade info: %w", err)
 	}
-	if plan.Name != UpgradeName {
+	if plan.Name != UpgradeName && plan.Name != v0_5_1.UpgradeName {
 		return &emptyIAVLRootAwareDB{DB: db}, nil, nil
 	}
 

@@ -289,7 +289,6 @@ func (a appCreator) newApp(
 	if len(compatibleStores) != 0 {
 		logger.Info(
 			"enabled read compatibility for legacy empty IAVL stores",
-			"upgrade", v0_5_0.UpgradeName,
 			"stores", compatibleStores,
 		)
 	}

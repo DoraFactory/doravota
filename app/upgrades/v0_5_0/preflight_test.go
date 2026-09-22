@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"cosmossdk.io/log"
@@ -64,6 +65,14 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 		want   string
 	}{
 		{"empty fees", func(map[string]storetypes.KVStore) {}, ""},
+		{"0.5.1 metadata", func(s map[string]storetypes.KVStore) {
+			s["feeibc"].Set([]byte("feeEnabled/transfer/channel-0"), []byte{1})
+		}, ""},
+		{"0.5.1 source version mismatch", func(s map[string]storetypes.KVStore) {
+			version := make([]byte, 8)
+			binary.BigEndian.PutUint64(version, 5)
+			s["upgrade"].Set(append([]byte{2}, []byte("auth")...), version)
+		}, "unsupported source module auth"},
 		{"missing governance", func(s map[string]storetypes.KVStore) { s["gov"].Delete(govv5.ParamsKey) }, "governance parameters are missing"},
 		{"incompatible rehearsal governance", func(s map[string]storetypes.KVStore) {
 			p := govv1.DefaultParams()
@@ -128,7 +137,11 @@ func TestPreflightBeforeStoreDeletion(t *testing.T) {
 			}
 			home := t.TempDir()
 			require.NoError(t, os.MkdirAll(filepath.Join(home, "data"), 0700))
-			require.NoError(t, os.WriteFile(filepath.Join(home, "data", "upgrade-info.json"), []byte(`{"name":"0.5.0","height":10}`), 0600))
+			plan := `{"name":"0.5.0","height":10}`
+			if strings.HasPrefix(tc.name, "0.5.1 ") {
+				plan = `{"name":"0.5.1","height":10}`
+			}
+			require.NoError(t, os.WriteFile(filepath.Join(home, "data", "upgrade-info.json"), []byte(plan), 0600))
 			before := dumpDB(t, db)
 			err = ValidateUpgradeBoundary(log.NewNopLogger(), db, home)
 			if tc.name == "corrupt consensus" {

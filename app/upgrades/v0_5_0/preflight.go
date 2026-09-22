@@ -15,6 +15,7 @@ import (
 	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/store/wrapper"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
+	v0_5_1 "github.com/DoraFactory/doravota/app/upgrades/v0_5_1"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	tmtypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -91,17 +92,21 @@ func ValidateUpgradeBoundary(logger log.Logger, db dbm.DB, home string) error {
 	if err = json.Unmarshal(raw, &plan); err != nil {
 		return err
 	}
-	if plan.Name != UpgradeName {
+	if plan.Name != UpgradeName && plan.Name != v0_5_1.UpgradeName {
 		return nil
 	}
 	height := rootmulti.GetLatestVersion(db)
 	if height == 0 || height != plan.Height-1 {
 		return nil
 	}
-	return validateSourceStores(logger, db, height)
+	return validateSourceStoresForPlan(logger, db, height, plan.Name == v0_5_1.UpgradeName)
 }
 
 func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
+	return validateSourceStoresForPlan(logger, db, height, false)
+}
+
+func validateSourceStoresForPlan(logger log.Logger, db dbm.DB, height int64, refundFees bool) error {
 	multi := rootmulti.NewStore(db, logger, metrics.NewNoOpMetrics())
 	info, err := multi.GetCommitInfo(height)
 	if err != nil {
@@ -129,7 +134,7 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		return check(immutable)
 	}
 	if err = read("feeibc", func(tree *iavl.ImmutableTree) error {
-		if tree.Size() != 0 {
+		if !refundFees && tree.Size() != 0 {
 			return fmt.Errorf("feeibc is not empty: refusing to delete legacy fee state")
 		}
 		return nil
@@ -137,6 +142,11 @@ func validateSourceStores(logger log.Logger, db dbm.DB, height int64) error {
 		return err
 	}
 	if err = read("bank", func(tree *iavl.ImmutableTree) error {
+		// 0.5.1 reconciles the complete ledger and balance in the atomic
+		// upgrade handler. The historical 0.5.0 guard remains empty-only.
+		if refundFees {
+			return nil
+		}
 		// SDK 0.47 balance key: 0x02 || length-prefixed account || denomination.
 		addr := authtypes.NewModuleAddress("feeibc")
 		prefix := append([]byte{2, byte(len(addr))}, addr...)
