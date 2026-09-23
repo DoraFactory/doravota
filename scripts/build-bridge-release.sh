@@ -34,27 +34,27 @@ fi
 test "$("release/${binary}" version)" = "$VERSION"
 smoke_home=$(mktemp -d)
 trap 'rm -rf "$smoke_home"' EXIT
-test "$("release/${binary}" query wasm libwasmvm-version --home "$smoke_home")" = "3.0.8-rc.3"
 "release/${binary}" init release-smoke --chain-id bridge-release-smoke --home "$smoke_home" >/dev/null
+test "$("release/${binary}" query wasm libwasmvm-version --home "$smoke_home")" = "3.0.8-rc.3"
 # Regression: fresh Comet config has a top-level version, which must not leak
 # into the ICA transaction's protocol metadata. No keys or RPC are needed.
 smoke_sender=dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4
 "release/${binary}" tx ica controller register connection-0 --from "$smoke_sender" \
-  --generate-only --chain-id bridge-release-smoke --home "$smoke_home" >"${smoke_home}/ica-default.json"
+  --generate-only --home "$smoke_home" >"${smoke_home}/ica-default.json"
 grep -Eq '"version":[[:space:]]*""' "${smoke_home}/ica-default.json"
 "release/${binary}" tx ica controller register connection-0 --from "$smoke_sender" \
-  --version explicit-protocol-version --generate-only --chain-id bridge-release-smoke --home "$smoke_home" >"${smoke_home}/ica-explicit.json"
+  --version explicit-protocol-version --generate-only --home "$smoke_home" >"${smoke_home}/ica-explicit.json"
 grep -Eq '"version":[[:space:]]*"explicit-protocol-version"' "${smoke_home}/ica-explicit.json"
 smoke_recipient=dora1lpp0muhc09se5sjkdcw56qmvl97jeexxxzrfy3
 "release/${binary}" tx feegrant grant "$smoke_sender" "$smoke_recipient" \
-  --spend-limit 1peaka --generate-only --chain-id bridge-release-smoke --home "$smoke_home" >"${smoke_home}/feegrant.json"
+  --spend-limit 1peaka --generate-only --home "$smoke_home" >"${smoke_home}/feegrant.json"
 grep -q 'MsgGrantAllowance' "${smoke_home}/feegrant.json"
 "release/${binary}" tx authz grant "$smoke_recipient" send --from "$smoke_sender" \
-  --spend-limit 1peaka --generate-only --chain-id bridge-release-smoke --home "$smoke_home" >"${smoke_home}/authz.json"
+  --spend-limit 1peaka --generate-only --home "$smoke_home" >"${smoke_home}/authz.json"
 grep -q 'MsgGrant' "${smoke_home}/authz.json"
 printf '{"members":[{"address":"%s","weight":"1","metadata":""}]}' "$smoke_sender" >"${smoke_home}/members.json"
 "release/${binary}" tx group create-group "$smoke_sender" smoke "${smoke_home}/members.json" \
-  --generate-only --chain-id bridge-release-smoke --home "$smoke_home" >"${smoke_home}/group.json"
+  --generate-only --home "$smoke_home" >"${smoke_home}/group.json"
 grep -q 'MsgCreateGroup' "${smoke_home}/group.json"
 # Exercise the generated SDK genesis through the real startup path. Supplying
 # --chain-id here would hide failures in the application's genesis fallback.
