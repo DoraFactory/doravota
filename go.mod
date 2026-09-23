@@ -6,6 +6,7 @@ require (
 	cosmossdk.io/api v0.9.2
 	cosmossdk.io/client/v2 v2.0.0-beta.3
 	cosmossdk.io/core v0.11.3
+	cosmossdk.io/errors v1.1.0
 	cosmossdk.io/log v1.6.1
 	cosmossdk.io/math v1.5.3
 	cosmossdk.io/store v1.1.2
@@ -41,12 +42,11 @@ require (
 	cloud.google.com/go/storage v1.50.0 // indirect
 	cosmossdk.io/collections v1.4.0 // indirect
 	cosmossdk.io/depinject v1.2.1 // indirect
-	cosmossdk.io/errors v1.1.0 // indirect
 	cosmossdk.io/schema v1.1.0 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/99designs/keyring v1.2.2 // indirect
-	github.com/CosmWasm/wasmvm/v3 v3.0.7 // indirect
+	github.com/CosmWasm/wasmvm/v3 v3.0.8-rc.3 // indirect
 	github.com/DataDog/datadog-go v4.8.3+incompatible // indirect
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
@@ -234,3 +234,8 @@ require (
 // Backport ext-frame bounds validation used by WasmVM message decoding.
 // Upstream: https://github.com/shamaton/msgpack/commit/04a026e9ac24527f593a30258a98884768ec0e52
 replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-20260513223856-04a026e9ac24
+
+// Official paired CosmWasm security hotfix for the 0.61 release line.
+replace github.com/CosmWasm/wasmd => github.com/CosmWasm/priv_wasmd_sec v0.61.15-rc.3
+
+replace github.com/CosmWasm/wasmvm/v3 => github.com/CosmWasm/priv_wasmvm_sec/v3 v3.0.8-rc.3

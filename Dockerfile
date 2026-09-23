@@ -5,16 +5,21 @@ ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # Builder
 # --------------------------------------------------------
 FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION="0.5.0"
+ARG GIT_VERSION="0.5.0-wasm-security.1"
 ARG GIT_COMMIT="unknown"
 ARG COMMIT_SHA=""
 RUN apk add --no-cache \
     ca-certificates \
     build-base \
     linux-headers \
-    bash binutils curl git
+    bash binutils curl git xz
 # Download go dependencies
 WORKDIR /dora
+# Supply only Go download-cache files, never GitHub credentials.
+COPY .modcache/ /modcache/
+ENV GOPRIVATE=github.com/CosmWasm/priv_wasmd_sec,github.com/CosmWasm/priv_wasmvm_sec
+ENV GONOPROXY=none
+ENV GOPROXY=file:///modcache,https://proxy.golang.org,direct
 COPY go.mod go.sum ./
 RUN go mod download
 # Copy the remaining files
