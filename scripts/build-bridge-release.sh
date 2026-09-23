@@ -2,6 +2,12 @@
 # Run inside a native or emulated Alpine Go container (musl, not glibc).
 set -euo pipefail
 : "${VERSION:?release version is required}"
+# Source archives have no .git directory: callers must supply the full commit.
+commit_sha=${COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}
+if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'Release requires a full 40-character commit hash; set COMMIT_SHA for source archives.' >&2
+  exit 1
+fi
 case "$(go env GOARCH)" in
   amd64) asset=x86_64; suffix=amd; expected=ab1a878ed3beecc5f3821b1fb1f73a5254443e3ba9bca53964a50a122ee77497 ;;
   arm64) asset=aarch64; suffix=arm64; expected=cc9175235d1e0051002c33a94027a63a008b14dcc13ae483685e511d59754235 ;;
@@ -13,11 +19,12 @@ test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.co
   github.com/CosmWasm/priv_wasmvm_sec/v3@v3.0.8-rc.3
 test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.com/CosmWasm/wasmd)" = \
   github.com/CosmWasm/priv_wasmd_sec@v0.61.15-rc.3
+# go list does not extract an uncached module; download before reading its library.
+go mod download github.com/CosmWasm/wasmd github.com/CosmWasm/wasmvm/v3
 wasmvm_dir=$(go list -m -f '{{.Dir}}' github.com/CosmWasm/wasmvm/v3)
 xz -dc "${wasmvm_dir}/internal/api/libwasmvm_muslc.${asset}.a.xz" \
   >"/usr/local/lib/libwasmvm_muslc.${asset}.a"
 printf '%s  %s\n' "$expected" "/usr/local/lib/libwasmvm_muslc.${asset}.a" | sha256sum -c -
-commit_sha=${COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}
 mkdir -p release
 binary="dorad-${VERSION}-linux-${suffix}"
 # CI checks out as runner but builds inside a root-owned container.
