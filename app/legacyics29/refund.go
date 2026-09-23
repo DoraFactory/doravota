@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	storetypes "cosmossdk.io/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -182,9 +181,14 @@ func validateKey(key, value []byte, financial bool) error {
 		if err := host.ChannelIdentifierValidator(p[2]); err != nil {
 			return err
 		}
-		if len(value) == 0 || !utf8.Valid(value) {
+		if len(value) == 0 {
 			return fmt.Errorf("invalid payee value")
 		}
+		// v7.3.0 accepted non-UTF-8 counterparty payees through signed
+		// transactions. Preserve those opaque historical bytes for the legacy
+		// acknowledgement path and genesis export/import. Refund destinations
+		// come from PacketFee.RefundAddress, not this mapping. Local payees
+		// must still be valid account addresses.
 		if p[0] == "payee" {
 			if _, err := sdk.AccAddressFromBech32(string(value)); err != nil {
 				return err
