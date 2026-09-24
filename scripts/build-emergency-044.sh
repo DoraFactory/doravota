@@ -57,7 +57,7 @@ curl --fail --location --retry 3 \
   "https://github.com/CosmWasm/wasmvm/releases/download/v1.5.1/libwasmvm_muslc.${archive_arch}.a" \
   --output "$build_tmp/libwasmvm_muslc.a"
 # Pinned to the official v1.5.1 checksums.txt, not a mutable user-supplied hash.
-printf '%s  %s\n' "$archive_sha" "$build_tmp/libwasmvm_muslc.a" | sha256sum --check -
+printf '%s  %s\n' "$archive_sha" "$build_tmp/libwasmvm_muslc.a" | sha256sum -c -
 ar t "$build_tmp/libwasmvm_muslc.a" >/dev/null
 export CGO_LDFLAGS="-L${build_tmp}"
 
