@@ -12,7 +12,7 @@ import (
 // client/server config. It does not assert that PIE or ASLR is enabled.
 func emergencyConfigCmd() *cobra.Command {
 	return &cobra.Command{
-		Use: "emergency-config", Short: "Print the embedded emergency activation settings",
+		Use: "release-info", Short: "Print the embedded release settings",
 		Args:              cobra.NoArgs,
 		PersistentPreRunE: func(*cobra.Command, []string) error { return nil },
 		RunE: func(cmd *cobra.Command, _ []string) error {

@@ -18,13 +18,13 @@ import (
 var EmergencyWasmHeight = "UNCONFIGURED"
 var EmergencyWasmChainID = "UNCONFIGURED"
 
-const EmergencyWasmVersion = "0.4.4-wasm-emergency.1"
+const EmergencyWasmVersion = "0.4.5"
 
 // Use a separate namespace in the existing upgrade store, without creating a
 // new module/store or touching the upgrade plan, done markers or version map.
 // This raw backup survives an in-place upgrade and a physical DB snapshot.
 // Standard SDK JSON genesis export does NOT include these auxiliary keys.
-const emergencyWasmPrefix = "vota/emergency-wasm/v1/"
+const emergencyWasmPrefix = "vota/maint/v1/"
 
 type emergencyWasmGuard struct {
 	height  int64
@@ -36,10 +36,10 @@ var _ baseapp.CircuitBreaker = emergencyWasmGuard{}
 func newEmergencyWasmGuard() emergencyWasmGuard {
 	height, err := strconv.ParseInt(EmergencyWasmHeight, 10, 64)
 	if err != nil || height <= 0 || strconv.FormatInt(height, 10) != EmergencyWasmHeight {
-		panic("emergency Wasm activation height must be explicitly embedded as a positive integer")
+		panic("maintenance activation height must be explicitly embedded as a positive integer")
 	}
 	if EmergencyWasmChainID == "" || EmergencyWasmChainID == "UNCONFIGURED" {
-		panic("emergency Wasm chain ID must be explicitly embedded")
+		panic("release chain ID must be explicitly embedded")
 	}
 	return emergencyWasmGuard{height: height, chainID: EmergencyWasmChainID}
 }
@@ -52,7 +52,7 @@ func newEmergencyWasmGuard() emergencyWasmGuard {
 func (g emergencyWasmGuard) IsAllowed(goCtx context.Context, typeURL string) (bool, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 	if ctx.ChainID() != g.chainID {
-		return false, fmt.Errorf("emergency binary is for chain %q, not %q", g.chainID, ctx.ChainID())
+		return false, fmt.Errorf("release is for chain %q, not %q", g.chainID, ctx.ChainID())
 	}
 	if ctx.BlockHeight() < g.height {
 		return true, nil
@@ -116,7 +116,7 @@ func (app *App) collectEmergencyWasmCodes(ctx sdk.Context) ([]emergencyWasmCode,
 func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 	g := app.emergencyWasm
 	if ctx.ChainID() != g.chainID {
-		return fmt.Errorf("emergency binary is for chain %q, not %q", g.chainID, ctx.ChainID())
+		return fmt.Errorf("release is for chain %q, not %q", g.chainID, ctx.ChainID())
 	}
 	if ctx.BlockHeight() < g.height {
 		return nil
@@ -126,15 +126,15 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 	if bz := backupStore.Get(key); bz != nil {
 		var record emergencyWasmRecord
 		if err := json.Unmarshal(bz, &record); err != nil {
-			return fmt.Errorf("decode emergency activation record: %w", err)
+			return fmt.Errorf("decode maintenance activation record: %w", err)
 		}
 		if record.Height != g.height || record.ChainID != g.chainID || record.Version != EmergencyWasmVersion {
-			return fmt.Errorf("emergency binary configuration does not match committed activation record")
+			return fmt.Errorf("release configuration does not match committed activation record")
 		}
 		return nil
 	}
 	if ctx.BlockHeight() != g.height {
-		return fmt.Errorf("missing emergency activation at height %d: restore/replay from before activation; refusing a late state change at %d", g.height, ctx.BlockHeight())
+		return fmt.Errorf("missing maintenance activation at height %d: restore/replay from before activation; refusing a late state change at %d", g.height, ctx.BlockHeight())
 	}
 
 	cacheCtx, write := ctx.CacheContext()
@@ -172,10 +172,10 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 	}
 	backup.Set(key, record)
 	write()
-	ctx.EventManager().EmitEvent(sdk.NewEvent("emergency_wasm_activated",
+	ctx.EventManager().EmitEvent(sdk.NewEvent("vota_maintenance_applied",
 		sdk.NewAttribute("height", strconv.FormatInt(g.height, 10)),
 		sdk.NewAttribute("code_count", strconv.Itoa(len(codes))),
 	))
-	ctx.Logger().Info("emergency Wasm deployment restrictions activated", "height", g.height, "code_count", len(codes))
+	ctx.Logger().Info("maintenance parameters applied", "height", g.height, "code_count", len(codes))
 	return nil
 }

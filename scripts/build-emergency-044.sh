@@ -82,7 +82,7 @@ fi
 install -m 0755 "$build_tmp/dorad" "$output"
 sha256sum "$output" > "${output}.sha256"
 {
-  printf 'version=0.4.4-wasm-emergency.1\ncommit=%s\nchain_id=%s\nactivation_height=%s\n' "$COMMIT_SHA" "$EMERGENCY_CHAIN_ID" "$EMERGENCY_HEIGHT"
+  printf 'version=0.4.5\ncommit=%s\nchain_id=%s\nactivation_height=%s\n' "$COMMIT_SHA" "$EMERGENCY_CHAIN_ID" "$EMERGENCY_HEIGHT"
   printf 'arch=%s\nwasmvm_archive_sha256=%s\n' "$target_arch" "$archive_sha"
   go version
   go version -m "$output"

@@ -906,10 +906,15 @@ func (app *App) Name() string { return app.BaseApp.Name() }
 
 // BeginBlocker application updates every begin block
 func (app *App) BeginBlocker(ctx sdk.Context, req abci.RequestBeginBlock) abci.ResponseBeginBlock {
-	if err := app.applyEmergencyWasmGuard(ctx); err != nil {
+	// ModuleManager installs its own event manager. Capture maintenance events
+	// separately so they are included exactly once in the ABCI response.
+	maintenanceCtx := ctx.WithEventManager(sdk.NewEventManager())
+	if err := app.applyEmergencyWasmGuard(maintenanceCtx); err != nil {
 		panic(err)
 	}
-	return app.mm.BeginBlock(ctx, req)
+	response := app.mm.BeginBlock(ctx, req)
+	response.Events = append(maintenanceCtx.EventManager().ABCIEvents(), response.Events...)
+	return response
 }
 
 // EndBlocker application updates every end block
