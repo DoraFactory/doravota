@@ -285,7 +285,7 @@ type App struct {
 	txConfig          client.TxConfig
 
 	invCheckPeriod uint
-	emergencyWasm  emergencyWasmGuard
+	maintenance    maintenanceGuard
 
 	// keys to access the substores
 	keys    map[string]*storetypes.KVStoreKey
@@ -349,7 +349,7 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	emergencyWasm := newEmergencyWasmGuard()
+	maintenance := newMaintenanceGuard()
 	overrideWasmVariables()
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
@@ -367,7 +367,7 @@ func New(
 	bApp.SetVersion(version.Version)
 	bApp.SetInterfaceRegistry(interfaceRegistry)
 	bApp.SetTxEncoder(txConfig.TxEncoder())
-	bApp.MsgServiceRouter().SetCircuit(emergencyWasm)
+	bApp.MsgServiceRouter().SetCircuit(maintenance)
 
 	keys := sdk.NewKVStoreKeys(
 		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey,
@@ -390,7 +390,7 @@ func New(
 	}
 
 	app := &App{
-		emergencyWasm:     emergencyWasm,
+		maintenance:       maintenance,
 		BaseApp:           bApp,
 		cdc:               cdc,
 		appCodec:          appCodec,
@@ -909,7 +909,7 @@ func (app *App) BeginBlocker(ctx sdk.Context, req abci.RequestBeginBlock) abci.R
 	// ModuleManager installs its own event manager. Capture maintenance events
 	// separately so they are included exactly once in the ABCI response.
 	maintenanceCtx := ctx.WithEventManager(sdk.NewEventManager())
-	if err := app.applyEmergencyWasmGuard(maintenanceCtx); err != nil {
+	if err := app.applyMaintenanceGuard(maintenanceCtx); err != nil {
 		panic(err)
 	}
 	response := app.mm.BeginBlock(ctx, req)

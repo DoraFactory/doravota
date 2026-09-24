@@ -47,7 +47,7 @@ func initSDKConfig() {
 const (
 	name     = "doravota"
 	app_name = "dorad"
-	Version  = app.EmergencyWasmVersion
+	Version  = app.MaintenanceVersion
 )
 
 func setVersionInfo() {

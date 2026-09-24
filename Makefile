@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 build: go.sum
-	bash scripts/build-emergency-044.sh
+	bash scripts/build-maintenance.sh
 
 install: build
 	install -d "$$(go env GOPATH)/bin"

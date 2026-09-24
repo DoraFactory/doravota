@@ -10,7 +10,7 @@ import (
 
 // Reports build-time coordination values without opening a node DB or writing
 // client/server config. It does not assert that PIE or ASLR is enabled.
-func emergencyConfigCmd() *cobra.Command {
+func releaseInfoCmd() *cobra.Command {
 	return &cobra.Command{
 		Use: "release-info", Short: "Print the embedded release settings",
 		Args:              cobra.NoArgs,
@@ -21,7 +21,7 @@ func emergencyConfigCmd() *cobra.Command {
 				Commit  string `json:"commit"`
 				ChainID string `json:"chain_id"`
 				Height  string `json:"activation_height"`
-			}{app.EmergencyWasmVersion, version.Commit, app.EmergencyWasmChainID, app.EmergencyWasmHeight})
+			}{app.MaintenanceVersion, version.Commit, app.MaintenanceChainID, app.MaintenanceHeight})
 		},
 	}
 }

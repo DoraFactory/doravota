@@ -19,13 +19,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/server"
-	"github.com/cosmos/cosmos-sdk/version"
 	serverconfig "github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/snapshots"
 	snapshottypes "github.com/cosmos/cosmos-sdk/snapshots/types"
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/version"
 	authcmd "github.com/cosmos/cosmos-sdk/x/auth/client/cli"
 	"github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -125,7 +125,7 @@ func initRootCmd(
 		config.Cmd(),
 		genesisCommand(encodingConfig),
 		version.NewVersionCommand(),
-		emergencyConfigCmd(),
+		releaseInfoCmd(),
 	)
 
 	a := appCreator{
@@ -215,7 +215,6 @@ func genesisCommand(encodingConfig params.EncodingConfig, cmds ...*cobra.Command
 	}
 	return cmd
 }
-
 
 type appCreator struct {
 	encodingConfig appparams.EncodingConfig

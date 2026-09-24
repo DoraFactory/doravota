@@ -8,11 +8,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-ARG EMERGENCY_HEIGHT
-ARG EMERGENCY_CHAIN_ID
+ARG MAINTENANCE_HEIGHT
+ARG MAINTENANCE_CHAIN_ID
 ARG COMMIT_SHA
-RUN EMERGENCY_HEIGHT="${EMERGENCY_HEIGHT}" EMERGENCY_CHAIN_ID="${EMERGENCY_CHAIN_ID}" \
-    COMMIT_SHA="${COMMIT_SHA}" OUTPUT=/out/dorad bash scripts/build-emergency-044.sh
+RUN MAINTENANCE_HEIGHT="${MAINTENANCE_HEIGHT}" MAINTENANCE_CHAIN_ID="${MAINTENANCE_CHAIN_ID}" \
+    COMMIT_SHA="${COMMIT_SHA}" OUTPUT=/out/dorad bash scripts/build-maintenance.sh
 
 # Export with BuildKit --target artifacts --output type=local,dest=...
 FROM scratch AS artifacts

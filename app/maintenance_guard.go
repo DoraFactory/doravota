@@ -15,41 +15,41 @@ import (
 // These values are embedded into the shared binary with -ldflags, never read
 // from a validator's runtime flags or environment. An unconfigured build must
 // not start an application. Choose the height only after operator coordination.
-var EmergencyWasmHeight = "UNCONFIGURED"
-var EmergencyWasmChainID = "UNCONFIGURED"
+var MaintenanceHeight = "UNCONFIGURED"
+var MaintenanceChainID = "UNCONFIGURED"
 
-const EmergencyWasmVersion = "0.4.5"
+const MaintenanceVersion = "0.4.5"
 
 // Use a separate namespace in the existing upgrade store, without creating a
 // new module/store or touching the upgrade plan, done markers or version map.
 // This raw backup survives an in-place upgrade and a physical DB snapshot.
 // Standard SDK JSON genesis export does NOT include these auxiliary keys.
-const emergencyWasmPrefix = "vota/maint/v1/"
+const maintenancePrefix = "vota/maint/v1/"
 
-type emergencyWasmGuard struct {
+type maintenanceGuard struct {
 	height  int64
 	chainID string
 }
 
-var _ baseapp.CircuitBreaker = emergencyWasmGuard{}
+var _ baseapp.CircuitBreaker = maintenanceGuard{}
 
-func newEmergencyWasmGuard() emergencyWasmGuard {
-	height, err := strconv.ParseInt(EmergencyWasmHeight, 10, 64)
-	if err != nil || height <= 0 || strconv.FormatInt(height, 10) != EmergencyWasmHeight {
+func newMaintenanceGuard() maintenanceGuard {
+	height, err := strconv.ParseInt(MaintenanceHeight, 10, 64)
+	if err != nil || height <= 0 || strconv.FormatInt(height, 10) != MaintenanceHeight {
 		panic("maintenance activation height must be explicitly embedded as a positive integer")
 	}
-	if EmergencyWasmChainID == "" || EmergencyWasmChainID == "UNCONFIGURED" {
+	if MaintenanceChainID == "" || MaintenanceChainID == "UNCONFIGURED" {
 		panic("release chain ID must be explicitly embedded")
 	}
-	return emergencyWasmGuard{height: height, chainID: EmergencyWasmChainID}
+	return maintenanceGuard{height: height, chainID: MaintenanceChainID}
 }
 
 // IsAllowed runs in the SDK message execution router, not just CheckTx.
 // Authz, group, gov, ICA and Wasm submessages also use this router in 0.4.4.
 // Block permission changes too, so a governance-authorized message cannot
-// reopen a route during the emergency. Existing Execute/Query/IBC remain
+// reopen a route during maintenance. Existing Execute/Query/IBC remain
 // available, but their attempts to deploy or migrate contracts are rejected.
-func (g emergencyWasmGuard) IsAllowed(goCtx context.Context, typeURL string) (bool, error) {
+func (g maintenanceGuard) IsAllowed(goCtx context.Context, typeURL string) (bool, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 	if ctx.ChainID() != g.chainID {
 		return false, fmt.Errorf("release is for chain %q, not %q", g.chainID, ctx.ChainID())
@@ -74,14 +74,14 @@ func (g emergencyWasmGuard) IsAllowed(goCtx context.Context, typeURL string) (bo
 	}
 }
 
-type emergencyWasmRecord struct {
+type maintenanceRecord struct {
 	Version   string `json:"version"`
 	ChainID   string `json:"chain_id"`
 	Height    int64  `json:"height"`
 	CodeCount int    `json:"code_count"`
 }
 
-type emergencyWasmCode struct {
+type maintenanceCode struct {
 	key      []byte
 	original []byte
 	info     wasmtypes.CodeInfo
@@ -90,11 +90,11 @@ type emergencyWasmCode struct {
 // Read and close the iterator before writing any code records. Keep original
 // protobuf bytes for an exact per-code permission recovery, not a blanket
 // Everybody reset that would expose previously restricted code.
-func (app *App) collectEmergencyWasmCodes(ctx sdk.Context) ([]emergencyWasmCode, error) {
+func (app *App) collectMaintenanceCodes(ctx sdk.Context) ([]maintenanceCode, error) {
 	store := ctx.KVStore(app.keys[wasmtypes.StoreKey])
 	it := sdk.KVStorePrefixIterator(store, wasmtypes.CodeKeyPrefix)
 	defer it.Close()
-	var codes []emergencyWasmCode
+	var codes []maintenanceCode
 	for ; it.Valid(); it.Next() {
 		if len(it.Key()) != len(wasmtypes.CodeKeyPrefix)+8 {
 			return nil, fmt.Errorf("invalid Wasm code key length %d", len(it.Key()))
@@ -103,7 +103,7 @@ func (app *App) collectEmergencyWasmCodes(ctx sdk.Context) ([]emergencyWasmCode,
 		if err := app.appCodec.Unmarshal(it.Value(), &info); err != nil {
 			return nil, fmt.Errorf("decode Wasm code info: %w", err)
 		}
-		codes = append(codes, emergencyWasmCode{
+		codes = append(codes, maintenanceCode{
 			key: append([]byte(nil), it.Key()...), original: append([]byte(nil), it.Value()...), info: info,
 		})
 	}
@@ -113,22 +113,22 @@ func (app *App) collectEmergencyWasmCodes(ctx sdk.Context) ([]emergencyWasmCode,
 // Called before any module BeginBlocker. Writes are committed together with
 // block X. Replaying from X-1 repeats the same transition; restarting after X
 // checks the saved activation record and never overwrites the original backup.
-func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
-	g := app.emergencyWasm
+func (app *App) applyMaintenanceGuard(ctx sdk.Context) error {
+	g := app.maintenance
 	if ctx.ChainID() != g.chainID {
 		return fmt.Errorf("release is for chain %q, not %q", g.chainID, ctx.ChainID())
 	}
 	if ctx.BlockHeight() < g.height {
 		return nil
 	}
-	key := []byte(emergencyWasmPrefix + "activation")
+	key := []byte(maintenancePrefix + "activation")
 	backupStore := ctx.KVStore(app.keys[upgradetypes.StoreKey])
 	if bz := backupStore.Get(key); bz != nil {
-		var record emergencyWasmRecord
+		var record maintenanceRecord
 		if err := json.Unmarshal(bz, &record); err != nil {
 			return fmt.Errorf("decode maintenance activation record: %w", err)
 		}
-		if record.Height != g.height || record.ChainID != g.chainID || record.Version != EmergencyWasmVersion {
+		if record.Height != g.height || record.ChainID != g.chainID || record.Version != MaintenanceVersion {
 			return fmt.Errorf("release configuration does not match committed activation record")
 		}
 		return nil
@@ -138,7 +138,7 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 	}
 
 	cacheCtx, write := ctx.CacheContext()
-	codes, err := app.collectEmergencyWasmCodes(cacheCtx)
+	codes, err := app.collectMaintenanceCodes(cacheCtx)
 	if err != nil {
 		return err
 	}
@@ -146,9 +146,9 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 	backup := cacheCtx.KVStore(app.keys[upgradetypes.StoreKey])
 	paramsBytes := wasmStore.Get(wasmtypes.ParamsKey)
 	if len(paramsBytes) == 0 {
-		return fmt.Errorf("missing Wasm parameters before emergency activation")
+		return fmt.Errorf("missing Wasm parameters before maintenance activation")
 	}
-	backup.Set([]byte(emergencyWasmPrefix+"original-params"), paramsBytes)
+	backup.Set([]byte(maintenancePrefix+"original-params"), paramsBytes)
 	params := app.WasmKeeper.GetParams(cacheCtx)
 	params.CodeUploadAccess = wasmtypes.AccessConfig{Permission: wasmtypes.AccessTypeNobody}
 	params.InstantiateDefaultPermission = wasmtypes.AccessTypeNobody
@@ -156,7 +156,7 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 		return err
 	}
 	for _, code := range codes {
-		backup.Set(append([]byte(emergencyWasmPrefix+"original-code/"), code.key...), code.original)
+		backup.Set(append([]byte(maintenancePrefix+"original-code/"), code.key...), code.original)
 		code.info.InstantiateConfig = wasmtypes.AccessConfig{Permission: wasmtypes.AccessTypeNobody}
 		bz, err := app.appCodec.Marshal(&code.info)
 		if err != nil {
@@ -164,8 +164,8 @@ func (app *App) applyEmergencyWasmGuard(ctx sdk.Context) error {
 		}
 		wasmStore.Set(code.key, bz)
 	}
-	record, err := json.Marshal(emergencyWasmRecord{
-		Version: EmergencyWasmVersion, ChainID: g.chainID, Height: g.height, CodeCount: len(codes),
+	record, err := json.Marshal(maintenanceRecord{
+		Version: MaintenanceVersion, ChainID: g.chainID, Height: g.height, CodeCount: len(codes),
 	})
 	if err != nil {
 		return err

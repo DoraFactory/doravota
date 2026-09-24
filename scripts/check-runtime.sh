@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Read-only prerequisite check. Does not change sysctls, stop or restart nodes.
-# Usage: check-emergency-runtime.sh BINARY [RUNNING_PID]
+# Usage: check-runtime.sh BINARY [RUNNING_PID]
 set -euo pipefail
 export LC_ALL=C
 die() { echo "ERROR: $*" >&2; exit 1; }
-[[ $# -ge 1 && $# -le 2 ]] || die 'Usage: check-emergency-runtime.sh BINARY [RUNNING_PID]'
+[[ $# -ge 1 && $# -le 2 ]] || die 'Usage: check-runtime.sh BINARY [RUNNING_PID]'
 [[ $(uname -s) == Linux ]] || die 'The supplied mitigation is for Linux.'
 binary=$1
 [[ -r $binary ]] || die 'Binary is not readable.'
