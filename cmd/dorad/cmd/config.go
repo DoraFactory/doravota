@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"github.com/DoraFactory/doravota/app"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/version"
-	"github.com/DoraFactory/doravota/app"
 )
 
 const (
@@ -47,7 +47,7 @@ func initSDKConfig() {
 const (
 	name     = "doravota"
 	app_name = "dorad"
-	Version  = "0.4.4"
+	Version  = app.EmergencyWasmVersion
 )
 
 func setVersionInfo() {

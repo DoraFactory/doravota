@@ -1,0 +1,11 @@
+.git
+.gitignore
+.modcache
+build
+release
+target
+keyring-*
+**/keyring-*
+**/priv_validator_key.json
+**/node_key.json
+docs

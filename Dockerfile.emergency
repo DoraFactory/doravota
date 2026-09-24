@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Build one target architecture at a time. All operators must receive artifacts
+# with the same explicit chain ID and activation height. No node is run here.
+ARG GO_VERSION=1.24.7
+FROM golang:${GO_VERSION}-alpine AS builder
+RUN apk add --no-cache bash ca-certificates build-base linux-headers binutils curl git
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG EMERGENCY_HEIGHT
+ARG EMERGENCY_CHAIN_ID
+ARG COMMIT_SHA
+RUN EMERGENCY_HEIGHT="${EMERGENCY_HEIGHT}" EMERGENCY_CHAIN_ID="${EMERGENCY_CHAIN_ID}" \
+    COMMIT_SHA="${COMMIT_SHA}" OUTPUT=/out/dorad bash scripts/build-emergency-044.sh
+
+# Export with BuildKit --target artifacts --output type=local,dest=...
+FROM scratch AS artifacts
+COPY --from=builder /out/ /

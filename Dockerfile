@@ -1,58 +1,24 @@
 # syntax=docker/dockerfile:1
-ARG GO_VERSION="1.20"
-ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
-# --------------------------------------------------------
-# Builder
-# --------------------------------------------------------
-FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION
-ARG GIT_COMMIT
-RUN apk add --no-cache \
-    ca-certificates \
-    build-base \
-    linux-headers
-# Download go dependencies
-WORKDIR /dora
+ARG GO_VERSION=1.24.7
+ARG RUNNER_IMAGE=gcr.io/distroless/static-debian11
+FROM golang:${GO_VERSION}-alpine AS builder
+RUN apk add --no-cache bash ca-certificates build-base linux-headers binutils curl git
+WORKDIR /src
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/root/go/pkg/mod \
-    go mod download
-# Cosmwasm - Download correct libwasmvm version
-RUN ARCH=$(uname -m) && WASMVM_VERSION=$(go list -m github.com/CosmWasm/wasmvm | sed 's/.* //') && \
-    wget https://github.com/CosmWasm/wasmvm/releases/download/$WASMVM_VERSION/libwasmvm_muslc.$ARCH.a \
-        -O /lib/libwasmvm_muslc.a && \
-    # verify checksum
-    wget https://github.com/CosmWasm/wasmvm/releases/download/$WASMVM_VERSION/checksums.txt -O /tmp/checksums.txt && \
-    sha256sum /lib/libwasmvm_muslc.a | grep $(cat /tmp/checksums.txt | grep libwasmvm_muslc.$ARCH | cut -d ' ' -f 1)
-# Copy the remaining files
+RUN go mod download
 COPY . .
-# Build dorad binary
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/root/go/pkg/mod \
-    GOWORK=off go build \
-        -mod=readonly \
-        -tags "netgo,ledger,muslc" \
-        -ldflags \
-            "-X github.com/cosmos/cosmos-sdk/version.Name="dora" \
-            -X github.com/cosmos/cosmos-sdk/version.AppName="dorad" \
-            -X github.com/cosmos/cosmos-sdk/version.Version=${GIT_VERSION} \
-            -X github.com/cosmos/cosmos-sdk/version.Commit=${GIT_COMMIT} \
-            -X github.com/cosmos/cosmos-sdk/version.BuildTags=netgo,ledger,muslc \
-            -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static'" \
-        -trimpath \
-        -o /dora/build/dorad \
-        /dora/cmd/dorad/main.go
-# --------------------------------------------------------
-# Runner
-# --------------------------------------------------------
-FROM ${RUNNER_IMAGE}
-COPY --from=builder /dora/build/dorad /bin/dorad
-ENV HOME /dora
-WORKDIR $HOME
-EXPOSE 26656
-EXPOSE 26657
-EXPOSE 1317
-# Note: uncomment the line below if you need pprof in localdora
-# We disable it by default in out main Dockerfile for security reasons
-# EXPOSE 6060
+ARG EMERGENCY_HEIGHT
+ARG EMERGENCY_CHAIN_ID
+ARG COMMIT_SHA
+RUN EMERGENCY_HEIGHT="${EMERGENCY_HEIGHT}" EMERGENCY_CHAIN_ID="${EMERGENCY_CHAIN_ID}" \
+    COMMIT_SHA="${COMMIT_SHA}" OUTPUT=/out/dorad bash scripts/build-emergency-044.sh
+
+FROM scratch AS artifacts
+COPY --from=builder /out/ /
+
+FROM ${RUNNER_IMAGE} AS runtime
+COPY --from=builder /out/dorad /bin/dorad
+ENV HOME=/dora
+WORKDIR /dora
+EXPOSE 26656 26657 1317
 ENTRYPOINT ["dorad"]

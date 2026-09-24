@@ -2,3 +2,5 @@
 .vscode/
 .DS_Store
 release
+build/
+.modcache/

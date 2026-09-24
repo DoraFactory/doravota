@@ -125,6 +125,7 @@ func initRootCmd(
 		config.Cmd(),
 		genesisCommand(encodingConfig),
 		version.NewVersionCommand(),
+		emergencyConfigCmd(),
 	)
 
 	a := appCreator{

@@ -285,6 +285,7 @@ type App struct {
 	txConfig          client.TxConfig
 
 	invCheckPeriod uint
+	emergencyWasm  emergencyWasmGuard
 
 	// keys to access the substores
 	keys    map[string]*storetypes.KVStoreKey
@@ -348,6 +349,7 @@ func New(
 	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
+	emergencyWasm := newEmergencyWasmGuard()
 	overrideWasmVariables()
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
@@ -365,6 +367,7 @@ func New(
 	bApp.SetVersion(version.Version)
 	bApp.SetInterfaceRegistry(interfaceRegistry)
 	bApp.SetTxEncoder(txConfig.TxEncoder())
+	bApp.MsgServiceRouter().SetCircuit(emergencyWasm)
 
 	keys := sdk.NewKVStoreKeys(
 		authtypes.StoreKey, banktypes.StoreKey, stakingtypes.StoreKey,
@@ -387,6 +390,7 @@ func New(
 	}
 
 	app := &App{
+		emergencyWasm:     emergencyWasm,
 		BaseApp:           bApp,
 		cdc:               cdc,
 		appCodec:          appCodec,
@@ -902,6 +906,9 @@ func (app *App) Name() string { return app.BaseApp.Name() }
 
 // BeginBlocker application updates every begin block
 func (app *App) BeginBlocker(ctx sdk.Context, req abci.RequestBeginBlock) abci.ResponseBeginBlock {
+	if err := app.applyEmergencyWasmGuard(ctx); err != nil {
+		panic(err)
+	}
 	return app.mm.BeginBlock(ctx, req)
 }
 

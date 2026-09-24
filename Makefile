@@ -1,7 +1,8 @@
 #!/usr/bin/make -f
 
 build: go.sum
-	CGO_ENABLED=1 go build -mod=readonly  -o build/dorad ./cmd/dorad
+	bash scripts/build-emergency-044.sh
 
-install: go.sum
-	CGO_ENABLED=1 go install -mod=readonly  ./cmd/dorad
+install: build
+	install -d "$$(go env GOPATH)/bin"
+	install -m 0755 build/dorad "$$(go env GOPATH)/bin/dorad"
