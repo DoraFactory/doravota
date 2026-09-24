@@ -65,8 +65,10 @@ output=${OUTPUT:-build/dorad}
 mkdir -p "$(dirname "$output")"
 module=github.com/DoraFactory/doravota
 build_tags=muslc,netgo,osusergo,static_build,ledger
+# CGO's temporary library directory affects Go's action-based build ID even
+# with -trimpath. Omit that ID; the full source commit remains embedded below.
 go build -mod=readonly -trimpath -buildmode=pie -tags "$build_tags" \
-  -ldflags "-X ${module}/app.EmergencyWasmHeight=${EMERGENCY_HEIGHT} -X ${module}/app.EmergencyWasmChainID=${EMERGENCY_CHAIN_ID} -X github.com/cosmos/cosmos-sdk/version.Commit=${COMMIT_SHA} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags} -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static-pie -z noexecstack -lm'" \
+  -ldflags "-buildid= -X ${module}/app.EmergencyWasmHeight=${EMERGENCY_HEIGHT} -X ${module}/app.EmergencyWasmChainID=${EMERGENCY_CHAIN_ID} -X github.com/cosmos/cosmos-sdk/version.Commit=${COMMIT_SHA} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags} -w -s -linkmode=external -extldflags '-Wl,-z,muldefs -static-pie -z noexecstack -lm'" \
   -o "$build_tmp/dorad" ./cmd/dorad
 
 # Inspect without running the binary. Static PIE is ELF DYN with no interpreter
