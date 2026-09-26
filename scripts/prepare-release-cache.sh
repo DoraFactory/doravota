@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run on a workstation with read access to the private upstream repositories.
+# Prepare release dependencies on a workstation with upstream repository access.
 # The cache contains source and binaries, but no GitHub credentials. Keep it private.
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -90,7 +90,7 @@ jobs:
         with:
           name: ${{ github.ref_name }} - ${{ env.RELEASE_DATE }}
           tag_name: ${{ github.ref_name }}
-          prerelease: ${{ github.ref_name == '0.5.0' || contains(github.ref_name, '-rc.') }}
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
           make_latest: false
           draft: ${{ contains(github.ref_name, '-rc.') }}
           body_path: ./release_notes.md

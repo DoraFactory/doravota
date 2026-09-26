@@ -235,7 +235,7 @@ require (
 // Upstream: https://github.com/shamaton/msgpack/commit/04a026e9ac24527f593a30258a98884768ec0e52
 replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-20260513223856-04a026e9ac24
 
-// Official paired CosmWasm security hotfix for the 0.61 release line.
+// Paired upstream dependencies for the 0.61 release line.
 replace github.com/CosmWasm/wasmd => github.com/CosmWasm/priv_wasmd_sec v0.61.15-rc.3
 
 replace github.com/CosmWasm/wasmvm/v3 => github.com/CosmWasm/priv_wasmvm_sec/v3 v3.0.8-rc.3

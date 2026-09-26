@@ -14,7 +14,7 @@ case "$(go env GOARCH)" in
   *) echo 'Unsupported release architecture' >&2; exit 1 ;;
 esac
 # Verify the replacement, then use its bundled native library. A public release
-# download would silently link the old engine despite the patched Go dependency.
+# download would link a different engine than the selected Go dependency.
 test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.com/CosmWasm/wasmvm/v3)" = \
   github.com/CosmWasm/priv_wasmvm_sec/v3@v3.0.8-rc.3
 test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.com/CosmWasm/wasmd)" = \

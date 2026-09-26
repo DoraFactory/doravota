@@ -2,11 +2,11 @@
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-09-14
-Pre-release for long-term testnet acceptance. The binary and tag are `0.5.0`; mainnet deployment is not approved by this release.
+## [0.5.0]
+Dora Vota 0.5.0. The application version and on-chain upgrade plan name are `0.5.0`.
 
-### Upgrade from 0.4.4
-- Upgrade to Cosmos SDK 0.53.6, CometBFT 0.38.21, IBC-Go 10.5.0, Wasmd 0.61.14 and WasmVM 3.0.7, built with Go 1.24.7.
+### Upgrade from 0.4.5
+- Upgrade to Cosmos SDK 0.53.6, CometBFT 0.38.21 and IBC-Go 10.5.0, with updated CosmWasm dependencies, built with Go 1.24.7. Exact dependency versions are recorded in `go.mod` and the binary build information.
 - Use the exact on-chain plan name `0.5.0` and Cosmovisor path `cosmovisor/upgrades/0.5.0/bin/dorad`.
 - Preserve existing consensus and module parameter values during migration. Initialize the new governance fields with `min_deposit_ratio=0`, `proposal_cancel_ratio=0` and expedited minimum deposit of 110,000 DORA. The expedited voting period is 23 hours and threshold is 0.667; preflight checks compatibility with existing governance parameters.
 - Preserve historical upgrade handlers and production behavior except required SDK/IBC/Wasmd compatibility and reviewed safety fixes. Remove obsolete capability and ICS-29 stores only after migration preflight passes.
@@ -14,10 +14,11 @@ Pre-release for long-term testnet acceptance. The binary and tag are `0.5.0`; ma
 - Include empty IAVL restart compatibility, ICA wiring/CLI corrections and SDK startup/configuration compatibility.
 
 ### Artifacts and validation
-- Publish static Linux amd64 and arm64 binaries and archives, with SHA-256 checksums. Verify the binary version and embedded commit before deployment.
-- The preceding source candidate `d37fa73` passed four-node mainnet-snapshot upgrade, first-block/restart parameter checks and controlled bidirectional ICA execution/timeout tests. These are historical candidate results, not acceptance of the newly versioned release artifacts.
-- Revalidate the published artifacts, then perform approximately one week of long-term testnet stability and real Wasm/IBC business testing before mainnet approval. Recheck live migration prerequisites before scheduling the upgrade.
-- This 0.5.0 reissue replaces the withdrawn build at commit 02ad289952182ce573b2bc14125ac7f8b3defe5e before validator distribution. Replace any previously staged 0.5.0 binary and verify the new commit and SHA-256; old package rehearsal evidence does not validate the reissued artifact. After the upgraded binary commits state, do not start 0.4.4 against the same database.
+- Distribute a static Linux amd64 binary with its SHA-256 checksum. Verify the binary version, embedded commit and checksum before deployment.
+- Preserve existing upload and instantiation permissions during migration.
+- Use the newly distributed artifact and checksum even if a previously staged binary also reports `0.5.0`.
+- Verify migration prerequisites before the upgrade and prepare a manual binary-switch procedure if automatic switching fails.
+- Validate the final artifact before distribution. After it commits upgraded state, do not start a 0.4.x binary against the same database.
 
 ## [0.5.0-rc.1] - 2026-09-12
 Release candidate for long-running testnet validation; not approved for mainnet deployment.
