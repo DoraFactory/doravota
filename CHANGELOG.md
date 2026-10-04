@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.0.0]
+Development candidate; mainnet snapshot and cross-chain acceptance are pending.
+- Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0; keep existing consensus key types.
+- Retain Wasm, IBC transfer and ICA runtime/state. No asset-clearance condition for those modules.
+- Use Wasmd 0.70.4 with a reviewed local compatibility/policy snapshot, official WasmVM 3.0.8, and a pinned SDK 0.55 IBC-Go development commit; see go.mod and docs/v1.0.0-preserve/REVIEW.md.
+- Disable new code creation, both instantiation forms and contract migration at the common execution boundary; preserve existing contract execution, queries and withdrawals.
+- Set upload/default/existing-code instantiation permissions to Nobody at InitChain and upgrade.
+- Remove deprecated params/group stores only after guarded state compatibility checks. Preserve Wasm/IBC/ICA stores and outstanding assets/packets.
+- Use coordinated plan name 1.0.0. No custom pqcauth or production PQC consensus activation in this candidate.
+
 ## [0.5.0]
 Dora Vota 0.5.0. The application version and on-chain upgrade plan name are `0.5.0`.
 

@@ -533,6 +533,7 @@ func New(
 		panic(fmt.Sprintf("error while reading wasm config: %s", err))
 	}
 
+	wasmOpts = append(wasmOpts, wasmkeeper.WithDeploymentDisabled())
 	app.WasmKeeper = wasmkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(keys[wasmtypes.StoreKey]),
@@ -736,6 +737,9 @@ func New(
 
 	// initialize stores
 	app.MountKVStores(keys)
+	if err := sdk055.MountRetiringStores(app.CommitMultiStore(), db, logger); err != nil {
+		panic(fmt.Errorf("mount retiring stores: %w", err))
+	}
 	app.MountTransientStores(tkeys)
 
 	// initialize BaseApp
@@ -834,7 +838,14 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	if err := app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap()); err != nil {
 		return nil, err
 	}
-	return app.mm.InitGenesis(ctx, app.appCodec, genesisState)
+	response, err := app.mm.InitGenesis(ctx, app.appCodec, genesisState)
+	if err != nil {
+		return nil, err
+	}
+	if err := app.applyWasmDeploymentRestrictions(ctx); err != nil {
+		return nil, err
+	}
+	return response, nil
 }
 
 // Configurator get app configurator
@@ -991,6 +1002,9 @@ func (app *App) setupUpgradeHandlers() {
 			// before BaseApp loading. RunMigrations returns only currently wired modules.
 			updated, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 			if err != nil {
+				return nil, err
+			}
+			if err := app.applyWasmDeploymentRestrictions(sdk.UnwrapSDKContext(ctx)); err != nil {
 				return nil, err
 			}
 			// SetModuleVersionMap only upserts entries; absent modules otherwise

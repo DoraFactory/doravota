@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Isolated new-chain smoke; run on the designated operator test host."""
+import argparse
 import base64
 import json
 import pathlib
@@ -11,7 +12,7 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BIN = ROOT / 'build/dorad'
-OUT = ROOT / 'docs/sdk-055-evidence'
+OUT = ROOT / 'docs/v1.0.0-preserve/evidence'
 
 def port():
     with socket.socket() as sock:
@@ -118,5 +119,7 @@ def smoke(algo):
 
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
-    for algorithm in ['ed25519', 'ml_dsa_65']:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--consensus-algos', nargs='+', choices=['ed25519', 'ml_dsa_65'], default=['ed25519'])
+    for algorithm in parser.parse_args().consensus_algos:
         smoke(algorithm)

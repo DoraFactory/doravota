@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
-# Prepare release dependencies on a workstation with upstream repository access.
-# The cache contains source and binaries, but no GitHub credentials. Keep it private.
+# All 1.0.0 dependencies are public. No private security-fork cache is required.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export GOPRIVATE=github.com/CosmWasm/priv_wasmd_sec,github.com/CosmWasm/priv_wasmvm_sec
-export GONOSUMDB="$GOPRIVATE"
-go mod download github.com/CosmWasm/wasmd github.com/CosmWasm/wasmvm/v3
-cache=$(go env GOMODCACHE)
-mkdir -p '.modcache/github.com/!cosm!wasm'
-for module in priv_wasmd_sec priv_wasmvm_sec; do
-  cp -R "${cache}/cache/download/github.com/!cosm!wasm/${module}" '.modcache/github.com/!cosm!wasm/'
-done
+python3 scripts/verify-wasmd-snapshot.py
+go mod download
+go mod verify

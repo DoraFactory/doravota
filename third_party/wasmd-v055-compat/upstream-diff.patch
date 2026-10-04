@@ -11,6 +11,61 @@
  	// Deprecated: Do not use.
  	NewQuerier = keeper.Querier
  	// Deprecated: Do not use.
+--- upstream/x/wasm/keeper/keeper.go
++++ local/x/wasm/keeper/keeper.go
+@@ -85,6 +85,8 @@
+ 
+ // Keeper will have a reference to Wasm Engine with it's own data directory.
+ type Keeper struct {
++	// deploymentDisabled is fixed by the application, never a node-local flag.
++	deploymentDisabled bool
+ 	// The (unexposed) keys used to access the stores from the Context.
+ 	storeService          corestoretypes.KVStoreService
+ 	cdc                   codec.Codec
+@@ -156,6 +158,9 @@
+ }
+ 
+ func (k Keeper) create(ctx context.Context, creator sdk.AccAddress, wasmCode []byte, instantiateAccess *types.AccessConfig, authZ types.AuthorizationPolicy) (codeID uint64, checksum []byte, err error) {
++	if k.deploymentDisabled {
++		return 0, nil, sdkerrors.ErrUnauthorized.Wrap("contract deployment is disabled")
++	}
+ 	if creator == nil {
+ 		return 0, checksum, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "cannot be nil")
+ 	}
+@@ -270,6 +275,9 @@
+ 	addressGenerator AddressGenerator,
+ 	authPolicy types.AuthorizationPolicy,
+ ) (sdk.AccAddress, []byte, error) {
++	if k.deploymentDisabled {
++		return nil, nil, sdkerrors.ErrUnauthorized.Wrap("contract deployment is disabled")
++	}
+ 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "instantiate") // nolint:staticcheck // TODO update to OTEL
+ 
+ 	if creator == nil {
+@@ -480,6 +488,9 @@
+ 	msg []byte,
+ 	authZ types.AuthorizationPolicy,
+ ) ([]byte, error) {
++	if k.deploymentDisabled {
++		return nil, sdkerrors.ErrUnauthorized.Wrap("contract migration is disabled")
++	}
+ 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "migrate") // nolint:staticcheck // TODO update to OTEL
+ 
+ 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+--- upstream/x/wasm/keeper/options.go
++++ local/x/wasm/keeper/options.go
+@@ -228,3 +228,11 @@
+ 	}
+ 	return pre, post
+ }
++
++// WithDeploymentDisabled disables create, instantiate (including instantiate2),
++// and migrate at the shared execution boundary, including privileged and nested
++// callers. Importing existing genesis data and executing/querying it remain allowed.
++// Every validator must use the same application wiring for this option.
++func WithDeploymentDisabled() Option {
++	return optsFn(func(k *Keeper) { k.deploymentDisabled = true })
++}
 --- upstream/x/wasm/keeper/test_common.go
 +++ local/x/wasm/keeper/test_common.go
 @@ -1,3 +1,5 @@

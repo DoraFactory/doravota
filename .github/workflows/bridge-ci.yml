@@ -3,7 +3,7 @@ name: SDK candidate validation
 on:
   workflow_dispatch:
   push:
-    branches: [sdk-053-bridge, upgrade/sdk-055-base]
+    branches: [sdk-053-bridge, upgrade/sdk-055-base, upgrade/v1.0.0-sdk055-preserve]
   pull_request:
     paths:
       - '**/*.go'
@@ -68,14 +68,14 @@ jobs:
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          test "$VERSION" = "0.5.0"
+          test "$VERSION" = "1.0.0"
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           # Keep the output directory owned by the runner, not container root.
           mkdir -p release
           docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
-            sh -ec 'apk add --no-cache bash build-base binutils curl git; bash scripts/build-bridge-release.sh'
+            sh -ec 'apk add --no-cache bash build-base binutils curl git xz; bash scripts/build-bridge-release.sh'
           (cd release && sha256sum dorad-*.tar.gz > sha256sum.txt)
           printf 'commit=%s\narch=%s\ngo=%s\n' "$GITHUB_SHA" "$ARCH" "$GO_VERSION" > release/build-info.txt
       - name: Verify Dockerfile without publishing

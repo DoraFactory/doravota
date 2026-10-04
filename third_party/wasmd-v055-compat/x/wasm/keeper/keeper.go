@@ -20,6 +20,7 @@ import (
 	corestoretypes "cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log/v2"
+	sdkmath "cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/runtime"
@@ -84,6 +85,8 @@ var defaultAcceptedAccountTypes = map[reflect.Type]struct{}{
 
 // Keeper will have a reference to Wasm Engine with it's own data directory.
 type Keeper struct {
+	// deploymentDisabled is fixed by the application, never a node-local flag.
+	deploymentDisabled bool
 	// The (unexposed) keys used to access the stores from the Context.
 	storeService          corestoretypes.KVStoreService
 	cdc                   codec.Codec
@@ -155,6 +158,9 @@ func (k Keeper) GetGasRegister() types.GasRegister {
 }
 
 func (k Keeper) create(ctx context.Context, creator sdk.AccAddress, wasmCode []byte, instantiateAccess *types.AccessConfig, authZ types.AuthorizationPolicy) (codeID uint64, checksum []byte, err error) {
+	if k.deploymentDisabled {
+		return 0, nil, sdkerrors.ErrUnauthorized.Wrap("contract deployment is disabled")
+	}
 	if creator == nil {
 		return 0, checksum, errorsmod.Wrap(sdkerrors.ErrInvalidAddress, "cannot be nil")
 	}
@@ -269,6 +275,9 @@ func (k Keeper) instantiate(
 	addressGenerator AddressGenerator,
 	authPolicy types.AuthorizationPolicy,
 ) (sdk.AccAddress, []byte, error) {
+	if k.deploymentDisabled {
+		return nil, nil, sdkerrors.ErrUnauthorized.Wrap("contract deployment is disabled")
+	}
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "instantiate") // nolint:staticcheck // TODO update to OTEL
 
 	if creator == nil {
@@ -362,6 +371,9 @@ func (k Keeper) instantiate(
 	if res.Err != "" {
 		return nil, nil, types.MarkErrorDeterministic(errorsmod.Wrap(types.ErrInstantiateFailed, res.Err))
 	}
+	if res.Ok == nil {
+		return nil, nil, errorsmod.Wrap(types.ErrVMError, "internal wasmvm error: nil ok response")
+	}
 
 	// persist instance first
 	createdAt := types.NewAbsoluteTxPosition(sdkCtx)
@@ -451,6 +463,9 @@ func (k Keeper) execute(ctx context.Context, contractAddress, caller sdk.AccAddr
 	if res.Err != "" {
 		return nil, types.MarkErrorDeterministic(errorsmod.Wrap(types.ErrExecuteFailed, res.Err))
 	}
+	if res.Ok == nil {
+		return nil, errorsmod.Wrap(types.ErrVMError, "internal wasmvm error: nil ok response")
+	}
 
 	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeExecute,
@@ -473,6 +488,9 @@ func (k Keeper) migrate(
 	msg []byte,
 	authZ types.AuthorizationPolicy,
 ) ([]byte, error) {
+	if k.deploymentDisabled {
+		return nil, sdkerrors.ErrUnauthorized.Wrap("contract migration is disabled")
+	}
 	defer telemetry.MeasureSince(time.Now(), "wasm", "contract", "migrate") // nolint:staticcheck // TODO update to OTEL
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -658,6 +676,9 @@ func (k Keeper) Sudo(ctx context.Context, contractAddress sdk.AccAddress, msg []
 	if res.Err != "" {
 		return nil, types.MarkErrorDeterministic(errorsmod.Wrap(types.ErrExecuteFailed, res.Err))
 	}
+	if res.Ok == nil {
+		return nil, errorsmod.Wrap(types.ErrVMError, "internal wasmvm error: nil ok response")
+	}
 
 	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
 		types.EventTypeSudo,
@@ -700,6 +721,9 @@ func (k Keeper) reply(ctx sdk.Context, contractAddress sdk.AccAddress, reply was
 	}
 	if res.Err != "" {
 		return nil, types.MarkErrorDeterministic(errorsmod.Wrap(types.ErrExecuteFailed, res.Err))
+	}
+	if res.Ok == nil {
+		return nil, errorsmod.Wrap(types.ErrVMError, "internal wasmvm error: nil ok response")
 	}
 
 	ctx.EventManager().EmitEvent(sdk.NewEvent(
@@ -1610,7 +1634,11 @@ func (b VestingCoinBurner) CleanupExistingAccount(ctx sdk.Context, existingAcc s
 	ctx = ctx.WithGasMeter(storetypes.NewInfiniteGasMeter())
 	coinsToBurn := sdk.NewCoins()
 	for _, orig := range v.GetOriginalVesting() { // focus on the coin denoms that were setup originally; getAllBalances has some issues
-		coinsToBurn = append(coinsToBurn, b.bank.GetBalance(ctx, existingAcc.GetAddress(), orig.Denom))
+		balance := b.bank.GetBalance(ctx, existingAcc.GetAddress(), orig.Denom)
+		burnAmount := sdkmath.MinInt(balance.Amount, orig.Amount)
+		if burnAmount.IsPositive() {
+			coinsToBurn = coinsToBurn.Add(sdk.NewCoin(orig.Denom, burnAmount))
+		}
 	}
 	if err := b.bank.SendCoinsFromAccountToModule(ctx, existingAcc.GetAddress(), types.ModuleName, coinsToBurn); err != nil {
 		return false, errorsmod.Wrap(err, "prune account balance")

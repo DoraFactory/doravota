@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
-ARG GO_VERSION="1.24.7"
+ARG GO_VERSION="1.26.5"
 ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # --------------------------------------------------------
 # Builder
 # --------------------------------------------------------
 FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION="0.5.0"
+ARG GIT_VERSION="1.0.0"
 ARG GIT_COMMIT="unknown"
 ARG COMMIT_SHA=""
 RUN apk add --no-cache \
@@ -15,12 +15,9 @@ RUN apk add --no-cache \
     bash binutils curl git xz
 # Download go dependencies
 WORKDIR /dora
-# Supply only Go download-cache files, never GitHub credentials.
-COPY .modcache/ /modcache/
-ENV GOPRIVATE=github.com/CosmWasm/priv_wasmd_sec,github.com/CosmWasm/priv_wasmvm_sec
-ENV GONOPROXY=none
-ENV GOPROXY=file:///modcache,https://proxy.golang.org,direct
+ENV GOPROXY=https://proxy.golang.org,direct
 COPY go.mod go.sum ./
+COPY third_party/ ./third_party/
 RUN go mod download
 # Copy the remaining files
 COPY . .

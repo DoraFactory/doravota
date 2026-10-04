@@ -8,22 +8,20 @@ if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Release requires a full 40-character commit hash; set COMMIT_SHA for source archives.' >&2
   exit 1
 fi
+test "${VERSION#v}" = "1.0.0"
+VERSION=1.0.0
 case "$(go env GOARCH)" in
-  amd64) asset=x86_64; suffix=amd; expected=ab1a878ed3beecc5f3821b1fb1f73a5254443e3ba9bca53964a50a122ee77497 ;;
-  arm64) asset=aarch64; suffix=arm64; expected=cc9175235d1e0051002c33a94027a63a008b14dcc13ae483685e511d59754235 ;;
+  amd64) asset=x86_64; suffix=amd; expected=b2299c85d49faccf3dcbb84984f30f55e8870111df98c10f017f86204d007470 ;;
+  arm64) asset=aarch64; suffix=arm64; expected=c73a0d5d340e35188e138584ddd6662a160902adef1b08b209e38d16b43a4c28 ;;
   *) echo 'Unsupported release architecture' >&2; exit 1 ;;
 esac
-# Verify the replacement, then use its bundled native library. A public release
-# download would link a different engine than the selected Go dependency.
-test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.com/CosmWasm/wasmvm/v3)" = \
-  github.com/CosmWasm/priv_wasmvm_sec/v3@v3.0.8-rc.3
-test "$(go list -m -f '{{with .Replace}}{{.Path}}@{{.Version}}{{end}}' github.com/CosmWasm/wasmd)" = \
-  github.com/CosmWasm/priv_wasmd_sec@v0.61.15-rc.3
-# go list does not extract an uncached module; download before reading its library.
-go mod download github.com/CosmWasm/wasmd github.com/CosmWasm/wasmvm/v3
-wasmvm_dir=$(go list -m -f '{{.Dir}}' github.com/CosmWasm/wasmvm/v3)
-xz -dc "${wasmvm_dir}/internal/api/libwasmvm_muslc.${asset}.a.xz" \
-  >"/usr/local/lib/libwasmvm_muslc.${asset}.a"
+test "$(go list -m -f '{{.Version}}' github.com/CosmWasm/wasmvm/v3)" = v3.0.8
+test -z "$(go list -m -f '{{with .Replace}}{{.Path}}{{end}}' github.com/CosmWasm/wasmvm/v3)"
+# Official v3.0.8 release archives are outside the Go module zip. Pin the
+# release-asset SHA-256 (also published in upstream checksums.txt), not just go.sum.
+curl --fail --location --retry 3 \
+  "https://github.com/CosmWasm/wasmvm/releases/download/v3.0.8/libwasmvm_muslc.${asset}.a" \
+  -o "/usr/local/lib/libwasmvm_muslc.${asset}.a"
 printf '%s  %s\n' "$expected" "/usr/local/lib/libwasmvm_muslc.${asset}.a" | sha256sum -c -
 mkdir -p release
 binary="dorad-${VERSION}-linux-${suffix}"
@@ -42,7 +40,7 @@ test "$("release/${binary}" version)" = "$VERSION"
 smoke_home=$(mktemp -d)
 trap 'rm -rf "$smoke_home"' EXIT
 "release/${binary}" init release-smoke --chain-id bridge-release-smoke --home "$smoke_home" >/dev/null
-test "$("release/${binary}" query wasm libwasmvm-version --home "$smoke_home")" = "3.0.8-rc.3"
+test "$("release/${binary}" query wasm libwasmvm-version --home "$smoke_home")" = "3.0.8"
 # Regression: fresh Comet config has a top-level version, which must not leak
 # into the ICA transaction's protocol metadata. No keys or RPC are needed.
 smoke_sender=dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4

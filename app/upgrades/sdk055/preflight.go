@@ -37,8 +37,8 @@ import (
 	connectiontypes "github.com/cosmos/ibc-go/v11/modules/core/03-connection/types"
 )
 
-// UpgradeName is a coordinated migration identifier, not a release version.
-const UpgradeName = "sdk-055"
+// UpgradeName matches the 1.0.0 governance plan and Cosmovisor directory.
+const UpgradeName = "1.0.0"
 
 func StoreUpgrades() storetypes.StoreUpgrades {
 	return storetypes.StoreUpgrades{Deleted: []string{"params", "group"}}
@@ -307,6 +307,25 @@ func validateState(trees map[string]*iavl.ImmutableTree, plan upgradetypes.Plan)
 			return nil
 		}); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// MountRetiringStores mounts only deprecated stores until the coordinated loader removes them.
+func MountRetiringStores(ms storetypes.CommitMultiStore, db dbm.DB, logger log.Logger) error {
+	height := rootmulti.GetLatestVersion(db)
+	if height == 0 {
+		return nil
+	}
+	info, err := rootmulti.NewStore(db, logger).GetCommitInfo(height)
+	if err != nil {
+		return err
+	}
+	retired := StoreUpgrades()
+	for _, entry := range info.StoreInfos {
+		if retired.IsDeleted(entry.Name) {
+			ms.MountStoreWithDB(storetypes.NewKVStoreKey(entry.Name), storetypes.StoreTypeIAVL, nil)
 		}
 	}
 	return nil

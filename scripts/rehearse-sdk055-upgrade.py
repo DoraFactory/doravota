@@ -64,7 +64,7 @@ try:
  contract_before=query('wasm','contract-state','smart',contract,json.dumps({'verifier':{}}));save('contract-before',contract_before)
  authority=query('auth','module-account','gov')['account']['value']['address']
  upgrade_height=height()+35
- proposal={'messages':[{'@type':'/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade','authority':authority,'plan':{'name':'sdk-055','height':str(upgrade_height),'info':'isolated rehearsal'}}],'metadata':'','deposit':'1peaka','title':'SDK 0.55 isolated rehearsal','summary':'Upgrade fresh test state from 0.5.0','expedited':False}
+ proposal={'messages':[{'@type':'/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade','authority':authority,'plan':{'name':'1.0.0','height':str(upgrade_height),'info':'isolated rehearsal'}}],'metadata':'','deposit':'1peaka','title':'SDK 0.55 isolated rehearsal','summary':'Upgrade fresh test state from 0.5.0','expedited':False}
  save('proposal',proposal);tx('submit','gov','submit-proposal',work/'proposal.json');tx('vote','gov','vote','1','yes')
  wait_height(upgrade_height-2,process)
  before={name:query(*route) for name,route in {'wasm':['wasm','params'],'staking':['staking','params'],'auth':['auth','params'],'bank':['bank','params'],'ibc':['ibc','client','params'],'transfer':['ibc-transfer','params'],'versions':['upgrade','module-versions']}.items()};save('before',before)
@@ -75,7 +75,7 @@ try:
   time.sleep(.5)
  else:raise TimeoutError('old binary did not halt for scheduled upgrade')
  stop(process);process=None
- assert json.loads((home/'data/upgrade-info.json').read_text())['name']=='sdk-055'
+ assert json.loads((home/'data/upgrade-info.json').read_text())['name']=='1.0.0'
  shutil.copytree(home,work/'halted-backup');print('0.5.0 halted with committed upgrade plan',flush=True)
  binary=a.new;process=start('new');wait_height(upgrade_height+3,process)
  after={name:query(*route) for name,route in {'wasm':['wasm','params'],'staking':['staking','params'],'auth':['auth','params'],'bank':['bank','params'],'ibc':['ibc','client','params'],'transfer':['ibc-transfer','params'],'versions':['upgrade','module-versions']}.items()};save('after',after)

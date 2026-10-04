@@ -5,3 +5,5 @@ release
 .modcache/
 # Local build artifacts
 /build/
+
+/docs/v1.0.0-preserve/evidence/

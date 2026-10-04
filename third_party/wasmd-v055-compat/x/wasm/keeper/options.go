@@ -228,3 +228,11 @@ func splitOpts(opts []Option) ([]Option, []Option) {
 	}
 	return pre, post
 }
+
+// WithDeploymentDisabled disables create, instantiate (including instantiate2),
+// and migrate at the shared execution boundary, including privileged and nested
+// callers. Importing existing genesis data and executing/querying it remain allowed.
+// Every validator must use the same application wiring for this option.
+func WithDeploymentDisabled() Option {
+	return optsFn(func(k *Keeper) { k.deploymentDisabled = true })
+}

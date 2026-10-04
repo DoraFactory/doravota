@@ -78,7 +78,7 @@ jobs:
             docker run --rm --platform "$PLATFORM" \
               -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
               -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
-              sh -ec 'apk add --no-cache bash build-base binutils curl git; bash scripts/build-bridge-release.sh'
+              sh -ec 'apk add --no-cache bash build-base binutils curl git xz; bash scripts/build-bridge-release.sh'
           done
           (cd release && sha256sum dorad-* > sha256sum.txt)
 

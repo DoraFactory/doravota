@@ -158,3 +158,48 @@ func TestBoundaryRequiresExactUnskippedHalt(t *testing.T) {
 	require.ErrorContains(t, ValidateBoundary(log.NewNopLogger(), db, home, nil), "upgrade info")
 	require.Equal(t, before, snapshot(t, db))
 }
+
+// The retirement branch required asset/packet clearance. This branch preserves
+// those liabilities and their stores; it must not silently delete or reject them.
+func TestRetainedModuleStateAcrossStoreUpgrade(t *testing.T) {
+	retained := map[string]struct{ key, value []byte }{
+		"wasm":          {[]byte{3, 1}, []byte("contract state")},
+		"ibc":           {[]byte("commitments/ports/transfer/channels/channel-0/sequences/1"), []byte("pending")},
+		"transfer":      {[]byte("totalEscrowForDenom/peaka"), []byte("retained escrow")},
+		"icahost":       {[]byte("fixture"), []byte("host")},
+		"icacontroller": {[]byte("fixture"), []byte("controller")},
+	}
+	db, home := sourceFixture(t, func(stores map[string]storetypes.KVStore) {
+		for n, x := range retained {
+			stores[n].Set(x.key, x.value)
+		}
+	})
+	require.NoError(t, ValidateBoundary(log.NewNopLogger(), db, home, nil))
+	multi := rootmulti.NewStore(db, log.NewNopLogger())
+	changes := StoreUpgrades()
+	require.ElementsMatch(t, []string{"params", "group"}, changes.Deleted)
+	for _, name := range sourceStores {
+		if !changes.IsDeleted(name) {
+			multi.MountStoreWithDB(storetypes.NewKVStoreKey(name), storetypes.StoreTypeIAVL, nil)
+		}
+	}
+	require.NoError(t, MountRetiringStores(multi, db, log.NewNopLogger()))
+	require.NoError(t, multi.LoadLatestVersionAndUpgrade(&changes))
+	multi.Commit()
+	info, err := multi.GetCommitInfo(5)
+	require.NoError(t, err)
+	require.Len(t, info.StoreInfos, 17)
+	for n, x := range retained {
+		require.Equal(t, x.value, multi.GetStoreByName(n).(storetypes.KVStore).Get(x.key), n)
+	}
+	reopened := rootmulti.NewStore(db, log.NewNopLogger())
+	for _, name := range sourceStores {
+		if !changes.IsDeleted(name) {
+			reopened.MountStoreWithDB(storetypes.NewKVStoreKey(name), storetypes.StoreTypeIAVL, nil)
+		}
+	}
+	require.NoError(t, reopened.LoadLatestVersion())
+	for n, x := range retained {
+		require.Equal(t, x.value, reopened.GetStoreByName(n).(storetypes.KVStore).Get(x.key), n)
+	}
+}

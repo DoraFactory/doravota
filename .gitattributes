@@ -1,0 +1,3 @@
+
+# Unified patch context intentionally starts with a space before source tabs.
+*.patch -whitespace
