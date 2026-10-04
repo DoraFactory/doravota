@@ -95,6 +95,16 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	_, hasParams := commits["params"]
 	_, hasGroup := commits["group"]
 	if !hasParams && !hasGroup {
+		// Never accept a database produced by the separate Wasm/IBC retirement
+		// candidate and silently recreate missing module stores as empty state.
+		for _, name := range sourceStores {
+			if StoreUpgrades().IsDeleted(name) {
+				continue
+			}
+			if _, ok := commits[name]; !ok {
+				return fmt.Errorf("missing retained store %s: incompatible database; restore the correct source state", name)
+			}
+		}
 		return nil
 	} // new genesis or already committed upgrade
 	raw, err := os.ReadFile(filepath.Join(home, "data", upgradetypes.UpgradeInfoFilename))

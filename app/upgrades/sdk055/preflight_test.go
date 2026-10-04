@@ -203,3 +203,17 @@ func TestRetainedModuleStateAcrossStoreUpgrade(t *testing.T) {
 		require.Equal(t, x.value, reopened.GetStoreByName(n).(storetypes.KVStore).Get(x.key), n)
 	}
 }
+
+func TestRejectDatabaseFromModuleRetirementCandidate(t *testing.T) {
+	db := dbm.NewMemDB()
+	defer db.Close()
+	multi := rootmulti.NewStore(db, log.NewNopLogger())
+	for _, name := range sourceStores {
+		if name != "params" && name != "group" && name != "ibc" {
+			multi.MountStoreWithDB(storetypes.NewKVStoreKey(name), storetypes.StoreTypeIAVL, nil)
+		}
+	}
+	require.NoError(t, multi.LoadLatestVersion())
+	multi.Commit()
+	require.ErrorContains(t, ValidateBoundary(log.NewNopLogger(), db, t.TempDir(), nil), "missing retained store ibc")
+}
