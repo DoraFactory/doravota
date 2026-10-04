@@ -97,8 +97,9 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	if !hasParams && !hasGroup {
 		// Never accept a database produced by the separate Wasm/IBC retirement
 		// candidate and silently recreate missing module stores as empty state.
+		changes := StoreUpgrades()
 		for _, name := range sourceStores {
-			if StoreUpgrades().IsDeleted(name) {
+			if changes.IsDeleted(name) {
 				continue
 			}
 			if _, ok := commits[name]; !ok {
