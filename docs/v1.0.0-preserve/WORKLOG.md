@@ -26,3 +26,12 @@ SDK 0.55.0、CometBFT 0.40.0；保留 Wasm / IBC / ICA 的状态和运行；继�
 - build-smoke-01 在执行 vet 前因源码归档排除了 evidence 目录而重定向失败；未构建、未烟测。增加先创建目录的独立 review 构建脚本，重新执行。
 - 本机下载较慢，停止尚在下载的 tidy；使用远程成功 tidy 生成的 go.mod/go.sum，后续验证统一在远程 Linux 环境进行。
 - 最后代码复查补充：升级后数据库也必须包含全部保留 store，明确拒绝误用之前 Wasm/IBC 下线候选生成的数据，防止缺失状态被当成新空 store。新增反例测试；因此基础测试与最终构建在新提交上重跑。
+- 代码复查发现 StoreUpgrades.IsDeleted 使用指针接收器，改为先保存局部变量再调用，提交 f06b375；最终完整 Go 测试通过，见 evidence/operator/tests-final.log。
+- build-smoke-02（9ccfc36）通过。新增数据库保护后不复用该程序作为最终产物，在 f06b375 上重新运行最终构建。
+- build-smoke-final（f06b375）通过：vet、模块校验、114 个 Wasmd 文件校验、Linux amd64 构建、运行时 WasmVM 版本 3.0.8；新链 Ed25519 高度 3、重启高度 5、导出成功。日志和 JSON 已复制回本地 evidence/operator/。
+- 最终代码提交 f06b375f1477f25877cc32e9adedec3307bb437d；程序 SHA-256 f0455c469dfd544d8b833e9039f2a32906044f1a0fa0bb65805e6294413a3b91。来源与环境见 PROVENANCE.json。
+
+## 本轮结论
+计划 1～3 已完成：范围已固定、独立分支已提交、基础兼容已构建并测试。保留 Wasm/IBC，无须先把这两个模块的资产清空；上传、实例化、迁移仍被应用策略禁止。SDK 原生 ML-DSA 账户基础交易测试通过，未开发自定义 x/pqcauth 或切换主网共识。
+
+下一阶段先做真实主网快照的 0.5.0 -> 1.0.0 升级，再做多节点、已有合约业务及双向 IBC/超时/确认/重启回归。当前不能视为主网发布验收；没有推送 GitHub/S3，也没有修改主网节点。

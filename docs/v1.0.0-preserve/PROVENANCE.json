@@ -1,0 +1,71 @@
+{
+  "record_date": "2026-10-04",
+  "scope": "Plan steps 1-3: retained Wasm/IBC SDK compatibility candidate; not mainnet release acceptance",
+  "branch": "upgrade/v1.0.0-sdk055-preserve",
+  "base_commit": "8a4313d2b338eb5e5090dd5cdfe5b0f54203c426",
+  "tested_code_commit": "f06b375f1477f25877cc32e9adedec3307bb437d",
+  "source_archive_sha256": "0c2420411faf821042d97b29f0af46ce5d6f4951f006dd1ae3ac47471b06430a",
+  "binary_sha256": "f0455c469dfd544d8b833e9039f2a32906044f1a0fa0bb65805e6294413a3b91",
+  "version": "1.0.0",
+  "sdk": "0.55.0",
+  "cometbft": "0.40.0",
+  "wasmd": "0.70.4 with local compatibility and deployment guard",
+  "wasmvm": "3.0.8",
+  "ibc_go_commit": "7b1838a13bc442393253b3b3d995e228a3995855",
+  "ibc_go_version": "v11.0.0-20260929073332-7b1838a13bc4",
+  "environment": {
+    "host": "amaci-testnet-operator",
+    "host_os": "Ubuntu 22.04.5 LTS",
+    "architecture": "x86_64",
+    "container_image": "golang:1.26.5-bookworm",
+    "container_image_digest": "sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd",
+    "cpu_limit": 4,
+    "memory_limit": "12g",
+    "go": "1.26.5"
+  },
+  "remote_root": "/root/vota-v1-preserve-20261004",
+  "remote_binary": "/root/vota-v1-preserve-20261004/source-f06b375/build/dorad",
+  "binary_scope": "Linux amd64 CGO dynamic WasmVM review executable, not static portable validator distribution",
+  "commands": {
+    "tests": "go test -p 4 ./... -count=1",
+    "build_and_smoke": "COMMIT_SHA=f06b375f1477f25877cc32e9adedec3307bb437d bash scripts/build-preserve-review.sh"
+  },
+  "results": {
+    "repository_tests": "passed",
+    "go_vet": "passed",
+    "go_mod_verify": "passed",
+    "wasmd_snapshot_114_files": "passed",
+    "binary_build": "passed",
+    "runtime_wasmvm_version": "3.0.8",
+    "fresh_consensus": "ed25519",
+    "fresh_account": "ml_dsa_65",
+    "fresh_chain_height": 3,
+    "restarted_chain_height": 5,
+    "export": "passed"
+  },
+  "not_tested": [
+    "actual 0.5.0 mainnet snapshot upgrade",
+    "two-chain IBC relay and counterparty compatibility",
+    "multi-validator liveness and long-running load",
+    "static multi-architecture release pipeline",
+    "complete upstream Wasmd test suite",
+    "custom x/pqcauth"
+  ],
+  "evidence_sha256": {
+    "evidence/operator/build-smoke-01.log": "72ee866b1c401cb4cdb278ff37664819d1262d35a5a62fe89fa0e5eeca71c0a3",
+    "evidence/operator/build-smoke-02.log": "cb3ef98497fee1a033e40ea017962cc88c13a5a7ee8a33d08febb38a40f200a4",
+    "evidence/operator/build-smoke-final.log": "cb3ef98497fee1a033e40ea017962cc88c13a5a7ee8a33d08febb38a40f200a4",
+    "evidence/operator/final-build/binary-modules.txt": "e2484bac86daa4861e0b7c3a3ca8c1c3565f1e297f2558b8e8b3d721942ad2a7",
+    "evidence/operator/final-build/binary-sha256.txt": "7eb835f3ad73f515d55ec8de4295a361ca6132569cd02d6b0784020d3ceeea3b",
+    "evidence/operator/final-build/mod-verify.log": "b4537ed75f533f993f371954de47e42a793b8e5b0587577de7e27fb3e50696bd",
+    "evidence/operator/final-build/smoke-ed25519-node.log": "92c032bbb22dc5a9429d7cbcff59c706636731e27559b6d5202e0cc1b29b0270",
+    "evidence/operator/final-build/smoke-ed25519.json": "068ee2148102f12a057123536726ee461c2292b5b456d37f3e6ef640532ec2c2",
+    "evidence/operator/final-build/version.txt": "d385b89cd4476a307f89dc4342303dcb560deea9b0e18419033a7f55535637bb",
+    "evidence/operator/final-build/vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/operator/final-build/wasmd-snapshot-check.log": "2c6d76a0ee9c7a0dc8ab04e903a4f6f085d03b7d51f6ff0620abeae00378d5eb",
+    "evidence/operator/final-build/wasmvm-version.txt": "2a612f3f9494fa52305039d3474f9448e4eadcdbca3517a767df080009a393e9",
+    "evidence/operator/tests-01.log": "1d65e722388440e4b3ba7c371a94f38df4e6fee963925004078c235bacb1bd1d",
+    "evidence/operator/tests-02.log": "3170873bdf4121f76d5d51e67693d2750e0ac0399b4a6a494e0af2882f3ca494",
+    "evidence/operator/tests-final.log": "272081ac102ba11e3acd5774660f34cc40ba08cde5fc61f5685dacbde82880b3"
+  }
+}
