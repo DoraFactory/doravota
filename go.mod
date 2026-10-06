@@ -344,8 +344,9 @@ require (
 // Upstream: https://github.com/shamaton/msgpack/commit/04a026e9ac24527f593a30258a98884768ec0e52
 replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-20260513223856-04a026e9ac24
 
-// Wasmd v0.70.4 compatibility and deployment-policy patches; see third_party provenance.
-replace github.com/CosmWasm/wasmd => ./third_party/wasmd-v055-compat
+// Wasmd v0.70.4 compatibility and deployment policy maintained in the organization fork.
+// Fixed commit/checksums: docs/v1.0.0-preserve/WASMD-FORK.json.
+replace github.com/CosmWasm/wasmd => github.com/DoraFactory/wasmd v0.70.5-0.20261005055950-035bca31c3f5
 
 // Legacy Wasm parameter declarations and historical governance proposal decoding only.
 replace github.com/cosmos/cosmos-sdk/x/params => ./third_party/cosmos-sdk-x-params-compat

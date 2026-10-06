@@ -8,7 +8,7 @@ mkdir -p "$evidence" build
 [[ "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
 go vet -p 4 ./... > "$evidence/vet.log" 2>&1
 go mod verify > "$evidence/mod-verify.log" 2>&1
-python3 scripts/verify-wasmd-snapshot.py > "$evidence/wasmd-snapshot-check.log"
+python3 scripts/verify-wasmd-fork.py > "$evidence/wasmd-fork-check.log"
 CGO_ENABLED=1 go build -p 4 -mod=readonly -buildvcs=false -trimpath \
   -ldflags "-X github.com/cosmos/cosmos-sdk/version.Version=1.0.0 -X github.com/cosmos/cosmos-sdk/version.Commit=$COMMIT_SHA" \
   -o build/dorad ./cmd/dorad

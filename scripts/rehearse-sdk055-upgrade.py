@@ -4,7 +4,13 @@ Run on the operator host only. Uses fresh keys and loopback ports.
 Not a production-snapshot or cross-chain IBC acceptance test.
 """
 import argparse, base64, hashlib, json, pathlib, shutil, socket, subprocess, time, urllib.request
-p=argparse.ArgumentParser();p.add_argument('--old',required=True);p.add_argument('--new',required=True);p.add_argument('--work',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--old',required=True);p.add_argument('--new',required=True);p.add_argument('--work',required=True);p.add_argument('--wasm-fixture',help='Optional hackatom.wasm path; defaults to the pinned Wasmd Go module');a=p.parse_args()
+if a.wasm_fixture:
+ wasm_fixture=pathlib.Path(a.wasm_fixture).resolve()
+else:
+ module_dir=subprocess.check_output(['go','list','-m','-f','{{.Dir}}','github.com/CosmWasm/wasmd'],cwd=pathlib.Path(__file__).resolve().parents[1],text=True).strip()
+ wasm_fixture=pathlib.Path(module_dir)/'x/wasm/keeper/testdata/hackatom.wasm'
+if not wasm_fixture.is_file():raise FileNotFoundError(wasm_fixture)
 work=pathlib.Path(a.work).resolve();work.mkdir(parents=True,exist_ok=False)
 home=work/'node';chain='sdk055-isolated-rehearsal';binary=a.old
 
@@ -58,7 +64,7 @@ cli('genesis','add-genesis-account',address,'1000000000000000000000000peaka');cl
 process=None
 try:
  process=start('old');wait_height(3,process)
- tx('wasm-store','wasm','store',pathlib.Path(__file__).resolve().parents[1]/'third_party/wasmd-v055-compat/x/wasm/keeper/testdata/hackatom.wasm')
+ tx('wasm-store','wasm','store',wasm_fixture)
  tx('wasm-instantiate','wasm','instantiate','1',json.dumps({'verifier':address,'beneficiary':recipient}),'--label','upgrade-fixture','--no-admin','--amount','11peaka')
  contract=query('wasm','list-contract-by-code','1')['contracts'][0]
  contract_before=query('wasm','contract-state','smart',contract,json.dumps({'verifier':{}}));save('contract-before',contract_before)

@@ -1,5 +1,7 @@
 # 1.0.0：SDK 0.55 + 保留 Wasm / IBC 审查记录
 
+> 2026-10-06：Wasmd 已改为组织 fork 固定提交引用，不再内嵌源码。后续变更和重新验证结果见 [FORK-MIGRATION.md](FORK-MIGRATION.md)。下方 f06b375 构建和原始证据作为 10 月 4 日的历史记录保留。
+
 ## 本轮范围
 完成计划 1～3：确定范围、新分支、基础兼容性验证。不代表完成主网快照升级或可发布主网。
 
@@ -21,7 +23,7 @@
 |---|---|---|
 | Cosmos SDK | 0.55.0 | 正式版 |
 | CometBFT | 0.40.0 | 正式版 |
-| Wasmd | 0.70.4 + third_party/wasmd-v055-compat | 本地最小兼容及部署限制补丁 |
+| Wasmd | 官方 0.70.4 基线 + DoraFactory/wasmd `035bca31` | 组织 fork 的兼容及部署限制补丁；完整 pin 见 WASMD-FORK.json |
 | WasmVM | 3.0.8 | 官方修复版，禁止回退 3.0.7 |
 | IBC-Go | v11.0.0-20260929073332-7b1838a13bc4 | 固定开发提交，不是正式兼容 release |
 | Go | 1.26.5 | go.mod 固定 |
@@ -32,7 +34,7 @@ IBC 通过 replace 固定到 7b1838a13bc442393253b3b3d995e228a3995855，避免 W
 - app/app.go：模块 wiring、SDK 迁移 handler、Wasm guard 永久启用。
 - app/wasm_policy.go：Nobody 权限，不清空合约存储、不转移余额。
 - app/upgrades/sdk055/preflight.go：提交计划/高度/版本/旧参数检查；仅 params/group 删除。
-- third_party/wasmd-v055-compat/upstream-diff.patch：所有本地 Wasmd 变更。
+- [Wasmd fork 与官方基线的差异](https://github.com/DoraFactory/wasmd/compare/v0.70.4...035bca31c3f57a3f5df665564c98d6bcbc2791cc)：兼容、部署限制和旧迁移测试适配。
 - app/wasm_policy_test.go：真实 VM 执行、受限部署和余额退出回归。
 - app/upgrades/sdk055/preflight_test.go：保留 stores / 在途包的存储回归。
 - scripts/build-bridge-release.sh：沿用脚本文件名，内容已改为 1.0.0 与官方 WasmVM 3.0.8。
@@ -69,7 +71,7 @@ IBC 通过 replace 固定到 7b1838a13bc442393253b3b3d995e228a3995855，避免 W
 宿主机 Ubuntu 22.04.5 LTS / x86_64；构建和测试在 `golang:1.26.5-bookworm` 容器内完成，每次限制 4 CPU / 12 GiB。宿主机是 Ubuntu 不代表二进制已经通过宿主机直接部署验收。程序动态链接 WasmVM，需配套动态库；**仅供审查，不发给验证人**。
 
 建议优先审查：
-1. 与正式 0.5.0 的差异：`git diff 8a4313d2b338eb5e5090dd5cdfe5b0f54203c426 f06b375f1477f25877cc32e9adedec3307bb437d -- app go.mod scripts`。third_party 的体积主要是固定上游源码，Wasmd 本地差异单独见 upstream-diff.patch。
+1. 当前与正式 0.5.0 的差异：`git diff 0.5.0 HEAD -- app go.mod scripts`。历史 f06b375 的 Wasmd 内嵌副本已迁出；当前 Wasmd 差异单独审查组织 fork。
 2. Wasm guard 是否覆盖所有共用部署入口；现有合约执行、回调和提款是否保留。当前真实 VM 用例证明普通提款可以运行，不保证每一个业务合约都不依赖实例化或迁移。
 3. 0.5.0 升级预检、params/group 删除边界、Wasm/IBC 状态保留及失败时行为。
 4. IBC-Go 固定开发提交与 Wasmd 本地兼容补丁的维护成本。基础兼容通过不等于对端协议验收通过。
@@ -78,7 +80,7 @@ IBC 通过 replace 固定到 7b1838a13bc442393253b3b3d995e228a3995855，避免 W
 基础测试：`go test -p 4 ./... -count=1`。
 固定源码之后：`COMMIT_SHA=<40位提交> bash scripts/build-preserve-review.sh`。
 此脚本生成 Linux CGO 审查程序，使用模块内动态 WasmVM 库；不是验证人可直接分发的静态发行包。
-本轮不声称完整上游 Wasmd 测试通过（本地 snapshot 不包含其 `_test.go`），也不声称开启了默认跳过的长链模拟测试。
+本轮不声称完整上游 Wasmd 测试通过（原快照未包含其 `_test.go`；fork 保留测试源码，但旧测试辅助仍待适配），也不声称开启了默认跳过的长链模拟测试。
 发布脚本 / Dockerfile 已更新到公共依赖，但完整静态多架构发行流水线本轮未验收。
 
 
@@ -88,4 +90,4 @@ IBC 通过 replace 固定到 7b1838a13bc442393253b3b3d995e228a3995855，避免 W
 3. params/group 预检仍可能拒绝真实状态；尤其旧参数与权威模块参数不一致、group 历史/权限引用。主网快照演练要发现并处理，不能绕过。
 4. 真实主网快照、多节点、Cosmovisor、同步/恢复、IBC 对端与 relayer、在途包及双向转账均属下一阶段。
 5. 不依赖新高度强制切换共识算法；Osmosis 验签适配是后续 PQC 共识启用条件。
-6. 不是已发布版本：不上传 GitHub / S3，不操作主网，不分发给验证人。
+6. 不是主网发行版本：开发分支已按要求推送 GitHub；不操作主网，不分发给验证人。
