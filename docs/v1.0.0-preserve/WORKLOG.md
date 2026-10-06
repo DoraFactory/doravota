@@ -1,5 +1,12 @@
 # 1.0.0 保留 Wasm / IBC 工作记录
 
+## 2026-10-06：Wasmd 迁移至组织 fork
+
+- 将原有兼容和部署限制迁至 `DoraFactory/wasmd` 的 `doravota/sdk055-restricted`，固定 `035bca31`；Dora Vota 移除内嵌 Wasmd 副本，SDK/IBC/VM 版本及应用策略不变。
+- 完整 fork 的旧参数迁移测试曾阻塞依赖整理；移除其对已退休 params keeper 的依赖后，远程 tidy、校验和该迁移测试通过。
+- 所有编译和测试都在 amaci-testnet-operator：完整应用测试、vet、Linux 构建、出块到 3、重启到 5、导出通过。构建源码 `17d9b50`。
+- 详细来源、结果、日志与产物：[FORK-MIGRATION.md](FORK-MIGRATION.md)。以下内容为 10 月 4 日兼容基线历史记录。
+
 ## 范围
 SDK 0.55.0、CometBFT 0.40.0；保留 Wasm / IBC / ICA 的状态和运行；继承受限部署策略；主网共识保持 Ed25519。无资产清零要求。不包含自定义 pqcauth、主网发布、共识轮换。
 

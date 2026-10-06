@@ -27,7 +27,8 @@ fork 保留完整上游历史和测试源文件；原有旧 SDK 测试辅助依�
 - 远程 `go mod tidy`、`go mod verify` 及 fork 版本/校验值检查通过；除 fork 的两个 go.sum 条目外，其他依赖未变。见 `dependencies-02.log`。
 - 在 Dora Vota 的 SDK 0.55 依赖图中，单独运行 fork 的 `x/wasm/migrations/v2` 测试通过，四种参数案例全部通过。见 `legacy-migration-test.log`。
 - 远程完整应用 `go test -mod=readonly -p 4 ./... -count=1` 通过。包括真实 Wasm 查询和提款、普通/治理权限部署拒绝、状态保留、ML-DSA 账户交易回归。见 `application-tests.log`。
-- 最终提交的 Linux 构建、vet、出块/重启/导出验证待执行；完成后追加记录。
+- 最终源码提交 `17d9b50b2e88c72cab4dce9a169df1d31cb78965` 的 Linux amd64 构建、vet、模块校验及 fork pin 校验通过。
+- 最终二进制报告版本 1.0.0 / SDK 0.55.0 / WasmVM 3.0.8。隔离新链 Ed25519 共识出块至高度 3，重启后至高度 5，导出成功。见 `build-smoke-final.log` 和 `final-build/smoke-ed25519.json`。
 
 ## 代码与审查入口
 
@@ -36,3 +37,26 @@ fork 保留完整上游历史和测试源文件；原有旧 SDK 测试辅助依�
 - 固定来源与模块哈希：[WASMD-FORK.json](WASMD-FORK.json)。`scripts/verify-wasmd-fork.py` 检查实际选择的依赖与记录一致；`go mod verify` 检查下载内容完整性。
 - Dora Vota 删除 `third_party/wasmd-v055-compat`，保留另外两个历史类型兼容目录；运行和测试脚本不再使用被删除路径。
 - 远程根目录：`amaci-testnet-operator:/root/vota-wasmd-fork-20261005/`；日期沿用首次执行目录名。日志在 `evidence/`，本地副本在本目录的 `evidence/fork-migration/`。
+
+## 最终产物
+
+| 内容 | 值 |
+|---|---|
+| Dora Vota 构建源码 | `17d9b50b2e88c72cab4dce9a169df1d31cb78965`，后续仅文档提交不改变该构建 |
+| Wasmd 固定提交 | `035bca31c3f57a3f5df665564c98d6bcbc2791cc` |
+| 远程源码归档 | `final-source.tar.gz`，SHA-256 `cb8a261526dd471b1e277d4ed474aba4f7c2f37dd4f8a60c179f9ddf0e4ba009` |
+| 远程审查二进制 | `source-17d9b50/build/dorad` |
+| 二进制 SHA-256 | `ce26dcff01bd37bf47134522e688d78940778f3524fc0e0e61215c59bb48c334` |
+| 构建镜像 | `golang:1.26.5-bookworm`，digest `sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd` |
+
+所有编译和测试都在远程 Linux amd64 容器完成；二进制动态链接 WasmVM，仅用于审查，不是静态验证人分发包。测试使用隔离新链和临时密钥，无主网改动。
+
+重现命令（在上述远程源码目录及构建容器内）：
+
+```sh
+go test -mod=readonly -p 4 github.com/CosmWasm/wasmd/x/wasm/migrations/v2 -count=1 -v
+go test -mod=readonly -p 4 ./... -count=1
+COMMIT_SHA=17d9b50b2e88c72cab4dce9a169df1d31cb78965 bash scripts/build-preserve-review.sh
+```
+
+尚未覆盖：完整 wasmd 上游测试、wasmd 独立节点应用适配、真实主网快照迁移、多节点/IBC 对端联调和静态发行构建。此前相应验收要求继续有效。
