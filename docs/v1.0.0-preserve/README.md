@@ -15,3 +15,17 @@ queries and execution remain available.
 
 Release validation must bind the source commit, dependency versions, toolchain
 and artifact checksum to upgrade, retained-contract and existing-channel tests.
+
+## Parameter policy
+
+Version 1.0.0 intentionally retains these Cosmos SDK v0.55.0 defaults through
+the SDK migrations, without an application-level override:
+
+| Parameter | Value on Vota | Meaning |
+| --- | --- | --- |
+| `staking.KeyRotationFee` | `1000000peaka` (`0.000000000001 DORA`) | Additional validator consensus-key rotation fee, deducted from the operator account's available balance and burned. It is not an additional staking requirement; transaction fees are separate. |
+| `auth.SigVerifyCostMlDsa65` | `750` gas | Cost of one ML-DSA-65 signature verification. Transaction byte costs and other operations are charged separately. |
+
+These parameter choices do not activate ML-DSA consensus keys. The consensus
+key type remains Ed25519 for this release. Release validation should verify the
+resulting on-chain parameter values after migration.
