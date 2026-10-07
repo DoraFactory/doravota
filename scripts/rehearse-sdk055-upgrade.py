@@ -85,7 +85,10 @@ try:
  shutil.copytree(home,work/'halted-backup');print('0.5.0 halted with committed upgrade plan',flush=True)
  binary=a.new;process=start('new');wait_height(upgrade_height+3,process)
  after={name:query(*route) for name,route in {'wasm':['wasm','params'],'staking':['staking','params'],'auth':['auth','params'],'bank':['bank','params'],'ibc':['ibc','client','params'],'transfer':['ibc-transfer','params'],'versions':['upgrade','module-versions']}.items()};save('after',after)
- assert before['wasm']==after['wasm'];assert before['bank']==after['bank'];assert before['transfer']==after['transfer'];assert before['ibc']==after['ibc']
+ # Fresh 0.5.0 permits deployment; 1.0.0 intentionally applies Nobody.
+ assert after['wasm']['code_upload_access']['permission']=='Nobody'
+ assert after['wasm']['instantiate_default_permission']=='Nobody'
+ assert before['bank']==after['bank'];assert before['transfer']==after['transfer'];assert before['ibc']==after['ibc']
  versions={v['name']:int(v.get('version',0)) for v in after['versions']['module_versions']};assert versions['auth']==7 and versions['staking']==6;assert 'params' not in versions and 'group' not in versions
  contract_after=query('wasm','contract-state','smart',contract,json.dumps({'verifier':{}}));save('contract-after',contract_after);assert contract_before==contract_after
  tx('wasm-release','wasm','execute',contract,json.dumps({'release':{}}));assert query('bank','balances',recipient)['balances']==[{'denom':'peaka','amount':'11'}]

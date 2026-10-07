@@ -998,11 +998,21 @@ func (app *App) setupUpgradeHandlers() {
 			if err := sdk055.ValidateSourceVersionMap(fromVM); err != nil {
 				return nil, err
 			}
+			if err := sdk055.ValidateIBCChannelMigration(sdk.UnwrapSDKContext(ctx), app.keys[ibcexported.StoreKey], app.IBCKeeper); err != nil {
+				return nil, err
+			}
 			// Destructive store changes were guarded against committed source state
 			// before BaseApp loading. RunMigrations returns only currently wired modules.
 			updated, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
 			if err != nil {
 				return nil, err
+			}
+			// IBC v11 changes the send-sequence key for existing v1 channels.
+			// Its core module version is still 8, so RunMigrations does not run
+			// this explicit v10 -> v11 migration. Without it, existing channels
+			// can acknowledge old packets but cannot send any new packets.
+			if err := sdk055.MigrateIBCChannels(sdk.UnwrapSDKContext(ctx), app.keys[ibcexported.StoreKey], app.appCodec, app.IBCKeeper); err != nil {
+				return nil, fmt.Errorf("migrate IBC v11 channel sequences: %w", err)
 			}
 			if err := app.applyWasmDeploymentRestrictions(sdk.UnwrapSDKContext(ctx)); err != nil {
 				return nil, err
