@@ -3,7 +3,9 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/DoraFactory/doravota/app/wasmarchive"
 	"log"
+	"slices"
 
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
@@ -32,9 +34,23 @@ func (app *App) ExportAppStateAndValidators(
 		app.prepForZeroHeightGenesis(ctx, jailAllowedAddrs)
 	}
 
-	genState, err := app.mm.ExportGenesisForModules(ctx, app.appCodec, modulesToExport)
+	includeArchive := len(modulesToExport) == 0 || slices.Contains(modulesToExport, wasmarchive.GenesisKey)
+	archiveOnly := len(modulesToExport) == 1 && modulesToExport[0] == wasmarchive.GenesisKey
+	modulesToExport = slices.DeleteFunc(slices.Clone(modulesToExport), func(s string) bool { return s == wasmarchive.GenesisKey })
+	genState := map[string]json.RawMessage{}
+	var err error
+	if !archiveOnly {
+		genState, err = app.mm.ExportGenesisForModules(ctx, app.appCodec, modulesToExport)
+	}
 	if err != nil {
 		return servertypes.ExportedApp{}, err
+	}
+	if includeArchive {
+		raw, err := wasmarchive.ExportGenesis(ctx, app.keys[wasmarchive.StoreKey])
+		if err != nil {
+			return servertypes.ExportedApp{}, err
+		}
+		genState[wasmarchive.GenesisKey] = raw
 	}
 	appState, err := json.MarshalIndent(genState, "", "  ")
 	if err != nil {

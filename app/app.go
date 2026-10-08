@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
 	reflectionv1 "cosmossdk.io/api/cosmos/reflection/v1"
@@ -10,15 +9,8 @@ import (
 	"cosmossdk.io/log/v2"
 	"encoding/json"
 	"fmt"
-	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
-	v0_3_1 "github.com/DoraFactory/doravota/app/upgrades/v0_3_1"
-	v0_4_0 "github.com/DoraFactory/doravota/app/upgrades/v0_4_0"
-	v0_4_2 "github.com/DoraFactory/doravota/app/upgrades/v0_4_2"
-	v0_4_3 "github.com/DoraFactory/doravota/app/upgrades/v0_4_3"
-	v0_4_4 "github.com/DoraFactory/doravota/app/upgrades/v0_4_4"
-	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
+	"github.com/DoraFactory/doravota/app/wasmarchive"
 	abci "github.com/cometbft/cometbft/abci/types"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
@@ -109,11 +101,6 @@ import (
 	ibctm "github.com/cosmos/ibc-go/v11/modules/light-clients/07-tendermint"
 
 	// this line is used by starport scaffolding # stargate/app/moduleImport
-	"github.com/CosmWasm/wasmd/x/wasm"
-	wasmexported "github.com/CosmWasm/wasmd/x/wasm/exported"
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	// cosmwasm "github.com/CosmWasm/wasmvm"
 
 	appparams "github.com/DoraFactory/doravota/app/params"
 	"github.com/DoraFactory/doravota/docs"
@@ -125,13 +112,6 @@ import (
 const (
 	AccountAddressPrefix = "dora"
 	Name                 = "dora"
-	// If EnabledSpecificProposals is "", and this is "true", then enable all x/wasm proposals.
-	// If EnabledSpecificProposals is "", and this is not "true", then disable all x/wasm proposals.
-	ProposalsEnabled = "false"
-	// If set to non-empty string it must be comma-separated list of values that are all a subset
-	// of "EnableAllProposals" (takes precedence over ProposalsEnabled)
-	// https://github.com/CosmWasm/wasmd/blob/02a54d33ff2c064f3539ae12d75d027d9c665f05/x/wasm/internal/types/proposal.go#L28-L34
-	EnableSpecificProposals = ""
 )
 
 // These constants are derived from the above variables.
@@ -153,23 +133,6 @@ var (
 	Bech32PrefixConsPub = AccountAddressPrefix + sdk.PrefixValidator + sdk.PrefixConsensus + sdk.PrefixPublic
 )
 
-// GetEnabledProposals parses the ProposalsEnabled / EnableSpecificProposals values to
-// produce a list of enabled proposals to pass into wasmd app.
-/* func GetEnabledProposals() []wasm.ProposalType {
-	if EnableSpecificProposals == "" {
-		if ProposalsEnabled == "true" {
-			return wasm.EnableAllProposals
-		}
-		return wasm.DisableAllProposals
-	}
-	chunks := strings.Split(EnableSpecificProposals, ",")
-	proposals, err := wasm.ConvertToProposals(chunks)
-	if err != nil {
-		panic(err)
-	}
-	return proposals
-}
-*/
 func getGovProposalHandlers() []govclient.ProposalHandler { return nil }
 
 var (
@@ -199,7 +162,6 @@ var (
 		ica.AppModuleBasic{},
 		vestingAppModuleBasic{},
 		consensus.AppModuleBasic{},
-		wasm.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -213,7 +175,6 @@ var (
 		stakingtypes.NotBondedPoolName:      {authtypes.Burner, authtypes.Staking},
 		govtypes.ModuleName:                 {authtypes.Burner},
 		ibctransfertypes.ModuleName:         {authtypes.Minter, authtypes.Burner},
-		wasm.ModuleName:                     {authtypes.Burner},
 	}
 )
 
@@ -231,15 +192,6 @@ func init() {
 	DefaultNodeHome = filepath.Join(userHomeDir, "."+Name)
 
 	sdk.DefaultPowerReduction = votatypes.DefaultPowerReduction
-	// Ensure wasm limits are overridden for both daemon and CLI command paths.
-	overrideWasmVariables()
-}
-
-// Override Wasm size limitation from WASMD.
-// Adjust the maximum size limit of the wasm code to 3MB.
-func overrideWasmVariables() {
-	wasmtypes.MaxWasmSize = 3 * 1024 * 1024
-	wasmtypes.MaxProposalWasmSize = wasmtypes.MaxWasmSize
 }
 
 // App extends an ABCI application, but with most of its parameters exported.
@@ -277,7 +229,6 @@ type App struct {
 	ICAControllerKeeper *icacontrollerkeeper.Keeper
 	ICAHostKeeper       *icahostkeeper.Keeper
 	TransferKeeper      *ibctransferkeeper.Keeper
-	WasmKeeper          wasm.Keeper
 
 	// this line is used by starport scaffolding # stargate/app/keeperDeclaration
 
@@ -300,14 +251,11 @@ func New(
 	invCheckPeriod uint,
 	encodingConfig appparams.EncodingConfig,
 	appOpts servertypes.AppOptions,
-	// enabledProposals []wasm.ProposalType,
-	wasmOpts []wasm.Option,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
-	if err := sdk055.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
-		panic(fmt.Errorf("SDK 0.55 source boundary: %w", err))
+	if err := wasmarchive.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
+		panic(fmt.Errorf("Wasm retirement source boundary: %w", err))
 	}
-	overrideWasmVariables()
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
 	interfaceRegistry := encodingConfig.InterfaceRegistry
@@ -336,7 +284,7 @@ func New(
 		authzkeeper.StoreKey,
 		// non sdk store keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
-		wasm.StoreKey, icahosttypes.StoreKey,
+		wasmarchive.StoreKey, icahosttypes.StoreKey,
 		icacontrollertypes.StoreKey,
 	)
 	tkeys := storetypes.NewTransientStoreKeys()
@@ -527,43 +475,8 @@ func New(
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
-	wasmDir := filepath.Join(homePath, "wasm")
-	wasmConfig, err := wasm.ReadNodeConfig(appOpts)
-	if err != nil {
-		panic(fmt.Sprintf("error while reading wasm config: %s", err))
-	}
-
-	wasmOpts = append(wasmOpts, wasmkeeper.WithDeploymentDisabled())
-	app.WasmKeeper = wasmkeeper.NewKeeper(
-		appCodec,
-		runtime.NewKVStoreService(keys[wasmtypes.StoreKey]),
-		app.AccountKeeper,
-		app.BankKeeper,
-		app.StakingKeeper,
-		distrkeeper.NewQuerier(app.DistrKeeper),
-		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.ChannelKeeper,
-		app.IBCKeeper.ChannelKeeperV2,
-		app.TransferKeeper,
-		app.MsgServiceRouter(),
-		app.GRPCQueryRouter(),
-		wasmDir,
-		wasmConfig,
-		wasmtypes.VMConfig{},
-		AllCapabilities(),
-		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
-		wasmOpts...,
-	)
-
-	// The gov proposal types can be individually enabled
-	/* 	if len(enabledProposals) != 0 {
-		govRouter.AddRoute(wasm.RouterKey, wasm.NewWasmProposalHandler(app.WasmKeeper, enabledProposals))
-	} */
-
 	// Set legacy router for backwards compatibility with gov v1beta1
 	app.GovKeeper.SetLegacyRouter(govRouter)
-
-	wasmStackIBCHandler := wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.TransferKeeper, app.IBCKeeper.ChannelKeeper)
 
 	// Create Interchain Accounts Stack.
 	var icaControllerStack porttypes.IBCModule
@@ -581,7 +494,6 @@ func New(
 	icaHostStack.SetICS4Wrapper(app.IBCKeeper.ChannelKeeper)
 	ibcRouter := porttypes.NewRouter().
 		AddRoute(ibctransfertypes.ModuleName, transferStack).
-		AddRoute(wasmtypes.ModuleName, wasmStackIBCHandler).
 		AddRoute(icacontrollertypes.SubModuleName, icaControllerStack).
 		AddRoute(icahosttypes.SubModuleName, icaHostStack)
 	app.IBCKeeper.SetRouter(ibcRouter)
@@ -620,16 +532,6 @@ func New(
 	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
 	app.setupUpgradeHandlers()
 
-	wasmAppModule := wasm.NewAppModule(
-		appCodec,
-		&app.WasmKeeper,
-		app.StakingKeeper,
-		app.AccountKeeper,
-		app.BankKeeper,
-		app.MsgServiceRouter(),
-		unavailableLegacyWasmSubspace{},
-	)
-
 	app.mm = module.NewManager(
 		genutil.NewAppModule(
 			app.AccountKeeper,
@@ -655,7 +557,6 @@ func New(
 		ica.NewAppModule(app.ICAControllerKeeper, app.ICAHostKeeper),
 		ibctm.NewAppModule(tmLightClientModule),
 		solomachine.NewAppModule(soloLightClientModule),
-		wasmAppModule,
 	)
 
 	// x/upgrade executes scheduled upgrade plans in PreBlock. Register it
@@ -679,7 +580,6 @@ func New(
 		ibctransfertypes.ModuleName,
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
-		wasm.ModuleName,
 	)
 
 	app.mm.SetOrderEndBlockers(
@@ -694,7 +594,6 @@ func New(
 		ibctransfertypes.ModuleName,
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
-		wasm.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -709,8 +608,6 @@ func New(
 		ibctransfertypes.ModuleName,
 		ibcexported.ModuleName,
 		icatypes.ModuleName,
-		// wasm after ibc transfer
-		wasm.ModuleName,
 	}
 	app.mm.SetOrderInitGenesis(genesisModuleOrder...)
 	app.mm.SetOrderExportGenesis(genesisModuleOrder...)
@@ -720,6 +617,7 @@ func New(
 
 	app.configurator = module.NewConfigurator(app.appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
 	app.mm.RegisterServices(app.configurator)
+	wasmarchive.RegisterQueryServer(app.GRPCQueryRouter(), wasmarchive.NewServer(keys[wasmarchive.StoreKey]))
 
 	autocliv1.RegisterQueryServer(app.GRPCQueryRouter(), runtimeservices.NewAutoCLIQueryService(app.mm.Modules))
 	reflectionSvc, err := runtimeservices.NewReflectionService()
@@ -737,29 +635,14 @@ func New(
 
 	// initialize stores
 	app.MountKVStores(keys)
-	if err := sdk055.MountRetiringStores(app.CommitMultiStore(), db, logger); err != nil {
-		panic(fmt.Errorf("mount retiring stores: %w", err))
-	}
 	app.MountTransientStores(tkeys)
 
 	// initialize BaseApp
-	app.setAnteHandler(encodingConfig.TxConfig, wasmConfig, keys[wasmtypes.StoreKey])
+	app.setAnteHandler(encodingConfig.TxConfig)
 	app.SetInitChainer(app.InitChainer)
 	app.SetPreBlocker(app.PreBlocker)
 	app.SetBeginBlocker(app.BeginBlocker)
 	app.SetEndBlocker(app.EndBlocker)
-
-	// must be before Loading version
-	// requires the snapshot store to be created and registered as a BaseAppOption
-	// see cmd/wasmd/root.go: 206 - 214 approx
-	if manager := app.SnapshotManager(); manager != nil {
-		err := manager.RegisterExtensions(
-			wasmkeeper.NewWasmSnapshotter(app.CommitMultiStore(), &app.WasmKeeper),
-		)
-		if err != nil {
-			panic(fmt.Errorf("failed to register snapshot extension: %s", err))
-		}
-	}
 
 	app.setPostHandler()
 
@@ -767,18 +650,12 @@ func New(
 		if err := app.LoadLatestVersion(); err != nil {
 			panic(fmt.Errorf("load latest version: %w", err))
 		}
-		ctx := app.BaseApp.NewContextLegacy(true, tmproto.Header{})
-
-		// Initialize pinned codes in wasmvm as they are not persisted there
-		if err := app.WasmKeeper.InitializePinnedCodes(ctx); err != nil {
-			panic(fmt.Errorf("failed initialize pinned codes: %w", err))
-		}
 	}
 
 	return app
 }
 
-func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.NodeConfig, txCounterStoreKey *storetypes.KVStoreKey) {
+func (app *App) setAnteHandler(txConfig client.TxConfig) {
 	anteHandler, err := NewAnteHandler(
 		HandlerOptions{
 			HandlerOptions: ante.HandlerOptions{
@@ -788,10 +665,7 @@ func (app *App) setAnteHandler(txConfig client.TxConfig, wasmConfig wasmtypes.No
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
 			},
-			IBCKeeper:         app.IBCKeeper,
-			WasmConfig:        &wasmConfig,
-			WasmKeeper:        &app.WasmKeeper,
-			TXCounterStoreKey: runtime.NewKVStoreService(txCounterStoreKey),
+			IBCKeeper: app.IBCKeeper,
 		},
 	)
 	if err != nil {
@@ -835,14 +709,19 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	if err := json.Unmarshal(req.AppStateBytes, &genesisState); err != nil {
 		panic(err)
 	}
-	if err := app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap()); err != nil {
+	if _, present := genesisState[wasmarchive.StoreKey]; present {
+		return nil, fmt.Errorf("live wasm genesis is unsupported; use an explicitly exported wasm_archive genesis")
+	}
+	versions := app.mm.GetVersionMap()
+	versions[wasmarchive.GenesisKey] = 1
+	if err := app.UpgradeKeeper.SetModuleVersionMap(ctx, versions); err != nil {
 		return nil, err
 	}
 	response, err := app.mm.InitGenesis(ctx, app.appCodec, genesisState)
 	if err != nil {
 		return nil, err
 	}
-	if err := app.applyWasmDeploymentRestrictions(ctx); err != nil {
+	if err := wasmarchive.InitGenesis(ctx, app.keys[wasmarchive.StoreKey], genesisState[wasmarchive.GenesisKey]); err != nil {
 		return nil, err
 	}
 	return response, nil
@@ -879,6 +758,7 @@ func (app *App) BlockedModuleAccountAddrs() map[string]bool {
 	// Retain the old bank-send restriction after removing the fee middleware.
 	// The historical account remains in auth; do not turn it into a funds sink.
 	modAccAddrs[authtypes.NewModuleAddress("feeibc").String()] = true
+	modAccAddrs[authtypes.NewModuleAddress("wasm").String()] = true
 
 	return modAccAddrs
 }
@@ -948,6 +828,7 @@ func (app *App) GetTKey(storeKey string) *storetypes.TransientStoreKey {
 // API server.
 func (app *App) RegisterAPIRoutes(apiSvr *api.Server, apiConfig config.APIConfig) {
 	clientCtx := apiSvr.ClientCtx
+	wasmarchive.RegisterREST(clientCtx, apiSvr.Router)
 	// Register new tx routes from grpc-gateway.
 	authtx.RegisterGRPCGatewayRoutes(clientCtx, apiSvr.GRPCGatewayRouter)
 	// Register new tendermint queries routes from grpc-gateway.
@@ -993,213 +874,24 @@ func (app *App) ModuleManager() *module.Manager {
 }
 
 func (app *App) setupUpgradeHandlers() {
-	app.UpgradeKeeper.SetUpgradeHandler(sdk055.UpgradeName,
-		func(ctx context.Context, plan upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			if err := sdk055.ValidateSourceVersionMap(fromVM); err != nil {
+	// Recognize completed upgrades without permitting their migrations to run again.
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "1.0.0"} {
+		app.UpgradeKeeper.SetUpgradeHandler(name, func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
+			return nil, fmt.Errorf("complete legacy upgrades using their original binaries before Wasm retirement")
+		})
+	}
+	app.UpgradeKeeper.SetUpgradeHandler(wasmarchive.UpgradeName,
+		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			expected := app.mm.GetVersionMap()
+			expected["wasm"] = 4
+			if err := wasmarchive.ValidateVersions(fromVM, expected); err != nil {
 				return nil, err
 			}
-			if err := sdk055.ValidateIBCChannelMigration(sdk.UnwrapSDKContext(ctx), app.keys[ibcexported.StoreKey], app.IBCKeeper); err != nil {
-				return nil, err
-			}
-			// Destructive store changes were guarded against committed source state
-			// before BaseApp loading. RunMigrations returns only currently wired modules.
-			updated, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-			if err != nil {
-				return nil, err
-			}
-			// IBC v11 changes the send-sequence key for existing v1 channels.
-			// Its core module version is still 8, so RunMigrations does not run
-			// this explicit v10 -> v11 migration. Without it, existing channels
-			// can acknowledge old packets but cannot send any new packets.
-			if err := sdk055.MigrateIBCChannels(sdk.UnwrapSDKContext(ctx), app.keys[ibcexported.StoreKey], app.appCodec, app.IBCKeeper); err != nil {
-				return nil, fmt.Errorf("migrate IBC v11 channel sequences: %w", err)
-			}
-			if err := app.applyWasmDeploymentRestrictions(sdk.UnwrapSDKContext(ctx)); err != nil {
-				return nil, err
-			}
-			// SetModuleVersionMap only upserts entries; absent modules otherwise
-			// remain in the persisted map after their stores have been removed.
-			store := sdk.UnwrapSDKContext(ctx).KVStore(app.keys[upgradetypes.StoreKey])
-			for _, name := range []string{"params", "group"} {
-				store.Delete(append([]byte{upgradetypes.VersionMapByte}, []byte(name)...))
-			}
+			// No store loader, no IBC migration, and no Wasm writes. Only the version map changes.
+			ctx := sdk.UnwrapSDKContext(goCtx)
+			ctx.KVStore(app.keys[upgradetypes.StoreKey]).Delete(append([]byte{upgradetypes.VersionMapByte}, []byte("wasm")...))
+			updated := app.mm.GetVersionMap()
+			updated[wasmarchive.GenesisKey] = 1
 			return updated, nil
 		})
-
-	app.UpgradeKeeper.SetUpgradeHandler(
-		v0_3_1.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
-
-			logger := ctx.Logger().With("upgrade", v0_3_1.UpgradeName)
-
-			validators, err := app.StakingKeeper.GetAllValidators(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("get validators for %s upgrade: %w", v0_3_1.UpgradeName, err)
-			}
-
-			logger.Info("Start changing validators.")
-
-			for _, validator := range validators {
-
-				store := ctx.KVStore(app.GetKey(stakingtypes.StoreKey))
-
-				deleted := false
-
-				iterator := storetypes.KVStorePrefixIterator(store, stakingtypes.ValidatorsByPowerIndexKey)
-				defer iterator.Close()
-
-				for ; iterator.Valid(); iterator.Next() {
-					valAddr := stakingtypes.ParseValidatorPowerRankKey(iterator.Key())
-					val := sdk.ValAddress(valAddr).String()
-
-					validatorAddr, err := app.StakingKeeper.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
-					if err != nil {
-						return nil, fmt.Errorf("decode validator operator address: %w", err)
-					}
-					if bytes.Equal(valAddr, validatorAddr) {
-						if deleted {
-							logger.Info("Duplicate validator address is: " + val)
-						} else {
-							deleted = true
-						}
-						store.Delete(iterator.Key())
-					}
-				}
-
-				if err := app.StakingKeeper.SetValidatorByPowerIndex(ctx, validator); err != nil {
-					return nil, fmt.Errorf("restore validator power index: %w", err)
-				}
-				_, err := app.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
-				if err != nil {
-					panic(err)
-				}
-
-			}
-
-			logger.Info("Updated all validator successfully.")
-
-			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-		},
-	)
-
-	// v0.4.0 upgrade handler
-	app.UpgradeKeeper.SetUpgradeHandler(
-		v0_4_0.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
-			logger := ctx.Logger().With("upgrade", v0_4_0.UpgradeName)
-			logger.Info("Running module migrations[Remove crisis module] ...")
-			return app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-		},
-	)
-
-	// v0.4.2 upgrade handler
-	app.UpgradeKeeper.SetUpgradeHandler(
-		v0_4_2.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
-			logger := ctx.Logger().With("upgrade", v0_4_2.UpgradeName)
-			logger.Info("Upgrade cosmos sdk from v0.47.15 to 0.47.16...")
-
-			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-			if err != nil {
-				logger.Error("failed to run migrations", "error", err)
-				return nil, err
-			}
-
-			logger.Info("Upgrade completed successfully")
-			return vm, nil
-		},
-	)
-
-	// v0.4.2 upgrade handler
-	app.UpgradeKeeper.SetUpgradeHandler(
-		v0_4_3.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
-			logger := ctx.Logger().With("upgrade", v0_4_3.UpgradeName)
-			logger.Info("Upgrade cosmos sdk from v0.47.16 to 0.47.17...")
-
-			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-			if err != nil {
-				logger.Error("failed to run migrations", "error", err)
-				return nil, err
-			}
-
-			logger.Info("Upgrade completed successfully")
-			return vm, nil
-		},
-	)
-
-	// v0.4.4 upgrade handler
-	app.UpgradeKeeper.SetUpgradeHandler(
-		v0_4_4.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			ctx := sdk.UnwrapSDKContext(goCtx)
-			logger := ctx.Logger().With("upgrade", v0_4_4.UpgradeName)
-			logger.Info("Enable wasm 3MB limit on CLI path and run migrations...")
-
-			vm, err := app.ModuleManager().RunMigrations(ctx, app.Configurator(), fromVM)
-			if err != nil {
-				logger.Error("failed to run migrations", "error", err)
-				return nil, err
-			}
-
-			logger.Info("Upgrade completed successfully")
-			return vm, nil
-		},
-	)
-
-	// Keep the completed 0.5.0 plan recognizable to the SDK downgrade check.
-	// Its legacy migrations must be run with the actual 0.5.0 binary first.
-	app.UpgradeKeeper.SetUpgradeHandler(v0_5_0.UpgradeName,
-		func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
-			return nil, fmt.Errorf("run the 0.5.0 binary to complete its migration before using SDK 0.55")
-		})
-
-	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
-	if err != nil {
-		panic(fmt.Errorf("failed to read upgrade info from disk: %w", err))
-	}
-
-	if app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
-		return
-	}
-
-	var storeUpgrades *storetypes.StoreUpgrades
-
-	switch upgradeInfo.Name {
-	case sdk055.UpgradeName:
-		upgrades := sdk055.StoreUpgrades()
-		storeUpgrades = &upgrades
-	case v0_3_1.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{}
-	case v0_4_0.UpgradeName:
-		// crisis module is deprecated in v0.4.0
-		storeUpgrades = &storetypes.StoreUpgrades{
-			Deleted: []string{"crisis"},
-		}
-	case v0_4_2.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{}
-	case v0_4_3.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{}
-	case v0_4_4.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{}
-	case v0_5_0.UpgradeName:
-		storeUpgrades = &storetypes.StoreUpgrades{
-			Deleted: []string{"capability", "feeibc"},
-		}
-	}
-
-	if storeUpgrades != nil {
-		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, storeUpgrades))
-	}
-}
-
-// Historical Wasm v2 -> v3 must already have completed on the source release.
-type unavailableLegacyWasmSubspace struct{}
-
-func (unavailableLegacyWasmSubspace) GetParamSet(sdk.Context, wasmexported.ParamSet) {
-	panic("legacy Wasm parameter migration must complete before SDK 0.55")
 }

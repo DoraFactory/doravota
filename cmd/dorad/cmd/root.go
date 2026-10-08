@@ -33,19 +33,15 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutilcli "github.com/cosmos/cosmos-sdk/x/genutil/client/cli"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cast"
 	"github.com/spf13/cobra"
 
 	"github.com/DoraFactory/doravota/app/params"
 
-	"github.com/CosmWasm/wasmd/x/wasm"
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-
 	"github.com/DoraFactory/doravota/app"
 	appparams "github.com/DoraFactory/doravota/app/params"
 	v0_5_0 "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
+	"github.com/DoraFactory/doravota/app/wasmarchive"
 )
 
 // NewRootCmd creates a new root command for a Cosmos SDK application
@@ -200,6 +196,7 @@ func queryCommand() *cobra.Command {
 	)
 
 	app.ModuleBasics.AddQueryCommands(cmd)
+	cmd.AddCommand(wasmarchive.QueryCommand())
 	cmd.PersistentFlags().String(flags.FlagChainID, "", "The network chain ID")
 
 	return cmd
@@ -233,7 +230,6 @@ func txCommand() *cobra.Command {
 }
 
 func addModuleInitFlags(startCmd *cobra.Command) {
-	wasm.AddModuleInitFlags(startCmd)
 }
 
 // genesisCommand builds genesis-related `simd genesis` command. Users may provide application specific commands as a parameter
@@ -256,11 +252,6 @@ func (a appCreator) newApp(
 	db dbm.DB,
 	appOpts servertypes.AppOptions,
 ) servertypes.Application {
-
-	var wasmOpts []wasm.Option
-	if cast.ToBool(appOpts.Get("telemetry.enabled")) {
-		wasmOpts = append(wasmOpts, wasmkeeper.WithVMCacheMetrics(prometheus.DefaultRegisterer))
-	}
 
 	var cache storetypes.MultiStorePersistentCache
 
@@ -329,8 +320,6 @@ func (a appCreator) newApp(
 		cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)),
 		a.encodingConfig,
 		appOpts,
-		// app.GetEnabledProposals(),
-		wasmOpts,
 		baseapp.SetPruning(pruningOpts),
 		baseapp.SetMinGasPrices(cast.ToString(appOpts.Get(server.FlagMinGasPrices))),
 		baseapp.SetQueryGasLimit(cast.ToUint64(appOpts.Get(server.FlagQueryGasLimit))),
@@ -367,7 +356,6 @@ func (a appCreator) appExport(
 		return servertypes.ExportedApp{}, err
 	}
 
-	var emptyWasmOpts []wasm.Option
 	app := app.New(
 		logger,
 		appDB,
@@ -378,8 +366,6 @@ func (a appCreator) appExport(
 		uint(1),
 		a.encodingConfig,
 		appOpts,
-		// app.GetEnabledProposals(),
-		emptyWasmOpts,
 	)
 
 	if height != -1 {
@@ -394,35 +380,7 @@ func (a appCreator) appExport(
 // initAppConfig helps to override default appConfig template and configs.
 // return "", nil if no custom configuration is required for the application.
 func initAppConfig() (string, interface{}) {
-	// The following code snippet is just for reference.
-
-	type CustomAppConfig struct {
-		serverconfig.Config
-
-		Wasm wasmtypes.NodeConfig `mapstructure:"wasm"`
-	}
-
-	// Optionally allow the chain developer to overwrite the SDK's default
-	// server config.
-	srvCfg := serverconfig.DefaultConfig()
-	// The SDK's default minimum gas price is set to "" (empty value) inside
-	// app.toml. If left empty by validators, the node will halt on startup.
-	// However, the chain developer can set a default app.toml value for their
-	// validators here.
-	//
-	// In summary:
-	// - if you leave srvCfg.MinGasPrices = "", all validators MUST tweak their
-	//   own app.toml config,
-	// - if you set srvCfg.MinGasPrices non-empty, validators CAN tweak their
-	//   own app.toml to override, or use this default value.
-	//
-	srvCfg.MinGasPrices = "10000000000peaka"
-
-	customAppConfig := CustomAppConfig{
-		Config: *srvCfg,
-		Wasm:   wasmtypes.DefaultNodeConfig(),
-	}
-	customAppTemplate := serverconfig.DefaultConfigTemplate + wasmtypes.DefaultConfigTemplate()
-
-	return customAppTemplate, customAppConfig
+	cfg := serverconfig.DefaultConfig()
+	cfg.MinGasPrices = "10000000000peaka"
+	return serverconfig.DefaultConfigTemplate, cfg
 }

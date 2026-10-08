@@ -1,46 +1,28 @@
 #!/usr/bin/env bash
-# Run inside a native or emulated Alpine Go container (musl, not glibc).
+# No Wasm VM or native library is needed. Run builds and smoke tests on Linux.
 set -euo pipefail
-: "${VERSION:?release version is required}"
-# Source archives have no .git directory: callers must supply the full commit.
+: "${VERSION:?candidate version is required}"
 commit_sha=${COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}
-if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'Release requires a full 40-character commit hash; set COMMIT_SHA for source archives.' >&2
-  exit 1
+[[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Full source commit required' >&2; exit 1; }
+[[ "$VERSION" = "1.0.0-wasmarchive.1" ]] || { echo 'Use the distinct archive candidate version' >&2; exit 1; }
+[[ "$(go env GOOS)" = linux ]] || exit 1
+case "$(go env GOARCH)" in amd64) suffix=amd ;; arm64) suffix=arm64 ;; *) exit 1 ;; esac
+if go list -m all | grep -Ei 'github.com/(CosmWasm|DoraFactory)/(wasmd|wasmvm)'; then
+ echo 'Unexpected Wasm runtime dependency' >&2; exit 1
 fi
-test "${VERSION#v}" = "1.0.0"
-VERSION=1.0.0
-case "$(go env GOARCH)" in
-  amd64) asset=x86_64; suffix=amd; expected=b2299c85d49faccf3dcbb84984f30f55e8870111df98c10f017f86204d007470 ;;
-  arm64) asset=aarch64; suffix=arm64; expected=c73a0d5d340e35188e138584ddd6662a160902adef1b08b209e38d16b43a4c28 ;;
-  *) echo 'Unsupported release architecture' >&2; exit 1 ;;
-esac
-test "$(go list -m -f '{{.Version}}' github.com/CosmWasm/wasmvm/v3)" = v3.0.8
-test -z "$(go list -m -f '{{with .Replace}}{{.Path}}{{end}}' github.com/CosmWasm/wasmvm/v3)"
-# Official v3.0.8 release archives are outside the Go module zip. Pin the
-# release-asset SHA-256 (also published in upstream checksums.txt), not just go.sum.
-curl --fail --location --retry 3 \
-  "https://github.com/CosmWasm/wasmvm/releases/download/v3.0.8/libwasmvm_muslc.${asset}.a" \
-  -o "/usr/local/lib/libwasmvm_muslc.${asset}.a"
-printf '%s  %s\n' "$expected" "/usr/local/lib/libwasmvm_muslc.${asset}.a" | sha256sum -c -
 mkdir -p release
 binary="dorad-${VERSION}-linux-${suffix}"
-# CI checks out as runner but builds inside a root-owned container.
-# Commit identity is supplied explicitly below; do not ask Git to inspect a
-# bind-mounted checkout (or require .git in exported source archives).
-build_tags=${BUILD_TAGS:-muslc,netgo,osusergo,static_build}
-CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags "$build_tags" \
-  -ldflags "-linkmode external -extldflags '-static -L/usr/local/lib -lm' -X github.com/cosmos/cosmos-sdk/version.Version=${VERSION} -X github.com/cosmos/cosmos-sdk/version.Commit=${commit_sha} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags}" \
-  -o "release/${binary}" ./cmd/dorad
-if readelf -l "release/${binary}" | grep -q INTERP; then
-  echo 'Release unexpectedly requires a dynamic loader' >&2; exit 1
-fi
-# Execute the actual artifact on its target architecture.
+build_tags=netgo,osusergo
+CGO_ENABLED=0 go build -buildvcs=false -trimpath -tags "$build_tags" \
+ -ldflags "-s -w -X github.com/cosmos/cosmos-sdk/version.Version=${VERSION} -X github.com/cosmos/cosmos-sdk/version.Commit=${commit_sha} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags}" \
+ -o "release/${binary}" ./cmd/dorad
+if readelf -l "release/${binary}" | grep -q INTERP; then exit 1; fi
+if readelf -d "release/${binary}" | grep -q NEEDED; then exit 1; fi
 test "$("release/${binary}" version)" = "$VERSION"
 smoke_home=$(mktemp -d)
 trap 'rm -rf "$smoke_home"' EXIT
-"release/${binary}" init release-smoke --chain-id bridge-release-smoke --home "$smoke_home" >/dev/null
-test "$("release/${binary}" query wasm libwasmvm-version --home "$smoke_home")" = "3.0.8"
+"release/${binary}" init release-smoke --chain-id archive-release-smoke --home "$smoke_home" >/dev/null
+"release/${binary}" query wasm-archive --help >/dev/null
 # Regression: fresh Comet config has a top-level version, which must not leak
 # into the ICA transaction's protocol metadata. No keys or RPC are needed.
 smoke_sender=dora1ny4nw32wzg70qxdtyy9a6fhkl809echuwj40f4

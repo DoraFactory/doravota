@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CosmWasm/wasmd/x/wasm"
 	tmrand "github.com/cometbft/cometbft/libs/rand"
 	tmdb "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -54,7 +53,6 @@ func DefaultConfig() network.Config {
 		encoding = app.MakeEncodingConfig()
 		chainID  = "chain-" + tmrand.NewRand().Str(6)
 	)
-	var wasmOpts []wasm.Option
 	return network.Config{
 		Codec:             encoding.Marshaler,
 		TxConfig:          encoding.TxConfig,
@@ -73,7 +71,6 @@ func DefaultConfig() network.Config {
 				encoding,
 				simtestutil.EmptyAppOptions{},
 				// app.GetEnabledProposals(),
-				wasmOpts,
 				baseapp.SetPruning(pruningtypes.NewPruningOptionsFromString(val.GetAppConfig().Pruning)),
 				baseapp.SetMinGasPrices(val.GetAppConfig().MinGasPrices),
 				baseapp.SetChainID(chainID),

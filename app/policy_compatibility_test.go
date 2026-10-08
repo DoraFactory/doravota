@@ -9,7 +9,6 @@ import (
 
 	"cosmossdk.io/log/v2"
 	sdkmath "cosmossdk.io/math"
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -37,7 +36,7 @@ func policyTestApp(t *testing.T) *app.App {
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	return app.New(log.NewNopLogger(), db, nil, true, map[int64]bool{},
 		simulationHome(t, opts), 0, app.MakeEncodingConfig(), opts,
-		simulationWasmOpts(t), baseapp.SetChainID("policy-test"))
+		baseapp.SetChainID("policy-test"))
 }
 
 // Exercise the real registered BaseApp handlers, not a copy of their logic.
@@ -160,14 +159,10 @@ func TestBaselineIBCWiring(t *testing.T) {
 	transferRoute, found := a.IBCKeeper.PortKeeper.Router.Route("transfer")
 	require.True(t, found)
 	require.IsType(t, &transfer.IBCModule{}, transferRoute)
-	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("wasm"))
+	require.False(t, a.IBCKeeper.PortKeeper.Router.HasRoute("wasm"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icahost"))
 	require.True(t, a.IBCKeeper.PortKeeper.Router.HasRoute("icacontroller"))
 	require.False(t, a.IBCKeeper.ChannelKeeperV2.Router.HasRoute("transfer"))
-	require.False(t, a.IBCKeeper.ChannelKeeperV2.Router.HasRoute(wasmkeeper.PortIDPrefixV2+"contract"))
-	require.NotContains(t, app.AllCapabilities(), "ibc2")
-	require.Contains(t, app.AllCapabilities(), "cosmwasm_1_4")
-	require.Equal(t, []string{"iterator", "staking", "stargate", "cosmwasm_1_1", "cosmwasm_1_2", "cosmwasm_1_3", "cosmwasm_1_4"}, app.AllCapabilities())
 	feeAddr := authtypes.NewModuleAddress("feeibc")
 	require.True(t, a.BankKeeper.BlockedAddr(feeAddr))
 	require.NotContains(t, app.GetMaccPerms(), "feeibc")

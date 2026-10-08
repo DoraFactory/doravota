@@ -5,7 +5,7 @@ ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # Builder
 # --------------------------------------------------------
 FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION="1.0.0"
+ARG GIT_VERSION="1.0.0-wasmarchive.1"
 ARG GIT_COMMIT="unknown"
 ARG COMMIT_SHA=""
 RUN apk add --no-cache \
@@ -21,9 +21,9 @@ COPY third_party/ ./third_party/
 RUN go mod download
 # Copy the remaining files
 COPY . .
-# Share dependency checks, musl flags and artifact smoke tests with release CI.
+# Share dependency checks and artifact smoke tests with release CI.
 RUN VERSION="${GIT_VERSION}" COMMIT_SHA="${COMMIT_SHA:-${GIT_COMMIT}}" \
-    BUILD_TAGS="muslc,netgo,osusergo,static_build,ledger" bash scripts/build-bridge-release.sh && \
+    bash scripts/build-bridge-release.sh && \
     mkdir -p /dora/build && \
     case "$(go env GOARCH)" in amd64) suffix=amd ;; arm64) suffix=arm64 ;; *) exit 1 ;; esac && \
     cp "release/dorad-${GIT_VERSION}-linux-${suffix}" /dora/build/dorad

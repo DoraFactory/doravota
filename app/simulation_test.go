@@ -11,9 +11,6 @@ import (
 	"time"
 
 	"cosmossdk.io/log/v2"
-	"github.com/CosmWasm/wasmd/x/wasm"
-	wasmkeeper "github.com/CosmWasm/wasmd/x/wasm/keeper"
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -44,15 +41,6 @@ func simulationHome(t testing.TB, opts simtestutil.AppOptionsMap) string {
 	home := t.TempDir()
 	opts[flags.FlagHome] = home
 	return home
-}
-
-func simulationWasmOpts(t testing.TB) []wasm.Option {
-	return []wasm.Option{wasmkeeper.WithWasmEngineDecorator(func(engine wasmtypes.WasmEngine) wasmtypes.WasmEngine {
-		if closer, ok := engine.(interface{ Cleanup() }); ok {
-			t.Cleanup(closer.Cleanup)
-		}
-		return engine
-	})}
 }
 
 type storeKeysPrefixes struct {
@@ -113,7 +101,6 @@ func BenchmarkSimulation(b *testing.B) {
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		simulationWasmOpts(b),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(b, app.Name, bApp.Name())
@@ -190,7 +177,6 @@ func TestAppStateDeterminism(t *testing.T) {
 				app.MakeEncodingConfig(),
 				appOptions,
 				// wasm.EnableAllProposals,
-				simulationWasmOpts(t),
 				fauxMerkleModeOpt,
 				baseapp.SetChainID(chainID),
 			)
@@ -269,7 +255,6 @@ func TestAppImportExport(t *testing.T) {
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		simulationWasmOpts(t),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -332,7 +317,6 @@ func TestAppImportExport(t *testing.T) {
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		simulationWasmOpts(t),
 		baseapp.SetChainID(config.ChainID),
 	)
 	require.Equal(t, app.Name, bApp.Name())
@@ -424,7 +408,6 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		simulationWasmOpts(t),
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)
@@ -493,7 +476,6 @@ func TestAppSimulationAfterImport(t *testing.T) {
 		app.MakeEncodingConfig(),
 		appOptions,
 		// wasm.EnableAllProposals,
-		simulationWasmOpts(t),
 		fauxMerkleModeOpt,
 		baseapp.SetChainID(config.ChainID),
 	)

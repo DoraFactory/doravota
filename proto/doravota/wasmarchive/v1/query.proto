@@ -1,0 +1,23 @@
+syntax = "proto3";
+package doravota.wasmarchive.v1;
+option go_package = "github.com/DoraFactory/doravota/app/wasmarchive";
+
+// Reads preserved Wasmd 0.61.x bytes. No VM, transaction or smart-query service.
+service Query {
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Scan(ScanRequest) returns (ScanResponse);
+}
+message Entry { bytes key = 1; bytes value = 2; }
+message GetRequest { bytes key = 1; }
+message GetResponse { bytes value = 1; bool found = 2; int64 height = 3; }
+message ScanRequest {
+  bytes prefix = 1;
+  // Inclusive full store key, returned as next_key by the preceding page.
+  bytes start_key = 2;
+  uint32 limit = 3;
+}
+message ScanResponse {
+  repeated Entry entries = 1;
+  bytes next_key = 2;
+  int64 height = 3;
+}
