@@ -111,7 +111,6 @@ func NewRootCmd() (*cobra.Command, appparams.EncodingConfig) {
 		0,
 		encodingConfig,
 		simtestutil.NewAppOptionsWithFlagHome(tempHome),
-		nil,
 	)
 	autoCLIOpts := tempApp.AutoCliOpts()
 	autoCLIOpts.ClientCtx = initClientCtx
