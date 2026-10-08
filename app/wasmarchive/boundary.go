@@ -12,7 +12,9 @@ import (
 	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	gov "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade/types"
@@ -123,9 +125,31 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	if onchain.Name != plan.Name || onchain.Height != plan.Height || onchain.Info != plan.Info {
 		return fmt.Errorf("upgrade info differs from on-chain plan")
 	}
+	return validateSettlement(func(name string, start, end []byte, f func([]byte, []byte) error) error {
+		return scan(trees[name], start, end, f)
+	})
+}
+
+// ValidateContext repeats the startup checks at the actual upgrade boundary,
+// including when a database was populated through state sync after construction.
+func ValidateContext(ctx sdk.Context, keys map[string]*storetypes.KVStoreKey) error {
+	return validateSettlement(func(name string, start, end []byte, f func([]byte, []byte) error) error {
+		it := ctx.KVStore(keys[name]).Iterator(start, end)
+		defer it.Close()
+		for ; it.Valid(); it.Next() {
+			if err := f(it.Key(), it.Value()); err != nil {
+				return err
+			}
+		}
+		// SDK cache iterators report invalid after normal exhaustion.
+		return nil
+	})
+}
+
+func validateSettlement(visit func(string, []byte, []byte, func([]byte, []byte) error) error) error {
 	// Governance must finish outstanding business before runtime retirement. Raw
 	// protobuf decoding does not require registering executable Wasm message types.
-	if err = scan(trees["gov"], []byte{0}, []byte{1}, func(k, v []byte) error {
+	if err := visit("gov", []byte{0}, []byte{1}, func(k, v []byte) error {
 		var p gov.Proposal
 		if e := proto.Unmarshal(v, &p); e != nil {
 			return e
@@ -141,7 +165,7 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	}
 	// Authz grants may be decoded later by expiration/pruning logic. Refuse
 	// retirement until grants embedding Wasm authorization types are revoked.
-	if err = scan(trees["authz"], nil, nil, func(k, v []byte) error {
+	if err := visit("authz", nil, nil, func(k, v []byte) error {
 		if bytes.Contains(v, []byte("cosmwasm.wasm.")) {
 			return fmt.Errorf("Wasm authz grant at %x must be revoked before retirement", k)
 		}
@@ -151,7 +175,7 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	}
 	// Removing the Wasm route must not strand callbacks. General ICS20/ICA
 	// channels remain wired and their storage is never migrated by this upgrade.
-	return scan(trees["ibc"], []byte("channelEnds/ports/wasm."), []byte("channelEnds/ports/wasm/"), func(k, v []byte) error {
+	return visit("ibc", []byte("channelEnds/ports/wasm."), []byte("channelEnds/ports/wasm/"), func(k, v []byte) error {
 		var ch channel.Channel
 		if e := proto.Unmarshal(v, &ch); e != nil {
 			return e
@@ -161,7 +185,7 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 		}
 		suffix := strings.TrimPrefix(string(k), "channelEnds/")
 		prefix := []byte("commitments/" + suffix + "/sequences/")
-		return scan(trees["ibc"], prefix, prefixEnd(prefix), func(k, v []byte) error { return fmt.Errorf("unsettled Wasm IBC packet %s", k) })
+		return visit("ibc", prefix, prefixEnd(prefix), func(k, v []byte) error { return fmt.Errorf("unsettled Wasm IBC packet %s", k) })
 	})
 }
 

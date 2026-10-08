@@ -16,6 +16,9 @@ import (
 
 	"github.com/DoraFactory/doravota/app"
 	abci "github.com/cometbft/cometbft/abci/types"
+	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
+	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/stretchr/testify/require"
 )
@@ -99,4 +102,31 @@ func TestRetiredTransactionsDoNotHaltBlocks(t *testing.T) {
 	var state map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(exported.AppState, &state))
 	require.JSONEq(t, string(genesis[wasmarchive.GenesisKey]), string(state[wasmarchive.GenesisKey]))
+}
+
+// A restored pre-retirement state must not execute blocks with the new rules.
+func TestPreBlockRejectsUnactivatedRestoredState(t *testing.T) {
+	a := policyTestApp(t)
+	ctx := a.NewContextLegacy(true, tmproto.Header{Height: 12})
+	require.NoError(t, a.UpgradeKeeper.SetModuleVersionMap(ctx, module.VersionMap{"wasm": 4}))
+	_, err := a.PreBlocker(ctx, &abci.RequestFinalizeBlock{Height: 12})
+	require.ErrorContains(t, err, "archive activation is required")
+}
+
+func TestRetirementChecksWasmIBCAtExecution(t *testing.T) {
+	a := policyTestApp(t)
+	ctx := a.NewContextLegacy(true, tmproto.Header{Height: 12})
+	keys := map[string]*storetypes.KVStoreKey{"ibc": a.GetKey("ibc"), "gov": a.GetKey("gov"), "authz": a.GetKey("authz")}
+	key := []byte("channelEnds/ports/wasm.contract/channels/channel-16")
+	// Field 1 is the protobuf Channel state; OPEN=3, CLOSED=4.
+	ctx.KVStore(keys["ibc"]).Set(key, []byte{8, 3})
+	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "must close")
+	ctx.KVStore(keys["ibc"]).Set(key, []byte{8, 4})
+	require.NoError(t, wasmarchive.ValidateContext(ctx, keys))
+	packet := []byte("commitments/ports/wasm.contract/channels/channel-16/sequences/1")
+	ctx.KVStore(keys["ibc"]).Set(packet, []byte{1})
+	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "unsettled")
+	ctx.KVStore(keys["ibc"]).Delete(packet)
+	ctx.KVStore(keys["authz"]).Set([]byte{1}, []byte("/cosmwasm.wasm.v1.ContractExecutionAuthorization"))
+	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "must be revoked")
 }

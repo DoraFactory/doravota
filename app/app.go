@@ -690,7 +690,29 @@ func (app *App) Name() string { return app.BaseApp.Name() }
 
 // PreBlocker runs module pre-block processing.
 func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.ResponsePreBlock, error) {
-	return app.mm.PreBlock(ctx)
+	versions, err := app.UpgradeKeeper.GetModuleVersionMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if versions[wasmarchive.GenesisKey] != 1 {
+		plan, err := app.UpgradeKeeper.GetUpgradePlan(ctx)
+		if err != nil || plan.Name != wasmarchive.UpgradeName || plan.Height != ctx.BlockHeight() {
+			return nil, fmt.Errorf("archive activation is required before block execution")
+		}
+	}
+	result, err := app.mm.PreBlock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	versions, err = app.UpgradeKeeper.GetModuleVersionMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	_, live := versions[wasmarchive.StoreKey]
+	if versions[wasmarchive.GenesisKey] != 1 || live {
+		return nil, fmt.Errorf("inconsistent Wasm archive activation")
+	}
+	return result, nil
 }
 
 // BeginBlocker application updates every begin block
@@ -889,6 +911,9 @@ func (app *App) setupUpgradeHandlers() {
 			}
 			// No store loader, no IBC migration, and no Wasm writes. Only the version map changes.
 			ctx := sdk.UnwrapSDKContext(goCtx)
+			if err := wasmarchive.ValidateContext(ctx, app.keys); err != nil {
+				return nil, err
+			}
 			ctx.KVStore(app.keys[upgradetypes.StoreKey]).Delete(append([]byte{upgradetypes.VersionMapByte}, []byte("wasm")...))
 			updated := app.mm.GetVersionMap()
 			updated[wasmarchive.GenesisKey] = 1
