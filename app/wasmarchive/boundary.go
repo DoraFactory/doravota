@@ -139,6 +139,16 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	}); err != nil {
 		return err
 	}
+	// Authz grants may be decoded later by expiration/pruning logic. Refuse
+	// retirement until grants embedding Wasm authorization types are revoked.
+	if err = scan(trees["authz"], nil, nil, func(k, v []byte) error {
+		if bytes.Contains(v, []byte("cosmwasm.wasm.")) {
+			return fmt.Errorf("Wasm authz grant at %x must be revoked before retirement", k)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	// Removing the Wasm route must not strand callbacks. General ICS20/ICA
 	// channels remain wired and their storage is never migrated by this upgrade.
 	return scan(trees["ibc"], []byte("channelEnds/ports/wasm."), []byte("channelEnds/ports/wasm/"), func(k, v []byte) error {

@@ -24,6 +24,6 @@ Wasm bytecode files and VM caches live outside the KV store. Retaining the store
 
 Complete operator claims and resolve contract-held bank tokens, internal CW20 balances, escrow and other obligations before activation. Preservation is not a withdrawal mechanism. The implementation does not seize or transfer assets. Ordinary bank sends to old contract addresses are not disabled; such funds can become inaccessible, so integrations must stop sending to retired addresses.
 
-Startup verifies the committed store layout, source module versions, on-chain plan, halt height and local upgrade info. It rejects active governance proposals containing Wasm message URLs, non-closed Wasm IBC channels and pending packets on those channels. These checks are not a proof that all business liabilities have settled.
+Startup verifies the committed store layout, source module versions, on-chain plan, halt height and local upgrade info. It rejects active governance proposals containing Wasm message URLs, Wasm authz grants, non-closed Wasm IBC channels and pending packets on those channels. These checks are not a proof that all business liabilities have settled.
 
 The upgrade changes only the module-version map: `wasm` is replaced with `wasm_archive=1`. It does not rerun the SDK or IBC migrations. The same IBC dependency and default ML-DSA/rotation parameters are retained. No mainnet height is hardcoded.
