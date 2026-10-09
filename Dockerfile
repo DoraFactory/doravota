@@ -5,7 +5,7 @@ ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # Builder
 # --------------------------------------------------------
 FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION="1.0.0-wasmarchive.1"
+ARG GIT_VERSION="1.0.0-wasmarchive.2"
 ARG GIT_COMMIT="unknown"
 ARG COMMIT_SHA=""
 RUN apk add --no-cache \
