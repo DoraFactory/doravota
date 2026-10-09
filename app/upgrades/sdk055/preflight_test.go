@@ -112,14 +112,14 @@ func TestPreflightBeforeAnyStoreMutation(t *testing.T) {
 		{"audited source", nil, ""},
 		{"open Wasm channel", func(s map[string]storetypes.KVStore) {
 			s["ibc"].Set([]byte("channelEnds/ports/wasm.contract/channels/channel-16"), []byte{8, 3})
-		}, "must close"},
+		}, ""},
 		{"closed Wasm channel", func(s map[string]storetypes.KVStore) {
 			s["ibc"].Set([]byte("channelEnds/ports/wasm.contract/channels/channel-16"), []byte{8, 4})
 		}, ""},
 		{"closed Wasm channel with commitment", func(s map[string]storetypes.KVStore) {
 			s["ibc"].Set([]byte("channelEnds/ports/wasm.contract/channels/channel-16"), []byte{8, 4})
 			s["ibc"].Set([]byte("commitments/ports/wasm.contract/channels/channel-16/sequences/1"), []byte{1})
-		}, "unsettled"},
+		}, ""},
 		{"retired wasm params absent", func(s map[string]storetypes.KVStore) { s["wasm"].Delete([]byte{0x10}) }, ""},
 		{"unknown legacy key", func(s map[string]storetypes.KVStore) { s["params"].Set([]byte("custom/fee"), []byte("1")) }, "unreviewed legacy"},
 		{"different authoritative value", func(s map[string]storetypes.KVStore) {
@@ -128,8 +128,8 @@ func TestPreflightBeforeAnyStoreMutation(t *testing.T) {
 		{"corrupt legacy value", func(s map[string]storetypes.KVStore) {
 			s["params"].Set([]byte("transfer/SendEnabled"), []byte("broken"))
 		}, "decode legacy"},
-		{"group data", func(s map[string]storetypes.KVStore) { s["group"].Set([]byte{0, 0, 1}, []byte("member")) }, "group has business"},
-		{"group used previously", func(s map[string]storetypes.KVStore) { s["group"].Set([]byte{1, 1}, []byte{0, 0, 0, 0, 0, 0, 0, 1}) }, "group has business"},
+		{"group data", func(s map[string]storetypes.KVStore) { s["group"].Set([]byte{0, 0, 1}, []byte("member")) }, ""},
+		{"group used previously", func(s map[string]storetypes.KVStore) { s["group"].Set([]byte{1, 1}, []byte{0, 0, 0, 0, 0, 0, 0, 1}) }, ""},
 		{"group grant", func(s map[string]storetypes.KVStore) { s["authz"].Set([]byte{1}, []byte("/cosmos.group.v1.MsgExec")) }, ""},
 		{"wrong source version", func(s map[string]storetypes.KVStore) {
 			s["upgrade"].Set(append([]byte{2}, []byte("wasm")...), []byte{0, 0, 0, 0, 0, 0, 0, 2})

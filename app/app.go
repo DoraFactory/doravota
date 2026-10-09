@@ -916,12 +916,10 @@ func (app *App) setupUpgradeHandlers() {
 			}
 
 			ctx := sdk.UnwrapSDKContext(goCtx)
-			if err := wasmarchive.ValidateContext(ctx, app.keys); err != nil {
-				return nil, err
-			}
 			if err := sdk055.ValidateIBCChannelMigration(ctx, app.keys[ibcexported.StoreKey], app.IBCKeeper); err != nil {
 				return nil, err
 			}
+			wasmarchive.RetireChannels(ctx, app.IBCKeeper.ChannelKeeper)
 			updated, err := app.mm.RunMigrations(goCtx, app.configurator, fromVM)
 			if err != nil {
 				return nil, err

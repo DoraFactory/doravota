@@ -12,7 +12,6 @@ import (
 
 	"cosmossdk.io/log/v2"
 	bridge "github.com/DoraFactory/doravota/app/upgrades/v0_5_0"
-	"github.com/DoraFactory/doravota/app/wasmarchive"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -196,14 +195,8 @@ func validateState(trees map[string]*iavl.ImmutableTree, plan upgradetypes.Plan)
 	if err := ValidateSourceVersionMap(versions); err != nil {
 		return err
 	}
-	if err := scan(trees["group"], nil, nil, func(k, v []byte) error {
-		if (bytes.Equal(k, []byte{1, 1}) || bytes.Equal(k, []byte{0x21, 1}) || bytes.Equal(k, []byte{0x31, 1})) && len(v) == 8 && binary.BigEndian.Uint64(v) == 0 {
-			return nil
-		}
-		return fmt.Errorf("group has business/history state at key %x; explicit disposition required before removal", k)
-	}); err != nil {
-		return err
-	}
+	// The coordinated 1.0.0 retirement deletes all legacy group state.
+	// User-created groups, grants and bank balances are not activation vetoes.
 
 	var auth authtypes.Params
 	var bank banktypes.Params
@@ -283,9 +276,7 @@ func validateState(trees map[string]*iavl.ImmutableTree, plan upgradetypes.Plan)
 	}
 	// Historical governance/authz records remain decodable; user-supplied text
 	// and generic grants must not become activation vetoes.
-	return wasmarchive.ValidateStoredChannels(func(name string, start, end []byte, visit func([]byte, []byte) error) error {
-		return scan(trees[name], start, end, visit)
-	})
+	return nil
 }
 
 // MountRetiringStores mounts only deprecated stores until the coordinated loader removes them.

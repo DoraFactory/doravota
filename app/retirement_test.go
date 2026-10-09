@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	tmtypes "github.com/cometbft/cometbft/types"
@@ -17,9 +18,9 @@ import (
 	"github.com/DoraFactory/doravota/app"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	channeltypes "github.com/cosmos/ibc-go/v11/modules/core/04-channel/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +68,7 @@ func TestRetiredTransactionsDoNotHaltBlocks(t *testing.T) {
 	_, err = a.InitChain(&abci.RequestInitChain{ChainId: "policy-test", InitialHeight: 1, Time: stamp, ConsensusParams: &cp, AppStateBytes: raw})
 	require.NoError(t, err)
 	var transactions [][]byte
-	for _, url := range []string{"/cosmwasm.wasm.v1.MsgExecuteContract", "/cosmwasm.wasm.v1.MsgInstantiateContract"} {
+	for _, url := range []string{"/cosmwasm.wasm.v1.MsgExecuteContract", "/cosmwasm.wasm.v1.MsgInstantiateContract", "/cosmos.group.v1.MsgCreateGroup"} {
 		body, err := (&txtypes.TxBody{Messages: []*codectypes.Any{{TypeUrl: url, Value: []byte{}}}}).Marshal()
 		require.NoError(t, err)
 		tx, err := (&txtypes.TxRaw{BodyBytes: body, AuthInfoBytes: []byte{}}).Marshal()
@@ -76,7 +77,7 @@ func TestRetiredTransactionsDoNotHaltBlocks(t *testing.T) {
 	}
 	block, err := a.FinalizeBlock(&abci.RequestFinalizeBlock{Height: 1, Time: stamp.Add(time.Second), Txs: transactions})
 	require.NoError(t, err)
-	require.Len(t, block.TxResults, 2)
+	require.Len(t, block.TxResults, 3)
 	for _, result := range block.TxResults {
 		require.NotZero(t, result.Code)
 	}
@@ -113,20 +114,43 @@ func TestPreBlockRejectsUnactivatedRestoredState(t *testing.T) {
 	require.ErrorContains(t, err, "archive activation is required")
 }
 
-func TestRetirementChecksWasmIBCAtExecution(t *testing.T) {
+func TestRetirementClosesOnlyWasmChannelsAndPreservesPackets(t *testing.T) {
 	a := policyTestApp(t)
 	ctx := a.NewContextLegacy(true, tmproto.Header{Height: 12})
-	keys := map[string]*storetypes.KVStoreKey{"ibc": a.GetKey("ibc"), "gov": a.GetKey("gov"), "authz": a.GetKey("authz")}
-	key := []byte("channelEnds/ports/wasm.contract/channels/channel-16")
-	// Field 1 is the protobuf Channel state; OPEN=3, CLOSED=4.
-	ctx.KVStore(keys["ibc"]).Set(key, []byte{8, 3})
-	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "must close")
-	ctx.KVStore(keys["ibc"]).Set(key, []byte{8, 4})
-	require.NoError(t, wasmarchive.ValidateContext(ctx, keys))
-	packet := []byte("commitments/ports/wasm.contract/channels/channel-16/sequences/1")
-	ctx.KVStore(keys["ibc"]).Set(packet, []byte{1})
-	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "unsettled")
-	ctx.KVStore(keys["ibc"]).Delete(packet)
-	ctx.KVStore(keys["authz"]).Set([]byte{1}, []byte("/cosmwasm.wasm.v1.ContractExecutionAuthorization"))
-	require.NoError(t, wasmarchive.ValidateContext(ctx, keys))
+	k := a.IBCKeeper.ChannelKeeper
+	store := ctx.KVStore(a.GetKey("ibc"))
+	states := []channeltypes.State{channeltypes.INIT, channeltypes.TRYOPEN, channeltypes.OPEN, channeltypes.CLOSED}
+	for i, state := range states {
+		id := fmt.Sprintf("channel-%d", i)
+		ch := channeltypes.Channel{State: state, Ordering: channeltypes.UNORDERED,
+			Counterparty: channeltypes.Counterparty{PortId: "wasm.peer", ChannelId: "channel-7"}, ConnectionHops: []string{"connection-0"}, Version: "archive-test"}
+		k.SetChannel(ctx, "wasm.contract", id, ch)
+		for _, prefix := range []string{"commitments", "receipts", "acks"} {
+			store.Set([]byte(prefix+"/ports/wasm.contract/channels/"+id+"/sequences/1"), []byte{1, 2, 3})
+		}
+	}
+	for _, port := range []string{"transfer", "icahost", "icacontroller-owner"} {
+		k.SetChannel(ctx, port, "channel-9", channeltypes.Channel{State: channeltypes.OPEN, Ordering: channeltypes.ORDERED, Version: "unchanged"})
+	}
+	wasmarchive.RetireChannels(ctx, k)
+	for i := range states {
+		id := fmt.Sprintf("channel-%d", i)
+		ch, found := k.GetChannel(ctx, "wasm.contract", id)
+		require.True(t, found)
+		require.Equal(t, channeltypes.CLOSED, ch.State)
+		require.Equal(t, "archive-test", ch.Version)
+		require.Equal(t, []string{"connection-0"}, ch.ConnectionHops)
+		require.Equal(t, "channel-7", ch.Counterparty.ChannelId)
+		for _, prefix := range []string{"commitments", "receipts", "acks"} {
+			require.Equal(t, []byte{1, 2, 3}, store.Get([]byte(prefix+"/ports/wasm.contract/channels/"+id+"/sequences/1")))
+		}
+	}
+	for _, port := range []string{"transfer", "icahost", "icacontroller-owner"} {
+		ch, _ := k.GetChannel(ctx, port, "channel-9")
+		require.Equal(t, channeltypes.OPEN, ch.State)
+		require.Equal(t, "unchanged", ch.Version)
+	}
+	require.Len(t, ctx.EventManager().Events(), 3)
+	wasmarchive.RetireChannels(ctx, k)
+	require.Len(t, ctx.EventManager().Events(), 3, "repeated retirement does not duplicate events")
 }
