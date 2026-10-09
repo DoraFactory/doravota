@@ -37,11 +37,14 @@ func TestLegacyEmptyIAVLDBLoadsOldEmptyRootWithoutMutation(t *testing.T) {
 	storeDB := dbm.NewPrefixDB(db, []byte(iavlStorePrefix+key.Name()+"/"))
 	require.NoError(t, storeDB.Set(legacyIAVLRootKey(appCommitID.Version), []byte{}))
 
-	tree := newTestTree(db, key.Name())
+	// Explicitly simulate the broken LevelDB empty-value lookup. The pinned
+	// production dependency now preserves empty values correctly.
+	legacyDB := &nilEmptyRootDB{DB: db}
+	tree := newTestTree(legacyDB, key.Name())
 	_, err = tree.LoadVersion(appCommitID.Version)
 	require.Error(t, err)
 
-	awareDB := &emptyIAVLRootAwareDB{DB: db}
+	awareDB := &emptyIAVLRootAwareDB{DB: legacyDB}
 	tree = newTestTree(awareDB, key.Name())
 	loadedVersion, err := tree.LoadVersion(appCommitID.Version)
 	require.NoError(t, err)
@@ -171,4 +174,19 @@ func TestRootKeyVersionMayContainSlash(t *testing.T) {
 		require.True(t, isIAVLRootKey(append([]byte("s/k:empty/"), legacyIAVLRootKey(height)...)))
 		require.True(t, isIAVLRootKey(append([]byte("s/k:empty/s"), iavl.GetRootKey(height)...)))
 	}
+}
+
+// nilEmptyRootDB models the old driver without requiring that broken dependency.
+type nilEmptyRootDB struct{ dbm.DB }
+
+func (db *nilEmptyRootDB) Get(key []byte) ([]byte, error) {
+	value, err := db.DB.Get(key)
+	if err == nil && len(value) == 0 && isIAVLRootKey(key) {
+		return nil, nil
+	}
+	return value, err
+}
+func (db *nilEmptyRootDB) Has(key []byte) (bool, error) {
+	value, err := db.Get(key)
+	return value != nil, err
 }

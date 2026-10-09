@@ -33,3 +33,10 @@ Structural checks still verify committed store layout, source module versions, o
 ## Release validation
 
 Use the final committed binary for mainnet-derived and testnet snapshot rehearsals and a two-chain upgrade. Verify same-height AppHash agreement, restart, complete Wasm store digest, retained historical raw queries, logical IBC sequences, existing transfers/acknowledgements/timeouts and rejection of retired messages without halting. Group creation and Wasm channel creation before the upgrade must not prevent activation. Preserve baseline evidence before deleting test copies. See [validator and integration guide](VALIDATOR-1.0.0.md).
+
+## Database compatibility
+
+Keep the same LevelDB replacement as Cosmos SDK 0.55. The selected 2022
+revision treats stored empty values as missing keys, which prevents loading
+empty IAVL roots after restart. The pinned 2021 revision preserves this
+distinction. A persistent empty-tree restart regression covers the requirement.
