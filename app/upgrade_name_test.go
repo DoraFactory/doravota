@@ -29,6 +29,7 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "1.0.0"} {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
+	require.False(t, instance.UpgradeKeeper.HasHandler("wasm-retirement"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("v0.5.0"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("sdk-v0.53-bridge"))
 }

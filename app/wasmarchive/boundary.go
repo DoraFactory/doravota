@@ -3,10 +3,7 @@ package wasmarchive
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"cosmossdk.io/log/v2"
@@ -16,35 +13,15 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/cosmos/iavl"
 	channel "github.com/cosmos/ibc-go/v11/modules/core/04-channel/types"
 )
 
-// UpgradeName is intentionally distinct from the already tested SDK upgrade.
-// This candidate supports 1.0.0 -> retirement, never a direct 0.5.0 upgrade.
-const UpgradeName = "wasm-retirement"
+// UpgradeName is the direct 0.5.0 -> 1.0.0 SDK and archive upgrade.
+const UpgradeName = "1.0.0"
 
 var retainedStores = []string{"acc", "authz", "bank", "consensus", "distribution", "evidence", "feegrant", "gov", "ibc", "icacontroller", "icahost", "mint", "slashing", "staking", "transfer", "upgrade", "wasm"}
-
-func ValidateVersions(actual, expected module.VersionMap) error {
-	for name, want := range expected {
-		if got, ok := actual[name]; !ok || got != want {
-			return fmt.Errorf("unsupported source module %s: got %d, present=%t, want %d", name, got, ok, want)
-		}
-	}
-	optional := module.VersionMap{"capability": 1, "crisis": 2, "feeibc": 1}
-	for name, version := range actual {
-		if _, ok := expected[name]; ok {
-			continue
-		}
-		if want, ok := optional[name]; !ok || want != version {
-			return fmt.Errorf("unexpected source module %s/%d", name, version)
-		}
-	}
-	return nil
-}
 
 // ValidateBoundary examines only committed state, before BaseApp can write.
 // An upgrade-info file alone cannot authorize premature runtime removal.
@@ -56,6 +33,14 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 	info, err := rootmulti.NewStore(db, logger).GetCommitInfo(height)
 	if err != nil {
 		return err
+	}
+	if info != nil {
+		for _, entry := range info.StoreInfos {
+			if entry.Name == "params" || entry.Name == "group" {
+				// The caller must first validate the complete 0.5.0 boundary.
+				return nil
+			}
+		}
 	}
 	if info == nil || len(info.StoreInfos) != len(retainedStores) {
 		return fmt.Errorf("unsupported committed store layout")
@@ -98,41 +83,13 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 		}
 		return nil
 	}
-	expected := module.VersionMap{"06-solomachine": 0, "07-tendermint": 0, "auth": 7, "authz": 2, "bank": 4, "consensus": 1, "distribution": 3, "evidence": 1, "feegrant": 2, "genutil": 1, "gov": 5, "ibc": 8, "interchainaccounts": 3, "mint": 3, "slashing": 4, "staking": 6, "transfer": 6, "upgrade": 2, "vesting": 1, "wasm": 4}
-	if err := ValidateVersions(versions, expected); err != nil {
-		return err
-	}
-	raw, err := os.ReadFile(filepath.Join(home, "data", upgrade.UpgradeInfoFilename))
-	if err != nil {
-		return fmt.Errorf("coordinated %s upgrade required: %w", UpgradeName, err)
-	}
-	var plan upgrade.Plan
-	if err = json.Unmarshal(raw, &plan); err != nil {
-		return err
-	}
-	if plan.Name != UpgradeName || plan.Height != height+1 || skips[plan.Height] {
-		return fmt.Errorf("require non-skipped %s at committed height+1", UpgradeName)
-	}
-	raw, err = trees["upgrade"].Get(upgrade.PlanKey())
-	if err != nil {
-		return err
-	}
-	var onchain upgrade.Plan
-	if err = proto.Unmarshal(raw, &onchain); err != nil {
-		return err
-	}
-	if onchain.Name != plan.Name || onchain.Height != plan.Height || onchain.Info != plan.Info {
-		return fmt.Errorf("upgrade info differs from on-chain plan")
-	}
-	return validateSettlement(func(name string, start, end []byte, f func([]byte, []byte) error) error {
-		return scan(trees[name], start, end, f)
-	})
+	return fmt.Errorf("source is not archived 1.0.0 state; use the direct 0.5.0 upgrade boundary")
 }
 
 // ValidateContext repeats the startup checks at the actual upgrade boundary,
 // including when a database was populated through state sync after construction.
 func ValidateContext(ctx sdk.Context, keys map[string]*storetypes.KVStoreKey) error {
-	return validateSettlement(func(name string, start, end []byte, f func([]byte, []byte) error) error {
+	return ValidateStoredChannels(func(name string, start, end []byte, f func([]byte, []byte) error) error {
 		it := ctx.KVStore(keys[name]).Iterator(start, end)
 		defer it.Close()
 		for ; it.Valid(); it.Next() {
@@ -145,12 +102,12 @@ func ValidateContext(ctx sdk.Context, keys map[string]*storetypes.KVStoreKey) er
 	})
 }
 
-func validateSettlement(visit func(string, []byte, []byte, func([]byte, []byte) error) error) error {
+func ValidateStoredChannels(visit func(string, []byte, []byte, func([]byte, []byte) error) error) error {
 	// Governance text and authz grants are user-controlled. They must never
 	// become chain-wide activation vetoes. Legacy wire types remain decodable;
 	// retired operations fail through the normal message router.
 	// Removing the Wasm route must not strand callbacks. General ICS20/ICA
-	// channels remain wired and their storage is never migrated by this upgrade.
+	// channels remain wired; the SDK upgrade separately migrates send sequences.
 	return visit("ibc", []byte("channelEnds/ports/wasm."), []byte("channelEnds/ports/wasm/"), func(k, v []byte) error {
 		var ch channel.Channel
 		if e := proto.Unmarshal(v, &ch); e != nil {

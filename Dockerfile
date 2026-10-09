@@ -5,7 +5,7 @@ ARG RUNNER_IMAGE="gcr.io/distroless/static-debian11"
 # Builder
 # --------------------------------------------------------
 FROM golang:${GO_VERSION}-alpine as builder
-ARG GIT_VERSION="1.0.0-wasmarchive.2"
+ARG GIT_VERSION="1.0.0"
 ARG GIT_COMMIT="unknown"
 ARG COMMIT_SHA=""
 RUN apk add --no-cache \
@@ -25,7 +25,7 @@ COPY . .
 RUN VERSION="${GIT_VERSION}" COMMIT_SHA="${COMMIT_SHA:-${GIT_COMMIT}}" \
     bash scripts/build-bridge-release.sh && \
     mkdir -p /dora/build && \
-    case "$(go env GOARCH)" in amd64) suffix=amd ;; arm64) suffix=arm64 ;; *) exit 1 ;; esac && \
+    case "$(go env GOARCH)" in amd64) suffix=amd64 ;; arm64) suffix=arm64 ;; *) exit 1 ;; esac && \
     cp "release/dorad-${GIT_VERSION}-linux-${suffix}" /dora/build/dorad
 # --------------------------------------------------------
 # Runner

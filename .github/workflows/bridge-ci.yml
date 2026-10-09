@@ -3,7 +3,7 @@ name: SDK candidate validation
 on:
   workflow_dispatch:
   push:
-    branches: [sdk-053-bridge, upgrade/sdk-055-base, upgrade/v1.0.0-sdk055-preserve]
+    branches: [feature/wasm-readonly-archive]
   pull_request:
     paths:
       - '**/*.go'

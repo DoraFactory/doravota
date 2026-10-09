@@ -9,6 +9,7 @@ import (
 	"cosmossdk.io/log/v2"
 	"encoding/json"
 	"fmt"
+	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
@@ -253,6 +254,9 @@ func New(
 	appOpts servertypes.AppOptions,
 	baseAppOptions ...func(*baseapp.BaseApp),
 ) *App {
+	if err := sdk055.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
+		panic(fmt.Errorf("SDK 0.55 source boundary: %w", err))
+	}
 	if err := wasmarchive.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
 		panic(fmt.Errorf("Wasm retirement source boundary: %w", err))
 	}
@@ -635,6 +639,9 @@ func New(
 
 	// initialize stores
 	app.MountKVStores(keys)
+	if err := sdk055.MountRetiringStores(app.CommitMultiStore(), db, logger); err != nil {
+		panic(err)
+	}
 	app.MountTransientStores(tkeys)
 
 	// initialize BaseApp
@@ -897,26 +904,45 @@ func (app *App) ModuleManager() *module.Manager {
 
 func (app *App) setupUpgradeHandlers() {
 	// Recognize completed upgrades without permitting their migrations to run again.
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "1.0.0"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0"} {
 		app.UpgradeKeeper.SetUpgradeHandler(name, func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
 			return nil, fmt.Errorf("complete legacy upgrades using their original binaries before Wasm retirement")
 		})
 	}
 	app.UpgradeKeeper.SetUpgradeHandler(wasmarchive.UpgradeName,
 		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			expected := app.mm.GetVersionMap()
-			expected["wasm"] = 4
-			if err := wasmarchive.ValidateVersions(fromVM, expected); err != nil {
+			if err := sdk055.ValidateSourceVersionMap(fromVM); err != nil {
 				return nil, err
 			}
-			// No store loader, no IBC migration, and no Wasm writes. Only the version map changes.
+
 			ctx := sdk.UnwrapSDKContext(goCtx)
 			if err := wasmarchive.ValidateContext(ctx, app.keys); err != nil {
 				return nil, err
 			}
-			ctx.KVStore(app.keys[upgradetypes.StoreKey]).Delete(append([]byte{upgradetypes.VersionMapByte}, []byte("wasm")...))
-			updated := app.mm.GetVersionMap()
+			if err := sdk055.ValidateIBCChannelMigration(ctx, app.keys[ibcexported.StoreKey], app.IBCKeeper); err != nil {
+				return nil, err
+			}
+			updated, err := app.mm.RunMigrations(goCtx, app.configurator, fromVM)
+			if err != nil {
+				return nil, err
+			}
+			if err := sdk055.MigrateIBCChannels(ctx, app.keys[ibcexported.StoreKey], app.appCodec, app.IBCKeeper); err != nil {
+				return nil, err
+			}
+			for _, name := range []string{"params", "group", "wasm"} {
+				ctx.KVStore(app.keys[upgradetypes.StoreKey]).Delete(append([]byte{upgradetypes.VersionMapByte}, []byte(name)...))
+				delete(updated, name)
+			}
 			updated[wasmarchive.GenesisKey] = 1
 			return updated, nil
 		})
+	info, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+	if err != nil {
+		panic(err)
+	}
+	if info.Name == sdk055.UpgradeName && !app.UpgradeKeeper.IsSkipHeight(info.Height) {
+		changes := sdk055.StoreUpgrades()
+		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(info.Height, &changes))
+	}
+
 }

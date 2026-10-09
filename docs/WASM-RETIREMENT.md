@@ -1,6 +1,6 @@
 # Wasm read-only archive candidate
 
-This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. It is a separate candidate after SDK 0.55 release 1.0.0, with plan `wasm-retirement`. It cannot directly upgrade 0.5.0 or replace a running 1.0.0 node before the scheduled boundary. The release number and production height still require a coordinated release decision.
+This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. This branch is the canonical 1.0.0 candidate, with governance/Cosmovisor plan `1.0.0`, upgrading directly from 0.5.0. It combines the SDK 0.55 migrations with Wasm execution retirement. Previously tested runtime-preserving 1.0.0 binaries and the separate `wasm-retirement` candidate are superseded and must not be distributed as this release. A production height is not selected.
 
 ## Preserved data
 
@@ -26,10 +26,14 @@ Complete operator claims and resolve contract-held bank tokens, internal CW20 ba
 
 Startup and the upgrade handler verify the committed store layout, source module versions, on-chain plan, halt height and local upgrade info. It rejects non-closed Wasm IBC channels and pending packets on those channels. Governance text and authz records are user-controlled and are not activation vetoes. A per-block gate also refuses pre-retirement state restored through state sync before activation. These checks are not a proof that all business liabilities have settled.
 
-The upgrade changes only the module-version map: `wasm` is replaced with `wasm_archive=1`. It does not rerun the SDK or IBC migrations. The same IBC dependency and default ML-DSA/rotation parameters are retained. No mainnet height is hardcoded.
+The upgrade runs the 0.5.0 -> SDK 0.55 module migrations and the guarded IBC v11 send-sequence migration exactly once. It replaces `wasm` with `wasm_archive=1` in the module version map, deletes the legacy params/group stores only after source-state validation, and never writes or deletes Wasm KV entries. Default ML-DSA/rotation parameters are retained. No mainnet height is hardcoded.
 
 ## Remaining IBC activation risk — not production-ready
 
 The channel/packet gate is still a production blocker and can be influenced by users if the live contract accepts a new handshake or send before retirement. Removing this gate or setting every channel CLOSED does not settle escrow, NFTs, acknowledgements or timeouts. This candidate does not solve that risk by silently abandoning obligations.
 
-A separate preparation phase must first freeze new Wasm channel handshakes and outbound packets in the live-runtime binary, across direct, authz, governance and contract paths, while preserving the callbacks needed to drain existing packets and withdraw assets. Reconcile both sides and obtain approval for residual liabilities before the retirement plan is scheduled. An expired client may require coordinated recovery. Ordinary ICS20/ICA must remain available. Until this preparation and a fresh unmodified snapshot rehearsal are completed, do not schedule the retirement candidate on mainnet. Structural store/version/plan checks remain necessary regardless of who can affect state.
+Before scheduling this direct upgrade, settle or explicitly govern the disposition of existing Wasm channels and packets. The earlier idea of freezing new handshakes in a runtime-preserving 1.0.0 does not apply to this release: that binary will not be deployed as an intermediate step. Any pre-upgrade preparation must use a separately coordinated, reviewed mechanism while preserving callbacks needed for settlement. Reconcile both sides and obtain approval for residual liabilities before the retirement plan is scheduled. An expired client may require coordinated recovery. Ordinary ICS20/ICA must remain available. Until this preparation and a fresh unmodified snapshot rehearsal are completed, do not schedule the retirement candidate on mainnet. Structural store/version/plan checks remain necessary regardless of who can affect state.
+
+## Source-state limits
+
+Non-empty legacy group state still requires explicit disposition before its store can be removed. There is no blanket testnet exception. Raw governance/authz strings are not upgrade vetoes; their historical codecs remain, and retired routes reject execution normally. The remaining Wasm channel and group disposition gates are production blockers, not proof of asset settlement.
