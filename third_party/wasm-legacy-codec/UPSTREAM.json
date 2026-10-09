@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/DoraFactory/wasmd",
+  "commit": "035bca31c3f5",
+  "module_version": "v0.70.5-0.20261005055950-035bca31c3f5",
+  "original_sha256": {
+    "authz.pb.go": "5d5d328eac590d3847620ced0c564b47ffef0cf191f7ccec3630d6d47f36a98e",
+    "tx.pb.go": "d45d169316b5a7219203bf07f107a865b6dc30a5aa3e67d2971df6c6fa7fb28f",
+    "types.pb.go": "48765e6b7a61a40c5393c5cfd9bf87ec3a8d4b5ca67e23d37b72eae241eeadc6",
+    "ibc.pb.go": "79ac033a38454f03c10d7a8dd8128b6893a73dc0d156342c19ad2be74d6324c7",
+    "proposal_legacy.pb.go": "844d951c5b91c3d2487e5ac4694761ad359bbcfbae27adea0b91a250b22c5c6c",
+    "codec.go": "e1f5b9c14fc460ae4c667254cf14358895ef4f883dd647d0dd715afaaf901167"
+  }
+}

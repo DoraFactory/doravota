@@ -13,6 +13,7 @@ import (
 
 	"github.com/DoraFactory/doravota/app/params"
 	legacygroup "github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat"
+	legacywasm "github.com/DoraFactory/doravota/third_party/wasm-legacy-codec"
 )
 
 // makeEncodingConfig creates an EncodingConfig for an amino based test configuration.
@@ -55,5 +56,7 @@ func MakeEncodingConfig() params.EncodingConfig {
 	legacygroup.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	paramproposal.RegisterInterfaces(encodingConfig.InterfaceRegistry)
 	paramproposal.RegisterLegacyAminoCodec(encodingConfig.Amino)
+	legacywasm.RegisterInterfaces(encodingConfig.InterfaceRegistry)
+	legacywasm.RegisterLegacyAminoCodec(encodingConfig.Amino)
 	return encodingConfig
 }

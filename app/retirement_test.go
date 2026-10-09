@@ -128,5 +128,5 @@ func TestRetirementChecksWasmIBCAtExecution(t *testing.T) {
 	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "unsettled")
 	ctx.KVStore(keys["ibc"]).Delete(packet)
 	ctx.KVStore(keys["authz"]).Set([]byte{1}, []byte("/cosmwasm.wasm.v1.ContractExecutionAuthorization"))
-	require.ErrorContains(t, wasmarchive.ValidateContext(ctx, keys), "must be revoked")
+	require.NoError(t, wasmarchive.ValidateContext(ctx, keys))
 }

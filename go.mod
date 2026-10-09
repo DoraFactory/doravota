@@ -338,13 +338,9 @@ require (
 // Upstream: https://github.com/shamaton/msgpack/commit/04a026e9ac24527f593a30258a98884768ec0e52
 replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-20260513223856-04a026e9ac24
 
-// Wasmd v0.70.4 compatibility and deployment policy maintained in the organization fork.
-// Fixed commit/checksums: docs/v1.0.0-preserve/WASMD-FORK.json.
-
 // Legacy Wasm parameter declarations and historical governance proposal decoding only.
 replace github.com/cosmos/cosmos-sdk/x/params => ./third_party/cosmos-sdk-x-params-compat
 
 // IBC-Go main at 7b1838a13bc442393253b3b3d995e228a3995855: SDK 0.55 / CometBFT 0.40.
-// A replacement is required: Wasmd's v11.2.0 requirement otherwise wins MVS
-// over this v11.0.0-based pseudo-version and silently restores the old APIs.
+// Keep the exact SDK-compatible IBC revision used by the source release.
 replace github.com/cosmos/ibc-go/v11 => github.com/cosmos/ibc-go/v11 v11.0.0-20260929073332-7b1838a13bc4

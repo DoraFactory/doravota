@@ -16,7 +16,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/store/v2/wrapper"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
-	gov "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/cosmos/iavl"
@@ -147,32 +146,9 @@ func ValidateContext(ctx sdk.Context, keys map[string]*storetypes.KVStoreKey) er
 }
 
 func validateSettlement(visit func(string, []byte, []byte, func([]byte, []byte) error) error) error {
-	// Governance must finish outstanding business before runtime retirement. Raw
-	// protobuf decoding does not require registering executable Wasm message types.
-	if err := visit("gov", []byte{0}, []byte{1}, func(k, v []byte) error {
-		var p gov.Proposal
-		if e := proto.Unmarshal(v, &p); e != nil {
-			return e
-		}
-		if p.Status == gov.StatusVotingPeriod || p.Status == gov.StatusDepositPeriod {
-			if bytes.Contains(v, []byte("cosmwasm.wasm.")) {
-				return fmt.Errorf("active Wasm governance proposal %d must settle before retirement", p.Id)
-			}
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	// Authz grants may be decoded later by expiration/pruning logic. Refuse
-	// retirement until grants embedding Wasm authorization types are revoked.
-	if err := visit("authz", nil, nil, func(k, v []byte) error {
-		if bytes.Contains(v, []byte("cosmwasm.wasm.")) {
-			return fmt.Errorf("Wasm authz grant at %x must be revoked before retirement", k)
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
+	// Governance text and authz grants are user-controlled. They must never
+	// become chain-wide activation vetoes. Legacy wire types remain decodable;
+	// retired operations fail through the normal message router.
 	// Removing the Wasm route must not strand callbacks. General ICS20/ICA
 	// channels remain wired and their storage is never migrated by this upgrade.
 	return visit("ibc", []byte("channelEnds/ports/wasm."), []byte("channelEnds/ports/wasm/"), func(k, v []byte) error {
