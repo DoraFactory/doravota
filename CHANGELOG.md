@@ -3,14 +3,16 @@
 ## [Unreleased]
 
 ## [1.0.0]
-Development candidate; mainnet snapshot and cross-chain acceptance are pending.
-- Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0; keep existing consensus key types.
-- Retain Wasm, IBC transfer and ICA runtime/state. No asset-clearance condition for those modules.
-- Use Wasmd 0.70.4 with a reviewed local compatibility/policy snapshot, official WasmVM 3.0.8, and a pinned SDK 0.55 IBC-Go development commit; see go.mod and docs/v1.0.0-preserve/REVIEW.md.
-- Disable new code creation, both instantiation forms and contract migration at the common execution boundary; preserve existing contract execution, queries and withdrawals.
-- Set upload/default/existing-code instantiation permissions to Nobody at InitChain and upgrade.
-- Remove deprecated params/group stores only after guarded state compatibility checks. Preserve Wasm/IBC/ICA stores and outstanding assets/packets.
-- Use coordinated plan name 1.0.0. No custom pqcauth or production PQC consensus activation in this candidate.
+Coordinated upgrade from 0.5.0; upgrade plan name `1.0.0`.
+- Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0. Existing consensus key types remain unchanged; this release does not activate ML-DSA consensus or add a custom pqcauth module.
+- Add SDK-native ML-DSA account support. New accounts use hash-derived uint64 account numbers (at least 2^63); integrations must preserve full integer precision. See docs/CLIENT-1.0.0.md.
+- Remove Wasm execution and all wasmd/wasmvm dependencies. Preserve the original Wasm store with read-only raw-state queries; smart queries, contract execution, withdrawals and NAV writes stop.
+- Close non-closed Wasm-port IBC channels locally during migration without calling contracts. Retain packet records without settlement or refunds. Ordinary IBC transfer and ICA channels/state remain supported.
+- Use the exact pinned IBC-Go v11 development commit recorded in go.mod; this is not an IBC-Go v11.2.0 stable release.
+- Delete deprecated group and params stores, including group data, without an emptiness prerequisite. Preserve historical message decoding, not execution.
+- Migrate IBC channel sequences with pre/post checks and retain their values. Pin the compatible LevelDB implementation to preserve empty-value semantics.
+- Initialize ML-DSA verification gas to 750, consensus key rotation fee to 1000000 peaka, and mint max_supply to 0 (no supply cap). Keep the new consensus authority unset; normal module governance remains in effect. Preserve existing inflation and governance parameters.
+- Distribute verified static Linux amd64 artifacts with source commit and SHA-256. Consult docs/VALIDATOR-1.0.0.md for upgrade and archive-query limitations.
 
 ## [0.5.0]
 Dora Vota 0.5.0. The application version and on-chain upgrade plan name are `0.5.0`.

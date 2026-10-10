@@ -12,7 +12,7 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BIN = ROOT / 'build/dorad'
-OUT = ROOT / 'docs/v1.0.0-preserve/evidence'
+OUT = ROOT / 'build/sdk055-smoke-evidence'
 
 def port():
     with socket.socket() as sock:

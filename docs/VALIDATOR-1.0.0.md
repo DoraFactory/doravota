@@ -21,7 +21,8 @@ A manual deployment must stop the service before replacing its binary. Retain th
 - Normal bank transfers, staking and ordinary IBC transfers work. Operators should coordinate a small round-trip on an existing transfer channel with an active relayer; expired clients are not repaired by this upgrade.
 - All Wasm channels are CLOSED locally; ICS20/ICA channels are retained. No new Wasm channels, contract execution or smart queries are supported.
 - Module version map contains wasm_archive=1 and no live wasm/group/params entries. Historical raw contract queries work at retained heights.
-- Default parameters remain ML-DSA verification gas 750 and key_rotation_fee 1000000 peaka.
+- New defaults are ML-DSA verification gas 750, key_rotation_fee 1000000 peaka, mint max_supply 0 (no supply cap), and unset consensus authority. Existing governance and inflation parameters are retained.
+- Test outgoing transactions from a newly created post-upgrade account; integrations must support full uint64 account numbers. See CLIENT-1.0.0.md.
 
 Reply in the validator group: `<validator name> upgraded to 1.0.0`.
 

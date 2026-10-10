@@ -3,5 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 go mod download
-python3 scripts/verify-wasmd-fork.py
 go mod verify
