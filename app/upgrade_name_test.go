@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"cosmossdk.io/log/v2"
@@ -12,6 +14,8 @@ import (
 	"cosmossdk.io/core/header"
 	"encoding/binary"
 	"github.com/DoraFactory/doravota/app"
+	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
+	"github.com/DoraFactory/doravota/app/wasmarchive"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	upgrade "github.com/cosmos/cosmos-sdk/x/upgrade"
@@ -26,12 +30,12 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 	instance := app.New(log.NewNopLogger(), db, nil, true, map[int64]bool{},
 		simulationHome(t, opts), 0, app.MakeEncodingConfig(), opts,
 		baseapp.SetChainID("upgrade-name-test"))
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "1.0.0"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "v1.0.0"} {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
 	require.False(t, instance.UpgradeKeeper.HasHandler("wasm-retirement"))
-	// Release tags have a v prefix; the agreed governance plan does not.
-	require.False(t, instance.UpgradeKeeper.HasHandler("v1.0.0"))
+	// The superseded unprefixed candidate name must not activate this release.
+	require.False(t, instance.UpgradeKeeper.HasHandler("1.0.0"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("v0.5.0"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("sdk-v0.53-bridge"))
 }
@@ -71,4 +75,14 @@ func TestCompletedLegacyUpgradeRemainsRecognized(t *testing.T) {
 			require.ErrorContains(t, err, "upgrade handler is missing for "+missingName)
 		})
 	}
+}
+
+// Keep preflight, runtime activation and the public release identity aligned.
+func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
+	raw, err := os.ReadFile("../VERSION")
+	require.NoError(t, err)
+	name := strings.TrimSpace(string(raw))
+	require.Equal(t, "v1.0.0", name)
+	require.Equal(t, name, sdk055.UpgradeName)
+	require.Equal(t, name, wasmarchive.UpgradeName)
 }

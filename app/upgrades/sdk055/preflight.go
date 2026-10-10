@@ -36,8 +36,8 @@ import (
 	connectiontypes "github.com/cosmos/ibc-go/v11/modules/core/03-connection/types"
 )
 
-// UpgradeName matches the 1.0.0 governance plan and Cosmovisor directory.
-const UpgradeName = "1.0.0"
+// UpgradeName matches the v1.0.0 governance plan and Cosmovisor directory.
+const UpgradeName = "v1.0.0"
 
 func StoreUpgrades() storetypes.StoreUpgrades {
 	return storetypes.StoreUpgrades{Deleted: []string{"params", "group"}}
@@ -195,7 +195,7 @@ func validateState(trees map[string]*iavl.ImmutableTree, plan upgradetypes.Plan)
 	if err := ValidateSourceVersionMap(versions); err != nil {
 		return err
 	}
-	// The coordinated 1.0.0 retirement deletes all legacy group state.
+	// The coordinated v1.0.0 retirement deletes all legacy group state.
 	// User-created groups, grants and bank balances are not activation vetoes.
 
 	var auth authtypes.Params

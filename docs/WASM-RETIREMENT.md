@@ -1,6 +1,6 @@
 # Wasm read-only archive candidate
 
-This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. This branch is the canonical v1.0.0 candidate (release tag and binary version), with governance/Cosmovisor plan `1.0.0`, upgrading directly from 0.5.0. It combines the SDK 0.55 migrations with Wasm execution retirement. Previously tested runtime-preserving 1.0.0 binaries and the separate `wasm-retirement` candidate are superseded and must not be distributed as this release. A production height is not selected.
+This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. This branch is the canonical v1.0.0 candidate (release tag and binary version), with governance/Cosmovisor plan `v1.0.0`, upgrading directly from 0.5.0. It combines the SDK 0.55 migrations with Wasm execution retirement. Previously tested runtime-preserving 1.0.0 binaries and the separate `wasm-retirement` candidate are superseded and must not be distributed as this release. A production height is not selected.
 
 ## Preserved data
 
@@ -22,7 +22,7 @@ Wasm bytecode files and VM caches live outside the KV store. Retaining the store
 
 ## Activation
 
-The coordinated 1.0.0 upgrade deletes all legacy params/group stores. Group data, policy-account balances, grants and proposal text are not activation vetoes. Existing auth accounts and bank balances are not swept. Decode-only historical group/params types remain registered, with no executable handlers.
+The coordinated v1.0.0 upgrade deletes all legacy params/group stores. Group data, policy-account balances, grants and proposal text are not activation vetoes. Existing auth accounts and bank balances are not swept. Decode-only historical group/params types remain registered, with no executable handlers.
 
 At activation all non-closed `wasm.*` channels are set to CLOSED locally and emit `wasm_channel_retired` with port, channel and previous state. No contract callback runs. Packet commitments, receipts and acknowledgements remain stored; there is no refund, asset migration or counterparty closure. Contract execution, NAV writes and withdrawals cease. Ordinary bank transfers into retired contract addresses are not blocked. Preserving state does not restore access to contract-controlled assets.
 

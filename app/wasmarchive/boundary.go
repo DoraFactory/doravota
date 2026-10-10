@@ -17,8 +17,8 @@ import (
 	channel "github.com/cosmos/ibc-go/v11/modules/core/04-channel/types"
 )
 
-// UpgradeName is the direct 0.5.0 -> 1.0.0 SDK and archive upgrade.
-const UpgradeName = "1.0.0"
+// UpgradeName is the direct 0.5.0 -> v1.0.0 SDK and archive upgrade.
+const UpgradeName = "v1.0.0"
 
 var retainedStores = []string{"acc", "authz", "bank", "consensus", "distribution", "evidence", "feegrant", "gov", "ibc", "icacontroller", "icahost", "mint", "slashing", "staking", "transfer", "upgrade", "wasm"}
 
@@ -82,7 +82,7 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 		}
 		return nil
 	}
-	return fmt.Errorf("source is not archived 1.0.0 state; use the direct 0.5.0 upgrade boundary")
+	return fmt.Errorf("source is not archived v1.0.0 state; use the direct 0.5.0 upgrade boundary")
 }
 
 // RetireChannels closes local Wasm channels without invoking removed contracts.

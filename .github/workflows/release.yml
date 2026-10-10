@@ -54,7 +54,7 @@ jobs:
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
             sh -ec 'apk add --no-cache bash binutils; bash scripts/build-bridge-release.sh'
           (cd release && sha256sum "dorad-${VERSION}-linux-amd64" "dorad-${VERSION}-linux-amd64.tar.gz" > sha256sum.txt)
-          printf 'version=%s\ncommit=%s\narch=linux/amd64\ngo=%s\nupgrade_plan=1.0.0\n' \
+          printf 'version=%s\ncommit=%s\narch=linux/amd64\ngo=%s\nupgrade_plan=v1.0.0\n' \
             "$VERSION" "$COMMIT_SHA" "$GO_VERSION" > release/build-info.txt
 
       - name: Create GitHub Release

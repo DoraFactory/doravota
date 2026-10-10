@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ## [v1.0.0]
-Coordinated upgrade from 0.5.0. Release tag and binary version: `v1.0.0`; governance upgrade plan and Cosmovisor directory: `1.0.0`.
+Coordinated upgrade from 0.5.0. Release tag and binary version: `v1.0.0`; governance upgrade plan and Cosmovisor directory: `v1.0.0`.
 - Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0. Existing consensus key types remain unchanged; this release does not activate ML-DSA consensus or add a custom pqcauth module.
 - Add SDK-native ML-DSA account support. New accounts use hash-derived uint64 account numbers (at least 2^63); integrations must preserve full integer precision. See docs/CLIENT-1.0.0.md.
 - Remove Wasm execution and all wasmd/wasmvm dependencies. Preserve the original Wasm store with read-only raw-state queries; smart queries, contract execution, withdrawals and NAV writes stop.

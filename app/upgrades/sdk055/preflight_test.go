@@ -227,3 +227,17 @@ func TestRejectDatabaseFromModuleRetirementCandidate(t *testing.T) {
 	multi.Commit()
 	require.ErrorContains(t, ValidateBoundary(log.NewNopLogger(), db, t.TempDir(), nil), "missing retained store ibc")
 }
+
+// Even matching disk/on-chain metadata cannot authorize the superseded plan.
+func TestUnprefixedCandidatePlanRejectedWithoutMutation(t *testing.T) {
+	plan := upgradetypes.Plan{Name: "1.0.0", Height: 5}
+	db, home := sourceFixture(t, func(stores map[string]storetypes.KVStore) {
+		stores["upgrade"].Set(upgradetypes.PlanKey(), encode(t, &plan))
+	})
+	raw, err := json.Marshal(plan)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "data", upgradetypes.UpgradeInfoFilename), raw, 0600))
+	before := snapshot(t, db)
+	require.ErrorContains(t, ValidateBoundary(log.NewNopLogger(), db, home, nil), "non-skipped v1.0.0 plan")
+	require.Equal(t, before, snapshot(t, db))
+}

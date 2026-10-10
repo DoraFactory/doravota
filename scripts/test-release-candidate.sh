@@ -9,6 +9,8 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>&1; then
  cat "$results/unit.jsonl"; exit 1
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ TestVersionedUpgradeHandlerRegistration \
+ TestUpgradeIdentityMatchesReleaseVersion \
  TestLegacyWasmCodecRoundTripsAndHasNoHandlers \
  TestLegacyGrantsExportAndExpire \
  TestLegacyWasmStoredProposalDecode \
