@@ -35,6 +35,9 @@ def main():
     try:
         validate_tag(args.tag, (root / "VERSION").read_text().strip())
         notes = extract_notes((root / "CHANGELOG.md").read_text(), args.tag)
+        supplement = root / "docs" / f"RELEASE-{args.tag}.md"
+        if supplement.is_file():
+            notes += "\n" + supplement.read_text()
         args.output.write_text(notes)
     except (OSError, ValueError) as error:
         parser.exit(1, str(error) + "\n")

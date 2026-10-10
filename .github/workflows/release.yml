@@ -37,7 +37,7 @@ jobs:
         if: always()
         with:
           name: test-results
-          path: build/test-results/*.jsonl
+          path: build/test-results/*
           if-no-files-found: ignore
 
       - name: Build and smoke-test static release binary
