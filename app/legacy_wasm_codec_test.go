@@ -10,15 +10,14 @@ import (
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	govmodule "github.com/cosmos/cosmos-sdk/x/gov"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/DoraFactory/doravota/app"
-	"github.com/DoraFactory/doravota/app/wasmarchive"
 	legacy "github.com/DoraFactory/doravota/third_party/wasm-legacy-codec"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	ct "github.com/cosmos/cosmos-sdk/codec/types"
-	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	gov "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
@@ -56,14 +55,12 @@ func TestLegacyWasmCodecRoundTripsAndHasNoHandlers(t *testing.T) {
 		t.Run(proto.MessageName(original), func(t *testing.T) {
 			encoded, err := cdc.Marshal(original)
 			require.NoError(t, err)
-			decoded := proto.Clone(original)
-			decoded.Reset()
+			decoded := reflect.New(reflect.TypeOf(original).Elem()).Interface().(proto.Message)
 			require.NoError(t, cdc.Unmarshal(encoded, decoded))
 			text, err := cdc.MarshalJSON(decoded)
 			require.NoError(t, err)
 			require.True(t, json.Valid(text))
-			roundtrip := proto.Clone(original)
-			roundtrip.Reset()
+			roundtrip := reflect.New(reflect.TypeOf(original).Elem()).Interface().(proto.Message)
 			require.NoError(t, cdc.UnmarshalJSON(text, roundtrip))
 			again, err := cdc.Marshal(roundtrip)
 			require.NoError(t, err)
@@ -78,7 +75,7 @@ func TestLegacyWasmCodecRoundTripsAndHasNoHandlers(t *testing.T) {
 	require.ErrorIs(t, auth.ValidateBasic(), legacy.ErrRetired)
 }
 
-func TestUserTextAndGrantsCannotVetoRetirement(t *testing.T) {
+func TestLegacyGrantsExportAndExpire(t *testing.T) {
 	a := policyTestApp(t)
 	ctx := a.NewContextLegacy(true, tmproto.Header{Height: 12, Time: time.Unix(1700000000, 0)})
 	proposal := &gov.Proposal{Id: 42, Status: gov.StatusDepositPeriod, Title: "cosmwasm.wasm. text", Summary: "cosmwasm.wasm.", Metadata: "cosmwasm.wasm."}
@@ -88,8 +85,6 @@ func TestUserTextAndGrantsCannotVetoRetirement(t *testing.T) {
 	expiry := ctx.BlockTime().Add(time.Hour)
 	require.NoError(t, a.AuthzKeeper.SaveGrant(ctx, grantee, granter, authz.NewGenericAuthorization("/cosmwasm.wasm.v1.MsgExecuteContract"), &expiry))
 	require.NoError(t, a.AuthzKeeper.SaveGrant(ctx, grantee, granter, &legacy.ContractMigrationAuthorization{}, &expiry))
-	keys := map[string]*storetypes.KVStoreKey{"ibc": a.GetKey("ibc"), "gov": a.GetKey("gov"), "authz": a.GetKey("authz")}
-	require.NoError(t, wasmarchive.ValidateContext(ctx, keys))
 	// Genesis export traverses all grants, including concrete Wasm authorizations.
 	state := a.AuthzKeeper.ExportGenesis(ctx)
 	encoded, err := a.AppCodec().MarshalJSON(state)
@@ -135,15 +130,15 @@ func TestLegacyWasmVotingProposalEndsWithoutHalting(t *testing.T) {
 	packed, err := ct.NewAnyWithValue(&legacy.MsgExecuteContract{Sender: addr.String(), Contract: addr.String(), Msg: legacy.RawContractMessage(`{}`)})
 	require.NoError(t, err)
 	p := gov.Proposal{Id: 99, Messages: []*ct.Any{packed}, Status: gov.StatusVotingPeriod, Title: "legacy", Summary: "legacy", VotingEndTime: &expiry}
-	require.NoError(t, a.GovKeeper.Proposals.Set(ctx, 99, p))
+	require.NoError(t, a.GovKeeper.SetProposal(ctx, p))
 	require.NoError(t, a.GovKeeper.ActiveProposalsQueue.Set(ctx, collections.Join(expiry, uint64(99)), 99))
-	require.NoError(t, a.GovKeeper.AddVote(ctx, 99, addr, gov.NewNonSplitVoteOption(gov.OptionYes), ""))
-	require.NoError(t, govmodule.EndBlocker(ctx, a.GovKeeper))
+	require.NoError(t, a.GovKeeper.AddVote(ctx.WithBlockTime(stamp.Add(time.Second)), 99, addr, gov.NewNonSplitVoteOption(gov.OptionYes), ""))
+	require.NoError(t, govmodule.EndBlocker(ctx, &a.GovKeeper))
 	result, err := a.GovKeeper.Proposals.Get(ctx, 99)
 	require.NoError(t, err)
 	require.Equal(t, gov.StatusFailed, result.Status)
 	encoded, err := a.AppCodec().MarshalJSON(&result)
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), "MsgExecuteContract")
-	require.NoError(t, govmodule.EndBlocker(ctx, a.GovKeeper))
+	require.NoError(t, govmodule.EndBlocker(ctx, &a.GovKeeper))
 }

@@ -1,8 +1,8 @@
 # Dora Vota
 
-## 1.0.0 candidate
+## v1.0.0 candidate
 
-`feature/wasm-readonly-archive` is the canonical candidate for the direct 0.5.0 to 1.0.0 upgrade: Cosmos SDK 0.55, retained IBC, and read-only historical Wasm storage without wasmd/wasmvm or contract execution. Earlier runtime-preserving 1.0.0 artifacts are superseded. See [upgrade scope and validation requirements](docs/WASM-RETIREMENT.md) before scheduling an upgrade.
+`feature/wasm-readonly-archive` is the canonical candidate for the direct 0.5.0 to 1.0.0 upgrade: Cosmos SDK 0.55, retained IBC, and read-only historical Wasm storage without wasmd/wasmvm or contract execution. The release tag and binary version are `v1.0.0`; the governance plan and Cosmovisor directory remain `1.0.0`. Earlier runtime-preserving 1.0.0 artifacts are superseded. See [upgrade scope and validation requirements](docs/WASM-RETIREMENT.md) before scheduling an upgrade.
 
 The Dora Vota mainnet is an appchain built exclusively for the Dora community, supporting essential applications such as quadratic voting and MACI (Minimal Anti-collusion Infrastructure) for voting, public good funding, and governance.
 

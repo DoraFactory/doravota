@@ -10,6 +10,7 @@ on:
       - go.mod
       - go.sum
       - VERSION
+      - CHANGELOG.md
       - Dockerfile
       - scripts/**
       - .github/workflows/**
@@ -30,22 +31,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Unit and regression tests
-        run: go test ./... -count=1
-      - name: Enabled simulations (skips are not success)
-        run: |
-          go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s -json > simulation-results.json
-          python3 - <<'PY'
-          import json
-          expected = {"TestAppStateDeterminism", "TestAppImportExport", "TestAppSimulationAfterImport"}
-          passed = {e.get("Test") for e in map(json.loads, open("simulation-results.json")) if e.get("Action") == "pass"}
-          assert expected <= passed, f"Missing successful simulations: {expected - passed}"
-          PY
+      - name: Required regressions and enabled simulations
+        run: bash scripts/test-release-candidate.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: simulation-results
-          path: simulation-results.json
+          name: test-results
+          path: build/test-results/*.jsonl
           if-no-files-found: ignore
 
   linux:
@@ -68,7 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          test "$VERSION" = "1.0.0"
+          python3 scripts/prepare-release-notes.py --tag "$VERSION" --output build-release-notes.md
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           # Keep the output directory owned by the runner, not container root.

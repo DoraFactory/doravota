@@ -1,6 +1,6 @@
 # Wasm read-only archive candidate
 
-This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. This branch is the canonical 1.0.0 candidate, with governance/Cosmovisor plan `1.0.0`, upgrading directly from 0.5.0. It combines the SDK 0.55 migrations with Wasm execution retirement. Previously tested runtime-preserving 1.0.0 binaries and the separate `wasm-retirement` candidate are superseded and must not be distributed as this release. A production height is not selected.
+This branch removes Wasm execution and the wasmd/wasmvm dependencies while retaining IBC core, ICS20 transfer and ICA. This branch is the canonical v1.0.0 candidate (release tag and binary version), with governance/Cosmovisor plan `1.0.0`, upgrading directly from 0.5.0. It combines the SDK 0.55 migrations with Wasm execution retirement. Previously tested runtime-preserving 1.0.0 binaries and the separate `wasm-retirement` candidate are superseded and must not be distributed as this release. A production height is not selected.
 
 ## Preserved data
 

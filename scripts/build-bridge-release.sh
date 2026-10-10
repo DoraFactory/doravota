@@ -4,10 +4,14 @@ set -euo pipefail
 : "${VERSION:?candidate version is required}"
 commit_sha=${COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}
 [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Full source commit required' >&2; exit 1; }
-[[ "$VERSION" = "1.0.0" ]] || { echo 'Use version 1.0.0' >&2; exit 1; }
+expected_version=$(cat VERSION)
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$VERSION" = "$expected_version" ]] || {
+ echo "Release version must match VERSION (${expected_version}), including the v prefix" >&2; exit 1
+}
 [[ "$(go env GOOS)" = linux ]] || exit 1
 case "$(go env GOARCH)" in amd64) suffix=amd64 ;; arm64) suffix=arm64 ;; *) exit 1 ;; esac
-if go list -m all | grep -Ei 'github.com/(CosmWasm|DoraFactory)/(wasmd|wasmvm)'; then
+modules=$(go list -m all)
+if grep -Ei 'github.com/(CosmWasm|DoraFactory)/(wasmd|wasmvm)' <<< "$modules"; then
  echo 'Unexpected Wasm runtime dependency' >&2; exit 1
 fi
 mkdir -p release

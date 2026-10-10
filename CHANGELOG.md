@@ -2,8 +2,8 @@
 
 ## [Unreleased]
 
-## [1.0.0]
-Coordinated upgrade from 0.5.0; upgrade plan name `1.0.0`.
+## [v1.0.0]
+Coordinated upgrade from 0.5.0. Release tag and binary version: `v1.0.0`; governance upgrade plan and Cosmovisor directory: `1.0.0`.
 - Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0. Existing consensus key types remain unchanged; this release does not activate ML-DSA consensus or add a custom pqcauth module.
 - Add SDK-native ML-DSA account support. New accounts use hash-derived uint64 account numbers (at least 2^63); integrations must preserve full integer precision. See docs/CLIENT-1.0.0.md.
 - Remove Wasm execution and all wasmd/wasmvm dependencies. Preserve the original Wasm store with read-only raw-state queries; smart queries, contract execution, withdrawals and NAV writes stop.
@@ -13,6 +13,7 @@ Coordinated upgrade from 0.5.0; upgrade plan name `1.0.0`.
 - Migrate IBC channel sequences with pre/post checks and retain their values. Pin the compatible LevelDB implementation to preserve empty-value semantics.
 - Initialize ML-DSA verification gas to 750, consensus key rotation fee to 1000000 peaka, and mint max_supply to 0 (no supply cap). Keep the new consensus authority unset; normal module governance remains in effect. Preserve existing inflation and governance parameters.
 - Distribute verified static Linux amd64 artifacts with source commit and SHA-256. Consult docs/VALIDATOR-1.0.0.md for upgrade and archive-query limitations.
+- Require the historical Wasm codec, authorization and governance regression tests to execute in Linux CI; skipped or missing required tests fail validation.
 
 ## [0.5.0]
 Dora Vota 0.5.0. The application version and on-chain upgrade plan name are `0.5.0`.

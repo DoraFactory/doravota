@@ -30,6 +30,8 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
 	require.False(t, instance.UpgradeKeeper.HasHandler("wasm-retirement"))
+	// Release tags have a v prefix; the agreed governance plan does not.
+	require.False(t, instance.UpgradeKeeper.HasHandler("v1.0.0"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("v0.5.0"))
 	require.False(t, instance.UpgradeKeeper.HasHandler("sdk-v0.53-bridge"))
 }

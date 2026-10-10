@@ -1,6 +1,6 @@
-# Dora Vota 1.0.0 upgrade guide
+# Dora Vota v1.0.0 upgrade guide
 
-Target: Linux x86_64, direct upgrade from 0.5.0. Governance plan and Cosmovisor directory name: `1.0.0`. Height, download URL, full source commit and binary SHA-256 must come from the final release announcement. Previously distributed runtime-preserving 1.0.0 binaries are obsolete. This guide does not schedule a live upgrade.
+Target: Linux x86_64, direct upgrade from 0.5.0. Release tag and `dorad version`: `v1.0.0`. Binary asset: `dorad-v1.0.0-linux-amd64`. Governance plan and Cosmovisor directory name: `1.0.0` (no `v` prefix). Height, download URL, full source commit and binary SHA-256 must come from the final release announcement. Previously distributed runtime-preserving 1.0.0 binaries are obsolete. This guide does not schedule a live upgrade.
 
 ## Prepare
 
@@ -17,14 +17,14 @@ A manual deployment must stop the service before replacing its binary. Retain th
 
 ## Verify
 
-- Node reports 1.0.0 and advances beyond the upgrade height; validators sign, peers synchronize and independently operated nodes agree on AppHash at the same height.
+- Node reports v1.0.0 and advances beyond the upgrade height; validators sign, peers synchronize and independently operated nodes agree on AppHash at the same height.
 - Normal bank transfers, staking and ordinary IBC transfers work. Operators should coordinate a small round-trip on an existing transfer channel with an active relayer; expired clients are not repaired by this upgrade.
 - All Wasm channels are CLOSED locally; ICS20/ICA channels are retained. No new Wasm channels, contract execution or smart queries are supported.
 - Module version map contains wasm_archive=1 and no live wasm/group/params entries. Historical raw contract queries work at retained heights.
 - New defaults are ML-DSA verification gas 750, key_rotation_fee 1000000 peaka, mint max_supply 0 (no supply cap), and unset consensus authority. Existing governance and inflation parameters are retained.
 - Test outgoing transactions from a newly created post-upgrade account; integrations must support full uint64 account numbers. See CLIENT-1.0.0.md.
 
-Reply in the validator group: `<validator name> upgraded to 1.0.0`.
+Reply in the validator group: `<validator name> upgraded to v1.0.0`.
 
 ## Explorer / indexer integration
 

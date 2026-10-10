@@ -1,72 +1,46 @@
-name: Auto Release with Changelog and Artifacts
+name: Release verified Linux amd64 artifacts
 
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+'
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
-    name: Build and Release
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Extract Release Notes
-        id: changelog
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          TAG_NAME=${TAG_NAME#v}
-          echo "Current Tag: $TAG_NAME"
-          awk "/^## \\[${TAG_NAME}\\]/ {flag=1; next} /^## / {flag=0} flag" CHANGELOG.md > release_notes.md
-          sed -i "s/^## \\[${TAG_NAME}\\]/## ${TAG_NAME}/" release_notes.md
-          echo "Release Notes:"
-          cat release_notes.md
-          if [ ! -s release_notes.md ]; then
-            echo "❌ No release notes found for $TAG_NAME"
-            exit 1
-          fi
+      - name: Validate release identity and notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/prepare-release-notes.py --tag "$RELEASE_TAG"
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Test application and enabled simulations
-        run: |
-          go test ./... -count=1
-          go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s -json > simulation-results.json
-          python3 - <<'PYTEST'
-          import json
-          expected = {"TestAppStateDeterminism", "TestAppImportExport", "TestAppSimulationAfterImport"}
-          passed = set()
-          for line in open("simulation-results.json"):
-              event = json.loads(line)
-              if event.get("Action") == "pass" and event.get("Test") in expected:
-                  passed.add(event["Test"])
-          assert passed == expected, f"Simulations did not all pass: {expected - passed}"
-          PYTEST
+      - name: Required regressions and enabled simulations
+        run: bash scripts/test-release-candidate.sh
 
-      - name: Enable target architecture emulation
-        uses: docker/setup-qemu-action@v3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: build/test-results/*.jsonl
+          if-no-files-found: ignore
 
-      - name: Verify Git state
-        run: |
-          echo "Current branch/tag:"
-          git branch --show-current || echo "Not on a branch"
-          git describe --tags || echo "No tags found"
-          git log -1 --oneline
-
-      - name: Build and smoke-test musl release binaries
+      - name: Build and smoke-test static release binary
         env:
           VERSION: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
@@ -74,29 +48,29 @@ jobs:
           set -euo pipefail
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           mkdir -p release
-          for PLATFORM in linux/amd64 linux/arm64; do
-            docker run --rm --platform "$PLATFORM" \
-              -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
-              -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
-              sh -ec 'apk add --no-cache bash build-base binutils curl git xz; bash scripts/build-bridge-release.sh'
-          done
-          (cd release && sha256sum dorad-* > sha256sum.txt)
-
-      - name: Set Release Date
-        run: echo "RELEASE_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+          # v1.0.0 distribution is limited to the validated Linux amd64 target.
+          docker run --rm --platform linux/amd64 \
+            -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
+            -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
+            sh -ec 'apk add --no-cache bash binutils; bash scripts/build-bridge-release.sh'
+          (cd release && sha256sum "dorad-${VERSION}-linux-amd64" "dorad-${VERSION}-linux-amd64.tar.gz" > sha256sum.txt)
+          printf 'version=%s\ncommit=%s\narch=linux/amd64\ngo=%s\nupgrade_plan=1.0.0\n' \
+            "$VERSION" "$COMMIT_SHA" "$GO_VERSION" > release/build-info.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }} - ${{ env.RELEASE_DATE }}
+          name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
-          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+          prerelease: false
           make_latest: false
-          draft: ${{ contains(github.ref_name, '-rc.') }}
+          draft: false
+          fail_on_unmatched_files: true
           body_path: ./release_notes.md
           files: |
-            release/dorad-*linux-amd*
-            release/dorad-*linux-arm*
+            release/dorad-${{ github.ref_name }}-linux-amd64
+            release/dorad-${{ github.ref_name }}-linux-amd64.tar.gz
             release/sha256sum.txt
+            release/build-info.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
