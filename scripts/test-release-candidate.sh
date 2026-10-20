@@ -15,7 +15,6 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthSDKKeyringRegistrationAndHybridTransfer \
  TestPQCAuthProposalBudgetsPreserveSDKGasPolicy \
  TestPQCAuthFourApplicationProposalActivationBoundary \
- TestNewFactorAcknowledgementForExternalOwners \
  TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \
@@ -23,6 +22,9 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestLegacyGrantsExportAndExpire \
  TestLegacyWasmStoredProposalDecode \
  TestLegacyWasmVotingProposalEndsWithoutHalting
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
+ TestNewFactorAcknowledgementForExternalOwners
 if ! go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' \
  -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s \
  -json >"$results/simulations.jsonl" 2>"$results/simulations.stderr.log"; then

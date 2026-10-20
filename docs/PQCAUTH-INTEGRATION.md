@@ -107,23 +107,28 @@ IBC signature-algorithm migration is included in this module.
 
 ### Evidence and exact verification scope
 
+The runtime source at `d78350775f809d1a219b6be144c945b181ee897b` has now completed
+full tests and remote rehearsals. Subsequent changes correct the CI package gate
+and document results; no runtime Go source changed. Detailed evidence and limits:
+[PQCAuth validation report](PQCAUTH-VALIDATION-20261020.md).
+
 | Check | Observed result |
 | --- | --- |
-| Full repository tests and three enabled simulations | Passed before the latest PrepareProposal fix (`hardening-ci-retest.log`) |
-| New four-application boundary regression and existing proposal-budget test | Passed after the PrepareProposal fix (`proposal-boundary-retest.log`) |
-| Remote four-validator isolated network | Passed on the candidate preceding the latest PrepareProposal fix; final candidate rerun remains required |
-| Real mainnet snapshot rehearsal | Failed to become RPC-ready after switching to the candidate binary; driver timed out with connection refused. Root cause and successful retest remain outstanding (`snapshot-driver.log`) |
-| Physical Ledger and public-network activation | Not performed |
+| Full repository tests | 522 passing test/subtest events, 13 packages, zero failures |
+| Enabled simulations and go vet | All three simulations pass; go vet passes |
+| Four-application proposal regression | Budget activation, malformed input filtering and repeated decisions pass |
+| Remote four-validator network | 40 operations; multisig/native/hybrid transactions, scheduled parameters, REQUIRED restrictions, AppHash agreement and restart pass |
+| Real mainnet snapshot fork | v1.0.0 to v1.1.0 upgrade, bank transfer, unchanged Wasm/IBC/feegrant roots, all 2,139,783 feegrant indexes and four-validator restart pass |
+| Linux amd64 release-format artifact | Build, static linkage checks, version and CLI/startup smoke tests pass |
+| Physical Ledger, public testnet activation, live IBC packet exchange for this candidate | Not performed |
 
-The remote four-validator run covered classical and all-ML-DSA 2-of-3
-multisig transfers, insufficient-signature rejection, composite enrollment
-rejection, native and hybrid transfers, scheduled parameter changes, REQUIRED
-mode rejection of multisigs, AppHash agreement and restart. Its results do not
-replace rerunning the final committed binary.
+Initial snapshot failures were test-driver errors: stale upgrade-info detection,
+comparison of changing RPC response heights, and broadcasting before catch-up
+completed. All are retained in the report with fixes and successful resumption.
+The CI required-test gate also used the wrong package for a CLI test; it now
+checks the CLI package explicitly. The original passing Go logs pass that gate.
 
-Failure history: offline CLI fixtures initially lacked the new acknowledgment;
-fixtures were corrected and the suite passed. The new proposal-boundary test
-then reproduced malformed-input fallback; the handler was fixed and that
-regression passed. A full-suite run and remote rehearsals of the final committed
-candidate remain release requirements. No release tag or public activation is
-part of this development submission.
+This completes the requested isolated development validation. It is not approval
+for mainnet activation: independent review, public testnet acceptance and release
+artifact approval remain outstanding. No release tag or public activation was
+performed.
