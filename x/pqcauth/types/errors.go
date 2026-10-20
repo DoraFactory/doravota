@@ -1,0 +1,33 @@
+package types
+
+import errorsmod "cosmossdk.io/errors"
+
+var (
+	ErrInvalidParams          = errorsmod.Register(ModuleName, 1, "invalid pqcauth parameters")
+	ErrInvalidKey             = errorsmod.Register(ModuleName, 2, "invalid PQC key")
+	ErrInvalidKeyProof        = errorsmod.Register(ModuleName, 3, "invalid PQC key proof")
+	ErrKeyNotFound            = errorsmod.Register(ModuleName, 4, "PQC key not found")
+	ErrPolicyNotFound         = errorsmod.Register(ModuleName, 5, "PQC account policy not found")
+	ErrAlreadyRegistered      = errorsmod.Register(ModuleName, 6, "PQC signing key already registered")
+	ErrKeyLimit               = errorsmod.Register(ModuleName, 7, "PQC account key limit reached")
+	ErrUnexpectedKeyID        = errorsmod.Register(ModuleName, 8, "unexpected PQC key identifier")
+	ErrPendingChange          = errorsmod.Register(ModuleName, 9, "PQC policy change is already pending")
+	ErrUnauthorized           = errorsmod.Register(ModuleName, 10, "PQC authorization failed")
+	ErrPQCRequired            = errorsmod.Register(ModuleName, 11, "PQC authorization is required")
+	ErrInvalidExtension       = errorsmod.Register(ModuleName, 12, "invalid PQC transaction extension")
+	ErrUnsupportedAlgorithm   = errorsmod.Register(ModuleName, 13, "unsupported PQC algorithm")
+	ErrRegistrationClosed     = errorsmod.Register(ModuleName, 14, "PQC registration is closed")
+	ErrEmergencyPause         = errorsmod.Register(ModuleName, 15, "PQC operation is paused")
+	ErrInvalidAuthority       = errorsmod.Register(ModuleName, 16, "invalid pqcauth authority")
+	ErrActiveKey              = errorsmod.Register(ModuleName, 17, "active PQC key cannot be revoked")
+	ErrInvalidPolicyVersion   = errorsmod.Register(ModuleName, 18, "invalid PQC policy version")
+	ErrUnsupportedSignMode    = errorsmod.Register(ModuleName, 19, "unsupported sign mode for PQC authorization")
+	ErrDuplicateAuthorization = errorsmod.Register(ModuleName, 20, "duplicate PQC signer authorization")
+	ErrNestedLifecycle        = errorsmod.Register(ModuleName, 21, "PQC lifecycle messages must be executed directly")
+	ErrInconsistentState      = errorsmod.Register(ModuleName, 22, "inconsistent PQC authorization state")
+	ErrIneligibleAccount      = errorsmod.Register(ModuleName, 23, "account is not eligible for pqcauth")
+	ErrFreshRegistrationOnly  = errorsmod.Register(ModuleName, 24, "PQC registration is limited to fresh accounts")
+	ErrUnsafeAuthorization    = errorsmod.Register(ModuleName, 25, "delegated authorization is not quantum-safe")
+	ErrNoPendingRecovery      = errorsmod.Register(ModuleName, 26, "no cancellable PQC recovery is pending")
+	ErrVerificationBudget     = errorsmod.Register(ModuleName, 27, "PQC verification budget exceeded")
+)

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package doravota.pqcauth.v1;
+
+import "doravota/pqcauth/v1/state.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/DoraFactory/doravota/x/pqcauth/types";
+option (gogoproto.equal_all) = true;
+
+// ExtensionPQCAuth is a critical TxBody extension. There must be at most one
+// instance and entries must be in the same order as AuthInfo signer_infos.
+message ExtensionPQCAuth {
+  uint32 format_version = 1;
+  repeated SignerPQCSignature signatures = 2 [(gogoproto.nullable) = false];
+}
+
+// SignerPQCSignature carries the detached PQC signature for one signer.
+message SignerPQCSignature {
+  string signer = 1;
+  uint32 signer_index = 2;
+  uint64 key_id = 3;
+  Algorithm algorithm = 4;
+  uint64 policy_version = 5;
+  bytes signature = 6;
+}
