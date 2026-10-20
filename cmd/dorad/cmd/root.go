@@ -15,7 +15,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/client/config"
 	"github.com/cosmos/cosmos-sdk/client/debug"
 	"github.com/cosmos/cosmos-sdk/client/flags"
-	"github.com/cosmos/cosmos-sdk/client/keys"
 	"github.com/cosmos/cosmos-sdk/client/rpc"
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/server"
@@ -172,7 +171,7 @@ func initRootCmd(
 		server.StatusCommand(),
 		queryCommand(),
 		txCommand(),
-		keys.Commands(),
+		keysCommand(),
 	)
 }
 
