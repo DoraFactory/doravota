@@ -35,7 +35,7 @@ class ReleaseToolsTest(unittest.TestCase):
                 notes.validate_tag(tag, "v1.0.0")
 
     def test_candidate_version_requires_explicit_opt_in(self):
-        candidate = "v1.0.0-pqcauth-dev"
+        candidate = "v1.1.0-dev"
         with self.assertRaises(ValueError):
             notes.validate_tag(candidate, candidate)
         notes.validate_tag(candidate, candidate, allow_prerelease=True)

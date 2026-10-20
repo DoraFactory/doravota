@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [v1.0.0-pqcauth-dev]
+## [v1.1.0-dev]
 
 Unreleased development candidate. Do not install on mainnet or reuse the v1.0.0 upgrade plan.
 
@@ -8,7 +8,11 @@ Unreleased development candidate. Do not install on mainnet or reuse the v1.0.0 
 - Use SDK ML-DSA keyring keys for proofs and transaction signatures; remove the module-specific keygen command and retain explicitly labeled legacy raw-file recovery.
 - Reject locally detectable classical/PQC derived-key reuse for newly registered or rotated factors; preserve restoration and use of old factors to migrate assets. The CLI cannot prove mnemonic independence across other wallets or derivation paths.
 - Integrate canonical transaction decoding, authorization, feegrant routing/indexing, governance delay and proposal verification budgets without reinstating Wasm or Sponsor dependencies.
-- Define the internal post-v1.0.0 candidate plan `pqcauth-v1`; initialize its store, network domain and existing feegrant index. Production release name and rollout remain subject to review and rehearsal.
+- Require explicit factor-independence acknowledgment for Ledger/watch-only owners when the local private-key check is unavailable; detected reuse remains blocked.
+- Document composite multisig limitations in OPTIONAL and REQUIRED modes.
+- Filter malformed proposal transactions before SDK selection and prevent error fallback from restoring rejected transactions; add four-application budget-activation regressions.
+- Restrict CI prerelease allowance to the PQCAuth development branch.
+- Define the internal post-v1.0.0 candidate plan `v1.1.0`; initialize its store, network domain and existing feegrant index. Production release name and rollout remain subject to review and rehearsal.
 
 ## [Unreleased]
 

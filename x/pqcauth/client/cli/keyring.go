@@ -12,6 +12,11 @@ import (
 const flagPQCKey = "pqc-key"
 const flagRecoveryKey = "recovery-key"
 const flagLegacyKeyFile = "legacy-key-file"
+const flagAcknowledgeIndependentFactors = "acknowledge-independent-factors"
+
+func addFactorIndependenceFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool(flagAcknowledgeIndependentFactors, false, "Acknowledge that new PQC factors use separate dedicated mnemonics when owner-key independence cannot be checked (Ledger/watch-only/offline)")
+}
 
 func selectedSigner(ctx client.Context, keyName, legacyPath string) (pqcauthclient.PQCSigner, func(), error) {
 	if keyName != "" && legacyPath != "" {
@@ -51,7 +56,11 @@ func checkNewFactors(cmd *cobra.Command, ctx client.Context, publicKeys ...[]byt
 		return err
 	}
 	if !checked {
-		cmd.PrintErrln("WARNING: owner key unavailable locally; mnemonic independence could not be checked.")
+		acknowledged, _ := cmd.Flags().GetBool(flagAcknowledgeIndependentFactors)
+		if !acknowledged {
+			return fmt.Errorf("owner private key unavailable locally (Ledger/watch-only/offline); cannot check mnemonic independence: use fresh dedicated PQC signing and recovery mnemonics, never import the Ledger mnemonic, and explicitly pass --%s to continue; this acknowledgement does not prove independence", flagAcknowledgeIndependentFactors)
+		}
+		cmd.PrintErrln("WARNING: owner-key independence was NOT verified. You acknowledged separate dedicated PQC mnemonics. Never import a Ledger mnemonic to create PQC factors.")
 	}
 	cmd.PrintErrln("Use separate dedicated mnemonics for PQC signing and recovery. This local check cannot detect reuse with other wallets or derivation paths.")
 	return nil

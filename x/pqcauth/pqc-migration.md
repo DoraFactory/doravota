@@ -11,7 +11,7 @@ modules are not part of this integration.
    archive queries, genesis export/import and ordinary transactions against a
    recent snapshot. Local app tests are not a snapshot rehearsal.
 3. Finalize release identity and upgrade plan before publishing artifacts.
-   `pqcauth-v1` is currently the candidate plan; no mainnet schedule is implied.
+   `v1.1.0` is currently the candidate plan; no mainnet schedule is implied.
 4. Keep enrollment OPTIONAL at activation. Do not change global enforcement,
    registration cutoffs, account algorithms or consensus signatures implicitly.
 5. Do not reuse the released `v1.0.0` upgrade handler for the new module.
@@ -41,3 +41,17 @@ identify whether a mnemonic has ever been used elsewhere.
 For commands, candidate defaults, legacy-file compatibility and testing scope,
 see [README](README.md). Full keyring-backed lifecycle rehearsal and production
 operational review remain release acceptance work.
+
+## Eligibility and hardware owners
+
+Existing threshold/multisig accounts cannot enroll in PQCAuth. OPTIONAL allows
+ordinary SDK authentication; REQUIRED rejects ALL composite keys, including
+all-ML-DSA multisigs. Do not activate REQUIRED or recommend a treasury migration
+until multisig policy has been separately implemented, reviewed and tested.
+See README's multisig support boundary for the exact scope.
+
+For Ledger/watch-only/offline owners, introducing any new factor requires
+`--acknowledge-independent-factors`; use independently generated dedicated
+factor mnemonics. Never recover a Ledger mnemonic into a software PQC key.
+This acknowledgement cannot prove independence and cannot bypass locally
+detected coupling. Existing-factor restoration remains available for recovery.

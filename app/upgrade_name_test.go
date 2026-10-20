@@ -82,9 +82,9 @@ func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
 	raw, err := os.ReadFile("../VERSION")
 	require.NoError(t, err)
 	name := strings.TrimSpace(string(raw))
-	require.Equal(t, "v1.0.0-pqcauth-dev", name)
+	require.Equal(t, "v1.1.0-dev", name)
 	// Historical migration identities must not be renamed to the new candidate.
 	require.Equal(t, "v1.0.0", sdk055.UpgradeName)
 	require.Equal(t, "v1.0.0", wasmarchive.UpgradeName)
-	require.NotEqual(t, name, app.PQCAuthUpgradeName)
+	require.Equal(t, strings.SplitN(name, "-", 2)[0], app.PQCAuthUpgradeName)
 }

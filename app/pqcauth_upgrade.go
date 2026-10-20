@@ -14,7 +14,7 @@ import (
 
 // PQCAuthUpgradeName is a candidate plan for a separate post-v1.0.0 upgrade.
 // It is not a published release tag or an approved mainnet schedule.
-const PQCAuthUpgradeName = "pqcauth-v1"
+const PQCAuthUpgradeName = "v1.1.0"
 
 func (app *App) registerPQCAuthUpgrade() {
 	app.UpgradeKeeper.SetUpgradeHandler(PQCAuthUpgradeName, func(goCtx context.Context, _ upgradetypes.Plan, from module.VersionMap) (module.VersionMap, error) {

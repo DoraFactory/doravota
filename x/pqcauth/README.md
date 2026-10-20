@@ -7,8 +7,8 @@ Native SDK ML-DSA accounts already use PQC signatures and do not enroll here.
 
 Status: development on `feature/pqcauth-sdk-keyring`, based on the v1.0.0
 archive runtime and the ML-DSA mnemonic-warning CLI. This is not a published
-release or a mainnet activation. The candidate upgrade plan is `pqcauth-v1`;
-the default development binary reports `v1.0.0-pqcauth-dev`.
+release or a mainnet activation. The candidate upgrade plan is `v1.1.0`;
+the default development binary reports `v1.1.0-dev`.
 
 ## Key management
 
@@ -152,3 +152,36 @@ online protected signing, offline bundle transfer and restart. See
 [the integration record](../../docs/PQCAUTH-INTEGRATION.md).
 A current production-snapshot rehearsal and independent security review are
 still required before a release or public-network activation.
+
+## Multisig support boundary (v1.1.0)
+
+PQCAuth enrollment supports classical **single-key** accounts only. All
+composite public keys, including threshold accounts whose members are all
+ML-DSA, are currently classified as unsupported by PQCAuth. Ordinary SDK
+multisig transactions can use OPTIONAL mode, subject to SDK verification and
+PQC verification budgets. They cannot register an additional PQCAuth factor.
+Global REQUIRED mode rejects these accounts, including all-ML-DSA multisigs.
+Do not enable REQUIRED on an existing network before a separately reviewed
+multisig support/migration policy is deployed and tested. Moving a treasury to
+an ML-DSA multisig is not a workaround for this REQUIRED-mode restriction.
+An OPTIONAL-mode signature test is not wallet support or migration approval.
+
+## Ledger, watch-only and offline owners
+
+At registration, signing-key rotation, recovery-key rotation and introduction
+of a replacement factor during recovery, the CLI checks local secp256k1 key
+material against each new ML-DSA public key. Detected coupling is rejected;
+`--acknowledge-independent-factors` cannot override it.
+
+When the owner's private key is unavailable (Ledger, watch-only or offline),
+the command now stops unless `--acknowledge-independent-factors` is supplied.
+This flag only acknowledges the operator's independent-mnemonic responsibility;
+it is NOT proof of independence. Generate separate, fresh, dedicated mnemonics
+for the signing and recovery factors. Never export/import a Ledger seed to
+create either factor. The check cannot detect reuse at another derivation path
+or with another account, even for local owners. These are CLI protections,
+not consensus-enforced knowledge of mnemonic history.
+
+Existing keys remain recoverable and usable to authorize rotation away from
+unsafe factors. Do not prevent restoration of an existing key because it was
+previously reused; restore in a trusted environment and transfer/rotate safely.

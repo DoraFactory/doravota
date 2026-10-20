@@ -14,6 +14,8 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent \
  TestPQCAuthSDKKeyringRegistrationAndHybridTransfer \
  TestPQCAuthProposalBudgetsPreserveSDKGasPolicy \
+ TestPQCAuthFourApplicationProposalActivationBoundary \
+ TestNewFactorAcknowledgementForExternalOwners \
  TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \

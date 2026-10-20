@@ -48,7 +48,7 @@ func initSDKConfig() {
 const (
 	name     = "doravota"
 	app_name = "dorad"
-	Version  = "v1.0.0-pqcauth-dev"
+	Version  = "v1.1.0-dev"
 )
 
 func setVersionInfo() {

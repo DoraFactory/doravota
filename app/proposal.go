@@ -17,14 +17,32 @@ func (app *App) setProposalHandlers(config client.TxConfig) {
 	prepare := defaults.PrepareProposalHandler()
 	process := defaults.ProcessProposalHandler()
 	decoder := pqcauthante.CanonicalPQCAuthTxDecoder(config.TxDecoder())
-	app.SetPrepareProposal(func(ctx sdk.Context, req *abci.RequestPrepareProposal) (*abci.ResponsePrepareProposal, error) {
-		response, err := prepare(ctx, req)
+	app.SetPrepareProposal(func(ctx sdk.Context, req *abci.RequestPrepareProposal) (response *abci.ResponsePrepareProposal, err error) {
+		// BaseApp falls back to the ORIGINAL request on handler error/panic.
+		// That can reintroduce malformed or over-budget transactions which our
+		// ProcessProposal rejects. An empty proposal is safe and permits progress.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				ctx.Logger().Error("PQC PrepareProposal panicked; proposing empty block", "panic", recovered)
+				response, err = &abci.ResponsePrepareProposal{}, nil
+			}
+		}()
+		filtered := *req
+		filtered.Txs = make([][]byte, 0, len(req.Txs))
+		for _, raw := range req.Txs {
+			if _, decodeErr := decoder(raw); decodeErr == nil {
+				filtered.Txs = append(filtered.Txs, raw)
+			}
+		}
+		response, err = prepare(ctx, &filtered)
 		if err != nil {
-			return nil, err
+			ctx.Logger().Error("SDK PrepareProposal failed; proposing empty block", "err", err)
+			return &abci.ResponsePrepareProposal{}, nil
 		}
 		selected, err := app.limitPQCProposal(ctx, decoder, response.Txs, false)
 		if err != nil {
-			return nil, err
+			ctx.Logger().Error("PQC PrepareProposal failed; proposing empty block", "err", err)
+			return &abci.ResponsePrepareProposal{}, nil
 		}
 		response.Txs = selected
 		return response, nil

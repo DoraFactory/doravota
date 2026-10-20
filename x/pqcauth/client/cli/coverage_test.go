@@ -446,6 +446,7 @@ func TestTransactionCommandsGenerateOnlyAndRejectMalformedArguments(t *testing.T
 		encodedProof,
 		"--recovery-public-key-base64", encodedRecoveryPublicKey,
 		"--recovery-proof-base64", encodedProof,
+		"--" + flagAcknowledgeIndependentFactors,
 	})
 	require.NoError(t, register.Execute())
 	require.Contains(t, output.String(), "@type")
@@ -456,6 +457,7 @@ func TestTransactionCommandsGenerateOnlyAndRejectMalformedArguments(t *testing.T
 	recover.SetArgs([]string{
 		"2",
 		"3",
+		"--" + flagAcknowledgeIndependentFactors,
 		encodedPublicKey,
 		encodedProof,
 	})

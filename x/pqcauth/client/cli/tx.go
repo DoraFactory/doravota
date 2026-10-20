@@ -98,6 +98,7 @@ func registerKeyCommand() *cobra.Command {
 	command.Flags().String(flagRecoveryPublicKey, "", "required ML-DSA-65 recovery public key in base64")
 	command.Flags().String(flagRecoveryProof, "", "required recovery key proof in base64; binds expected-key-id+1")
 	flags.AddTxFlagsToCmd(command)
+	addFactorIndependenceFlag(command)
 	return command
 }
 
@@ -135,6 +136,7 @@ func rotateKeyCommand() *cobra.Command {
 		},
 	}
 	addProtectedTxFlags(command)
+	addFactorIndependenceFlag(command)
 	return command
 }
 
@@ -172,6 +174,7 @@ func rotateRecoveryKeyCommand() *cobra.Command {
 		},
 	}
 	addProtectedTxFlags(command)
+	addFactorIndependenceFlag(command)
 	return command
 }
 
@@ -284,6 +287,7 @@ func recoverKeyCommand() *cobra.Command {
 		"write a transaction-bound recovery sign bundle for offline signing",
 	)
 	flags.AddTxFlagsToCmd(command)
+	addFactorIndependenceFlag(command)
 	return command
 }
 

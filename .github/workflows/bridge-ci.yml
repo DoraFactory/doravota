@@ -57,15 +57,22 @@ jobs:
       - name: Build and execute candidate artifact
         env:
           ARCH: ${{ matrix.arch }}
+          CANDIDATE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          python3 scripts/prepare-release-notes.py --tag "$VERSION" --allow-prerelease --output build-release-notes.md
+          export ALLOW_PRERELEASE=false
+          notes_flags=()
+          if [[ "$CANDIDATE_BRANCH" == "feature/pqcauth-sdk-keyring" ]]; then
+            export ALLOW_PRERELEASE=true
+            notes_flags+=(--allow-prerelease)
+          fi
+          python3 scripts/prepare-release-notes.py --tag "$VERSION" "${notes_flags[@]}" --output build-release-notes.md
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           # Keep the output directory owned by the runner, not container root.
           mkdir -p release
-          docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local -e ALLOW_PRERELEASE=true \
+          docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local -e ALLOW_PRERELEASE \
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
             sh -ec 'apk add --no-cache bash build-base binutils curl git xz; bash scripts/build-bridge-release.sh'
           (cd release && sha256sum dorad-*.tar.gz > sha256sum.txt)
