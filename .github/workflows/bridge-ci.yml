@@ -3,7 +3,7 @@ name: SDK candidate validation
 on:
   workflow_dispatch:
   push:
-    branches: [feature/wasm-readonly-archive]
+    branches: [feature/wasm-readonly-archive, feature/pqcauth-sdk-keyring]
   pull_request:
     paths:
       - '**/*.go'
@@ -60,12 +60,12 @@ jobs:
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          python3 scripts/prepare-release-notes.py --tag "$VERSION" --output build-release-notes.md
+          python3 scripts/prepare-release-notes.py --tag "$VERSION" --allow-prerelease --output build-release-notes.md
           export COMMIT_SHA="$GITHUB_SHA"
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           # Keep the output directory owned by the runner, not container root.
           mkdir -p release
-          docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
+          docker run --rm --platform "linux/${ARCH}" -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local -e ALLOW_PRERELEASE=true \
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
             sh -ec 'apk add --no-cache bash build-base binutils curl git xz; bash scripts/build-bridge-release.sh'
           (cd release && sha256sum dorad-*.tar.gz > sha256sum.txt)

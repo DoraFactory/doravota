@@ -5,8 +5,11 @@ import re
 from pathlib import Path
 
 
-def validate_tag(tag, expected):
-    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag) or tag != expected:
+def validate_tag(tag, expected, allow_prerelease=False):
+    pattern = r"v[0-9]+\.[0-9]+\.[0-9]+"
+    if allow_prerelease:
+        pattern += r"(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+    if not re.fullmatch(pattern, tag) or tag != expected:
         raise ValueError(f"Release tag must match VERSION exactly: {expected}")
 
 
@@ -29,11 +32,12 @@ def extract_notes(changelog, tag):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--allow-prerelease", action="store_true", help="Candidate CI only; public releases remain stable-tag-only")
     parser.add_argument("--output", type=Path, default=Path("release_notes.md"))
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     try:
-        validate_tag(args.tag, (root / "VERSION").read_text().strip())
+        validate_tag(args.tag, (root / "VERSION").read_text().strip(), args.allow_prerelease)
         notes = extract_notes((root / "CHANGELOG.md").read_text(), args.tag)
         supplement = root / "docs" / f"RELEASE-{args.tag}.md"
         if supplement.is_file():

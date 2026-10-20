@@ -43,7 +43,6 @@ import (
 func TestCommandTreesExposeAllPQCOperations(t *testing.T) {
 	txCommand := GetTxCmd()
 	for _, name := range []string{
-		"keygen",
 		"create-key-proof",
 		"prepare-bundle",
 		"sign-bundle",
@@ -614,6 +613,7 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 		preparedPath,
 		privateKeyPath,
 		signedPath,
+		"--legacy-key-file",
 		"--" + flags.FlagSkipConfirmation,
 	})
 	require.NoError(t, sign.Execute())
@@ -732,7 +732,7 @@ func TestRecoveryCommandsRejectUnsafeModesAndInputs(t *testing.T) {
 		"",
 		message,
 	)
-	require.ErrorContains(t, err, "either --"+flagRecoveryPrivateKey)
+	require.ErrorContains(t, err, "either --"+flagRecoveryKey)
 
 	require.NoError(t, command.Flags().Set(flagRecoveryBundleOutput, "bundle.out"))
 	err = generateOrBroadcastRecoveryTx(
@@ -838,6 +838,7 @@ func TestSignBundleCommandOfflineRoundTrip(t *testing.T) {
 		preparedPath,
 		privateKeyPath,
 		signedPath,
+		"--legacy-key-file",
 		"--" + flags.FlagSkipConfirmation,
 	})
 	require.NoError(t, command.Execute())

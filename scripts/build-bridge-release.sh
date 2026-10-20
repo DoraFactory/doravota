@@ -5,7 +5,11 @@ set -euo pipefail
 commit_sha=${COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || true)}
 [[ "$commit_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'Full source commit required' >&2; exit 1; }
 expected_version=$(cat VERSION)
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$VERSION" = "$expected_version" ]] || {
+version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+if [[ "${ALLOW_PRERELEASE:-false}" = true ]]; then
+ version_pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'
+fi
+[[ "$VERSION" =~ $version_pattern && "$VERSION" = "$expected_version" ]] || {
  echo "Release version must match VERSION (${expected_version}), including the v prefix" >&2; exit 1
 }
 [[ "$(go env GOOS)" = linux ]] || exit 1

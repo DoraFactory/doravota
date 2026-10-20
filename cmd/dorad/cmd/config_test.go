@@ -13,7 +13,7 @@ func TestDefaultVersionMatchesReleaseFile(t *testing.T) {
 	raw, err := os.ReadFile("../../../VERSION")
 	require.NoError(t, err)
 	require.Equal(t, strings.TrimSpace(string(raw)), Version)
-	require.Regexp(t, `^v[0-9]+\.[0-9]+\.[0-9]+$`, Version)
+	require.Regexp(t, `^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`, Version)
 }
 
 func TestSetVersionInfoPreservesReleaseIdentity(t *testing.T) {

@@ -4,14 +4,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/spf13/cobra"
 
-	pqcauthclient "github.com/DoraFactory/doravota/x/pqcauth/client"
-	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
@@ -21,58 +18,15 @@ const (
 )
 
 type encodedKeyOutput struct {
-	Algorithm      string `json:"algorithm"`
-	PrivateKeyFile string `json:"private_key_file,omitempty"`
-	PublicKey      string `json:"public_key_base64"`
-	Proof          string `json:"proof_base64,omitempty"`
-	Signature      string `json:"signature_base64,omitempty"`
-}
-
-func keygenCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "keygen [private-key-output]",
-		Short: "Generate an ML-DSA-65 key pair; the private file is created with mode 0600",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(command *cobra.Command, args []string) error {
-			publicKey, privateKey, err := pqccrypto.GenerateMLDSA65Key(nil)
-			if err != nil {
-				return err
-			}
-			defer clear(privateKey)
-			file, err := os.OpenFile(args[0], os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-			if err != nil {
-				return fmt.Errorf("create private key file without overwrite: %w", err)
-			}
-			complete := false
-			defer func() {
-				if !complete {
-					_ = os.Remove(args[0])
-				}
-			}()
-			if _, err := file.Write(privateKey); err != nil {
-				_ = file.Close()
-				return fmt.Errorf("write private key: %w", err)
-			}
-			if err := file.Sync(); err != nil {
-				_ = file.Close()
-				return fmt.Errorf("sync private key: %w", err)
-			}
-			if err := file.Close(); err != nil {
-				return fmt.Errorf("close private key: %w", err)
-			}
-			complete = true
-			return json.NewEncoder(command.OutOrStdout()).Encode(encodedKeyOutput{
-				Algorithm:      "ML-DSA-65",
-				PrivateKeyFile: args[0],
-				PublicKey:      base64.StdEncoding.EncodeToString(publicKey),
-			})
-		},
-	}
+	Algorithm string `json:"algorithm"`
+	PublicKey string `json:"public_key_base64"`
+	Proof     string `json:"proof_base64,omitempty"`
+	Signature string `json:"signature_base64,omitempty"`
 }
 
 func createKeyProofCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "create-key-proof [private-key-file] [owner] [key-id] [role] [purpose]",
+		Use:   "create-key-proof [key-name] [owner] [key-id] [role] [purpose]",
 		Short: "Create an offline registration, rotation, or recovery key proof",
 		Args:  cobra.ExactArgs(5),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -98,12 +52,12 @@ func createKeyProofCommand() *cobra.Command {
 				return fmt.Errorf("--%s is required", flags.FlagChainID)
 			}
 			policyVersion, _ := command.Flags().GetUint64(flagPolicyVersion)
-			privateKey, err := pqcauthclient.LoadPrivateKeyFile(args[0])
+			signer, cleanup, err := offlineSigner(command, args[0])
 			if err != nil {
 				return err
 			}
-			defer clear(privateKey)
-			publicKey, err := pqccrypto.MLDSA65PublicKeyFromPrivate(privateKey)
+			defer cleanup()
+			publicKey, err := signer.PublicKey(command.Context())
 			if err != nil {
 				return err
 			}
@@ -122,7 +76,7 @@ func createKeyProofCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			proof, err := pqccrypto.SignMLDSA65(privateKey, signBytes, signatureContext, true)
+			proof, err := signer.Sign(command.Context(), signBytes, signatureContext)
 			if err != nil {
 				return err
 			}
@@ -136,6 +90,7 @@ func createKeyProofCommand() *cobra.Command {
 	command.Flags().String(flagNetworkID, "", "base64 network_id from `query pqcauth params`")
 	command.Flags().Uint64(flagPolicyVersion, 0, "current account policy version")
 	command.Flags().String(flags.FlagChainID, "", "chain ID")
+	addOfflineKeyFlags(command)
 	_ = command.MarkFlagRequired(flagNetworkID)
 	return command
 }

@@ -48,6 +48,14 @@ func generateOrBroadcastRecoveryTx(
 	privateKeyPath string,
 	message *types.MsgRecoverKey,
 ) error {
+	keyName, _ := flagSet.GetString(flagRecoveryKey)
+	if keyName != "" && privateKeyPath != "" {
+		return errors.New("keyring and legacy file options are mutually exclusive")
+	}
+	signingSource := privateKeyPath
+	if keyName != "" {
+		signingSource = keyName
+	}
 	bundleOutput, _ := flagSet.GetString(flagRecoveryBundleOutput)
 	if clientCtx.GenerateOnly {
 		return errors.New(
@@ -56,7 +64,7 @@ func generateOrBroadcastRecoveryTx(
 	}
 	if err := validateRecoverySigningOptions(
 		clientCtx.Simulate,
-		privateKeyPath,
+		signingSource,
 		bundleOutput,
 	); err != nil {
 		return err
@@ -139,16 +147,16 @@ func generateOrBroadcastRecoveryTx(
 		return printRecoveryBundleResult(output, "prepared", bundleOutput, summary)
 	}
 
-	privateKey, err := pqcauthclient.LoadPrivateKeyFile(privateKeyPath)
+	signer, cleanup, err := selectedSigner(clientCtx, keyName, privateKeyPath)
 	if err != nil {
 		return err
 	}
-	defer clear(privateKey)
-	signedBundle, _, err := pqcauthclient.SignRecoverySignBundleWithPrivateKey(
+	defer cleanup()
+	signedBundle, _, err := pqcauthclient.SignRecoverySignBundle(
 		ctx,
 		clientCtx.TxConfig,
 		bundle,
-		privateKey,
+		signer,
 	)
 	if err != nil {
 		return err
@@ -198,7 +206,7 @@ func generateOrBroadcastRecoveryTx(
 
 func signRecoveryBundleCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "sign-recovery-bundle [prepared-bundle] [recovery-private-key-file] [signed-bundle-output]",
+		Use:   "sign-recovery-bundle [prepared-bundle] [recovery-key-name] [signed-bundle-output]",
 		Short: "Validate and sign a transaction-bound recovery bundle offline",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -242,16 +250,16 @@ func signRecoveryBundleCommand() *cobra.Command {
 					return errors.New("offline recovery signing cancelled")
 				}
 			}
-			privateKey, err := pqcauthclient.LoadPrivateKeyFile(args[1])
+			signer, cleanup, err := offlineSigner(command, args[1])
 			if err != nil {
 				return err
 			}
-			defer clear(privateKey)
-			signed, signedSummary, err := pqcauthclient.SignRecoverySignBundleWithPrivateKey(
+			defer cleanup()
+			signed, signedSummary, err := pqcauthclient.SignRecoverySignBundle(
 				command.Context(),
 				clientCtx.TxConfig,
 				bundle,
-				privateKey,
+				signer,
 			)
 			if err != nil {
 				return err
@@ -281,6 +289,7 @@ func signRecoveryBundleCommand() *cobra.Command {
 		false,
 		"skip offline recovery signing confirmation",
 	)
+	addOfflineKeyFlags(command)
 	return command
 }
 
@@ -380,14 +389,16 @@ func validateRecoverySigningOptions(
 ) error {
 	if privateKeyPath == "" && bundleOutput == "" && !simulate {
 		return fmt.Errorf(
-			"either --%s or --%s is required",
+			"either --%s, a legacy --%s, or --%s is required",
+			flagRecoveryKey,
 			flagRecoveryPrivateKey,
 			flagRecoveryBundleOutput,
 		)
 	}
 	if privateKeyPath != "" && bundleOutput != "" {
 		return fmt.Errorf(
-			"--%s and --%s are mutually exclusive",
+			"a signing key (--%s or --%s) and --%s are mutually exclusive",
+			flagRecoveryKey,
 			flagRecoveryPrivateKey,
 			flagRecoveryBundleOutput,
 		)

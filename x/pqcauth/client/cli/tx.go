@@ -32,7 +32,6 @@ func GetTxCmd() *cobra.Command {
 		RunE:                       client.ValidateCmd,
 	}
 	command.AddCommand(
-		keygenCommand(),
 		createKeyProofCommand(),
 		prepareBundleCommand(),
 		signBundleCommand(),
@@ -78,6 +77,9 @@ func registerKeyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkNewFactors(command, clientCtx, publicKey, recoveryPublicKey); err != nil {
+				return err
+			}
 			message := &types.MsgRegisterKey{
 				Owner:                clientCtx.GetFromAddress().String(),
 				ExpectedSigningKeyId: keyID,
@@ -113,6 +115,9 @@ func rotateKeyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkNewFactors(command, clientCtx, publicKey); err != nil {
+				return err
+			}
 			privateKeyPath, _ := command.Flags().GetString(flagPQCPrivateKey)
 			return generateOrBroadcastProtectedTx(
 				command.Context(),
@@ -145,6 +150,9 @@ func rotateRecoveryKeyCommand() *cobra.Command {
 			}
 			keyID, publicKey, proof, err := parseKeyMaterial(args)
 			if err != nil {
+				return err
+			}
+			if err := checkNewFactors(command, clientCtx, publicKey); err != nil {
 				return err
 			}
 			privateKeyPath, _ := command.Flags().GetString(flagPQCPrivateKey)
@@ -244,6 +252,9 @@ func recoverKeyCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkNewFactors(command, clientCtx, publicKey); err != nil {
+				return err
+			}
 			privateKeyPath, _ := command.Flags().GetString(flagRecoveryPrivateKey)
 			return generateOrBroadcastRecoveryTx(
 				command.Context(),
@@ -261,10 +272,11 @@ func recoverKeyCommand() *cobra.Command {
 			)
 		},
 	}
+	command.Flags().String(flagRecoveryKey, "", "Name of the offline recovery ML-DSA key in the SDK keyring")
 	command.Flags().String(
 		flagRecoveryPrivateKey,
 		"",
-		"path to the offline recovery ML-DSA-65 private key (mode 0600)",
+		"legacy raw recovery key file (mode 0600); prefer --recovery-key",
 	)
 	command.Flags().String(
 		flagRecoveryBundleOutput,
@@ -312,7 +324,8 @@ func cancelRecoveryCommand() *cobra.Command {
 }
 
 func addProtectedTxFlags(command *cobra.Command) {
-	command.Flags().String(flagPQCPrivateKey, "", "path to the active encoded ML-DSA-65 private key (mode 0600)")
+	command.Flags().String(flagPQCKey, "", "Name of the active ML-DSA key in the SDK keyring")
+	command.Flags().String(flagPQCPrivateKey, "", "Legacy recovery only: raw ML-DSA private-key file; prefer --pqc-key")
 	command.Flags().String(
 		flagPQCSignBundleOutput,
 		"",

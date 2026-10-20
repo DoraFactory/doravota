@@ -110,7 +110,7 @@ func prepareBundleCommand() *cobra.Command {
 
 func signBundleCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:   "sign-bundle [prepared-bundle] [private-key-file] [signed-bundle-output]",
+		Use:   "sign-bundle [prepared-bundle] [key-name] [signed-bundle-output]",
 		Short: "Validate and sign a prepared transaction bundle on an offline machine",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -150,16 +150,16 @@ func signBundleCommand() *cobra.Command {
 					return errors.New("offline PQC signing cancelled")
 				}
 			}
-			privateKey, err := pqcauthclient.LoadPrivateKeyFile(args[1])
+			signer, cleanup, err := offlineSigner(command, args[1])
 			if err != nil {
 				return err
 			}
-			defer clear(privateKey)
-			signed, signedSummary, err := pqcauthclient.SignPQCSignBundleWithPrivateKey(
+			defer cleanup()
+			signed, signedSummary, err := pqcauthclient.SignPQCSignBundle(
 				command.Context(),
 				clientCtx.TxConfig,
 				bundle,
-				privateKey,
+				signer,
 			)
 			if err != nil {
 				return err
@@ -179,6 +179,7 @@ func signBundleCommand() *cobra.Command {
 		},
 	}
 	command.Flags().BoolP(flags.FlagSkipConfirmation, "y", false, "Skip offline signing confirmation")
+	addOfflineKeyFlags(command)
 	return command
 }
 

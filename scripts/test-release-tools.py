@@ -34,6 +34,14 @@ class ReleaseToolsTest(unittest.TestCase):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 notes.validate_tag(tag, "v1.0.0")
 
+    def test_candidate_version_requires_explicit_opt_in(self):
+        candidate = "v1.0.0-pqcauth-dev"
+        with self.assertRaises(ValueError):
+            notes.validate_tag(candidate, candidate)
+        notes.validate_tag(candidate, candidate, allow_prerelease=True)
+        with self.assertRaises(ValueError):
+            notes.validate_tag(candidate, "v1.0.0", allow_prerelease=True)
+
     def test_changelog_requires_exact_unique_nonempty_section(self):
         self.assertEqual(notes.extract_notes("## [Unreleased]\n\n## [v1.0.0]\nNew\n## [0.5.0]\nOld\n", "v1.0.0"), "New\n")
         for text in ["## [1.0.0]\nWrong", "## [v1.0.0]\n\n## [0.5.0]\nOld",

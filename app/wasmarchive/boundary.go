@@ -25,6 +25,12 @@ var retainedStores = []string{"acc", "authz", "bank", "consensus", "distribution
 // ValidateBoundary examines only committed state, before BaseApp can write.
 // An upgrade-info file alone cannot authorize premature runtime removal.
 func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64]bool) error {
+	return ValidateBoundaryWithModules(logger, db, home, skips, nil)
+}
+
+// ValidateBoundaryWithModules permits only explicitly known post-retirement
+// stores, with their committed module versions and roots verified together.
+func ValidateBoundaryWithModules(logger log.Logger, db dbm.DB, home string, skips map[int64]bool, additions map[string]uint64) error {
 	height := rootmulti.GetLatestVersion(db)
 	if height == 0 {
 		return nil
@@ -41,11 +47,22 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 			}
 		}
 	}
-	if info == nil || len(info.StoreInfos) != len(retainedStores) {
+	if info == nil {
+		return fmt.Errorf("missing committed store layout")
+	}
+	stores := append([]string(nil), retainedStores...)
+	presentAdditions := map[string]bool{}
+	for _, entry := range info.StoreInfos {
+		if _, known := additions[entry.Name]; known {
+			stores = append(stores, entry.Name)
+			presentAdditions[entry.Name] = true
+		}
+	}
+	if len(info.StoreInfos) != len(stores) {
 		return fmt.Errorf("unsupported committed store layout")
 	}
 	trees := map[string]*iavl.ImmutableTree{}
-	for _, name := range retainedStores {
+	for _, name := range stores {
 		found := false
 		for _, s := range info.StoreInfos {
 			if s.Name == name {
@@ -75,6 +92,12 @@ func ValidateBoundary(logger log.Logger, db dbm.DB, home string, skips map[int64
 		return nil
 	}); err != nil {
 		return err
+	}
+	for name, expected := range additions {
+		version, registered := versions[name]
+		if presentAdditions[name] != registered || (registered && version != expected) {
+			return fmt.Errorf("inconsistent committed module/store version for %s", name)
+		}
 	}
 	if versions[GenesisKey] == 1 {
 		if _, present := versions[StoreKey]; present {

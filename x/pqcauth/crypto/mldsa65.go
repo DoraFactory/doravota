@@ -176,3 +176,12 @@ func domainSeparatedMessage(message, context []byte) []byte {
 	encoded = append(encoded, message...)
 	return encoded
 }
+
+// SigningEnvelope is the canonical message passed to an SDK keyring signer.
+// It preserves the existing on-chain signature domain byte for byte.
+func SigningEnvelope(message, context []byte) ([]byte, error) {
+	if len(context) > MaxContextSize {
+		return nil, ErrContextTooLarge
+	}
+	return domainSeparatedMessage(message, context), nil
+}

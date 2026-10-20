@@ -77,12 +77,14 @@ func TestCompletedLegacyUpgradeRemainsRecognized(t *testing.T) {
 	}
 }
 
-// Keep preflight, runtime activation and the public release identity aligned.
+// Keep the development identity separate from historical and candidate plans.
 func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
 	raw, err := os.ReadFile("../VERSION")
 	require.NoError(t, err)
 	name := strings.TrimSpace(string(raw))
-	require.Equal(t, "v1.0.0", name)
-	require.Equal(t, name, sdk055.UpgradeName)
-	require.Equal(t, name, wasmarchive.UpgradeName)
+	require.Equal(t, "v1.0.0-pqcauth-dev", name)
+	// Historical migration identities must not be renamed to the new candidate.
+	require.Equal(t, "v1.0.0", sdk055.UpgradeName)
+	require.Equal(t, "v1.0.0", wasmarchive.UpgradeName)
+	require.NotEqual(t, name, app.PQCAuthUpgradeName)
 }

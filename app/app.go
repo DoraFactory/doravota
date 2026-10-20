@@ -11,6 +11,10 @@ import (
 	"fmt"
 	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
+	pqcauth "github.com/DoraFactory/doravota/x/pqcauth"
+	pqcauthante "github.com/DoraFactory/doravota/x/pqcauth/ante"
+	pqcauthkeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
+	pqcauthtypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/baseapp"
@@ -56,7 +60,6 @@ import (
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	feegrantkeeper "github.com/cosmos/cosmos-sdk/x/feegrant/keeper"
-	feegrantmodule "github.com/cosmos/cosmos-sdk/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -163,6 +166,7 @@ var (
 		ica.AppModuleBasic{},
 		vestingAppModuleBasic{},
 		consensus.AppModuleBasic{},
+		pqcauth.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -225,6 +229,7 @@ type App struct {
 	ConsensusParamsKeeper consensusparamkeeper.Keeper
 	EvidenceKeeper        evidencekeeper.Keeper
 	FeeGrantKeeper        feegrantkeeper.Keeper
+	PQCAuthKeeper         pqcauthkeeper.Keeper
 
 	IBCKeeper           *ibckeeper.Keeper // IBC Keeper must be a pointer in the app, so we can SetRouter on it correctly
 	ICAControllerKeeper *icacontrollerkeeper.Keeper
@@ -257,7 +262,7 @@ func New(
 	if err := sdk055.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
 		panic(fmt.Errorf("SDK 0.55 source boundary: %w", err))
 	}
-	if err := wasmarchive.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
+	if err := wasmarchive.ValidateBoundaryWithModules(logger, db, homePath, skipUpgradeHeights, map[string]uint64{pqcauthtypes.ModuleName: (pqcauth.AppModule{}).ConsensusVersion()}); err != nil {
 		panic(fmt.Errorf("Wasm retirement source boundary: %w", err))
 	}
 	appCodec := encodingConfig.Marshaler
@@ -269,7 +274,7 @@ func New(
 		Name,
 		logger,
 		db,
-		encodingConfig.TxConfig.TxDecoder(),
+		pqcauthante.CanonicalPQCAuthTxDecoder(encodingConfig.TxConfig.TxDecoder()),
 		baseAppOptions...,
 	)
 	// Store v2 removed commit-store tracing; preserve the local constructor API.
@@ -289,7 +294,7 @@ func New(
 		// non sdk store keys
 		ibcexported.StoreKey, ibctransfertypes.StoreKey,
 		wasmarchive.StoreKey, icahosttypes.StoreKey,
-		icacontrollertypes.StoreKey,
+		icacontrollertypes.StoreKey, pqcauthtypes.StoreKey,
 	)
 	tkeys := storetypes.NewTransientStoreKeys()
 	if err := bApp.RegisterStreamingServices(appOpts, keys); err != nil {
@@ -533,6 +538,7 @@ func New(
 	// NOTE: Any module instantiated in the module manager that is later modified
 	// must be passed by reference here.
 
+	app.PQCAuthKeeper = pqcauthkeeper.NewKeeper(appCodec, keys[pqcauthtypes.StoreKey], authtypes.NewModuleAddress(govtypes.ModuleName).String(), app.AccountKeeper)
 	// NOTE: add upgrade(this must be called before `app.LoadLatestVersion()`)
 	app.setupUpgradeHandlers()
 
@@ -547,7 +553,7 @@ func New(
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
 		vesting.NewAppModule(app.AccountKeeper, app.BankKeeper),
 		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper),
-		feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
+		newPQCAwareFeegrantAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry, app.PQCAuthKeeper),
 		gov.NewAppModule(appCodec, &app.GovKeeper, app.AccountKeeper, app.BankKeeper),
 		mint.NewAppModule(appCodec, app.MintKeeper, app.AccountKeeper, nil),
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.interfaceRegistry),
@@ -561,6 +567,7 @@ func New(
 		ica.NewAppModule(app.ICAControllerKeeper, app.ICAHostKeeper),
 		ibctm.NewAppModule(tmLightClientModule),
 		solomachine.NewAppModule(soloLightClientModule),
+		pqcauth.NewAppModule(app.PQCAuthKeeper, app.FeeGrantKeeper),
 	)
 
 	// x/upgrade executes scheduled upgrade plans in PreBlock. Register it
@@ -578,7 +585,7 @@ func New(
 		minttypes.ModuleName, distrtypes.ModuleName, slashingtypes.ModuleName,
 		evidencetypes.ModuleName, stakingtypes.ModuleName,
 		authtypes.ModuleName, banktypes.ModuleName, govtypes.ModuleName, genutiltypes.ModuleName,
-		authz.ModuleName, feegrant.ModuleName,
+		authz.ModuleName, feegrant.ModuleName, pqcauthtypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -592,7 +599,7 @@ func New(
 		authtypes.ModuleName, distrtypes.ModuleName,
 		slashingtypes.ModuleName, minttypes.ModuleName,
 		genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName,
+		feegrant.ModuleName, pqcauthtypes.ModuleName,
 		upgradetypes.ModuleName, vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -606,7 +613,7 @@ func New(
 		authtypes.ModuleName, banktypes.ModuleName,
 		distrtypes.ModuleName, stakingtypes.ModuleName, slashingtypes.ModuleName, govtypes.ModuleName,
 		minttypes.ModuleName, genutiltypes.ModuleName, evidencetypes.ModuleName, authz.ModuleName,
-		feegrant.ModuleName, upgradetypes.ModuleName,
+		feegrant.ModuleName, pqcauthtypes.ModuleName, upgradetypes.ModuleName,
 		vestingtypes.ModuleName, consensusparamtypes.ModuleName,
 		// additional non simd modules
 		ibctransfertypes.ModuleName,
@@ -646,6 +653,7 @@ func New(
 
 	// initialize BaseApp
 	app.setAnteHandler(encodingConfig.TxConfig)
+	app.setProposalHandlers(encodingConfig.TxConfig)
 	app.SetInitChainer(app.InitChainer)
 	app.SetPreBlocker(app.PreBlocker)
 	app.SetBeginBlocker(app.BeginBlocker)
@@ -670,9 +678,13 @@ func (app *App) setAnteHandler(txConfig client.TxConfig) {
 				BankKeeper:      app.BankKeeper,
 				SignModeHandler: txConfig.SignModeHandler(),
 				FeegrantKeeper:  app.FeeGrantKeeper,
-				SigGasConsumer:  ante.DefaultSigVerificationGasConsumer,
+				SigGasConsumer:  pqcauthante.PQCSafeSigVerificationGasConsumer,
 			},
-			IBCKeeper: app.IBCKeeper,
+			IBCKeeper:               app.IBCKeeper,
+			PQCAuthKeeper:           app.PQCAuthKeeper,
+			AuthzGrantReader:        app.AuthzKeeper,
+			FeegrantAllowanceReader: app.FeeGrantKeeper,
+			AppCodec:                app.appCodec,
 		},
 	)
 	if err != nil {
@@ -705,6 +717,12 @@ func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.
 		plan, err := app.UpgradeKeeper.GetUpgradePlan(ctx)
 		if err != nil || plan.Name != wasmarchive.UpgradeName || plan.Height != ctx.BlockHeight() {
 			return nil, fmt.Errorf("archive activation is required before block execution")
+		}
+	}
+	if versions[pqcauthtypes.ModuleName] == 0 {
+		plan, err := app.UpgradeKeeper.GetUpgradePlan(ctx)
+		if err != nil || plan.Name != PQCAuthUpgradeName || plan.Height != ctx.BlockHeight() {
+			return nil, fmt.Errorf("PQC Auth activation is required before block execution")
 		}
 	}
 	result, err := app.mm.PreBlock(ctx)
@@ -903,43 +921,26 @@ func (app *App) ModuleManager() *module.Manager {
 }
 
 func (app *App) setupUpgradeHandlers() {
+	app.registerPQCAuthUpgrade()
 	// Recognize completed upgrades without permitting their migrations to run again.
 	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0"} {
 		app.UpgradeKeeper.SetUpgradeHandler(name, func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
 			return nil, fmt.Errorf("complete legacy upgrades using their original binaries before Wasm retirement")
 		})
 	}
+	// Recognize the completed v1.0.0 plan, but never rerun its retirement
+	// migration with a binary that also mounts the new pqcauth store.
 	app.UpgradeKeeper.SetUpgradeHandler(wasmarchive.UpgradeName,
-		func(goCtx context.Context, _ upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
-			if err := sdk055.ValidateSourceVersionMap(fromVM); err != nil {
-				return nil, err
-			}
-
-			ctx := sdk.UnwrapSDKContext(goCtx)
-			if err := sdk055.ValidateIBCChannelMigration(ctx, app.keys[ibcexported.StoreKey], app.IBCKeeper); err != nil {
-				return nil, err
-			}
-			wasmarchive.RetireChannels(ctx, app.IBCKeeper.ChannelKeeper)
-			updated, err := app.mm.RunMigrations(goCtx, app.configurator, fromVM)
-			if err != nil {
-				return nil, err
-			}
-			if err := sdk055.MigrateIBCChannels(ctx, app.keys[ibcexported.StoreKey], app.appCodec, app.IBCKeeper); err != nil {
-				return nil, err
-			}
-			for _, name := range []string{"params", "group", "wasm"} {
-				ctx.KVStore(app.keys[upgradetypes.StoreKey]).Delete(append([]byte{upgradetypes.VersionMapByte}, []byte(name)...))
-				delete(updated, name)
-			}
-			updated[wasmarchive.GenesisKey] = 1
-			return updated, nil
+		func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
+			return nil, fmt.Errorf("complete v1.0.0 using its released binary before installing PQC Auth")
 		})
+
 	info, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
 	if err != nil {
 		panic(err)
 	}
-	if info.Name == sdk055.UpgradeName && !app.UpgradeKeeper.IsSkipHeight(info.Height) {
-		changes := sdk055.StoreUpgrades()
+	if info.Name == PQCAuthUpgradeName && !app.UpgradeKeeper.IsSkipHeight(info.Height) {
+		changes := storetypes.StoreUpgrades{Added: []string{pqcauthtypes.StoreKey}}
 		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(info.Height, &changes))
 	}
 

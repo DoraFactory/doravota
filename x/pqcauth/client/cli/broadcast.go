@@ -24,10 +24,18 @@ func generateOrBroadcastProtectedTx(
 	privateKeyPath string,
 	messages ...sdk.Msg,
 ) error {
+	keyName, _ := flagSet.GetString(flagPQCKey)
+	if keyName != "" && privateKeyPath != "" {
+		return errors.New("keyring and legacy file options are mutually exclusive")
+	}
+	signingSource := privateKeyPath
+	if keyName != "" {
+		signingSource = keyName
+	}
 	bundleOutput, _ := flagSet.GetString(flagPQCSignBundleOutput)
 	if err := validateProtectedSigningOptions(
 		clientCtx.Simulate,
-		privateKeyPath,
+		signingSource,
 		bundleOutput,
 	); err != nil {
 		return err
@@ -108,17 +116,17 @@ func generateOrBroadcastProtectedTx(
 		}
 		return printBundleResult(output, "prepared", bundleOutput, summary)
 	}
-	privateKey, err := pqcauthclient.LoadPrivateKeyFile(privateKeyPath)
+	signer, cleanup, err := selectedSigner(clientCtx, keyName, privateKeyPath)
 	if err != nil {
 		return err
 	}
-	defer clear(privateKey)
-	if err := pqcauthclient.AttachPQCAuthWithPrivateKey(
+	defer cleanup()
+	if err := pqcauthclient.AttachPQCAuthWithSigner(
 		ctx,
 		clientCtx,
 		txf,
 		builder,
-		privateKey,
+		signer,
 	); err != nil {
 		return err
 	}
@@ -161,14 +169,16 @@ func validateProtectedSigningOptions(
 ) error {
 	if privateKeyPath == "" && bundleOutput == "" && !simulate {
 		return fmt.Errorf(
-			"either --%s or --%s is required",
+			"either --%s, a legacy --%s, or --%s is required",
+			flagPQCKey,
 			flagPQCPrivateKey,
 			flagPQCSignBundleOutput,
 		)
 	}
 	if privateKeyPath != "" && bundleOutput != "" {
 		return fmt.Errorf(
-			"--%s and --%s are mutually exclusive",
+			"a signing key (--%s or --%s) and --%s are mutually exclusive",
+			flagPQCKey,
 			flagPQCPrivateKey,
 			flagPQCSignBundleOutput,
 		)
