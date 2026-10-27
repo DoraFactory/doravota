@@ -906,6 +906,9 @@ func (m *AccountKeySequence) GetNextKeyId() uint64 {
 // AccountKeyHistory commits terminal key records that have been removed from
 // current state. Accumulators are maintained independently for signing and
 // recovery roles so rotation of one role cannot evict the other's live state.
+// last_compacted_key_id is the greatest ID compacted, not a contiguous frontier.
+// Older pinned keys may remain. The hash chain follows compaction execution
+// order, with ascending key IDs within each batch.
 type AccountKeyHistory struct {
 	Owner              string  `protobuf:"bytes,1,opt,name=owner,proto3" json:"owner,omitempty"`
 	Role               KeyRole `protobuf:"varint,2,opt,name=role,proto3,enum=doravota.pqcauth.v1.KeyRole" json:"role,omitempty"`

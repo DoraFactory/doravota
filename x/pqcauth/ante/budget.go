@@ -101,6 +101,14 @@ func (t *PQCVerificationBudgetTracker) Inspect(
 		if publicKey == nil {
 			publicKey = signatures[index].PubKey
 			if publicKey != nil {
+				// A proposal may contain transactions that later fail Ante. Do
+				// not let an unrelated key in such a transaction poison the
+				// authentication type of subsequent transactions for this signer.
+				if !budgetKeyMatchesSigner(publicKey, rawSigner) {
+					return inspection, types.ErrInvalidExtension.Wrapf(
+						"public key does not match signer address at index %d", index,
+					)
+				}
 				inspection.discovered = append(inspection.discovered, discoveredPQCAccountKey{
 					signer: signerKey,
 					key:    publicKey,
@@ -113,6 +121,17 @@ func (t *PQCVerificationBudgetTracker) Inspect(
 		)
 	}
 	return inspection, nil
+}
+
+// SDK public-key Address methods can panic on malformed key lengths. Proposal
+// inspection handles untrusted metadata before SDK Ante can reject it.
+func budgetKeyMatchesSigner(key cryptotypes.PubKey, signer []byte) (matches bool) {
+	defer func() {
+		if recover() != nil {
+			matches = false
+		}
+	}()
+	return sdk.AccAddress(key.Address()).Equals(sdk.AccAddress(signer))
 }
 
 func (t *PQCVerificationBudgetTracker) Commit(inspection PQCVerificationInspection) {

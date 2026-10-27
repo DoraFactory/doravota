@@ -173,6 +173,9 @@ message AccountKeySequence {
 // AccountKeyHistory commits terminal key records that have been removed from
 // current state. Accumulators are maintained independently for signing and
 // recovery roles so rotation of one role cannot evict the other's live state.
+// last_compacted_key_id is the greatest ID compacted, not a contiguous frontier.
+// Older pinned keys may remain. The hash chain follows compaction execution
+// order, with ascending key IDs within each batch.
 message AccountKeyHistory {
   string owner = 1;
   KeyRole role = 2;

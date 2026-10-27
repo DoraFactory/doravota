@@ -1,7 +1,6 @@
 package ante
 
 import (
-	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	txsigning "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authante "github.com/cosmos/cosmos-sdk/x/auth/ante"
@@ -22,8 +21,9 @@ func PQCSafeSigVerificationGasConsumer(
 	signature txsigning.SignatureV2,
 	params authtypes.Params,
 ) error {
-	if _, isMLDSA := signature.PubKey.(*mldsa65.PubKey); isMLDSA &&
-		params.SigVerifyCostMlDsa65 < MinimumNativeMLDSAVerificationGas {
+	// Clamp before delegating so SDK recursion through mixed/nested multisigs
+	// receives the same floor. Classical key costs are separate fields.
+	if params.SigVerifyCostMlDsa65 < MinimumNativeMLDSAVerificationGas {
 		params.SigVerifyCostMlDsa65 = MinimumNativeMLDSAVerificationGas
 	}
 	return authante.DefaultSigVerificationGasConsumer(meter, signature, params)

@@ -303,6 +303,50 @@ class Rehearsal:
         assert all(count <= 4 for count in native_per_height.values()), native_per_height
         self.save("native-budget-counts", native_per_height)
 
+    def history_churn(self):
+        # Keep key 6 active while newer cancelled recovery keys exceed the
+        # default retention (16), then retire key 6 after those higher IDs.
+        for key_id in range(7, 24):
+            factor = f"cancelled-{key_id}"
+            self.key(factor, "ml_dsa_65")
+            p = self.proof(factor, key_id, "signing", "recover-signing", self.policy()["policy_version"])
+            self.tx(f"history-request-{key_id}", "pqcauth", "recover-key", "4", str(key_id),
+                    p["public_key_base64"], p["proof_base64"], "--recovery-key", "recovery1")
+            pending = self.policy()
+            self.tx(f"history-cancel-{key_id}", "pqcauth", "cancel-recovery", str(key_id),
+                    pending["pending_policy_version"], "--pqc-key", "factor3")
+        account = self.query("pqcauth", "account", self.addresses["owner"])
+        self.save("history-before-rotation", account)
+        assert int(account["policy"]["current_signing_key_id"]) == 6
+        history = next(h for h in account["key_histories"] if h["role"] == "KEY_ROLE_SIGNING")
+        assert int(history["last_compacted_key_id"]) > 6, history
+        count_before = int(history["compacted_count"])
+        old_factor = "factor3"
+        for key_id in (24, 25):
+            factor = f"history-final-{key_id}"
+            self.key(factor, "ml_dsa_65")
+            p = self.proof(factor, key_id, "signing", "rotate-signing", self.policy()["policy_version"])
+            self.tx(f"history-rotate-{key_id}", "pqcauth", "rotate-key", str(key_id),
+                    p["public_key_base64"], p["proof_base64"], "--pqc-key", old_factor)
+            self.activated("current_signing_key_id", key_id)
+            old_factor = factor
+        self.bundle("history-post-rotation-transfer", old_factor)
+        account = self.query("pqcauth", "account", self.addresses["owner"])
+        keys = self.query("pqcauth", "keys", self.addresses["owner"])
+        self.save("history-after-rotation", {"account": account, "keys": keys})
+        history = next(h for h in account["key_histories"] if h["role"] == "KEY_ROLE_SIGNING")
+        assert int(history["compacted_count"]) > count_before, history
+        assert all(int(k["key_id"]) != 6 for k in keys["keys"]), keys
+        assert not keys.get("pagination", {}).get("next_key"), keys
+        self.agreement("history-agreement")
+        for i in list(self.processes):
+            self.stop(i)
+        for i in range(4):
+            self.start(i)
+        self.ready()
+        assert self.query("pqcauth", "account", self.addresses["owner"]) == account
+        self.agreement("history-restart-agreement")
+
     def recipient_balance(self):
         balances = self.query("bank", "balances", self.addresses["recipient"])["balances"]
         return sum(int(coin["amount"]) for coin in balances if coin["denom"] == "peaka")
@@ -317,8 +361,9 @@ class Rehearsal:
             balance_before = self.recipient_balance()
             self.lifecycle()
             self.load()
+            self.history_churn()
             balance_after = self.recipient_balance()
-            expected = 3 * 7 + self.rounds * (8 + 1 + 7)
+            expected = 4 * 7 + self.rounds * (8 + 1 + 7)
             assert balance_after - balance_before == expected
             self.save("recipient-balance", {"before": str(balance_before), "after": str(balance_after),
                       "expected_increase_peaka": expected})

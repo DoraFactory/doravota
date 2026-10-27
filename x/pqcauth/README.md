@@ -126,6 +126,14 @@ These are candidate defaults, not a statement of live chain parameters.
 Restrictive changes to verification limits and history retention wait for the
 safety delay; emergency pauses have their separately bounded fast path.
 
+Key history is compacted over the complete owner's key prefix, separately for
+signing and recovery roles. Current and pending policy keys are pinned.
+`last_compacted_key_id` is the maximum compacted ID, **not** a boundary below
+which all records were deleted: an older active key can outlive newer cancelled
+recovery keys. The accumulator follows compaction-batch order, with ascending
+IDs inside each batch; a later-retired older key is appended once when deleted.
+Export/import preserves this ordering and permits retained keys below that maximum.
+
 ## Application requirements and tests
 
 The app registers the module, store, services, canonical decoder, ordered Ante
@@ -188,3 +196,5 @@ not consensus-enforced knowledge of mnemonic history.
 Existing keys remain recoverable and usable to authorize rotation away from
 unsafe factors. Do not prevent restoration of an existing key because it was
 previously reused; restore in a trusted environment and transfer/rotate safely.
+
+Module review fixes and regression evidence: [2026-10-27 module fixes](../../docs/PQCAUTH-MODULE-FIXES-20261027.md).

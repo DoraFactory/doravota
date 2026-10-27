@@ -14,6 +14,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent \
  TestPQCAuthSDKKeyringRegistrationAndHybridTransfer \
  TestPQCAuthProposalBudgetsPreserveSDKGasPolicy \
+ TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning \
  TestPQCAuthFourApplicationProposalActivationBoundary \
  TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex \
  TestVersionedUpgradeHandlerRegistration \
@@ -25,6 +26,16 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
  TestNewFactorAcknowledgementForExternalOwners
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestBudgetRejectsFreshKeyPoisoning TestBudgetRejectsMalformedFreshKeyWithoutPanic \
+ TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/x/pqcauth \
+ TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip
 if ! go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' \
  -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s \
  -json >"$results/simulations.jsonl" 2>"$results/simulations.stderr.log"; then

@@ -81,17 +81,17 @@ func ValidateGenesis(genesis GenesisState) error {
 			maxKnownKeyID[owner.String()] = history.LastCompactedKeyId
 		}
 	}
-	for _, key := range genesis.Keys {
-		mapKey := fmt.Sprintf("%s/%d", key.Owner, key.Role)
-		history, found := histories[mapKey]
-		if found && key.KeyId <= history.LastCompactedKeyId {
+	// A high-water mark does not imply that all smaller IDs were compacted:
+	// active/pending keys can outlive newer cancelled recovery keys. The
+	// maximum itself was definitely compacted and cannot remain in any role.
+	for _, history := range genesis.KeyHistories {
+		if _, found := keys[fmt.Sprintf("%s/%d", history.Owner, history.LastCompactedKeyId)]; found {
 			return fmt.Errorf(
-				"%w: full key %s/%d is not newer than compacted %s history %d",
+				"%w: full key %s/%d overlaps compacted %s history watermark",
 				ErrInconsistentState,
-				key.Owner,
-				key.KeyId,
-				key.Role,
+				history.Owner,
 				history.LastCompactedKeyId,
+				history.Role,
 			)
 		}
 	}

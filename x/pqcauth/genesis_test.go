@@ -250,3 +250,50 @@ func TestInitGenesisPanicsOnInvalidState(t *testing.T) {
 		},
 	)
 }
+
+// A key still in use may be older than newer cancelled keys already compacted.
+// Export/import must preserve both that key and the accumulated history.
+func TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip(t *testing.T) {
+	ctx, k := setupGenesisTest(t, 100)
+	owner := sdk.AccAddress(bytes.Repeat([]byte{0x77}, 20))
+	params := types.DefaultParams()
+	params.NetworkId = types.NetworkIDForChain(ctx.ChainID())
+	require.NoError(t, k.SetParams(ctx, params))
+	for id := uint64(1); id <= 3; id++ {
+		public, _, err := pqccrypto.GenerateMLDSA65Key(nil)
+		require.NoError(t, err)
+		key := types.PQCKeyRecord{Owner: owner.String(), KeyId: id,
+			Algorithm: types.Algorithm_ALGORITHM_ML_DSA_65, PublicKey: public,
+			Role: types.KeyRole_KEY_ROLE_SIGNING, Status: types.KeyStatus_KEY_STATUS_LIVE,
+			CreatedHeight: 1, EffectiveHeight: 2}
+		if id == 2 {
+			key.Role = types.KeyRole_KEY_ROLE_RECOVERY
+		}
+		if id == 3 {
+			key.Status = types.KeyStatus_KEY_STATUS_REVOKED
+			accumulator, err := types.AccumulateKeyHistory(nil, key)
+			require.NoError(t, err)
+			require.NoError(t, k.SetKeyHistory(ctx, owner, types.AccountKeyHistory{
+				Owner: owner.String(), Role: key.Role, LastCompactedKeyId: id,
+				CompactedCount: 1, Accumulator: accumulator,
+			}))
+		} else {
+			require.NoError(t, k.SetKey(ctx, owner, key))
+		}
+	}
+	require.NoError(t, k.SetAccountPolicy(ctx, owner, types.AccountPolicy{
+		Owner: owner.String(), CurrentSigningKeyId: 1, RecoveryKeyId: 2,
+		SelfEnforced: true, PolicyVersion: 1,
+	}))
+	require.NoError(t, k.SetKeySequence(ctx, owner, types.AccountKeySequence{Owner: owner.String(), NextKeyId: 4}))
+	exported := ExportGenesis(ctx, k)
+	require.NoError(t, types.ValidateGenesis(*exported))
+	require.NoError(t, k.AuditState(ctx, 100).Error())
+	restoredCtx, restored := setupGenesisTest(t, 100)
+	InitGenesis(restoredCtx, restored, *exported)
+	require.Equal(t, exported, ExportGenesis(restoredCtx, restored))
+	require.NoError(t, restored.AuditState(restoredCtx, 100).Error())
+	// The watermark itself was compacted; resurrecting that exact ID is invalid.
+	exported.Keys[0].KeyId = 3
+	require.ErrorContains(t, types.ValidateGenesis(*exported), "overlaps compacted")
+}

@@ -60,7 +60,9 @@ func ValidateDistinctRoleKeys(
 }
 
 // AccumulateKeyHistory commits one complete terminal record into a deterministic
-// per-role hash chain. Callers must compact records in increasing key-id order.
+// per-role hash chain. Batches follow consensus execution order; records within
+// each batch follow increasing key-id order. Across batches a formerly pinned
+// key may retire after newer keys. Deleted records cannot be appended twice.
 func AccumulateKeyHistory(previous []byte, key PQCKeyRecord) ([]byte, error) {
 	if len(previous) != 0 && len(previous) != KeyHistoryAccumulatorSize {
 		return nil, fmt.Errorf("%w: invalid key history accumulator length", ErrInvalidKey)

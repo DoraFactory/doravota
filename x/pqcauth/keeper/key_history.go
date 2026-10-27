@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
@@ -18,8 +19,8 @@ func (k Keeper) CompactTerminalKeyHistory(
 	policy types.AccountPolicy,
 	retainPerRole uint32,
 ) error {
-	if retainPerRole == 0 {
-		return fmt.Errorf("%w: terminal key retention must be positive", types.ErrInvalidParams)
+	if retainPerRole == 0 || retainPerRole > types.AbsoluteMaxRetainedKeyRecordsPerRole {
+		return fmt.Errorf("%w: terminal key retention is outside its supported bounds", types.ErrInvalidParams)
 	}
 	pinned := map[uint64]struct{}{}
 	for _, keyID := range []uint64{
@@ -37,7 +38,7 @@ func (k Keeper) CompactTerminalKeyHistory(
 		types.KeyRole_KEY_ROLE_SIGNING:  nil,
 		types.KeyRole_KEY_ROLE_RECOVERY: nil,
 	}
-	keys, _, err := k.GetKeysPaginated(ctx, owner, nil)
+	keys, err := k.keysForCompaction(ctx, owner)
 	if err != nil {
 		return err
 	}
@@ -74,9 +75,9 @@ func (k Keeper) CompactTerminalKeyHistory(
 			history = types.AccountKeyHistory{Owner: owner.String(), Role: role}
 		}
 		for _, key := range compact {
-			if key.KeyId <= history.LastCompactedKeyId {
+			if key.KeyId == history.LastCompactedKeyId {
 				return fmt.Errorf(
-					"%w: key history is not monotonic for %s/%s/%d",
+					"%w: key already represented by history watermark for %s/%s/%d",
 					types.ErrInconsistentState,
 					owner.String(),
 					role,
@@ -92,7 +93,12 @@ func (k Keeper) CompactTerminalKeyHistory(
 			if history.CompactedCount == 0 {
 				return types.ErrInconsistentState.Wrap("key history count overflow")
 			}
-			history.LastCompactedKeyId = key.KeyId
+			// Keys retire out of creation order: a cancelled recovery can be
+			// compacted while an older signing key is still pinned. The field
+			// is a high-water mark, not a contiguous deleted-key frontier.
+			if key.KeyId > history.LastCompactedKeyId {
+				history.LastCompactedKeyId = key.KeyId
+			}
 		}
 		if err := k.SetKeyHistory(ctx, owner, history); err != nil {
 			return err
@@ -102,6 +108,22 @@ func (k Keeper) CompactTerminalKeyHistory(
 		}
 	}
 	return nil
+}
+
+// Read the complete owner prefix rather than a query's implicit first page.
+// The iterator is closed before any writes; KV reads remain gas-metered.
+func (k Keeper) keysForCompaction(ctx sdk.Context, owner sdk.AccAddress) ([]types.PQCKeyRecord, error) {
+	iterator := storetypes.KVStorePrefixIterator(ctx.KVStore(k.storeKey), types.PQCKeyRecordPrefix(owner))
+	defer iterator.Close()
+	var keys []types.PQCKeyRecord
+	for ; iterator.Valid(); iterator.Next() {
+		var key types.PQCKeyRecord
+		if err := k.cdc.Unmarshal(iterator.Value(), &key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
 }
 
 func roleWillRetireAtPendingActivation(
