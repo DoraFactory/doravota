@@ -49,11 +49,74 @@ Evidence directory:
 The baseline reproduction remains in the adjacent
 `pqcauth-module-review-20261027/REVIEW.md` and `confirmed-probes.log`.
 
-## Remote and CI validation
+## Remote four-validator validation — PASS
 
-The four-validator script now also signs and broadcasts 17 recovery/cancellation
-pairs, rotates twice, transfers with the final key, verifies the older key was
-compacted, and checks all validators agree before and after restart. It uses only
-synthetic funds and loopback endpoints. Remote execution and GitHub results will
-be recorded after completion; the prior candidate's CI is not evidence for this
-runtime change.
+The remote host was checked before starting (98 GiB available disk, 56 GiB
+available memory). A new isolated directory and ports 48756/48757 plus 100 per
+validator were used. The two existing `dorad` processes remained running after
+our four nodes exited; no public-chain wallet or service was changed.
+
+- Fixed runtime source and rehearsal script matched the pushed commit
+  `37fdb6fa1bf1243c96d217341045ce7c36ea0e57` across a 146-file SHA-256 manifest.
+  This remote binary was built from the worktree and identifies itself as such;
+  the commit-stamped CI release artifacts are validated separately.
+- **86 successful transactions, 6 expected rejections**. This includes the
+  existing registration/rotation/recovery/offline signing/mixed traffic checks,
+  a validator offline during load rounds 1–2 and rejoining in round 3.
+- Additional regression: **17 signed recovery/cancel pairs**, then two signing
+  rotations and a hybrid transfer with the final key.
+- Before rotation: signing key 6 remained active, while 4 terminal signing keys
+  were compacted with maximum ID 7. After rotations to keys 24 and 25, the count
+  was 6, maximum ID 8, and retired key 6 was absent from the full record list.
+- Recipient balance increased by exactly **92 peaka**, as calculated from the
+  synthetic transfers.
+- Four validators agreed on state height 102:
+  `4A8E9F3DD3576AF19F0040B63B58CB34C566E3AC58D8796CF0E68E633E3158FC`.
+- After restarting all four validators, account policy and compacted history
+  were unchanged. All agreed on state height 105:
+  `55F4F1EB37E47D415977F1039A9EEBF79DFFF6056AB395B1BABD18EC226A8445`.
+  Different heights have different hashes; each comparison is between all four
+  nodes at the same height.
+
+Representative isolated-network transaction hashes (not public explorer links):
+
+| Operation | Transaction hash |
+| --- | --- |
+| Rotate to key 24 after churn | `B427307AE47A583D183F7913184B7B8FC09E82047716B71FA4FCCE9E58C1B324` |
+| Rotate to key 25 | `1F22299C37A0D4A628C43BA39572F6E397628348A1F5F038BCD544DEA07270D6` |
+| Transfer with final key | `3B86FA19487C77768254A2D2A340B531E326F2EF58F4167ECA036910FFCF6A4E` |
+
+Remote evidence: `/root/pqcauth-module-fixes-20261027/four-validator/evidence/`.
+Local copy: `pqcauth-module-fixes-20261027/remote-evidence/` under the review-records
+directory above. `result.json` contains the operation-to-transaction mapping;
+individual receipt files retain height, code, gas, and events.
+
+## GitHub CI
+
+Run: https://github.com/DoraFactory/doravota/actions/runs/40431813652
+Commit: `37fdb6fa1bf1243c96d217341045ce7c36ea0e57`.
+**Completed: all jobs passed.** GitHub unit results also contain 530 passing
+test/subtest events, plus all 3 explicitly enabled simulations. AMD64 and ARM64
+each passed native builds, release smoke checks, Docker validation, and the
+packaged-binary four-validator rehearsal (**86 successful transactions and
+6 expected rejections per architecture**).
+
+The downloaded public evidence ZIPs matched GitHub's SHA-256 digests. Every
+successful receipt matched its recorded hash and code 0, and all five agreement
+checkpoints contained four identical hashes at the selected height.
+
+| Executed CI binary | SHA-256 |
+| --- | --- |
+| Linux AMD64 | `9a5a20e75724dc037f9ecac0f4e358e9c29bc408f6facf5a7202b598874c8dab` |
+| Linux ARM64 | `89f96fd7757e7eb7e025f4557dfacb0e174e3566bf94653d9e66ad29cfbb9f5f` |
+
+CI artifacts are attached to the run: `test-results`, `bridge-linux-amd64`,
+`bridge-linux-arm64`, `pqcauth-rehearsal-amd64`, and `pqcauth-rehearsal-arm64`.
+The two rehearsal evidence bundles and test logs were archived locally in
+`ci-artifacts/`; `ci-run.json` records the successful run and exact source SHA.
+No release tag was created and no candidate binary was deployed to public nodes.
+
+The candidate remains unactivated on public networks. These tests do not provide
+physical Ledger testing, live-counterparty IBC testing, a long-duration soak, or
+an independent security audit. The previously completed snapshot exercise belongs
+to the earlier candidate and has not been repeated with this commit.
