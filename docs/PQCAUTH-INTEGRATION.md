@@ -3,6 +3,9 @@
 Status: development candidate for the GitHub development branch. Not deployed
 to a public network and not approved for mainnet activation.
 
+Latest build repairs and packaged-binary lifecycle/outage evidence:
+[2026-10-27 follow-up](PQCAUTH-FOLLOWUP-20261027.md).
+
 Branch: `feature/pqcauth-sdk-keyring`, based on CLI-warning commit `439218c`.
 Port commit: `71d6f06`. This ports module functionality, not the old app branch.
 Candidate version: `v1.1.0-dev`. Internal upgrade plan: `v1.1.0`.

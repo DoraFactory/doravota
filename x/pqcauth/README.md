@@ -150,8 +150,11 @@ and upgrade initialization. Local executable rehearsal has also exercised an
 old v1.0.0 node, a governance-triggered store upgrade, SDK-keyring enrollment,
 online protected signing, offline bundle transfer and restart. See
 [the integration record](../../docs/PQCAUTH-INTEGRATION.md).
-A current production-snapshot rehearsal and independent security review are
-still required before a release or public-network activation.
+An isolated mainnet-snapshot upgrade has passed; the packaged-binary restart
+and lifecycle evidence is recorded in the
+[2026-10-27 follow-up](../../docs/PQCAUTH-FOLLOWUP-20261027.md).
+Public-testnet acceptance, independent security review and approval of the
+final release remain outstanding. Snapshot preservation is not live IBC proof.
 
 ## Multisig support boundary (v1.1.0)
 
