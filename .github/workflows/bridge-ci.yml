@@ -42,6 +42,8 @@ jobs:
 
   linux:
     needs: tests
+    env:
+      ALLOW_PRERELEASE: ${{ (github.head_ref || github.ref_name) == 'feature/pqcauth-sdk-keyring' && 'true' || 'false' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -57,14 +59,11 @@ jobs:
       - name: Build and execute candidate artifact
         env:
           ARCH: ${{ matrix.arch }}
-          CANDIDATE_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
           export VERSION=$(cat VERSION)
-          export ALLOW_PRERELEASE=false
           notes_flags=()
-          if [[ "$CANDIDATE_BRANCH" == "feature/pqcauth-sdk-keyring" ]]; then
-            export ALLOW_PRERELEASE=true
+          if [[ "$ALLOW_PRERELEASE" == true ]]; then
             notes_flags+=(--allow-prerelease)
           fi
           python3 scripts/prepare-release-notes.py --tag "$VERSION" "${notes_flags[@]}" --output build-release-notes.md
@@ -81,8 +80,9 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
         run: |
-          docker build --platform "linux/${ARCH}" --build-arg GIT_VERSION="$(cat VERSION)" --build-arg COMMIT_SHA="$GITHUB_SHA" -t bridge-ci .
-          docker run --rm --platform "linux/${ARCH}" bridge-ci version
+          set -euo pipefail
+          docker build --platform "linux/${ARCH}" --build-arg GIT_VERSION="$(cat VERSION)" --build-arg COMMIT_SHA="$GITHUB_SHA" --build-arg ALLOW_PRERELEASE="$ALLOW_PRERELEASE" -t bridge-ci .
+          test "$(docker run --rm --platform "linux/${ARCH}" bridge-ci version)" = "$(cat VERSION)"
       - uses: actions/upload-artifact@v4
         with:
           name: bridge-linux-${{ matrix.arch }}
