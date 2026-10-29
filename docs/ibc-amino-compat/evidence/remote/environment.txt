@@ -1,0 +1,5 @@
+go version go1.26.5 linux/amd64
+linux
+amd64
+
+github.com/cosmos/ibc-go/v11 v11.2.0 => ./third_party/ibc-go

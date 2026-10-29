@@ -1,0 +1,7 @@
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.000s
+
+OK
+Required tests passed: TestVersionedUpgradeHandlerRegistration, TestUpgradeIdentityMatchesReleaseVersion, TestAminoUpgradeLifecycle, TestIBCCompatDescriptorOnlyChange, TestIBCCompatAminoEncoding, TestIBCCompatUnchangedSignBytes, TestIBCCompatCheckTx, TestLegacyWasmCodecRoundTripsAndHasNoHandlers, TestLegacyGrantsExportAndExpire, TestLegacyWasmStoredProposalDecode, TestLegacyWasmVotingProposalEndsWithoutHalting
+Required tests passed: TestAppStateDeterminism, TestAppImportExport, TestAppSimulationAfterImport

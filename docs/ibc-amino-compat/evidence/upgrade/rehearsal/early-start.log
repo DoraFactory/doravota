@@ -1,0 +1,29 @@
+panic: IBC Amino upgrade boundary: v1.0.1 not activated: need non-skipped committed plan at height 26, got v1.0.1/85; keep running the previous binary
+
+goroutine 1 [running]:
+github.com/DoraFactory/doravota/app.New({0x4f82878, 0x24ede5770720}, {0x4f8c8c0, 0x24ede56005d0}, {0x0?, 0x4ec7298?}, 0x1, 0x24ede55cf6e0, {0x7ffd92872dd3, 0x10}, ...)
+	github.com/DoraFactory/doravota/app/app.go:265 +0x5d25
+github.com/DoraFactory/doravota/cmd/dorad/cmd.appCreator.newApp({{{0x4f88058, 0x24ede40955c0}, {0x4fb4b28, 0x24ede4136b80}, {0x4f82a18, 0x24ede4095600}, 0x24ede3f24ee8}}, {0x4f82878, 0x24ede5770720}, {0x4f8c640, ...}, ...)
+	github.com/DoraFactory/doravota/cmd/dorad/cmd/root.go:312 +0xa77
+github.com/cosmos/cosmos-sdk/server.startApp(0x24ede5972d00, 0x24ede336d0c0, {0x4eba1e0, 0x0, 0x0, 0x0, 0x4eba1e8})
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/start.go:637 +0x175
+github.com/cosmos/cosmos-sdk/server.start(_, {{0x0, 0x0, 0x0}, {0x4f94368, 0x24ede569a570}, 0x0, 0x0, {0x24ede569c040, 0x1d}, ...}, ...)
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/start.go:248 +0x465
+github.com/cosmos/cosmos-sdk/server.StartCmdWithOptions.func1.1()
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/start.go:210 +0x9e
+github.com/cosmos/cosmos-sdk/server.wrapCPUProfile(0x24ede5972d00, 0x24ede5d779b8)
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/start.go:594 +0x19b
+github.com/cosmos/cosmos-sdk/server.StartCmdWithOptions.func1(0x24ede3ba5208, {0x24ede55f41e0?, 0x0?, 0xf?})
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/start.go:209 +0x365
+github.com/spf13/cobra.(*Command).execute(0x24ede3ba5208, {0x24ede55f40f0, 0xf, 0xf})
+	github.com/spf13/cobra@v1.10.2/command.go:1015 +0xb14
+github.com/spf13/cobra.(*Command).ExecuteC(0x24ede3e89508)
+	github.com/spf13/cobra@v1.10.2/command.go:1148 +0x465
+github.com/spf13/cobra.(*Command).Execute(...)
+	github.com/spf13/cobra@v1.10.2/command.go:1071
+github.com/spf13/cobra.(*Command).ExecuteContext(...)
+	github.com/spf13/cobra@v1.10.2/command.go:1064
+github.com/cosmos/cosmos-sdk/server/cmd.Execute(0x24ede3e89508, {0x0, 0x0}, {0x24ede4144540, 0xb})
+	github.com/cosmos/cosmos-sdk@v0.55.0/server/cmd/execute.go:35 +0x1c7
+main.main()
+	github.com/DoraFactory/doravota/cmd/dorad/main.go:14 +0x2a

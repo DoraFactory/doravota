@@ -1,0 +1,2 @@
+1.64.0
+PASS: generated tx.pb.go is reproducible

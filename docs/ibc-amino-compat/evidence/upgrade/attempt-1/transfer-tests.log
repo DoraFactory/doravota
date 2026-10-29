@@ -1,0 +1,9 @@
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer	6.126s
+?   	github.com/cosmos/ibc-go/v11/modules/apps/transfer/client/cli	[no test files]
+?   	github.com/cosmos/ibc-go/v11/modules/apps/transfer/internal/events	[no test files]
+?   	github.com/cosmos/ibc-go/v11/modules/apps/transfer/internal/telemetry	[no test files]
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer/internal/types	0.025s
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer/keeper	23.437s
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer/simulation	0.032s
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer/types	2.503s
+ok  	github.com/cosmos/ibc-go/v11/modules/apps/transfer/v2	3.908s

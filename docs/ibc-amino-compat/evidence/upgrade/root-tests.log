@@ -1,0 +1,27 @@
+ok  	github.com/DoraFactory/doravota/app	1.075s
+?   	github.com/DoraFactory/doravota/app/params	[no test files]
+ok  	github.com/DoraFactory/doravota/app/upgrades/amino	0.024s
+ok  	github.com/DoraFactory/doravota/app/upgrades/sdk055	0.046s
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_3_0	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_3_1	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_0	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_2	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_3	[no test files]
+?   	github.com/DoraFactory/doravota/app/upgrades/v0_4_4	[no test files]
+ok  	github.com/DoraFactory/doravota/app/upgrades/v0_5_0	0.132s
+ok  	github.com/DoraFactory/doravota/app/wasmarchive	0.024s
+?   	github.com/DoraFactory/doravota/cmd/dorad	[no test files]
+ok  	github.com/DoraFactory/doravota/cmd/dorad/cmd	0.199s
+?   	github.com/DoraFactory/doravota/cmd/store-compare	[no test files]
+?   	github.com/DoraFactory/doravota/cmd/store-report	[no test files]
+?   	github.com/DoraFactory/doravota/docs	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/network	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/nullify	[no test files]
+?   	github.com/DoraFactory/doravota/testutil/sample	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/codec	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/errors	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/internal/math	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/cosmos-sdk-x-group-v055-compat/internal/orm	[no test files]
+?   	github.com/DoraFactory/doravota/third_party/wasm-legacy-codec	[no test files]
+?   	github.com/DoraFactory/doravota/types	[no test files]

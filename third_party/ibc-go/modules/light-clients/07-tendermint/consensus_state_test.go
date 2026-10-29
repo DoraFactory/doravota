@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package tendermint_test
+
+import (
+	"crypto/sha256"
+	"time"
+
+	commitmenttypes "github.com/cosmos/ibc-go/v11/modules/core/23-commitment/types"
+	"github.com/cosmos/ibc-go/v11/modules/core/exported"
+	ibctm "github.com/cosmos/ibc-go/v11/modules/light-clients/07-tendermint"
+)
+
+var validRoot = sha256.Sum256([]byte("app_hash"))
+
+func (s *TendermintTestSuite) TestConsensusStateValidateBasic() {
+	testCases := []struct {
+		msg            string
+		consensusState *ibctm.ConsensusState
+		expectPass     bool
+	}{
+		{
+			"success",
+			&ibctm.ConsensusState{
+				Timestamp:          s.now,
+				Root:               commitmenttypes.NewMerkleRoot(validRoot[:]),
+				NextValidatorsHash: s.valsHash,
+			},
+			true,
+		},
+		{
+			"success with sentinel",
+			&ibctm.ConsensusState{
+				Timestamp:          s.now,
+				Root:               commitmenttypes.NewMerkleRoot([]byte(ibctm.SentinelRoot)),
+				NextValidatorsHash: s.valsHash,
+			},
+			true,
+		},
+		{
+			"root is nil",
+			&ibctm.ConsensusState{
+				Timestamp:          s.now,
+				Root:               commitmenttypes.MerkleRoot{},
+				NextValidatorsHash: s.valsHash,
+			},
+			false,
+		},
+		{
+			"root is empty",
+			&ibctm.ConsensusState{
+				Timestamp:          s.now,
+				Root:               commitmenttypes.MerkleRoot{},
+				NextValidatorsHash: s.valsHash,
+			},
+			false,
+		},
+		{
+			"nextvalshash is invalid",
+			&ibctm.ConsensusState{
+				Timestamp:          s.now,
+				Root:               commitmenttypes.NewMerkleRoot(validRoot[:]),
+				NextValidatorsHash: []byte("hi"),
+			},
+			false,
+		},
+
+		{
+			"timestamp is zero",
+			&ibctm.ConsensusState{
+				Timestamp:          time.Time{},
+				Root:               commitmenttypes.NewMerkleRoot(validRoot[:]),
+				NextValidatorsHash: s.valsHash,
+			},
+			false,
+		},
+	}
+
+	for i, tc := range testCases {
+		s.Run(tc.msg, func() {
+			// check just to increase coverage
+			s.Require().Equal(exported.Tendermint, tc.consensusState.ClientType())
+			s.Require().Equal(tc.consensusState.GetRoot(), tc.consensusState.Root)
+
+			err := tc.consensusState.ValidateBasic()
+			if tc.expectPass {
+				s.Require().NoError(err, "valid test case %d failed: %s", i, tc.msg)
+			} else {
+				s.Require().Error(err, "invalid test case %d passed: %s", i, tc.msg)
+			}
+		})
+	}
+}

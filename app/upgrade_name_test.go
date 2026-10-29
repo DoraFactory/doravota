@@ -14,6 +14,7 @@ import (
 	"cosmossdk.io/core/header"
 	"encoding/binary"
 	"github.com/DoraFactory/doravota/app"
+	aminoUpgrade "github.com/DoraFactory/doravota/app/upgrades/amino"
 	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -30,7 +31,7 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 	instance := app.New(log.NewNopLogger(), db, nil, true, map[int64]bool{},
 		simulationHome(t, opts), 0, app.MakeEncodingConfig(), opts,
 		baseapp.SetChainID("upgrade-name-test"))
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "v1.0.0"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "v1.0.0", "v1.0.1"} {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
 	require.False(t, instance.UpgradeKeeper.HasHandler("wasm-retirement"))
@@ -82,7 +83,8 @@ func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
 	raw, err := os.ReadFile("../VERSION")
 	require.NoError(t, err)
 	name := strings.TrimSpace(string(raw))
-	require.Equal(t, "v1.0.0", name)
-	require.Equal(t, name, sdk055.UpgradeName)
-	require.Equal(t, name, wasmarchive.UpgradeName)
+	require.Equal(t, "v1.0.1", name)
+	require.Equal(t, name, aminoUpgrade.UpgradeName)
+	require.Equal(t, "v1.0.0", sdk055.UpgradeName)
+	require.Equal(t, "v1.0.0", wasmarchive.UpgradeName)
 }

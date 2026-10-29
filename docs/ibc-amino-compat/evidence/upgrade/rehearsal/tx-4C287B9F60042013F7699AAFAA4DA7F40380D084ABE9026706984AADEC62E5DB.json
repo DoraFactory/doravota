@@ -1,0 +1,162 @@
+{
+  "hash": "4C287B9F60042013F7699AAFAA4DA7F40380D084ABE9026706984AADEC62E5DB",
+  "height": "8",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "EiAKHi9jb3Ntb3MuZ292LnYxLk1zZ1ZvdGVSZXNwb25zZQ==",
+    "log": "",
+    "info": "",
+    "gas_wanted": "600000",
+    "gas_used": "52901",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "100000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq/1",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "3hkW8+mAaVFmCaeCQ87o6WmfI5Sj+k5pQxMwFV9ULFdCj93ihtBlsVnNd6JoIMu+zr42Gyvyr5hQpwWHiiNuaw==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.gov.v1.MsgVote",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "gov",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "proposal_vote",
+        "attributes": [
+          {
+            "key": "voter",
+            "value": "dora1a68jp3c50srz8ecj2lzl6q9rf6mrtejcyvetvq",
+            "index": true
+          },
+          {
+            "key": "option",
+            "value": "[{\"option\":1,\"weight\":\"1.000000000000000000\"}]",
+            "index": true
+          },
+          {
+            "key": "proposal_id",
+            "value": "1",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Ck0KSwoWL2Nvc21vcy5nb3YudjEuTXNnVm90ZRIxCAESK2RvcmExYTY4anAzYzUwc3J6OGVjajJsemw2cTlyZjZtcnRlamN5dmV0dnEYARJpClAKRgofL2Nvc21vcy5jcnlwdG8uc2VjcDI1NmsxLlB1YktleRIjCiECQKATqxvqJeXQ/DNPNX8P4HYNpjbzzZrzrKsj33iiPVYSBAoCCAEYARIVCg8KBXBlYWthEgYxMDAwMDAQwM8kGkDeGRbz6YBpUWYJp4JDzujpaZ8jlKP6TmlDEzAVX1QsV0KP3eKG0GWxWc13omggy77OvjYbK/KvmFCnBYeKI25r"
+}

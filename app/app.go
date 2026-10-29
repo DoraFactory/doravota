@@ -9,6 +9,7 @@ import (
 	"cosmossdk.io/log/v2"
 	"encoding/json"
 	"fmt"
+	aminoUpgrade "github.com/DoraFactory/doravota/app/upgrades/amino"
 	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -259,6 +260,9 @@ func New(
 	}
 	if err := wasmarchive.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
 		panic(fmt.Errorf("Wasm retirement source boundary: %w", err))
+	}
+	if err := aminoUpgrade.ValidateBoundary(logger, db, homePath, skipUpgradeHeights); err != nil {
+		panic(fmt.Errorf("IBC Amino upgrade boundary: %w", err))
 	}
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
@@ -707,6 +711,16 @@ func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.
 			return nil, fmt.Errorf("archive activation is required before block execution")
 		}
 	}
+	active, err := aminoUpgrade.IsActive(ctx, app.keys[upgradetypes.StoreKey])
+	if err != nil {
+		return nil, err
+	}
+	if !active {
+		plan, err := app.UpgradeKeeper.GetUpgradePlan(ctx)
+		if err != nil || plan.Name != aminoUpgrade.UpgradeName || plan.Height != ctx.BlockHeight() || app.UpgradeKeeper.IsSkipHeight(plan.Height) {
+			return nil, fmt.Errorf("%s activation required before block execution", aminoUpgrade.UpgradeName)
+		}
+	}
 	result, err := app.mm.PreBlock(ctx)
 	if err != nil {
 		return nil, err
@@ -718,6 +732,10 @@ func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.
 	_, live := versions[wasmarchive.StoreKey]
 	if versions[wasmarchive.GenesisKey] != 1 || live {
 		return nil, fmt.Errorf("inconsistent Wasm archive activation")
+	}
+	active, err = aminoUpgrade.IsActive(ctx, app.keys[upgradetypes.StoreKey])
+	if err != nil || !active {
+		return nil, fmt.Errorf("%s activation did not complete: %v", aminoUpgrade.UpgradeName, err)
 	}
 	return result, nil
 }
@@ -753,6 +771,7 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	if err := wasmarchive.InitGenesis(ctx, app.keys[wasmarchive.StoreKey], genesisState[wasmarchive.GenesisKey]); err != nil {
 		return nil, err
 	}
+	aminoUpgrade.InitGenesis(ctx, app.keys[upgradetypes.StoreKey])
 	return response, nil
 }
 
@@ -903,6 +922,13 @@ func (app *App) ModuleManager() *module.Manager {
 }
 
 func (app *App) setupUpgradeHandlers() {
+	app.UpgradeKeeper.SetUpgradeHandler(aminoUpgrade.UpgradeName,
+		func(_ context.Context, plan upgradetypes.Plan, fromVM module.VersionMap) (module.VersionMap, error) {
+			if plan.Name != aminoUpgrade.UpgradeName || fromVM[wasmarchive.GenesisKey] != 1 {
+				return nil, fmt.Errorf("%s requires archived v1.0.0 state", aminoUpgrade.UpgradeName)
+			}
+			return fromVM, nil // no module migration, StoreLoader, or store layout change
+		})
 	// Recognize completed upgrades without permitting their migrations to run again.
 	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0"} {
 		app.UpgradeKeeper.SetUpgradeHandler(name, func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {

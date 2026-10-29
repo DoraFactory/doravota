@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [v1.0.1]
+Coordinated IBC Amino compatibility upgrade from v1.0.0. Plan name, tag, binary version and Cosmovisor directory: `v1.0.1`.
+- Omit default `use_aliasing: false` from IBC MsgTransfer Amino signing JSON. Preserve field 10, explicit true, Direct signing, routing and storage layout.
+- Register a no-migration upgrade handler that retains the module version map. The SDK records normal upgrade completion and protocol-version metadata.
+- Reject premature startup on existing databases unless the committed v1.0.1 plan and halted upgrade-info match at height H-1; allow restart after the committed completion record. Fresh chains get an activation marker in the existing upgrade store.
+- Old Amino IBC signatures containing explicit false must be recreated with an updated CLI. Do not use this binary to replay pre-v1.0.1 history. Stage it under `cosmovisor/upgrades/v1.0.1/bin/dorad`, not as the current binary before activation.
+- See docs/VALIDATOR-1.0.1.md and docs/ibc-amino-compat/UPGRADE-REPORT.md for operational boundaries and actual validation status. Hardware wallets, public-network IBC and production snapshot acceptance remain separate release gates.
+
 ## [v1.0.0]
 Coordinated upgrade from 0.5.0. Release tag and binary version: `v1.0.0`; governance upgrade plan and Cosmovisor directory: `v1.0.0`.
 - Upgrade to Cosmos SDK 0.55.0 and CometBFT 0.40.0. Existing consensus key types remain unchanged; this release does not activate ML-DSA consensus or add a custom pqcauth module.

@@ -1,0 +1,43 @@
+=== RUN   TestCommittedBoundary
+=== RUN   TestCommittedBoundary/early
+=== RUN   TestCommittedBoundary/boundary
+=== RUN   TestCommittedBoundary/no_local_halt_file
+=== RUN   TestCommittedBoundary/skip_prohibited
+=== RUN   TestCommittedBoundary/wrong_plan
+=== RUN   TestCommittedBoundary/missed_boundary
+=== RUN   TestCommittedBoundary/local_file_alone
+=== RUN   TestCommittedBoundary/completed_restart
+=== RUN   TestCommittedBoundary/invalid_future_completion
+=== RUN   TestCommittedBoundary/new_chain_restart
+=== RUN   TestCommittedBoundary/invalid_marker
+=== RUN   TestCommittedBoundary/mismatched_local_height
+--- PASS: TestCommittedBoundary (0.00s)
+    --- PASS: TestCommittedBoundary/early (0.00s)
+    --- PASS: TestCommittedBoundary/boundary (0.00s)
+    --- PASS: TestCommittedBoundary/no_local_halt_file (0.00s)
+    --- PASS: TestCommittedBoundary/skip_prohibited (0.00s)
+    --- PASS: TestCommittedBoundary/wrong_plan (0.00s)
+    --- PASS: TestCommittedBoundary/missed_boundary (0.00s)
+    --- PASS: TestCommittedBoundary/local_file_alone (0.00s)
+    --- PASS: TestCommittedBoundary/completed_restart (0.00s)
+    --- PASS: TestCommittedBoundary/invalid_future_completion (0.00s)
+    --- PASS: TestCommittedBoundary/new_chain_restart (0.00s)
+    --- PASS: TestCommittedBoundary/invalid_marker (0.00s)
+    --- PASS: TestCommittedBoundary/mismatched_local_height (0.00s)
+PASS
+ok  	github.com/DoraFactory/doravota/app/upgrades/amino	0.024s
+=== RUN   TestAminoUpgradeLifecycle
+    amino_upgrade_test.go:39: 
+        	Error Trace:	/src/app/amino_upgrade_test.go:39
+        	Error:      	Not equal: 
+        	            	expected: int(20)
+        	            	actual  : int64(0)
+        	Test:       	TestAminoUpgradeLifecycle
+--- FAIL: TestAminoUpgradeLifecycle (0.03s)
+=== RUN   TestVersionedUpgradeHandlerRegistration
+--- PASS: TestVersionedUpgradeHandlerRegistration (0.02s)
+=== RUN   TestUpgradeIdentityMatchesReleaseVersion
+--- PASS: TestUpgradeIdentityMatchesReleaseVersion (0.00s)
+FAIL
+FAIL	github.com/DoraFactory/doravota/app	0.077s
+FAIL

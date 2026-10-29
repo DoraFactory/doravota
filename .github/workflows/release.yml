@@ -48,14 +48,14 @@ jobs:
           set -euo pipefail
           GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
           mkdir -p release
-          # v1.0.0 distribution is limited to the validated Linux amd64 target.
+          # Distribution is limited to the validated Linux amd64 target.
           docker run --rm --platform linux/amd64 \
             -e VERSION -e COMMIT_SHA -e GOTOOLCHAIN=local \
             -v "$PWD:/src" -w /src "golang:${GO_VERSION}-alpine" \
             sh -ec 'apk add --no-cache bash binutils; bash scripts/build-bridge-release.sh'
           (cd release && sha256sum "dorad-${VERSION}-linux-amd64" "dorad-${VERSION}-linux-amd64.tar.gz" > sha256sum.txt)
-          printf 'version=%s\ncommit=%s\narch=linux/amd64\ngo=%s\nupgrade_plan=v1.0.0\n' \
-            "$VERSION" "$COMMIT_SHA" "$GO_VERSION" > release/build-info.txt
+          printf 'version=%s\ncommit=%s\narch=linux/amd64\ngo=%s\nupgrade_plan=%s\n' \
+            "$VERSION" "$COMMIT_SHA" "$GO_VERSION" "$VERSION" > release/build-info.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -1,0 +1,1 @@
+{"messages": [{"@type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade", "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9", "plan": {"name": "v1.0.1", "height": "85", "info": "isolated rehearsal"}}], "deposit": "1peaka", "metadata": "", "title": "Isolated v1.0.1 upgrade", "summary": "Temporary four-validator rehearsal only", "expedited": false}

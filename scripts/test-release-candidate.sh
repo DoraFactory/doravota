@@ -13,6 +13,11 @@ fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \
+ TestAminoUpgradeLifecycle \
+ TestIBCCompatDescriptorOnlyChange \
+ TestIBCCompatAminoEncoding \
+ TestIBCCompatUnchangedSignBytes \
+ TestIBCCompatCheckTx \
  TestLegacyWasmCodecRoundTripsAndHasNoHandlers \
  TestLegacyGrantsExportAndExpire \
  TestLegacyWasmStoredProposalDecode \

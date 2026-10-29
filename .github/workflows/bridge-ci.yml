@@ -3,7 +3,7 @@ name: SDK candidate validation
 on:
   workflow_dispatch:
   push:
-    branches: [feature/wasm-readonly-archive]
+    branches: [feature/wasm-readonly-archive, fix/v1.0.0-ibc-amino-compat]
   pull_request:
     paths:
       - '**/*.go'

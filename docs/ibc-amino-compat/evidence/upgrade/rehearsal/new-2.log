@@ -1,0 +1,143 @@
+[90m4:04AM[0m [32mINF[0m [1mstarting node with ABCI CometBFT in-process[0m [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mmultiAppConn [36mmodule=[0mproxy [36mmsg=[0m"Starting multiAppConn service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mconnection=[0mquery [36mimpl=[0mlocalClient [36mmodule=[0mabci-client [36mmsg=[0m"Starting localClient service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mconnection=[0msnapshot [36mimpl=[0mlocalClient [36mmodule=[0mabci-client [36mmsg=[0m"Starting localClient service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mconnection=[0mmempool [36mimpl=[0mlocalClient [36mmodule=[0mabci-client [36mmsg=[0m"Starting localClient service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mconnection=[0mconsensus [36mimpl=[0mlocalClient [36mmodule=[0mabci-client [36mmsg=[0m"Starting localClient service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mEventBus [36mmodule=[0mevents [36mmsg=[0m"Starting EventBus service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mPubSub [36mmodule=[0mpubsub [36mmsg=[0m"Starting PubSub service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mIndexerService [36mmodule=[0mtxindex [36mmsg=[0m"Starting IndexerService service"
+[90m4:04AM[0m [32mINF[0m [1mABCI Handshake App Info[0m [36mhash=[0mB90DCF290E426208EFBD9568150019808537A4C910C60C4AECAF79B2209D590A [36mheight=[0m84 [36mmodule=[0mconsensus [36mprotocol-version=[0m0 [36msoftware-version=[0mv1.0.1
+[90m4:04AM[0m [32mINF[0m [1mABCI Replay Blocks[0m [36mappHeight=[0m84 [36mmodule=[0mconsensus [36mstateHeight=[0m84 [36mstoreHeight=[0m85
+[90m4:04AM[0m [32mINF[0m [1mReplay last block using real app[0m [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mapplying upgrade "v1.0.1" at height: 85[0m [36mmodule=[0mx/upgrade
+[90m4:04AM[0m [32mINF[0m [1mStarting upgrade[0m [36mheight=[0m85 [36mmodule=[0mbaseapp [36mname=[0mv1.0.1
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0m2D794621F32E5EA1A496B1FF7B7C53CFB745764E593D69A3A24CCBAF0BF77702 [36mheight=[0m85 [36mmodule=[0mconsensus [36mnum_txs_res=[0m0 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0m2D794621F32E5EA1A496B1FF7B7C53CFB745764E593D69A3A24CCBAF0BF77702 [36mheight=[0m85 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0mB90DCF290E426208EFBD9568150019808537A4C910C60C4AECAF79B2209D590A [36mheight=[0m85 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mCompleted ABCI Handshake - CometBFT and App are synced[0m [36mappHash=[0m2D794621F32E5EA1A496B1FF7B7C53CFB745764E593D69A3A24CCBAF0BF77702 [36mappHeight=[0m84 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mVersion info[0m [36mabci=[0m2.0.0 [36mblock=[0m11 [36mcommit_hash=[0m [36mmodule=[0mserver [36mp2p=[0m8 [36mtendermint_version=[0m0.39.0
+[90m4:04AM[0m [32mINF[0m [1mThis node is a validator[0m [36maddr=[0m749222455C06CEDB679A6C382A3B018999E71CFF [36mmodule=[0mconsensus [36mpubKey=[0mPubKeyEd25519{D20EB321E058326B1D1055FDC2FCD6A988BA9A95CC324637CB0658E0E692464D}
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m85 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mP2P Node ID[0m [36mID=[0m62967b113d26fb971962e69e2f4175fce99a92b8 [36mfile=[0m/work/run2/node2/config/node_key.json [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mAdding persistent peers[0m [36maddrs=[0m["85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:33751","4372950684dc98f731c04c3d349afa0234d51dd1@127.0.0.1:59757","7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:56139"] [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mAdding unconditional peer ids[0m [36mids=[0m[] [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mAdd our address to book[0m [36maddr=[0m62967b113d26fb971962e69e2f4175fce99a92b8@127.0.0.1:47717 [36mbook=[0m/work/run2/node2/config/addrbook.json [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mNode [36mmodule=[0mserver [36mmsg=[0m"Starting Node service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0m"P2P Switch" [36mmodule=[0mp2p [36mmsg=[0m"Starting P2P Switch service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mMempool [36mmodule=[0mmempool [36mmsg=[0m"Starting Mempool service"
+[90m4:04AM[0m [32mINF[0m [1mStarting reactor in sync mode: tx propagation will start once sync completes[0m [36mmodule=[0mmempool
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mBlocksync [36mmodule=[0mblocksync [36mmsg=[0m"Starting Blocksync service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mBlockPool [36mmodule=[0mblocksync [36mmsg=[0m"Starting BlockPool service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mConsensusReactor [36mmodule=[0mconsensus [36mmsg=[0m"Starting Consensus service"
+[90m4:04AM[0m [32mINF[0m [1mStarting reactor in sync mode: consensus protocols will start once sync completes[0m [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mEvidence [36mmodule=[0mevidence [36mmsg=[0m"Starting Evidence service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mStateSync [36mmodule=[0mstatesync [36mmsg=[0m"Starting StateSync service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mPEX [36mmodule=[0mpex [36mmsg=[0m"Starting PEX service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mbook=[0m/work/run2/node2/config/addrbook.json [36mimpl=[0mAddrBook [36mmodule=[0mp2p [36mmsg=[0m"Starting AddrBook service"
+[90m4:04AM[0m [32mINF[0m [1mserve[0m [36mmodule=[0mrpc-server [36mmsg=[0m"Starting RPC HTTP server on 127.0.0.1:57981"
+[90m4:04AM[0m [32mINF[0m [1mSaving AddrBook to file[0m [36mbook=[0m/work/run2/node2/config/addrbook.json [36mmodule=[0mp2p [36msize=[0m3
+[90m4:04AM[0m [32mINF[0m [1mStarting blocksync pool routine[0m [36mmodule=[0mblocksync [36mstateSynced=[0mfalse
+[90m4:04AM[0m [32mINF[0m [1mEnsure peers[0m [36mmodule=[0mpex [36mnumDialing=[0m0 [36mnumInPeers=[0m0 [36mnumOutPeers=[0m0 [36mnumToDial=[0m10
+[90m4:04AM[0m [32mINF[0m [1mReconnecting to peer[0m [36maddr=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:33751 [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mError reconnecting to peer. Trying again[0m [36maddr=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:33751 [36merr=[0m"dial tcp 127.0.0.1:33751: connect: connection refused" [36mmodule=[0mp2p [36mtries=[0m0
+[90m4:04AM[0m [32mINF[0m [1mReconnecting to peer[0m [36maddr=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:56139 [36mmodule=[0mp2p
+[90m4:04AM[0m [32mINF[0m [1mError reconnecting to peer. Trying again[0m [36maddr=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:56139 [36merr=[0m"dial tcp 127.0.0.1:56139: connect: connection refused" [36mmodule=[0mp2p [36mtries=[0m0
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:59757} 4372950684dc98f731c04c3d349afa0234d51dd1 out}" [36mmodule=[0mp2p [36mmsg=[0m"Starting Peer service" [36mpeer=[0m4372950684dc98f731c04c3d349afa0234d51dd1@127.0.0.1:59757
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mMConn{127.0.0.1:59757} [36mmodule=[0mp2p [36mmsg=[0m"Starting MConnection service" [36mpeer=[0m4372950684dc98f731c04c3d349afa0234d51dd1@127.0.0.1:59757
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:53444} 85213a008dba6ec6f114276c664ef450ceb0686f in}" [36mmodule=[0mp2p [36mmsg=[0m"Starting Peer service" [36mpeer=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:53444
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mMConn{127.0.0.1:53444} [36mmodule=[0mp2p [36mmsg=[0m"Starting MConnection service" [36mpeer=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:53444
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:53456} 7af9340b9970cf15c697e65598b7d7f477691280 in}" [36mmodule=[0mp2p [36mmsg=[0m"Starting Peer service" [36mpeer=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:53456
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mMConn{127.0.0.1:53456} [36mmodule=[0mp2p [36mmsg=[0m"Starting MConnection service" [36mpeer=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:53456
+[90m4:04AM[0m [32mINF[0m [1mTime to switch to consensus mode![0m [36mheight=[0m86 [36mmodule=[0mblocksync
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mBlockPool [36mmodule=[0mblocksync [36mmsg=[0m"Stopping BlockPool service"
+[90m4:04AM[0m [32mINF[0m [1menabling inbound and outbound transactions[0m [36mmodule=[0mmempool
+[90m4:04AM[0m [32mINF[0m [1mSwitchToConsensus[0m [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mConsensusState [36mmodule=[0mconsensus [36mmsg=[0m"Starting State service"
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mbaseWAL [36mmodule=[0mconsensus [36mmsg=[0m"Starting baseWAL service" [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mGroup [36mmodule=[0mconsensus [36mmsg=[0m"Starting Group service" [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mservice start[0m [36mimpl=[0mTimeoutTicker [36mmodule=[0mconsensus [36mmsg=[0m"Starting TimeoutTicker service"
+[90m4:04AM[0m [32mINF[0m [1mSearching for height[0m [36mheight=[0m86 [36mmax=[0m0 [36mmin=[0m0 [36mmodule=[0mconsensus [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mSearching for height[0m [36mheight=[0m85 [36mmax=[0m0 [36mmin=[0m0 [36mmodule=[0mconsensus [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mFound[0m [36mheight=[0m85 [36mindex=[0m0 [36mmodule=[0mconsensus [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mCatchup by replaying consensus messages[0m [36mheight=[0m86 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mReplay: Done[0m [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mTimed out[0m [36mdur=[0m-506.710476 [36mheight=[0m86 [36mmodule=[0mconsensus [36mround=[0m0 [36mstep=[0mRoundStepNewHeight
+[90m4:04AM[0m [32mINF[0m [1mreceived proposal[0m [36mmodule=[0mconsensus [36mproposal=[0m"Proposal{86/0 (2E87D9587C993BAA3026BDE79481CECACB680D0E53C33F132334C8F7EA94B342:1:EF21DD3A80EA, -1) E380486F89B7 @ 2026-10-28T04:04:44.339344228Z}" [36mproposer=[0m98DD43C71B337A3E4ED6BCDA073618601D7F1D08
+[90m4:04AM[0m [32mINF[0m [1mreceived complete proposal block[0m [36mhash=[0m2E87D9587C993BAA3026BDE79481CECACB680D0E53C33F132334C8F7EA94B342 [36mheight=[0m86 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mfinalizing commit of block[0m [36mhash=[0m2E87D9587C993BAA3026BDE79481CECACB680D0E53C33F132334C8F7EA94B342 [36mheight=[0m86 [36mmodule=[0mconsensus [36mnum_txs=[0m0 [36mroot=[0m2D794621F32E5EA1A496B1FF7B7C53CFB745764E593D69A3A24CCBAF0BF77702
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0m0252F64418BDEFC31040DCA012E9CAC1A5942746C6177D8EC6B815180D8B49AB [36mheight=[0m86 [36mmodule=[0mstate [36mnum_txs_res=[0m0 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0m0252F64418BDEFC31040DCA012E9CAC1A5942746C6177D8EC6B815180D8B49AB [36mheight=[0m86 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0m2D794621F32E5EA1A496B1FF7B7C53CFB745764E593D69A3A24CCBAF0BF77702 [36mheight=[0m86 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m86 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mTimed out[0m [36mdur=[0m489.311745 [36mheight=[0m87 [36mmodule=[0mconsensus [36mround=[0m0 [36mstep=[0mRoundStepNewHeight
+[90m4:04AM[0m [32mINF[0m [1mreceived proposal[0m [36mmodule=[0mconsensus [36mproposal=[0m"Proposal{87/0 (D1C7009B300B6D59920FE8E003F60A9BDD7D9362B8A30D29ED4B1CA0DD974FEC:1:35D67B4A9F34, -1) BF6D7CB0F9F0 @ 2026-10-28T04:04:45.145704855Z}" [36mproposer=[0m9CC0DD0B05A85DFC8158621D7B7FB7D83AA085F1
+[90m4:04AM[0m [32mINF[0m [1mreceived complete proposal block[0m [36mhash=[0mD1C7009B300B6D59920FE8E003F60A9BDD7D9362B8A30D29ED4B1CA0DD974FEC [36mheight=[0m87 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mfinalizing commit of block[0m [36mhash=[0mD1C7009B300B6D59920FE8E003F60A9BDD7D9362B8A30D29ED4B1CA0DD974FEC [36mheight=[0m87 [36mmodule=[0mconsensus [36mnum_txs=[0m0 [36mroot=[0m0252F64418BDEFC31040DCA012E9CAC1A5942746C6177D8EC6B815180D8B49AB
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0mCC0414352E77D2C7C673E168A809681DFC00B720DEEDD189B4C6B0E7A8690CB1 [36mheight=[0m87 [36mmodule=[0mstate [36mnum_txs_res=[0m0 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0mCC0414352E77D2C7C673E168A809681DFC00B720DEEDD189B4C6B0E7A8690CB1 [36mheight=[0m87 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0m0252F64418BDEFC31040DCA012E9CAC1A5942746C6177D8EC6B815180D8B49AB [36mheight=[0m87 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m87 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mTimed out[0m [36mdur=[0m490.958051 [36mheight=[0m88 [36mmodule=[0mconsensus [36mround=[0m0 [36mstep=[0mRoundStepNewHeight
+[90m4:04AM[0m [32mINF[0m [1mreceived proposal[0m [36mmodule=[0mconsensus [36mproposal=[0m"Proposal{88/0 (4F2A10E07107FD2051515961EF661A439438169567600CA2E418BB2D397899E1:1:8816563E1A77, -1) 9AB59A0F25B5 @ 2026-10-28T04:04:45.956226742Z}" [36mproposer=[0mA7EA0E2B3786FEE859304152965ECC9BAE148CA3
+[90m4:04AM[0m [32mINF[0m [1mreceived complete proposal block[0m [36mhash=[0m4F2A10E07107FD2051515961EF661A439438169567600CA2E418BB2D397899E1 [36mheight=[0m88 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mfinalizing commit of block[0m [36mhash=[0m4F2A10E07107FD2051515961EF661A439438169567600CA2E418BB2D397899E1 [36mheight=[0m88 [36mmodule=[0mconsensus [36mnum_txs=[0m0 [36mroot=[0mCC0414352E77D2C7C673E168A809681DFC00B720DEEDD189B4C6B0E7A8690CB1
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0m779E514FCBB8DB20EF8456FA74736B88B4A2369A392A7D24AB5F3152846B1EA9 [36mheight=[0m88 [36mmodule=[0mstate [36mnum_txs_res=[0m0 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0m779E514FCBB8DB20EF8456FA74736B88B4A2369A392A7D24AB5F3152846B1EA9 [36mheight=[0m88 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0mCC0414352E77D2C7C673E168A809681DFC00B720DEEDD189B4C6B0E7A8690CB1 [36mheight=[0m88 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m88 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mTimed out[0m [36mdur=[0m489.306101 [36mheight=[0m89 [36mmodule=[0mconsensus [36mround=[0m0 [36mstep=[0mRoundStepNewHeight
+[90m4:04AM[0m [32mINF[0m [1mreceived proposal[0m [36mmodule=[0mconsensus [36mproposal=[0m"Proposal{89/0 (4E710B8B3F39D1BB68B354B60CE5A724BD0FE3491E63C66F721D050798E13BAB:1:9D3BF8FD1B74, -1) 677A641F679A @ 2026-10-28T04:04:46.768607114Z}" [36mproposer=[0m749222455C06CEDB679A6C382A3B018999E71CFF
+[90m4:04AM[0m [32mINF[0m [1mreceived complete proposal block[0m [36mhash=[0m4E710B8B3F39D1BB68B354B60CE5A724BD0FE3491E63C66F721D050798E13BAB [36mheight=[0m89 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mfinalizing commit of block[0m [36mhash=[0m4E710B8B3F39D1BB68B354B60CE5A724BD0FE3491E63C66F721D050798E13BAB [36mheight=[0m89 [36mmodule=[0mconsensus [36mnum_txs=[0m0 [36mroot=[0m779E514FCBB8DB20EF8456FA74736B88B4A2369A392A7D24AB5F3152846B1EA9
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0m83D8B833FF57C6975597759BDFC039236E81C6DFC62618ADA624327E314C94C9 [36mheight=[0m89 [36mmodule=[0mstate [36mnum_txs_res=[0m0 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0m83D8B833FF57C6975597759BDFC039236E81C6DFC62618ADA624327E314C94C9 [36mheight=[0m89 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0m779E514FCBB8DB20EF8456FA74736B88B4A2369A392A7D24AB5F3152846B1EA9 [36mheight=[0m89 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m89 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mTimed out[0m [36mdur=[0m490.738955 [36mheight=[0m90 [36mmodule=[0mconsensus [36mround=[0m0 [36mstep=[0mRoundStepNewHeight
+[90m4:04AM[0m [32mINF[0m [1mreceived proposal[0m [36mmodule=[0mconsensus [36mproposal=[0m"Proposal{90/0 (CB855B9CABC91F3F8B59E69E65703BECC821C8529DCD2548273B06B2D927934C:1:1C8F1077AF1C, -1) 306D3C1EE37F @ 2026-10-28T04:04:47.57039925Z}" [36mproposer=[0m98DD43C71B337A3E4ED6BCDA073618601D7F1D08
+[90m4:04AM[0m [32mINF[0m [1mreceived complete proposal block[0m [36mhash=[0mCB855B9CABC91F3F8B59E69E65703BECC821C8529DCD2548273B06B2D927934C [36mheight=[0m90 [36mmodule=[0mconsensus
+[90m4:04AM[0m [32mINF[0m [1mfinalizing commit of block[0m [36mhash=[0mCB855B9CABC91F3F8B59E69E65703BECC821C8529DCD2548273B06B2D927934C [36mheight=[0m90 [36mmodule=[0mconsensus [36mnum_txs=[0m1 [36mroot=[0m83D8B833FF57C6975597759BDFC039236E81C6DFC62618ADA624327E314C94C9
+[90m4:04AM[0m [32mINF[0m [1mfinalized block[0m [36mblock_app_hash=[0m198A98F71E405644C464431837A9538516E9318D1330BBA1023DC1F5099280E1 [36mheight=[0m90 [36mmodule=[0mstate [36mnum_txs_res=[0m1 [36mnum_val_updates=[0m0
+[90m4:04AM[0m [32mINF[0m [1mexecuted block[0m [36mapp_hash=[0m198A98F71E405644C464431837A9538516E9318D1330BBA1023DC1F5099280E1 [36mheight=[0m90 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mcommitted state[0m [36mblock_app_hash=[0m83D8B833FF57C6975597759BDFC039236E81C6DFC62618ADA624327E314C94C9 [36mheight=[0m90 [36mmodule=[0mstate
+[90m4:04AM[0m [32mINF[0m [1mindexed block events[0m [36mheight=[0m90 [36mmodule=[0mtxindex
+[90m4:04AM[0m [32mINF[0m [1mcaught signal[0m [36mmodule=[0mserver [36msignal=[0mterminated
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mNode [36mmodule=[0mserver [36mmsg=[0m"Stopping Node service"
+[90m4:04AM[0m [32mINF[0m [1mStopping Node[0m [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mEventBus [36mmodule=[0mevents [36mmsg=[0m"Stopping EventBus service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mPubSub [36mmodule=[0mpubsub [36mmsg=[0m"Stopping PubSub service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mIndexerService [36mmodule=[0mtxindex [36mmsg=[0m"Stopping IndexerService service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0m"P2P Switch" [36mmodule=[0mp2p [36mmsg=[0m"Stopping P2P Switch service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:59757} 4372950684dc98f731c04c3d349afa0234d51dd1 out}" [36mmodule=[0mp2p [36mmsg=[0m"Stopping Peer service" [36mpeer=[0m4372950684dc98f731c04c3d349afa0234d51dd1@127.0.0.1:59757
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mMConn{127.0.0.1:59757} [36mmodule=[0mp2p [36mmsg=[0m"Stopping MConnection service" [36mpeer=[0m4372950684dc98f731c04c3d349afa0234d51dd1@127.0.0.1:59757
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:53444} 85213a008dba6ec6f114276c664ef450ceb0686f in}" [36mmodule=[0mp2p [36mmsg=[0m"Stopping Peer service" [36mpeer=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:53444
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mMConn{127.0.0.1:53444} [36mmodule=[0mp2p [36mmsg=[0m"Stopping MConnection service" [36mpeer=[0m85213a008dba6ec6f114276c664ef450ceb0686f@127.0.0.1:53444
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0m"Peer{MConn{127.0.0.1:53456} 7af9340b9970cf15c697e65598b7d7f477691280 in}" [36mmodule=[0mp2p [36mmsg=[0m"Stopping Peer service" [36mpeer=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:53456
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mMConn{127.0.0.1:53456} [36mmodule=[0mp2p [36mmsg=[0m"Stopping MConnection service" [36mpeer=[0m7af9340b9970cf15c697e65598b7d7f477691280@127.0.0.1:53456
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mConsensusReactor [36mmodule=[0mconsensus [36mmsg=[0m"Stopping Consensus service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mConsensusState [36mmodule=[0mconsensus [36mmsg=[0m"Stopping State service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mTimeoutTicker [36mmodule=[0mconsensus [36mmsg=[0m"Stopping TimeoutTicker service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mbaseWAL [36mmodule=[0mconsensus [36mmsg=[0m"Stopping baseWAL service" [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mGroup [36mmodule=[0mconsensus [36mmsg=[0m"Stopping Group service" [36mwal=[0m/work/run2/node2/data/cs.wal/wal
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mEvidence [36mmodule=[0mevidence [36mmsg=[0m"Stopping Evidence service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mStateSync [36mmodule=[0mstatesync [36mmsg=[0m"Stopping StateSync service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mPEX [36mmodule=[0mpex [36mmsg=[0m"Stopping PEX service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mbook=[0m/work/run2/node2/config/addrbook.json [36mimpl=[0mAddrBook [36mmodule=[0mp2p [36mmsg=[0m"Stopping AddrBook service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mMempool [36mmodule=[0mmempool [36mmsg=[0m"Stopping Mempool service"
+[90m4:04AM[0m [32mINF[0m [1mservice stop[0m [36mimpl=[0mBlocksync [36mmodule=[0mblocksync [36mmsg=[0m"Stopping Blocksync service"
+[90m4:04AM[0m [31mERR[0m [1mError stopping pool[0m [36merr=[0m"already stopped" [36mmodule=[0mblocksync
+[90m4:04AM[0m [32mINF[0m [1mClosing rpc listener[0m [36mlistener=[0m{"Listener":{}} [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mRPC HTTP server stopped[0m [36merr=[0m"accept tcp 127.0.0.1:57981: use of closed network connection" [36mmodule=[0mrpc-server
+[90m4:04AM[0m [31mERR[0m [1mError serving server[0m [36merr=[0m"accept tcp 127.0.0.1:57981: use of closed network connection" [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mClosing blockstore[0m [36mmodule=[0mserver
+[90m4:04AM[0m [31mERR[0m [1mStopped accept routine, as transport is closed[0m [36mmodule=[0mp2p [36mnumPeers=[0m0
+[90m4:04AM[0m [32mINF[0m [1mSaving AddrBook to file[0m [36mbook=[0m/work/run2/node2/config/addrbook.json [36mmodule=[0mp2p [36msize=[0m3
+[90m4:04AM[0m [32mINF[0m [1mClosing statestore[0m [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mClosing evidencestore[0m [36mmodule=[0mserver
+[90m4:04AM[0m [32mINF[0m [1mClosing application.db[0m [36mmodule=[0mbaseapp
+[90m4:04AM[0m [32mINF[0m [1mClosing snapshots/metadata.db[0m [36mmodule=[0mbaseapp
+[90m4:04AM[0m [32mINF[0m [1mClosing application.db[0m [36mmodule=[0mbaseapp
+[90m4:04AM[0m [32mINF[0m [1mClosing snapshots/metadata.db[0m [36mmodule=[0mbaseapp
+[90m4:04AM[0m [31mERR[0m [1mleveldb: closed
+leveldb: closed[0m [36mmodule=[0mserver

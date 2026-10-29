@@ -1,0 +1,38 @@
+=== RUN   TestIBCCompatAminoEncoding
+=== RUN   TestIBCCompatAminoEncoding/false
+    ibc_amino_compat_test.go:79: 
+        	Error Trace:	/Users/bun/.codex/worktrees/vota-ibc-amino-compat/doravota/app/ibc_amino_compat_test.go:79
+        	Error:      	"{\"account_number\":\"17\",\"chain_id\":\"policy-test\",\"fee\":{\"amount\":[{\"amount\":\"10\",\"denom\":\"stake\"}],\"gas\":\"300000\"},\"memo\":\"\",\"msgs\":[{\"type\":\"cosmos-sdk/MsgTransfer\",\"value\":{\"receiver\":\"osmo1ch6xyn85japqc7vpdwk6jgkmyunlf2dmtzwx70\",\"sender\":\"cosmos1x553cc2v52w9jk374hfnf25wh32xh50kvcx9s2\",\"source_channel\":\"channel-0\",\"source_port\":\"transfer\",\"timeout_height\":{},\"timeout_timestamp\":\"2000000000000000000\",\"token\":{\"amount\":\"7\",\"denom\":\"stake\"},\"use_aliasing\":false}}],\"sequence\":\"0\"}" should not contain "use_aliasing"
+        	Test:       	TestIBCCompatAminoEncoding/false
+=== RUN   TestIBCCompatAminoEncoding/true
+--- FAIL: TestIBCCompatAminoEncoding (0.02s)
+    --- FAIL: TestIBCCompatAminoEncoding/false (0.01s)
+    --- PASS: TestIBCCompatAminoEncoding/true (0.00s)
+=== RUN   TestIBCCompatCheckTx
+=== RUN   TestIBCCompatCheckTx/keplr-omitted-false
+    ibc_amino_compat_test.go:188: 
+        	Error Trace:	/Users/bun/.codex/worktrees/vota-ibc-amino-compat/doravota/app/ibc_amino_compat_test.go:188
+        	Error:      	Should be zero, but was 4
+        	Test:       	TestIBCCompatCheckTx/keplr-omitted-false
+        	Messages:   	signature verification failed; please verify account number (0), sequence (0) and chain-id (policy-test): unauthorized
+=== RUN   TestIBCCompatCheckTx/amino-explicit-true
+=== RUN   TestIBCCompatCheckTx/old-amino-explicit-false-rejected
+    ibc_amino_compat_test.go:190: 
+        	Error Trace:	/Users/bun/.codex/worktrees/vota-ibc-amino-compat/doravota/app/ibc_amino_compat_test.go:190
+        	Error:      	Should not be zero, but was 0
+        	Test:       	TestIBCCompatCheckTx/old-amino-explicit-false-rejected
+=== RUN   TestIBCCompatCheckTx/true-must-be-signed
+=== RUN   TestIBCCompatCheckTx/tampered-alias-rejected
+=== RUN   TestIBCCompatCheckTx/direct-false
+=== RUN   TestIBCCompatCheckTx/direct-true
+--- FAIL: TestIBCCompatCheckTx (0.32s)
+    --- FAIL: TestIBCCompatCheckTx/keplr-omitted-false (0.07s)
+    --- PASS: TestIBCCompatCheckTx/amino-explicit-true (0.04s)
+    --- FAIL: TestIBCCompatCheckTx/old-amino-explicit-false-rejected (0.04s)
+    --- PASS: TestIBCCompatCheckTx/true-must-be-signed (0.04s)
+    --- PASS: TestIBCCompatCheckTx/tampered-alias-rejected (0.05s)
+    --- PASS: TestIBCCompatCheckTx/direct-false (0.04s)
+    --- PASS: TestIBCCompatCheckTx/direct-true (0.04s)
+FAIL
+FAIL	github.com/DoraFactory/doravota/app	8.364s
+FAIL
