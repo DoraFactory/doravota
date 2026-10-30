@@ -1,0 +1,12 @@
+=== RUN   TestIBCCompatUnchangedSignBytes
+=== RUN   TestIBCCompatUnchangedSignBytes/direct-false
+=== RUN   TestIBCCompatUnchangedSignBytes/direct-true
+=== RUN   TestIBCCompatUnchangedSignBytes/amino-true
+=== RUN   TestIBCCompatUnchangedSignBytes/amino-bank
+--- PASS: TestIBCCompatUnchangedSignBytes (0.01s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/direct-false (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/direct-true (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/amino-true (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/amino-bank (0.00s)
+PASS
+ok  	github.com/DoraFactory/doravota/app	0.063s

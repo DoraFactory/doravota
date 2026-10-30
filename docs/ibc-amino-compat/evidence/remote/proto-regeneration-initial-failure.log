@@ -1,0 +1,41 @@
+Unable to find image 'ghcr.io/cosmos/proto-builder:0.18.1' locally
+0.18.1: Pulling from cosmos/proto-builder
+78e6bff3abc7: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+91a719372462: Pulling fs layer
+06740f2ac653: Pulling fs layer
+827b85e9fe57: Pulling fs layer
+589002ba0eae: Pulling fs layer
+547fd7028fe0: Pulling fs layer
+0fdf71b47847: Pulling fs layer
+e4284a6b73cb: Pulling fs layer
+0e2882870326: Pulling fs layer
+f44828333540: Pulling fs layer
+4f4fb700ef54: Already exists
+f44828333540: Download complete
+827b85e9fe57: Download complete
+0e2882870326: Download complete
+589002ba0eae: Download complete
+589002ba0eae: Pull complete
+f44828333540: Pull complete
+03862b561aa7: Download complete
+06740f2ac653: Download complete
+78e6bff3abc7: Download complete
+0fdf71b47847: Download complete
+0fdf71b47847: Pull complete
+4f4fb700ef54: Pull complete
+0e2882870326: Pull complete
+547fd7028fe0: Download complete
+e4284a6b73cb: Download complete
+91a719372462: Download complete
+91a719372462: Pull complete
+06740f2ac653: Pull complete
+827b85e9fe57: Pull complete
+547fd7028fe0: Pull complete
+e4284a6b73cb: Pull complete
+78e6bff3abc7: Pull complete
+Digest: sha256:d7fb3bcfa865b3c4f85afd25af5be1fc9fafe77f7dab7313a726fb8cc5c5947a
+Status: Downloaded newer image for ghcr.io/cosmos/proto-builder:0.18.1
+1.64.0
+2026/10/28 03:12:01 protoc-gen-gogo: error:no files to generate
+sh: bash: not found

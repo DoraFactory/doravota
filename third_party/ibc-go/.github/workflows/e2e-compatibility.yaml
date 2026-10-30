@@ -1,0 +1,252 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Runs compatibility tests for ibc-go.
+# Can be triggered manually by setting values for release-branch and ibc-go-version.
+# On a weekly schedule with default values of 'main' for release-branch and 'main-cron-job' for ibc-go-version.
+name: Compatibility E2E
+on:
+  schedule:
+    # run on 20:00 on Sunday.
+    - cron: '0 20 * * 6'
+  workflow_dispatch:
+    inputs:
+      release-branch:
+        description: 'Release branch to test'
+        required: true
+        type: choice
+        options:
+          - release/v7.10.x
+          - release/v8.7.x
+          - release/v8.8.x
+          - release/v10.7.x
+          - release/v11.1.x
+          - release/v11.2.x
+          - main
+      ibc-go-version:
+        description: 'The version of ibc-go that is going to be released'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  ORG: cosmos
+  IMAGE_NAME: ibc-go-simd
+  RELEASE_BRANCH: ${{ inputs.release-branch || 'main' }}
+  IBC_GO_VERSION: ${{ inputs.ibc-go-version || 'latest' }}
+
+jobs:
+  determine-image-tag:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      release-version: ${{ steps.set-release-version.outputs.release-version }}
+    steps:
+      - run: |
+          # we sanitize the release branch name. Docker images cannot contain "/"
+          # characters so we replace them with a "-".
+          release_version="$(echo $RELEASE_BRANCH | sed 's/\//-/')"
+          echo "release-version=$release_version" >> $GITHUB_OUTPUT
+        id: set-release-version
+
+  # build-release-images builds all docker images that are relevant for the compatibility tests. If a single release
+  # branch is specified, only that image will be built, e.g. release-v6.0.x.
+  build-release-images:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    strategy:
+      matrix:
+        release-branch:
+          - release/v7.10.x
+          - release/v8.8.x
+          - release/v10.7.x
+          - release/v11.1.x
+          - release/v11.2.x
+          - main
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: env.RELEASE_BRANCH == matrix.release-branch
+        with:
+          ref: "${{ matrix.release-branch }}"
+          fetch-depth: 0
+      - name: Log in to the Container registry
+        if: env.RELEASE_BRANCH == matrix.release-branch
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # v4.5.2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        if: env.RELEASE_BRANCH == matrix.release-branch
+        run: |
+          docker_tag="$(echo ${{ matrix.release-branch }} | sed 's/[^a-zA-Z0-9\.]/-/g')"
+          docker build . -t "${REGISTRY}/${ORG}/${IMAGE_NAME}:$docker_tag" --build-arg IBC_GO_VERSION=${{ env.IBC_GO_VERSION }}
+          docker push "${REGISTRY}/${ORG}/${IMAGE_NAME}:$docker_tag"
+      - name: Display image details
+        if: env.RELEASE_BRANCH == matrix.release-branch
+        run: |
+          docker_tag="$(echo ${{ matrix.release-branch }} | sed 's/[^a-zA-Z0-9\.]/-/g')"
+          docker inspect "${REGISTRY}/${ORG}/${IMAGE_NAME}:$docker_tag"
+
+  client-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/core/02-client/client_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  connection-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/core/03-connection/connection_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  ica-base-test-a:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/base_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-a"
+
+  ica-base-test-b:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/base_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-b"
+
+  ica-gov-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/gov_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  ica-localhost-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/localhost_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  ica-params-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/params_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  ica-query-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/interchain_accounts/query_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  transfer-base-test-a:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/base_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-a"
+
+  transfer-base-test-b:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/base_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-b"
+
+  transfer-authz-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/authz_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  transfer-localhost-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/localhost_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  transfer-send-enabled-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/send_enabled_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  transfer-receive-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/send_receive_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+
+  transfer-ibc-v2-test-a:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/ibc_v2_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-a"
+
+  transfer-ibc-v2-test-b:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/transfer/ibc_v2_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"
+      chain: "chain-b"
+
+  upgrade-genesis-test:
+    needs:
+      - build-release-images
+      - determine-image-tag
+    uses: ./.github/workflows/e2e-compatibility-workflow-call.yaml
+    with:
+      test-file: "e2e/tests/upgrades/genesis_test.go"
+      release-version: "${{ needs.determine-image-tag.outputs.release-version }}"

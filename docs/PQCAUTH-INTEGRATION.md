@@ -3,6 +3,10 @@
 Status: development candidate for the GitHub development branch. Not deployed
 to a public network and not approved for mainnet activation.
 
+Current integration baseline: released `v1.0.1` (`39759f0`). Existing networks
+must complete that upgrade with its released binary before the `v1.1.0`
+PQCAuth upgrade. See [integration evidence](PQCAUTH-V101-INTEGRATION-20261030.md).
+
 Latest build repairs and packaged-binary lifecycle/outage evidence:
 [2026-10-27 follow-up](PQCAUTH-FOLLOWUP-20261027.md).
 
@@ -30,7 +34,7 @@ The existing `v1.0.0` release and its on-chain plan are not reused.
 - Feegrant routing includes authz-nested calls. Predicted writes are discarded;
   real message writes roll back with failed messages. Actual fee consumption
   and exhaustion-index reconciliation remain persisted in successful Ante.
-- Post-v1.0.0 upgrade initializes OPTIONAL enforcement, a network domain and
+- Post-v1.0.1 upgrade initializes OPTIONAL enforcement, a network domain and
   existing feegrant indexes. Index rebuild runs once through module InitGenesis.
 - Archive startup validation accepts only explicitly known additional stores,
   matching module versions and valid committed roots. Unknown layouts and

@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 results=${RESULTS_DIR:-build/test-results}
 mkdir -p "$results"
 python3 scripts/test-release-tools.py
+python3 scripts/verify-ibc-amino-snapshot.py
 # Go dependency downloads and compiler diagnostics go to stderr, not JSON.
 # Keep the JSON gate strict and retain diagnostics separately for cold-cache CI.
 if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr.log"; then
@@ -19,6 +20,12 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \
+ TestAminoUpgradeLifecycle \
+ TestPQCAuthRequiresV101Activation \
+ TestIBCCompatDescriptorOnlyChange \
+ TestIBCCompatAminoEncoding \
+ TestIBCCompatUnchangedSignBytes \
+ TestIBCCompatCheckTx \
  TestLegacyWasmCodecRoundTripsAndHasNoHandlers \
  TestLegacyGrantsExportAndExpire \
  TestLegacyWasmStoredProposalDecode \

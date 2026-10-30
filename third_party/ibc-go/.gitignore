@@ -1,0 +1,76 @@
+# OS
+.DS_Store
+*.swp
+*.swo
+*.swl
+*.swm
+*.swn
+*.pyc
+
+# private files
+private[.-]*
+private
+
+# local plan docs (not for commit)
+docs/PLAN_*.md
+docs/FAILING_*.md
+
+# Build
+vendor
+build
+docs/_build
+docs/tutorial
+docs/node_modules
+docs/modules
+dist
+tools-stamp
+buf-stamp
+artifacts
+
+# Data - ideally these don't exist
+baseapp/data/*
+client/lcd/keys/*
+mytestnet
+modules/light-clients/08-wasm/**/ibc_08-wasm_client_data/
+
+# Testing
+coverage.txt
+profile.out
+sim_log_file
+e2e/diagnostics
+e2e/dev-configs
+
+
+# Vagrant
+.vagrant/
+*.box
+*.log
+vagrant
+
+# IDE
+.idea
+*.iml
+.dir-locals.el
+.vscode
+
+# Graphviz
+dependency-graph.png
+
+# Latex
+*.aux
+*.out
+*.synctex.gz
+
+*.history
+
+tmp/
+*.wasm
+# Go
+go.work
+go.work.sum
+
+# Python
+venv
+
+# Lychee
+.lycheecache

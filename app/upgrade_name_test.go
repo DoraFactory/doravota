@@ -14,6 +14,7 @@ import (
 	"cosmossdk.io/core/header"
 	"encoding/binary"
 	"github.com/DoraFactory/doravota/app"
+	aminoUpgrade "github.com/DoraFactory/doravota/app/upgrades/amino"
 	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -30,7 +31,7 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 	instance := app.New(log.NewNopLogger(), db, nil, true, map[int64]bool{},
 		simulationHome(t, opts), 0, app.MakeEncodingConfig(), opts,
 		baseapp.SetChainID("upgrade-name-test"))
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "v1.0.0"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "v1.0.0", "v1.0.1"} {
 		require.True(t, instance.UpgradeKeeper.HasHandler(name), name)
 	}
 	require.False(t, instance.UpgradeKeeper.HasHandler("wasm-retirement"))
@@ -43,7 +44,7 @@ func TestVersionedUpgradeHandlerRegistration(t *testing.T) {
 // A completed legacy upgrade must pass the SDK downgrade check without
 // re-running its handler or changing the module version map.
 func TestCompletedLegacyUpgradeRemainsRecognized(t *testing.T) {
-	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4"} {
+	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "v1.0.0", "v1.0.1"} {
 		t.Run(name, func(t *testing.T) {
 			a := policyTestApp(t)
 			ctx := a.NewContextLegacy(true, tmproto.Header{}).WithHeaderInfo(header.Info{Height: 101})
@@ -84,6 +85,7 @@ func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
 	name := strings.TrimSpace(string(raw))
 	require.Equal(t, "v1.1.0-dev", name)
 	// Historical migration identities must not be renamed to the new candidate.
+	require.Equal(t, "v1.0.1", aminoUpgrade.UpgradeName)
 	require.Equal(t, "v1.0.0", sdk055.UpgradeName)
 	require.Equal(t, "v1.0.0", wasmarchive.UpgradeName)
 	require.Equal(t, strings.SplitN(name, "-", 2)[0], app.PQCAuthUpgradeName)

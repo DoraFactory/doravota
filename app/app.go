@@ -9,6 +9,7 @@ import (
 	"cosmossdk.io/log/v2"
 	"encoding/json"
 	"fmt"
+	aminoUpgrade "github.com/DoraFactory/doravota/app/upgrades/amino"
 	"github.com/DoraFactory/doravota/app/upgrades/sdk055"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	pqcauth "github.com/DoraFactory/doravota/x/pqcauth"
@@ -264,6 +265,9 @@ func New(
 	}
 	if err := wasmarchive.ValidateBoundaryWithModules(logger, db, homePath, skipUpgradeHeights, map[string]uint64{pqcauthtypes.ModuleName: (pqcauth.AppModule{}).ConsensusVersion()}); err != nil {
 		panic(fmt.Errorf("Wasm retirement source boundary: %w", err))
+	}
+	if err := aminoUpgrade.ValidateActivatedBoundary(logger, db); err != nil {
+		panic(fmt.Errorf("IBC Amino upgrade boundary: %w", err))
 	}
 	appCodec := encodingConfig.Marshaler
 	cdc := encodingConfig.Amino
@@ -719,9 +723,14 @@ func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.
 			return nil, fmt.Errorf("archive activation is required before block execution")
 		}
 	}
+	// PQCAuth is a separate upgrade after the v1.0.1 signing rule is active.
+	active, err := aminoUpgrade.IsActive(ctx, app.keys[upgradetypes.StoreKey])
+	if err != nil || !active {
+		return nil, fmt.Errorf("%s activation required before PQC Auth block execution: %v", aminoUpgrade.UpgradeName, err)
+	}
 	if versions[pqcauthtypes.ModuleName] == 0 {
 		plan, err := app.UpgradeKeeper.GetUpgradePlan(ctx)
-		if err != nil || plan.Name != PQCAuthUpgradeName || plan.Height != ctx.BlockHeight() {
+		if err != nil || plan.Name != PQCAuthUpgradeName || plan.Height != ctx.BlockHeight() || app.UpgradeKeeper.IsSkipHeight(plan.Height) {
 			return nil, fmt.Errorf("PQC Auth activation is required before block execution")
 		}
 	}
@@ -736,6 +745,13 @@ func (app *App) PreBlocker(ctx sdk.Context, _ *abci.RequestFinalizeBlock) (*sdk.
 	_, live := versions[wasmarchive.StoreKey]
 	if versions[wasmarchive.GenesisKey] != 1 || live {
 		return nil, fmt.Errorf("inconsistent Wasm archive activation")
+	}
+	if versions[pqcauthtypes.ModuleName] != (pqcauth.AppModule{}).ConsensusVersion() {
+		return nil, fmt.Errorf("PQC Auth activation did not complete")
+	}
+	active, err = aminoUpgrade.IsActive(ctx, app.keys[upgradetypes.StoreKey])
+	if err != nil || !active {
+		return nil, fmt.Errorf("%s activation did not complete: %v", aminoUpgrade.UpgradeName, err)
 	}
 	return result, nil
 }
@@ -771,6 +787,7 @@ func (app *App) InitChainer(ctx sdk.Context, req *abci.RequestInitChain) (*abci.
 	if err := wasmarchive.InitGenesis(ctx, app.keys[wasmarchive.StoreKey], genesisState[wasmarchive.GenesisKey]); err != nil {
 		return nil, err
 	}
+	aminoUpgrade.InitGenesis(ctx, app.keys[upgradetypes.StoreKey])
 	return response, nil
 }
 
@@ -922,6 +939,12 @@ func (app *App) ModuleManager() *module.Manager {
 
 func (app *App) setupUpgradeHandlers() {
 	app.registerPQCAuthUpgrade()
+	// Recognize the completed v1.0.1 upgrade for restart/downgrade checks,
+	// but never execute it with a binary that already mounts pqcauth.
+	app.UpgradeKeeper.SetUpgradeHandler(aminoUpgrade.UpgradeName,
+		func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {
+			return nil, fmt.Errorf("complete v1.0.1 using its released binary before installing PQC Auth")
+		})
 	// Recognize completed upgrades without permitting their migrations to run again.
 	for _, name := range []string{"0.3.1", "0.4.0", "0.4.2", "0.4.3", "0.4.4", "0.5.0"} {
 		app.UpgradeKeeper.SetUpgradeHandler(name, func(context.Context, upgradetypes.Plan, module.VersionMap) (module.VersionMap, error) {

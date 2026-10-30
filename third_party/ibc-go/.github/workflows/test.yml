@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: Apache-2.0
+
+name: Tests / Code Coverage
+#  Tests / Code Coverage workflow runs unit tests and uploads a code coverage report
+#  This workflow is run on pushes to main & every pull requests
+on:
+  merge_group:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        go-arch: ['amd64', 'arm64']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: 'go.mod'
+      - name: Install compiler for arm64.
+        if: matrix.go-arch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu build-essential
+          echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build ibc-go
+        run: GOARCH=${{ matrix.go-arch }} LEDGER_ENABLED=false make build
+
+      - name: Build 08-wasm
+        run: |
+          cd modules/light-clients/08-wasm
+          GOARCH=${{ matrix.go-arch }} CGO_ENABLED=1 go build ./...
+
+      - name: Build e2e
+        run: |
+          cd e2e
+          find ./tests -type d | while IFS= read -r dir
+          do
+              if ls "${dir}"/*.go >/dev/null 2>&1; then
+                  CGO_ENABLED=1 GOARCH=${{ matrix.go-arch }} go test -c "$dir"
+              fi
+          done
+
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        module: [
+          {
+            name: ibc-go, 
+            path: .
+          },
+          { 
+            name: 08-wasm, 
+            path: ./modules/light-clients/08-wasm
+          }, 
+          {
+            name: e2e, 
+            path: ./e2e,
+            additional-args: '-tags="test_e2e"'
+          }
+        ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: '${{ matrix.module.path }}/go.mod'
+          cache-dependency-path: '${{ matrix.module.path }}/go.sum'
+
+      - name: test & coverage report creation
+        run: |
+          cd ${{ matrix.module.path }} && go test -mod=readonly -coverprofile=profile.out -covermode=atomic ${{ matrix.module.additional-args }} ./...
+
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
+        with:
+          fail_ci_if_error: false
+          files: ${{ matrix.module.path }}/profile.out
+          flags: ${{ matrix.module.name }}
+          token: ${{ secrets.CODECOV_TOKEN }}

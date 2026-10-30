@@ -3,7 +3,7 @@ name: SDK candidate validation
 on:
   workflow_dispatch:
   push:
-    branches: [feature/wasm-readonly-archive, feature/pqcauth-sdk-keyring]
+    branches: [feature/wasm-readonly-archive, feature/pqcauth-sdk-keyring, fix/v1.0.0-ibc-amino-compat]
   pull_request:
     paths:
       - '**/*.go'
@@ -94,6 +94,32 @@ jobs:
           python3 scripts/rehearse-pqcauth-lifecycle.py \
             --binary "build/rehearsal-bin/dorad-$(cat VERSION)-linux-${ARCH}" \
             --work-dir build/pqcauth-rehearsal --rounds 4
+      - name: Rehearse sequential v1.0.0 to v1.0.1 to PQCAuth upgrades
+        if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-from-v101.py') != '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/upgrade-binaries
+          curl --fail --location --retry 3 https://github.com/DoraFactory/doravota/releases/download/v1.0.0/dorad-v1.0.0-linux-amd64 -o build/upgrade-binaries/v100
+          curl --fail --location --retry 3 https://github.com/DoraFactory/doravota/releases/download/v1.0.1/dorad-v1.0.1-linux-amd64 -o build/upgrade-binaries/v101
+          echo '5c741ca406ee2ecb811dd62d83e9a446fee051e2947522525c2560a0a7ce968a  build/upgrade-binaries/v100' | sha256sum --check
+          echo '04bd2d0dced7ccf1f993a70fb2be6b1718e0f1852c27f1bdeef0fa49eaea1696  build/upgrade-binaries/v101' | sha256sum --check
+          chmod +x build/upgrade-binaries/v100 build/upgrade-binaries/v101
+          GO_VERSION=$(awk '$1 == "go" { print $2 }' go.mod)
+          docker run --rm --network none --cpus 3 --memory 7g -e GOMAXPROCS=2 \
+            -e OLD_DORAD=/src/build/upgrade-binaries/v100 -e NEW_DORAD=/src/build/upgrade-binaries/v101 \
+            -e PQC_DORAD="/src/build/rehearsal-bin/dorad-$(cat VERSION)-linux-amd64" \
+            -e REHEARSAL_DIR=/src/build/pqcauth-sequential \
+            -v "$PWD:/src" -w /src "golang:${GO_VERSION}-bookworm" \
+            python3 scripts/rehearse-pqcauth-from-v101.py
+      - name: Preserve sequential upgrade evidence (no keyrings)
+        if: ${{ always() && matrix.arch == 'amd64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqcauth-sequential-amd64
+          path: |
+            build/pqcauth-sequential/*.json
+            build/pqcauth-sequential/*.log
+          if-no-files-found: ignore
       - name: Preserve public rehearsal evidence (no keyrings)
         if: ${{ always() && hashFiles('scripts/rehearse-pqcauth-lifecycle.py') != '' }}
         uses: actions/upload-artifact@v4

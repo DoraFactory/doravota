@@ -1,0 +1,282 @@
+{
+  "hash": "A624A8E85A63B965429BF1E8C852BCE593835F05B6EBA43305D4481BB3FD8FDC",
+  "height": "6",
+  "index": 0,
+  "tx_result": {
+    "code": 0,
+    "data": "Ei4KKC9jb3Ntb3MuZ292LnYxLk1zZ1N1Ym1pdFByb3Bvc2FsUmVzcG9uc2USAggB",
+    "log": "",
+    "info": "",
+    "gas_wanted": "600000",
+    "gas_used": "159667",
+    "events": [
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora17xpfvakm2amg962yls6f84z3kell8c5lnrxdut",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "100000peaka",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "fee",
+            "value": "100000peaka",
+            "index": true
+          },
+          {
+            "key": "fee_payer",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "acc_seq",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c/2",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "tx",
+        "attributes": [
+          {
+            "key": "signature",
+            "value": "OJGLu3sKu0zxr/xPRJa4TYrsM603Pe9dlzRlQJpvT9ErtDPzWUHtNYBSSGGIFvvjPWsRqbIjYhlrfc120YtGVQ==",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "action",
+            "value": "/cosmos.gov.v1.MsgSubmitProposal",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "module",
+            "value": "gov",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "submit_proposal",
+        "attributes": [
+          {
+            "key": "proposal_id",
+            "value": "1",
+            "index": true
+          },
+          {
+            "key": "proposal_proposer",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "proposal_messages",
+            "value": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_spent",
+        "attributes": [
+          {
+            "key": "spender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "coin_received",
+        "attributes": [
+          {
+            "key": "receiver",
+            "value": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "transfer",
+        "attributes": [
+          {
+            "key": "recipient",
+            "value": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "index": true
+          },
+          {
+            "key": "sender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1peaka",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "message",
+        "attributes": [
+          {
+            "key": "sender",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "proposal_deposit",
+        "attributes": [
+          {
+            "key": "depositor",
+            "value": "dora12hm0lxngpgvmrw3mknh0tjetcx9zu38n80ju2c",
+            "index": true
+          },
+          {
+            "key": "amount",
+            "value": "1peaka",
+            "index": true
+          },
+          {
+            "key": "proposal_id",
+            "value": "1",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      },
+      {
+        "type": "submit_proposal",
+        "attributes": [
+          {
+            "key": "voting_period_start",
+            "value": "1",
+            "index": true
+          },
+          {
+            "key": "msg_index",
+            "value": "0",
+            "index": true
+          }
+        ]
+      }
+    ],
+    "codespace": ""
+  },
+  "tx": "Cq4CCqsCCiAvY29zbW9zLmdvdi52MS5Nc2dTdWJtaXRQcm9wb3NhbBKGAgqIAQoqL2Nvc21vcy51cGdyYWRlLnYxYmV0YTEuTXNnU29mdHdhcmVVcGdyYWRlEloKK2RvcmExMGQwN3kyNjVnbW11dnQ0ejB3OWF3ODgwam5zcjcwMGplY2tncDkSKwoGdjEuMC4xEgsIgJK4w5j+////ARhVIhJpc29sYXRlZCByZWhlYXJzYWwSCgoFcGVha2ESATEaK2RvcmExMmhtMGx4bmdwZ3ZtcnczbWtuaDB0amV0Y3g5enUzOG44MGp1MmMqF0lzb2xhdGVkIHYxLjAuMSB1cGdyYWRlMidUZW1wb3JhcnkgZm91ci12YWxpZGF0b3IgcmVoZWFyc2FsIG9ubHkSaQpQCkYKHy9jb3Ntb3MuY3J5cHRvLnNlY3AyNTZrMS5QdWJLZXkSIwohA3fZ5PQgvW66luhGPxXotzpo1pYq+hdgEgjE6wFDJZDDEgQKAggBGAISFQoPCgVwZWFrYRIGMTAwMDAwEMDPJBpAOJGLu3sKu0zxr/xPRJa4TYrsM603Pe9dlzRlQJpvT9ErtDPzWUHtNYBSSGGIFvvjPWsRqbIjYhlrfc120YtGVQ=="
+}

@@ -1,0 +1,265 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package cli
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/flags"
+	"github.com/cosmos/cosmos-sdk/version"
+
+	"github.com/cosmos/ibc-go/v11/modules/apps/rate-limiting/types"
+)
+
+const (
+	FlagDenom = "denom"
+)
+
+// GetCmdQueryRateLimit implements a command to query rate limits by channel-id or client-id and denom
+func GetCmdQueryRateLimit() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rate-limit [channel-or-client-id]",
+		Short: "Query rate limits from a given channel-id/client-id and denom",
+		Long: strings.TrimSpace(
+			fmt.Sprintf(`Query rate limits from a given channel-id/client-id and denom.
+If the denom flag is omitted, all rate limits for the given channel-id/client-id are returned
+with pagination. The denom flag selects a single rate limit and cannot be combined with
+pagination flags.
+
+Example:
+  $ %s query %s rate-limit [channel-or-client-id]
+  $ %s query %s rate-limit [channel-or-client-id] --denom=[denom]
+`,
+				version.AppName, types.ModuleName, version.AppName, types.ModuleName,
+			),
+		),
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			channelOrClientID := args[0]
+			denom, err := cmd.Flags().GetString(FlagDenom)
+			if err != nil {
+				return err
+			}
+
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+
+			// Query all rate limits for the channel/client ID if denom is not specified.
+			if denom == "" {
+				flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+				if err != nil {
+					return err
+				}
+
+				pageReq, err := client.ReadPageRequest(flagSet)
+				if err != nil {
+					return err
+				}
+				req := &types.QueryRateLimitsByChannelOrClientIDRequest{
+					ChannelOrClientId: channelOrClientID,
+					Pagination:        pageReq,
+				}
+				res, err := queryClient.RateLimitsByChannelOrClientID(context.Background(), req)
+				if err != nil {
+					return err
+				}
+				return clientCtx.PrintProto(res)
+			}
+
+			// Query specific rate limit if denom is provided
+			req := &types.QueryRateLimitRequest{
+				Denom:             denom,
+				ChannelOrClientId: channelOrClientID,
+			}
+			res, err := queryClient.RateLimit(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res.RateLimit)
+		},
+	}
+
+	cmd.Flags().String(FlagDenom, "", "The denom identifying a specific rate limit")
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "rate limits associated with a channel or client")
+
+	// --denom selects a single rate limit, so reject pagination flags rather than silently
+	// dropping them. Pairwise, so the pagination flags still combine with one another.
+	for _, paginationFlag := range []string{
+		flags.FlagPage, flags.FlagPageKey, flags.FlagOffset,
+		flags.FlagLimit, flags.FlagCountTotal, flags.FlagReverse,
+	} {
+		cmd.MarkFlagsMutuallyExclusive(FlagDenom, paginationFlag)
+	}
+
+	return cmd
+}
+
+// GetCmdQueryAllRateLimits return all available rate limits.
+func GetCmdQueryAllRateLimits() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-rate-limits",
+		Short: "Query for all rate limits",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			req := &types.QueryAllRateLimitsRequest{Pagination: pageReq}
+			res, err := queryClient.AllRateLimits(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "rate limits")
+
+	return cmd
+}
+
+// GetCmdQueryRateLimitsByChainID return all rate limits that exist between this chain
+// and the specified ChainId
+func GetCmdQueryRateLimitsByChainID() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rate-limits-by-chain [chain-id]",
+		Short: "Query for all rate limits associated with the channels/clients connecting to the given ChainID",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			chainID := args[0]
+
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			req := &types.QueryRateLimitsByChainIDRequest{
+				ChainId:    chainID,
+				Pagination: pageReq,
+			}
+			res, err := queryClient.RateLimitsByChainID(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "rate limits associated with a chain")
+
+	return cmd
+}
+
+// GetCmdQueryAllBlacklistedDenoms returns the command to query all blacklisted denoms
+func GetCmdQueryAllBlacklistedDenoms() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-blacklisted-denoms",
+		Short: "Query for all blacklisted denoms",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			req := &types.QueryAllBlacklistedDenomsRequest{Pagination: pageReq}
+			res, err := queryClient.AllBlacklistedDenoms(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "blacklisted denoms")
+	return cmd
+}
+
+// GetCmdQueryAllWhitelistedAddresses returns the command to query all whitelisted address pairs
+func GetCmdQueryAllWhitelistedAddresses() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-whitelisted-addresses",
+		Short: "Query for all whitelisted address pairs",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			clientCtx, err := client.GetClientQueryContext(cmd)
+			if err != nil {
+				return err
+			}
+			queryClient := types.NewQueryClient(clientCtx)
+
+			flagSet, err := client.FlagSetWithPageKeyDecoded(cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			pageReq, err := client.ReadPageRequest(flagSet)
+			if err != nil {
+				return err
+			}
+
+			req := &types.QueryAllWhitelistedAddressesRequest{Pagination: pageReq}
+			res, err := queryClient.AllWhitelistedAddresses(context.Background(), req)
+			if err != nil {
+				return err
+			}
+
+			return clientCtx.PrintProto(res)
+		},
+	}
+
+	flags.AddQueryFlagsToCmd(cmd)
+	flags.AddPaginationFlagsToCmd(cmd, "whitelisted addresses")
+	return cmd
+}

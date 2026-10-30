@@ -342,8 +342,8 @@ replace github.com/shamaton/msgpack/v2 => github.com/shamaton/msgpack/v2 v2.0.0-
 replace github.com/cosmos/cosmos-sdk/x/params => ./third_party/cosmos-sdk-x-params-compat
 
 // IBC-Go main at 7b1838a13bc442393253b3b3d995e228a3995855: SDK 0.55 / CometBFT 0.40.
-// Keep the exact SDK-compatible IBC revision used by the source release.
-replace github.com/cosmos/ibc-go/v11 => github.com/cosmos/ibc-go/v11 v11.0.0-20260929073332-7b1838a13bc4
+// Pinned source snapshot plus the Amino false-omission patch; see third_party/IBC-GO-AMINO-COMPAT.md.
+replace github.com/cosmos/ibc-go/v11 => ./third_party/ibc-go
 
 // Match Cosmos SDK: the 2022 LevelDB revision returns nil for stored empty values.
 // Empty IAVL roots must remain distinguishable from missing versions on restart.

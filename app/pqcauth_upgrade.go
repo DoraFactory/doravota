@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
+	aminoUpgrade "github.com/DoraFactory/doravota/app/upgrades/amino"
 	"github.com/DoraFactory/doravota/app/wasmarchive"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -12,12 +13,17 @@ import (
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
 )
 
-// PQCAuthUpgradeName is a candidate plan for a separate post-v1.0.0 upgrade.
+// PQCAuthUpgradeName is a candidate plan for a separate post-v1.0.1 upgrade.
 // It is not a published release tag or an approved mainnet schedule.
 const PQCAuthUpgradeName = "v1.1.0"
 
 func (app *App) registerPQCAuthUpgrade() {
 	app.UpgradeKeeper.SetUpgradeHandler(PQCAuthUpgradeName, func(goCtx context.Context, _ upgradetypes.Plan, from module.VersionMap) (module.VersionMap, error) {
+		ctx := sdk.UnwrapSDKContext(goCtx)
+		active, err := aminoUpgrade.IsActive(ctx, app.keys[upgradetypes.StoreKey])
+		if err != nil || !active {
+			return nil, fmt.Errorf("PQC Auth requires activated %s signing rules: %v", aminoUpgrade.UpgradeName, err)
+		}
 		if from[wasmarchive.GenesisKey] != 1 {
 			return nil, fmt.Errorf("PQC Auth requires completed v1.0.0 Wasm retirement")
 		}
@@ -33,7 +39,6 @@ func (app *App) registerPQCAuthUpgrade() {
 		if err != nil {
 			return nil, err
 		}
-		ctx := sdk.UnwrapSDKContext(goCtx)
 		params := app.PQCAuthKeeper.GetParams(ctx)
 		if params.EnforcementMode != pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL {
 			return nil, fmt.Errorf("initial PQC enforcement must be optional")

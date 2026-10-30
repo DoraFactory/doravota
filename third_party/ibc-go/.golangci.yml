@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: Apache-2.0
+
+version: "2"
+run:
+  tests: true
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - goconst
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - revive
+    - staticcheck
+    - thelper
+    - unconvert
+    - unparam
+    - unused
+    - mirror
+    - copyloopvar
+    - iface
+    - importas
+    - intrange
+    - nakedret
+    - nilnesserr
+    - nilnil
+    - nonamedreturns
+    - predeclared
+    - reassign
+    - recvcheck
+    - testifylint
+    - testpackage
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+  settings:
+    gosec:
+      excludes:
+        - G107 # Url provided to HTTP request as taint input
+        - G115 # Potential integer overflow when converting between integer types
+        - G404 # Insecure random number source (rand)
+      confidence: low
+    nakedret:
+      max-func-lines: 0
+    revive:
+      enable-all-rules: true
+      # See the rule descriptions here: https://github.com/mgechev/revive/blob/HEAD/RULES_DESCRIPTIONS.md
+      rules:
+        # Rules with configuration
+        - name: unhandled-error
+          disabled: false
+          arguments: # Disable for these ones only
+            - fmt.Printf
+            - fmt.Print
+            - fmt.Println
+        - name: var-naming
+          disabled: false
+          arguments:
+            - []
+            - []
+            - [ skipPackageNameChecks: true ]
+        # Disabled rules
+        # TODO: Some of these are kinda code smelly, should reconsider some of them
+        - name: add-constant
+          disabled: true
+        - name: argument-limit
+          disabled: true
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: confusing-naming
+          disabled: true
+        - name: confusing-results
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: flag-parameter
+          disabled: true
+        - name: function-result-limit
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: package-directory-mismatch
+          disabled: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: '(.+)_test\.go'
+        linters:
+          - goconst
+      - linters:
+          - staticcheck
+        text: 'SA1019:' # TODO: This should really be removed!
+      - path: e2e/*
+        linters:
+          - testpackage
+          - goconst
+      # "sender"/"salt" recur as proto field names, ABI component names, and
+      # log keys; goconst wrongly suggests reusing the event attribute constants.
+      - path: modules/apps/27-gmp/types/(autocli|solidity_abi)\.go
+        linters:
+          - goconst
+      - linters:
+          - revive
+        text: '^package-naming:'
+      - linters:
+          - govet
+        text: 'Constant reflect.Ptr should be inlined'
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - testing/mock/*
+issues:
+  max-issues-per-linter: 10000
+  max-same-issues: 10000
+formatters:
+  enable:
+    - gci
+    - gofumpt
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - blank
+        - dot
+        - prefix(cosmossdk.io)
+        - prefix(github.com/cosmos/cosmos-sdk)
+        - prefix(github.com/cometbft/cometbft)
+        - prefix(github.com/cosmos/ibc-go)
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

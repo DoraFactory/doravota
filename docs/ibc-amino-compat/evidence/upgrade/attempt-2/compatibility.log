@@ -1,0 +1,36 @@
+=== RUN   TestIBCCompatDescriptorOnlyChange
+--- PASS: TestIBCCompatDescriptorOnlyChange (0.00s)
+=== RUN   TestIBCCompatAminoEncoding
+=== RUN   TestIBCCompatAminoEncoding/false
+=== RUN   TestIBCCompatAminoEncoding/true
+--- PASS: TestIBCCompatAminoEncoding (0.01s)
+    --- PASS: TestIBCCompatAminoEncoding/false (0.00s)
+    --- PASS: TestIBCCompatAminoEncoding/true (0.00s)
+=== RUN   TestIBCCompatUnchangedSignBytes
+=== RUN   TestIBCCompatUnchangedSignBytes/direct-false
+=== RUN   TestIBCCompatUnchangedSignBytes/direct-true
+=== RUN   TestIBCCompatUnchangedSignBytes/amino-true
+=== RUN   TestIBCCompatUnchangedSignBytes/amino-bank
+--- PASS: TestIBCCompatUnchangedSignBytes (0.01s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/direct-false (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/direct-true (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/amino-true (0.00s)
+    --- PASS: TestIBCCompatUnchangedSignBytes/amino-bank (0.00s)
+=== RUN   TestIBCCompatCheckTx
+=== RUN   TestIBCCompatCheckTx/keplr-omitted-false
+=== RUN   TestIBCCompatCheckTx/amino-explicit-true
+=== RUN   TestIBCCompatCheckTx/old-amino-explicit-false-rejected
+=== RUN   TestIBCCompatCheckTx/true-must-be-signed
+=== RUN   TestIBCCompatCheckTx/tampered-alias-rejected
+=== RUN   TestIBCCompatCheckTx/direct-false
+=== RUN   TestIBCCompatCheckTx/direct-true
+--- PASS: TestIBCCompatCheckTx (0.19s)
+    --- PASS: TestIBCCompatCheckTx/keplr-omitted-false (0.04s)
+    --- PASS: TestIBCCompatCheckTx/amino-explicit-true (0.02s)
+    --- PASS: TestIBCCompatCheckTx/old-amino-explicit-false-rejected (0.02s)
+    --- PASS: TestIBCCompatCheckTx/true-must-be-signed (0.03s)
+    --- PASS: TestIBCCompatCheckTx/tampered-alias-rejected (0.03s)
+    --- PASS: TestIBCCompatCheckTx/direct-false (0.03s)
+    --- PASS: TestIBCCompatCheckTx/direct-true (0.03s)
+PASS
+ok  	github.com/DoraFactory/doravota/app	0.257s
