@@ -5,8 +5,8 @@ account. Its address, assets and classical public key stay unchanged. Protected
 transactions require both the normal SDK signature and the PQC extension.
 Native SDK ML-DSA accounts already use PQC signatures and do not enroll here.
 
-Status: development on `feature/pqcauth-sdk-keyring`, based on the v1.0.0
-archive runtime and the ML-DSA mnemonic-warning CLI. This is not a published
+Status: development on `feature/pqcauth-sdk-keyring`, based on the released v1.0.1
+IBC Amino compatibility runtime and the ML-DSA mnemonic-warning CLI. This is not a published
 release or a mainnet activation. The candidate upgrade plan is `v1.1.0`;
 the default development binary reports `v1.1.0-dev`.
 
@@ -139,9 +139,11 @@ Export/import preserves this ordering and permits retained keys below that maxim
 The app registers the module, store, services, canonical decoder, ordered Ante
 checks, feegrant MsgServer wrapper, and proposal verification budgets. Existing
 SDK proposal gas/byte policy is preserved. The candidate upgrade requires the
-completed v1.0.0 archive state, initializes OPTIONAL parameters, assigns an
+completed v1.0.0 archive state and activated v1.0.1 signing rules. It initializes
+OPTIONAL parameters, assigns an
 upgrade-specific network domain and rebuilds existing feegrant indexes.
-Completed v1.0.0 remains recognized but must not be executed with this binary.
+Completed v1.0.0 and v1.0.1 remain recognized but must not be executed with this
+binary. Existing chains must complete v1.0.1 using its released binary first.
 
 Feegrant predictions use an uncommitted cache; actual mutations share the
 message cache with the SDK feegrant store. Admission checks and the exact
@@ -154,15 +156,15 @@ GOMAXPROCS=2 go test -mod=readonly -p 2 ./x/pqcauth/... ./app ./cmd/dorad/cmd
 
 App tests cover failed-message rollback with fees retained, nested authz
 routing, SDK-keyring enrollment and hybrid transfer/replay, proposal budgets,
-and upgrade initialization. Local executable rehearsal has also exercised an
-old v1.0.0 node, a governance-triggered store upgrade, SDK-keyring enrollment,
-online protected signing, offline bundle transfer and restart. See
-[the integration record](../../docs/PQCAUTH-INTEGRATION.md).
-An isolated mainnet-snapshot upgrade has passed; the packaged-binary restart
-and lifecycle evidence is recorded in the
-[2026-10-27 follow-up](../../docs/PQCAUTH-FOLLOWUP-20261027.md).
-Public-testnet acceptance, independent security review and approval of the
-final release remain outstanding. Snapshot preservation is not live IBC proof.
+and upgrade initialization. The current merged runtime passed remote repository
+tests, enabled simulations, a four-validator v1.0.0 -> v1.0.1 -> v1.1.0 upgrade,
+restarts, and the synthetic keyring lifecycle/outage rehearsal. See
+[the v1.0.1 integration record](../../docs/PQCAUTH-V101-INTEGRATION-20261030.md).
+Earlier snapshot evidence in the [integration record](../../docs/PQCAUTH-INTEGRATION.md)
+and [2026-10-27 follow-up](../../docs/PQCAUTH-FOLLOWUP-20261027.md) predates this
+merge and does not establish final merged-candidate snapshot acceptance.
+Final-candidate snapshot rehearsal, public-testnet/IBC acceptance, independent
+security review and release approval remain outstanding.
 
 ## Multisig support boundary (v1.1.0)
 

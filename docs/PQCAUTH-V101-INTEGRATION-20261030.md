@@ -51,6 +51,17 @@
 - 本地审查记录：`/Users/bun/DoraFactory/review-records/pqcauth-v101-integration-20261030/`。
 - `evidence/` 含定向测试、完整测试、vet、源码清单；`src/build/test-results/` 保留逐项 JSON 日志；`sequential-01/` 和 `lifecycle-01/evidence/` 保留交易、状态及重启证据。不收集 keyring。
 
+## 固定提交构建及复测
+
+- 代码合并提交：`31766d43fe4a1663ef4c093840b4cded3aab473f`，已推送到 GitHub 的 `feature/pqcauth-sdk-keyring`。
+- 合并父提交分别为上述 PQCAuth 旧 HEAD 与 v1.0.1 发布提交；`v1.0.1` 是当前分支祖先。
+- 从该提交的 `git archive` 构建，注入完整 commit、版本 `v1.1.0-dev`；运行发布构建脚本与启动/CLI smoke，均通过。未发布 GitHub Release。
+- 固定提交 AMD64 二进制 SHA-256：`b85ef656dac4e71a5ad7bd39fad4d333c1e6e0d0bbb4654a20aed6601d3957d6`。
+- 使用此二进制及最终连续升级脚本复测：v1.0.1 高度 85，PQCAuth 高度 198；提前启动拒绝、转账、重启均通过。高度 200 和 205 的四节点 AppHash 分别一致。
+- 复测摘要：[fixed-result.json](pqcauth-v101-evidence/fixed-result.json)。完整日志位于审查记录的 `evidence/fixed-build.log`、`evidence/sequential-fixed.log`。
+- [GitHub CI](https://github.com/DoraFactory/doravota/actions/runs/41024158290) 对应代码提交 `31766d4`。记录时 tests 成功，AMD64/ARM64 构建仍在运行，不能写成 CI 全部通过。后续文档补充不改变受测代码。
+- 收尾检查：远程剩余约 73 GiB；原验证人 Cosmovisor PID 3450774 未变，既有 relayer 保持运行。
+
 ## 尚未完成的正式发布验收
 
 本轮隔离验证不能替代最终版本的真实主网快照升级、公共测试网生命周期/真实 IBC 双向通信、物理 Ledger、ARM64 最终产物、长期负载和独立安全审查。GitHub CI 状态需按最终推送提交单独确认。

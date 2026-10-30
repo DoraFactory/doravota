@@ -1,0 +1,341 @@
+{
+  "chain_id": "isolated-amino-v101-rehearsal",
+  "validators": 4,
+  "old_sha256": "5c741ca406ee2ecb811dd62d83e9a446fee051e2947522525c2560a0a7ce968a",
+  "new_sha256": "04bd2d0dced7ccf1f993a70fb2be6b1718e0f1852c27f1bdeef0fa49eaea1696",
+  "scope": "isolated sequential governance upgrades; not a mainnet snapshot or public IBC test",
+  "before_transfer": "EB80EB727BFDF64C7D31F2308716A200F0AB58EC60A7B879F93F5DEC8EDA3434",
+  "proposal_tx": "1F5275BB01F7C2BAB3385FCEC51838C3382CFEA2288B7977698AEA3D44C18097",
+  "vote_txs": [
+    "EC83574BE32A3C6172C11863B98178025DE2B9770B8969D67EB9BBC319473C4D",
+    "CE4D03EDCB76F2FFB0238A09CA4FDA43C5C2389E1EAE9EE5AD0F4C589E151AD9",
+    "34D1D9BC7FF429FD02CE53D2F2D6A8A0E1AA8C2B662A0BF3A64C2DA079A0D18D",
+    "0F8056D77E3406D49646BE5BA1BC8CD0E3D83499377B31C37959424F9080E4FB"
+  ],
+  "proposal": {
+    "proposal": {
+      "id": "1",
+      "messages": [
+        {
+          "type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "plan": {
+              "name": "v1.0.1",
+              "time": "0001-01-01T00:00:00Z",
+              "height": "85",
+              "info": "isolated rehearsal"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "4000000000000000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2026-10-30T08:06:46.078028147Z",
+      "deposit_end_time": "2026-10-30T08:16:46.078028147Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "1"
+        }
+      ],
+      "voting_start_time": "2026-10-30T08:06:46.078028147Z",
+      "voting_end_time": "2026-10-30T08:07:01.078028147Z",
+      "title": "Isolated v1.0.1 upgrade",
+      "summary": "Temporary four-validator rehearsal only",
+      "proposer": "dora1pdvse55zqv7zsdarcv6c8lxhnhpt89wmje58r8"
+    }
+  },
+  "premature_start_rejected": true,
+  "after_upgrade": [
+    {
+      "latest_block_hash": "BFDE57721A5EE88E339F20AC7182C773DCA787B65A9D8C7C98A49ECA03EB313D",
+      "latest_app_hash": "A5362436B33CA8D463854F33E4E961188C6EF3A66C4B6EA2C24F0F087FA34C55",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-10-30T08:07:52.659891687Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "BFDE57721A5EE88E339F20AC7182C773DCA787B65A9D8C7C98A49ECA03EB313D",
+      "latest_app_hash": "A5362436B33CA8D463854F33E4E961188C6EF3A66C4B6EA2C24F0F087FA34C55",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-10-30T08:07:52.659891687Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "BFDE57721A5EE88E339F20AC7182C773DCA787B65A9D8C7C98A49ECA03EB313D",
+      "latest_app_hash": "A5362436B33CA8D463854F33E4E961188C6EF3A66C4B6EA2C24F0F087FA34C55",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-10-30T08:07:52.659891687Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "BFDE57721A5EE88E339F20AC7182C773DCA787B65A9D8C7C98A49ECA03EB313D",
+      "latest_app_hash": "A5362436B33CA8D463854F33E4E961188C6EF3A66C4B6EA2C24F0F087FA34C55",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-10-30T08:07:52.659891687Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    }
+  ],
+  "after_transfer": "BD1D8BA42BB9A8034071785CAF653F7367D7EC82DF45FB306F7F39D85DBE3F87",
+  "matching_app_hash": {
+    "height": 87,
+    "hash": "8F4EF2EFAC93107754BA8B349AE0CB1547B029B97F071BF8BE97D31593A2B6E0",
+    "nodes": 4
+  },
+  "after_restart": [
+    {
+      "latest_block_hash": "6911DA23CF08F351D2990B083D75EDA3CFD4E9CB4F7F6F552A9B2D74CA543D8B",
+      "latest_app_hash": "669036D8AEB2178E19958046EF486C6BB6D2AC4C8EA8982BC305BE01D77176BB",
+      "latest_block_height": "95",
+      "latest_block_time": "2026-10-30T08:07:58.342301498Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "6911DA23CF08F351D2990B083D75EDA3CFD4E9CB4F7F6F552A9B2D74CA543D8B",
+      "latest_app_hash": "669036D8AEB2178E19958046EF486C6BB6D2AC4C8EA8982BC305BE01D77176BB",
+      "latest_block_height": "95",
+      "latest_block_time": "2026-10-30T08:07:58.342301498Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "6911DA23CF08F351D2990B083D75EDA3CFD4E9CB4F7F6F552A9B2D74CA543D8B",
+      "latest_app_hash": "669036D8AEB2178E19958046EF486C6BB6D2AC4C8EA8982BC305BE01D77176BB",
+      "latest_block_height": "95",
+      "latest_block_time": "2026-10-30T08:07:58.342301498Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "6911DA23CF08F351D2990B083D75EDA3CFD4E9CB4F7F6F552A9B2D74CA543D8B",
+      "latest_app_hash": "669036D8AEB2178E19958046EF486C6BB6D2AC4C8EA8982BC305BE01D77176BB",
+      "latest_block_height": "95",
+      "latest_block_time": "2026-10-30T08:07:58.342301498Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    }
+  ],
+  "restart_matching_app_hash": {
+    "height": 93,
+    "hash": "4056288EEDA832EE943E4F7D624BB34603D7A7A14F2CCCA8A4643EC790E5B233",
+    "nodes": 4
+  },
+  "upgrade_height": 85,
+  "pqc_sha256": "b85ef656dac4e71a5ad7bd39fad4d333c1e6e0d0bbb4654a20aed6601d3957d6",
+  "pqc_proposal_tx": "DF6A2C34A6460D26CFAC2ABE8BC31A92AD4A2D205CF25262AF88057DC80ED969",
+  "pqc_vote_txs": [
+    "BED2327F46CA1C016252DDA3766D871D219ED8C29C751E5362262C1150EF5C73",
+    "DC4E2640E41DCD258FDB085E33109B89EDF88F5B2008C40ED051AB49A1469D8C",
+    "61DE4DBFBA9B6FADB46EA03DDD55541BA04A5B041E63C062F909EE4C95EFA7D6",
+    "B4134F7EEECD934E61317CA3EB0EB648C0B535C884E0EA08122061B3FA8BEDD0"
+  ],
+  "pqc_proposal": {
+    "proposal": {
+      "id": "2",
+      "messages": [
+        {
+          "type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "plan": {
+              "name": "v1.1.0",
+              "time": "0001-01-01T00:00:00Z",
+              "height": "198",
+              "info": "isolated rehearsal"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "4000000000000000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2026-10-30T08:08:02.696265804Z",
+      "deposit_end_time": "2026-10-30T08:18:02.696265804Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "1"
+        }
+      ],
+      "voting_start_time": "2026-10-30T08:08:02.696265804Z",
+      "voting_end_time": "2026-10-30T08:08:17.696265804Z",
+      "title": "Isolated PQCAuth upgrade after v1.0.1",
+      "summary": "Temporary four-validator rehearsal only",
+      "proposer": "dora1pdvse55zqv7zsdarcv6c8lxhnhpt89wmje58r8"
+    }
+  },
+  "pqc_premature_start_rejected": true,
+  "pqc_after_upgrade": [
+    {
+      "latest_block_hash": "390E1824C27FF651CA4A81B922A502E3DF87AFC3CE03019FF7D2AA3EBD9CE711",
+      "latest_app_hash": "3C838F10BC0DC6104BAACC93795901CBE246B534D5FDC7E97A81F0D7ED0D90ED",
+      "latest_block_height": "202",
+      "latest_block_time": "2026-10-30T08:09:28.642516557Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "390E1824C27FF651CA4A81B922A502E3DF87AFC3CE03019FF7D2AA3EBD9CE711",
+      "latest_app_hash": "3C838F10BC0DC6104BAACC93795901CBE246B534D5FDC7E97A81F0D7ED0D90ED",
+      "latest_block_height": "202",
+      "latest_block_time": "2026-10-30T08:09:28.642516557Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "390E1824C27FF651CA4A81B922A502E3DF87AFC3CE03019FF7D2AA3EBD9CE711",
+      "latest_app_hash": "3C838F10BC0DC6104BAACC93795901CBE246B534D5FDC7E97A81F0D7ED0D90ED",
+      "latest_block_height": "202",
+      "latest_block_time": "2026-10-30T08:09:28.642516557Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "390E1824C27FF651CA4A81B922A502E3DF87AFC3CE03019FF7D2AA3EBD9CE711",
+      "latest_app_hash": "3C838F10BC0DC6104BAACC93795901CBE246B534D5FDC7E97A81F0D7ED0D90ED",
+      "latest_block_height": "202",
+      "latest_block_time": "2026-10-30T08:09:28.642516557Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    }
+  ],
+  "pqc_after_transfer": "6A456DE93A981EF822ADE8B227AE7143E33CF264562B66B5B42B01068FC850D9",
+  "pqc_params": {
+    "params": {
+      "enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+      "network_id": "WoF9maXqWFMF7/ifzL9eK01bOtAtJatV03X40HxRjhU=",
+      "allowed_algorithms": [
+        "ALGORITHM_ML_DSA_65"
+      ],
+      "signature_verification_gas": "250000",
+      "proof_verification_gas": "250000",
+      "max_pqc_signers": 8,
+      "max_pqc_auth_bytes": 65536,
+      "max_retained_key_records_per_role": 16,
+      "registration_cutoff_height": "0",
+      "emergency_mode": "EMERGENCY_MODE_NORMAL",
+      "pending": null,
+      "pending_activation_height": "0",
+      "governance_safety_delay_blocks": "17280",
+      "max_emergency_duration_blocks": "17280",
+      "emergency_expires_height": "0",
+      "registration_mode": "REGISTRATION_MODE_OPEN",
+      "recovery_delay_blocks": "17280",
+      "max_pqc_verifications_per_tx": 16,
+      "max_pqc_verifications_per_block": 400
+    },
+    "effective_enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+    "effective_emergency_mode": "EMERGENCY_MODE_NORMAL",
+    "effective_registration_mode": "REGISTRATION_MODE_OPEN"
+  },
+  "pqc_matching_app_hash": {
+    "height": 200,
+    "hash": "DF3DF7DE8F70C807B35BA990D17F82E637A16ED48390129F8B3743796AF4475B",
+    "nodes": 4
+  },
+  "pqc_after_restart": [
+    {
+      "latest_block_hash": "07579136DB7E96129F097608AE205267825B76D3517548BAC88F133E138D0374",
+      "latest_app_hash": "9E13BCFAD15020B2CCFC609F45889EE8BAF695A82F7B29D8D168231FF078BD69",
+      "latest_block_height": "207",
+      "latest_block_time": "2026-10-30T08:09:33.501010774Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "07579136DB7E96129F097608AE205267825B76D3517548BAC88F133E138D0374",
+      "latest_app_hash": "9E13BCFAD15020B2CCFC609F45889EE8BAF695A82F7B29D8D168231FF078BD69",
+      "latest_block_height": "207",
+      "latest_block_time": "2026-10-30T08:09:33.501010774Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "07579136DB7E96129F097608AE205267825B76D3517548BAC88F133E138D0374",
+      "latest_app_hash": "9E13BCFAD15020B2CCFC609F45889EE8BAF695A82F7B29D8D168231FF078BD69",
+      "latest_block_height": "207",
+      "latest_block_time": "2026-10-30T08:09:33.501010774Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "07579136DB7E96129F097608AE205267825B76D3517548BAC88F133E138D0374",
+      "latest_app_hash": "9E13BCFAD15020B2CCFC609F45889EE8BAF695A82F7B29D8D168231FF078BD69",
+      "latest_block_height": "207",
+      "latest_block_time": "2026-10-30T08:09:33.501010774Z",
+      "earliest_block_hash": "3AA08C313C0ADAF567634D2EF47AEFCF384C8DB9A3BFCF3EDE704261AC2CAF55",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-10-30T08:06:39.205604394Z",
+      "catching_up": false
+    }
+  ],
+  "pqc_restart_transfer": "2647E853D8E0F01EDB6BAD2E0297B600152278B444F147F136F05116A00E2683",
+  "pqc_restart_matching_app_hash": {
+    "height": 205,
+    "hash": "FB75B440BCCFFE820E26FF9ECD8EF35F0DD914547089CD51545A05D38218B46E",
+    "nodes": 4
+  },
+  "pqc_upgrade_height": 198,
+  "status": "PASS"
+}
