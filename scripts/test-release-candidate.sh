@@ -47,6 +47,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
  TestNewFactorAcknowledgementForExternalOwners \
+ TestRecoveryBundleCommandsPrepareAndSignRoundTrip \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \

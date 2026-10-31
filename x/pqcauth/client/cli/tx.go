@@ -247,6 +247,7 @@ func recoverKeyCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "recover-key [recovery-key-id] [expected-new-key-id] [new-public-key-base64] [new-proof-base64]",
 		Short: "Recover the signing key using transaction-bound offline recovery authorization",
+		Long:  "Recover the signing key using transaction-bound offline recovery authorization. Recovery does not revoke Authz or Feegrant delegations; review and revoke unwanted grants separately.",
 		Args:  cobra.ExactArgs(4),
 		RunE: func(command *cobra.Command, args []string) error {
 			recoveryKeyID, err := strconv.ParseUint(args[0], 10, 64)
@@ -264,6 +265,7 @@ func recoverKeyCommand() *cobra.Command {
 			if err := checkNewFactors(command, clientCtx, publicKey); err != nil {
 				return err
 			}
+			warnDelegationBoundary(command, clientCtx.GetFromAddress().String())
 			privateKeyPath, _ := command.Flags().GetString(flagRecoveryPrivateKey)
 			return generateOrBroadcastRecoveryTx(
 				command.Context(),

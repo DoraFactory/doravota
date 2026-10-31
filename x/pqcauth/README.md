@@ -19,7 +19,7 @@ and revoke unwanted delegations separately. A protected grantee still needs its
 own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
 See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
-Registration and `set-protection true` print a delegation warning to stderr,
+Registration, `set-protection true`, and `recover-key` print a delegation warning to stderr,
 including the SDK `query authz grants-by-granter` and
 `query feegrant grants-by-granter` commands. They do not query or revoke grants
 automatically: review all pages on the intended chain. A compromised classical
@@ -54,6 +54,12 @@ reserve a measured execution margin. Independent consensus/auth changes and
 custom genesis still require capacity review; no new block-time failure check
 is introduced. Cancellation and emergency-only policy changes remain available
 even if consensus gas was subsequently reduced.
+
+Before lowering consensus `max_gas` or changing auth signature limits, follow
+the [governance operations checklist](../../docs/PQCAUTH-ROLLOUT-PLAN.md#治理参数变更运维检查).
+It covers active and pending PQC policies, real transaction gas margins, and
+native multisig compatibility; a successful governance transaction alone is
+not a capacity acceptance test.
 
 These stricter bounds target the unactivated v1.1.0 candidate. Do not hot-swap
 this binary into an experimental PQC chain with now-invalid active/pending

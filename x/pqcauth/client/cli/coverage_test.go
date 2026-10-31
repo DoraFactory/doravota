@@ -579,9 +579,11 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	require.NoError(t, os.WriteFile(privateKeyPath, recoveryPrivateKey, 0o600))
 	require.NoError(t, os.WriteFile(signingKeyPath, signingPrivateKey, 0o600))
 
+	var recoveryWarnings bytes.Buffer
 	recover := recoverKeyCommand()
 	recover.SetContext(attachClientContext(context.Background(), &clientCtx))
 	recover.SetOut(&output)
+	recover.SetErr(&recoveryWarnings)
 	recover.SetArgs([]string{
 		"2",
 		"3",
@@ -594,6 +596,11 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, recover.Execute())
 	require.Contains(t, output.String(), `"status":"prepared"`)
+	require.True(t, json.Valid(output.Bytes()), "warning must not corrupt bundle JSON")
+	require.Contains(t, recoveryWarnings.String(), "remain valid after enrollment and recovery")
+	require.Contains(t, recoveryWarnings.String(), "query authz grants-by-granter "+owner.String())
+	require.Contains(t, recoveryWarnings.String(), "query feegrant grants-by-granter "+owner.String())
+	require.Contains(t, recoveryWarnings.String(), "NOT been queried or revoked")
 
 	preparedBytes, err := os.ReadFile(preparedPath)
 	require.NoError(t, err)
@@ -645,9 +652,11 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	require.Contains(t, output.String(), `"code":0`)
 
 	output.Reset()
+	recoveryWarnings.Reset()
 	direct := recoverKeyCommand()
 	direct.SetContext(attachClientContext(context.Background(), &clientCtx))
 	direct.SetOut(&output)
+	direct.SetErr(&recoveryWarnings)
 	direct.SetArgs([]string{
 		"2",
 		"3",
@@ -661,6 +670,9 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, direct.Execute())
 	require.Contains(t, output.String(), `"code":0`)
+	require.True(t, json.Valid(output.Bytes()), "warning must not corrupt transaction JSON")
+	require.Contains(t, recoveryWarnings.String(), "remain valid after enrollment and recovery")
+	require.NotContains(t, output.String(), "WARNING")
 
 	output.Reset()
 	protected := setProtectionCommand()
