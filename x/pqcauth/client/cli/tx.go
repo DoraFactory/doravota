@@ -81,6 +81,7 @@ func registerKeyCommand() *cobra.Command {
 			if err := checkNewFactors(command, clientCtx, publicKey, recoveryPublicKey); err != nil {
 				return err
 			}
+			warnDelegationBoundary(command, clientCtx.GetFromAddress().String())
 			message := &types.MsgRegisterKey{
 				Owner:                clientCtx.GetFromAddress().String(),
 				ExpectedSigningKeyId: keyID,
@@ -183,6 +184,7 @@ func setProtectionCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "set-protection [true|false]",
 		Short: "Schedule per-account PQC enforcement at H+1",
+		Long:  "Schedule per-account PQC enforcement at H+1. Enabling protection does not revoke Authz or Feegrant delegations; grantees can still act within their grants without your PQC signature.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
 			enabled, err := strconv.ParseBool(args[0])
@@ -194,6 +196,9 @@ func setProtectionCommand() *cobra.Command {
 				return err
 			}
 			privateKeyPath, _ := command.Flags().GetString(flagPQCPrivateKey)
+			if enabled {
+				warnDelegationBoundary(command, clientCtx.GetFromAddress().String())
+			}
 			return generateOrBroadcastProtectedTx(
 				command.Context(),
 				clientCtx,

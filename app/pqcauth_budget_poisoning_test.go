@@ -32,8 +32,9 @@ func TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning(t *testing.T) {
 	require.NoError(t, err)
 	var pqc pqctypes.GenesisState
 	require.NoError(t, a.AppCodec().UnmarshalJSON(genesis[pqctypes.ModuleName], &pqc))
-	pqc.Params.MaxPqcVerificationsPerTx = 1
-	pqc.Params.MaxPqcVerificationsPerBlock = 1
+	pqc.Params.MaxPqcSigners = pqctypes.MinimumMaxPQCSigners
+	pqc.Params.MaxPqcVerificationsPerTx = pqctypes.MinimumMaxPQCVerificationsPerTx
+	pqc.Params.MaxPqcVerificationsPerBlock = pqctypes.MinimumMaxPQCVerificationsPerTx
 	genesis[pqctypes.ModuleName], err = a.AppCodec().MarshalJSON(&pqc)
 	require.NoError(t, err)
 	raw, err := json.Marshal(genesis)
@@ -55,17 +56,21 @@ func TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning(t *testing.T) {
 		require.NoError(t, err)
 		return raw
 	}
-	txs := [][]byte{makeTx(secp256k1.GenPrivKey(), 0), makeTx(&native, 0), makeTx(&native, 1)}
+	txs := [][]byte{makeTx(secp256k1.GenPrivKey(), 0)}
+	for seq := uint64(0); seq <= uint64(pqc.Params.MaxPqcVerificationsPerBlock); seq++ {
+		txs = append(txs, makeTx(&native, seq))
+	}
+	selectedEnd := 1 + int(pqc.Params.MaxPqcVerificationsPerBlock)
 	decision, err := a.ProcessProposal(&abci.RequestProcessProposal{Height: 2, Time: stamp.Add(2 * time.Second), Txs: txs})
 	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_REJECT, decision.Status,
-		"an unrelated first key must not hide two native verifications with budget one")
+		"an unrelated first key must not hide native verifications beyond the block budget")
 	prepared, err := a.PrepareProposal(&abci.RequestPrepareProposal{
 		Height: 2, Time: stamp.Add(2 * time.Second), MaxTxBytes: 1000000, Txs: txs,
 	})
 	require.NoError(t, err)
-	require.Equal(t, [][]byte{txs[1]}, prepared.Txs,
-		"skip the poison transaction and retain exactly one native verification")
+	require.Equal(t, txs[1:selectedEnd], prepared.Txs,
+		"skip the poison transaction and retain exactly the native verification budget")
 	decision, err = a.ProcessProposal(&abci.RequestProcessProposal{
 		Height: 2, Time: stamp.Add(2 * time.Second), Txs: prepared.Txs,
 	})
@@ -75,17 +80,19 @@ func TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning(t *testing.T) {
 		Height: 2, Time: stamp.Add(2 * time.Second), Txs: prepared.Txs,
 	})
 	require.NoError(t, err)
-	require.Len(t, result.TxResults, 1)
-	require.Zero(t, result.TxResults[0].Code, result.TxResults[0].Log)
+	require.Len(t, result.TxResults, int(pqc.Params.MaxPqcVerificationsPerBlock))
+	for _, txResult := range result.TxResults {
+		require.Zero(t, txResult.Code, txResult.Log)
+	}
 	_, err = a.Commit()
 	require.NoError(t, err)
 	decision, err = a.ProcessProposal(&abci.RequestProcessProposal{
-		Height: 3, Time: stamp.Add(3 * time.Second), Txs: txs[2:],
+		Height: 3, Time: stamp.Add(3 * time.Second), Txs: txs[selectedEnd:],
 	})
 	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, decision.Status)
 	result, err = a.FinalizeBlock(&abci.RequestFinalizeBlock{
-		Height: 3, Time: stamp.Add(3 * time.Second), Txs: txs[2:],
+		Height: 3, Time: stamp.Add(3 * time.Second), Txs: txs[selectedEnd:],
 	})
 	require.NoError(t, err)
 	require.Len(t, result.TxResults, 1)

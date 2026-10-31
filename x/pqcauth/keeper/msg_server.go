@@ -705,6 +705,18 @@ func (m msgServer) UpdateParams(
 		current.Pending = nil
 		current.PendingActivationHeight = 0
 	} else {
+		// Check changed verification capacity against CURRENT block gas, never
+		// by failing BeginBlock. Do not block cancellation or emergency-only
+		// policy changes after an independent consensus gas reduction.
+		if requested.EffectiveSignatureVerificationGas() != current.EffectiveSignatureVerificationGas() ||
+			requested.EffectiveProofVerificationGas() != current.EffectiveProofVerificationGas() ||
+			requested.EffectiveMaxPQCVerificationsPerTx() != current.EffectiveMaxPQCVerificationsPerTx() {
+			if block := ctx.ConsensusParams().Block; block != nil {
+				if err := requested.ValidateBlockGasCapacity(block.MaxGas); err != nil {
+					return nil, err
+				}
+			}
+		}
 		delay := uint64(1)
 		if requiresGovernanceSafetyDelay(currentScheduled, requestedScheduled) {
 			delay = current.GovernanceSafetyDelayBlocks

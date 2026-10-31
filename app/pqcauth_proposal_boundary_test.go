@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	"testing"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -24,10 +25,11 @@ func TestPQCAuthFourApplicationProposalActivationBoundary(t *testing.T) {
 		a := c.app
 		ctx := a.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: 2})
 		params := a.PQCAuthKeeper.GetParams(ctx)
-		params.MaxPqcVerificationsPerTx = 1
+		params.MaxPqcSigners = pqctypes.MinimumMaxPQCSigners
+		params.MaxPqcVerificationsPerTx = pqctypes.MinimumMaxPQCVerificationsPerTx
 		params.MaxPqcVerificationsPerBlock = 4
 		scheduled := params.AsScheduled()
-		scheduled.MaxPqcVerificationsPerBlock = 2
+		scheduled.MaxPqcVerificationsPerBlock = pqctypes.MinimumMaxPQCVerificationsPerTx
 		params.Pending = &scheduled
 		params.PendingActivationHeight = 3
 		require.NoError(t, a.PQCAuthKeeper.SetParams(ctx, params))
@@ -47,7 +49,7 @@ func TestPQCAuthFourApplicationProposalActivationBoundary(t *testing.T) {
 		for _, h := range []int64{2, 3, 4} {
 			limit := 4
 			if h >= 3 {
-				limit = 2
+				limit = int(pqctypes.MinimumMaxPQCVerificationsPerTx)
 			}
 			for _, n := range []int{limit - 1, limit, limit + 1} {
 				r, err := a.ProcessProposal(&abci.RequestProcessProposal{Height: h, Txs: shared[:n]})

@@ -96,11 +96,12 @@ func TestPQCVerificationBudgetCountsNativeMLDSALeavesInMultisig(t *testing.T) {
 func TestPQCVerificationBudgetDecoratorRejectsBeforeNextHandler(t *testing.T) {
 	ctx, moduleKeeper, accountKeeper, _, _ := setupAnteTest(t)
 	params := types.DefaultParams()
-	params.MaxPqcVerificationsPerTx = 1
+	params.MaxPqcSigners = types.MinimumMaxPQCSigners
+	params.MaxPqcVerificationsPerTx = types.MinimumMaxPQCVerificationsPerTx
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 	tx := sigVerifiableTxStub{
 		extensionOptionsTxStub: extensionOptionsTxStub{
-			messages: []sdk.Msg{&types.MsgRegisterKey{}},
+			messages: []sdk.Msg{&types.MsgRegisterKey{}, &types.MsgRegisterKey{}},
 		},
 		signers: []sdk.AccAddress{accountKeeper.account.GetAddress()},
 		signatures: []txsigning.SignatureV2{{

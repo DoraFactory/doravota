@@ -144,7 +144,7 @@ class Rehearsal:
         genesis_path = self.root / "node0/config/genesis.json"
         genesis = json.loads(genesis_path.read_text())
         params = genesis["app_state"]["pqcauth"]["params"]
-        params.update(recovery_delay_blocks="12", max_pqc_verifications_per_tx=4,
+        params.update(recovery_delay_blocks="12", max_pqc_signers=4, max_pqc_verifications_per_tx=4,
                       max_pqc_verifications_per_block=4)
         genesis_path.write_text(json.dumps(genesis))
         self.save("test-only-params", params)

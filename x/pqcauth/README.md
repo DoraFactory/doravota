@@ -19,6 +19,46 @@ and revoke unwanted delegations separately. A protected grantee still needs its
 own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
 See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
+Registration and `set-protection true` print a delegation warning to stderr,
+including the SDK `query authz grants-by-granter` and
+`query feegrant grants-by-granter` commands. They do not query or revoke grants
+automatically: review all pages on the intended chain. A compromised classical
+grantee can still use the assets/fees authorized by its grants, including after
+PQC recovery. Offline generation must not be mistaken for a delegation audit.
+
+## Parameter capacity boundaries
+
+Defaults remain 8 PQC signers, 64 KiB auth bytes, 16 verifications per transaction
+and 400 per block. Governance/genesis (including pending policies) must allow at
+least 2 PQC signers and 3 verifications per transaction. The transaction budget
+must cover the configured PQC signer count; the block budget must cover the
+transaction budget. Zero verification-budget fields retain their documented
+legacy default mapping (16/400), not zero-cost verification.
+
+The auth-byte floor is calculated from the configured signer count and the
+largest supported protobuf entries: full ML-DSA-65 signatures, 1023-byte SDK
+bech32 input bound, maximum-width indices/key IDs/policy versions and envelope
+length prefixes. This is a conservative capacity bound, not a new address format.
+
+Three verifications support registration/recovery with a protected fee payer,
+or rotation with protected owner and payer. Native ML-DSA multisig leaves also
+consume this budget: a minimum-budget network supports 2-of-2 and 3-of-3, not
+arbitrarily large multisigs. Default-budget testing includes 7-of-7. Before
+reducing budgets, inventory supported multisigs and multi-signer workflows.
+
+When governance changes PQC verification gas or the per-transaction budget,
+the conservative crypto envelope `max(signature_gas, proof_gas) * tx_budget`
+must be strictly below the **current** finite block gas cap. Unlimited block gas
+(`-1`) skips this comparison. This does not estimate total transaction gas or
+reserve a measured execution margin. Independent consensus/auth changes and
+custom genesis still require capacity review; no new block-time failure check
+is introduced. Cancellation and emergency-only policy changes remain available
+even if consensus gas was subsequently reduced.
+
+These stricter bounds target the unactivated v1.1.0 candidate. Do not hot-swap
+this binary into an experimental PQC chain with now-invalid active/pending
+parameters; reset the isolated test chain or plan a separately reviewed migration.
+
 ## Key management
 
 Use the SDK keyring, not a separate PQC key generator:

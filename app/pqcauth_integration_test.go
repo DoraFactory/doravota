@@ -220,15 +220,16 @@ func TestPQCAuthProposalBudgetsPreserveSDKGasPolicy(t *testing.T) {
 	a := c.app
 	ctx := a.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
 	params := a.PQCAuthKeeper.GetParams(ctx)
-	params.MaxPqcVerificationsPerBlock = 1
-	params.MaxPqcVerificationsPerTx = 1
+	params.MaxPqcSigners = pqctypes.MinimumMaxPQCSigners
+	params.MaxPqcVerificationsPerBlock = pqctypes.MinimumMaxPQCVerificationsPerTx
+	params.MaxPqcVerificationsPerTx = pqctypes.MinimumMaxPQCVerificationsPerTx
 	require.NoError(t, a.PQCAuthKeeper.SetParams(ctx, params))
 	a.SimWriteState()
 	// Structurally valid native ML-DSA signatures cost one verification each.
 	// Existing SDK NoOp mempool policy does not execute Ante in proposal checks.
 	key, err := mldsa65.GenPrivKey()
 	require.NoError(t, err)
-	txs := make([][]byte, 2)
+	txs := make([][]byte, params.MaxPqcVerificationsPerBlock+1)
 	for i := range txs {
 		b := a.TxConfig().NewTxBuilder()
 		require.NoError(t, b.SetMsgs(banktypes.NewMsgSend(sdk.AccAddress(key.PubKey().Address()), sdk.AccAddress(c.key.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1)))))
@@ -239,7 +240,7 @@ func TestPQCAuthProposalBudgetsPreserveSDKGasPolicy(t *testing.T) {
 	}
 	prepared, err := a.PrepareProposal(&abci.RequestPrepareProposal{Height: c.height + 1, MaxTxBytes: 1000000, Txs: txs})
 	require.NoError(t, err)
-	require.Len(t, prepared.Txs, 1)
+	require.Len(t, prepared.Txs, int(params.MaxPqcVerificationsPerBlock))
 	rejected, err := a.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: txs})
 	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_REJECT, rejected.Status)

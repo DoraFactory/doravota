@@ -32,6 +32,11 @@ const (
 	MinimumGovernanceSafetyDelayBlocks     uint64 = 2
 	MinimumEmergencyDurationBlocks         uint64 = 2
 	MinimumRecoveryDelayBlocks             uint64 = 2
+	// Preserve a protected sender plus a separate protected fee payer, and
+	// two lifecycle proofs plus that payer's authorization. Larger multisigs
+	// remain subject to the explicitly configured verification budget.
+	MinimumMaxPQCSigners            uint32 = 2
+	MinimumMaxPQCVerificationsPerTx uint32 = 3
 
 	// Consensus gas floors prevent governance from making ML-DSA verification
 	// effectively free. They must only be lowered through a coordinated binary
@@ -182,11 +187,12 @@ func validateScheduledParams(p ScheduledParams) error {
 			AbsoluteMaxVerificationGas,
 		)
 	}
-	if p.MaxPqcSigners == 0 || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
-		return fmt.Errorf("%w: max PQC signers must be in [1,%d]", ErrInvalidParams, AbsoluteMaxPQCSigners)
+	if p.MaxPqcSigners < MinimumMaxPQCSigners || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
+		return fmt.Errorf("%w: max PQC signers must be in [%d,%d]", ErrInvalidParams, MinimumMaxPQCSigners, AbsoluteMaxPQCSigners)
 	}
-	if p.MaxPqcAuthBytes == 0 || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
-		return fmt.Errorf("%w: max PQC auth bytes must be in [1,%d]", ErrInvalidParams, AbsoluteMaxPQCAuthBytes)
+	minimumAuthBytes := MinimumPQCAuthBytes(p.MaxPqcSigners)
+	if p.MaxPqcAuthBytes < minimumAuthBytes || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
+		return fmt.Errorf("%w: max PQC auth bytes must be in [%d,%d] for %d signers", ErrInvalidParams, minimumAuthBytes, AbsoluteMaxPQCAuthBytes, p.MaxPqcSigners)
 	}
 	if p.MaxRetainedKeyRecordsPerRole == 0 ||
 		p.MaxRetainedKeyRecordsPerRole > AbsoluteMaxRetainedKeyRecordsPerRole {
@@ -198,12 +204,16 @@ func validateScheduledParams(p ScheduledParams) error {
 	}
 	maxPerTx := effectiveMaxPQCVerificationsPerTx(p.MaxPqcVerificationsPerTx)
 	maxPerBlock := effectiveMaxPQCVerificationsPerBlock(p.MaxPqcVerificationsPerBlock)
-	if maxPerTx > AbsoluteMaxPQCVerificationsPerTx {
+	if maxPerTx < MinimumMaxPQCVerificationsPerTx || maxPerTx > AbsoluteMaxPQCVerificationsPerTx {
 		return fmt.Errorf(
-			"%w: max PQC verifications per transaction must be in [1,%d]",
+			"%w: max PQC verifications per transaction must be in [%d,%d]",
 			ErrInvalidParams,
+			MinimumMaxPQCVerificationsPerTx,
 			AbsoluteMaxPQCVerificationsPerTx,
 		)
+	}
+	if maxPerTx < p.MaxPqcSigners {
+		return fmt.Errorf("%w: transaction verification budget must cover max PQC signers", ErrInvalidParams)
 	}
 	if maxPerBlock > AbsoluteMaxPQCVerificationsPerBlock {
 		return fmt.Errorf(

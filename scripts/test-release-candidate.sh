@@ -12,6 +12,9 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr
  cat "$results/unit.stderr.log" "$results/unit.jsonl"; exit 1
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ TestPQCAuthGovernanceRejectsUnusableCapacity \
+ TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer \
+ TestPQCAuthNativeMultisigAtMinimumBudget \
  TestPQCAuthPhaseOnePreservesDelegationSemantics \
  TestPQCAuthPhaseOneDelegationCannotManageKeys \
  TestPQCAuthPhaseOneRecoveryPreservesDelegations \
@@ -43,9 +46,11 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPostArchiveModuleBoundary
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
- TestNewFactorAcknowledgementForExternalOwners
+ TestNewFactorAcknowledgementForExternalOwners \
+ TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestExtensionAtCapacityByteFloor \
  TestIndirectExecutionContainersRejectPQCAuthLifecycleMessages \
  TestIndirectExecutionInspectionRecursesAndPreservesOrdinaryMessages \
  TestIndirectExecutionInspectionFailsClosedOnMalformedContainer \
@@ -57,7 +62,12 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestLifecycleMessagesRequireExactAnteAuthorization \
  TestAllLifecycleServersRejectMissingOrDifferentAnteAuthorization \
  TestZeroHeightExportRequiresHeightIndependentPQCState \
+ TestGovernanceCapacityUsesCurrentConsensusGas \
+ TestCapacityPreflightPreservesEmergencyGovernance \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestPQCParameterCapacityBounds TestPQCAuthByteFloorCoversMaximumEncoding TestPQCBlockGasCapacity
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth \
  TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip

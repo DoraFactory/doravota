@@ -4,6 +4,8 @@
 
 Unreleased development candidate based on v1.0.1. Do not install on mainnet or reuse either historical upgrade plan.
 
+- Harden PQC parameter capacity: minimum two signers and three verifications, signer-dependent maximum-encoding byte floor, consistent signer/transaction/block budgets, and current-consensus gas preflight for capacity changes. Add real native-multisig and protected-fee-payer lifecycle regressions. Registration/protection CLI warns that delegated Authz/Feegrant authority remains valid, without scanning or revoking grants.
+
 - Preserve the v1.0.1 IBC Amino false-omission fix and require its activated signing rules before the separate v1.1.0 PQCAuth upgrade. Keep historical upgrade handlers recognition-only; add combined activation and sequential-upgrade regressions.
 
 - Add opt-in PQC Auth for classical accounts, with distinct ML-DSA-65 signing and offline recovery factors. Initial global enforcement is OPTIONAL.
