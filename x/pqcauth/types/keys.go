@@ -18,8 +18,6 @@ var (
 	PQCKeyRecordKeyPrefix    = []byte{0x03}
 	AccountSequenceKeyPrefix = []byte{0x04}
 	AccountKeyHistoryPrefix  = []byte{0x05}
-	FeegrantReverseKeyPrefix = []byte{0x06}
-	FeegrantExpiryKeyPrefix  = []byte{0x07}
 )
 
 func accountScopedPrefix(prefix []byte, owner sdk.AccAddress) []byte {
@@ -54,12 +52,5 @@ func PQCKeyRecordKey(owner sdk.AccAddress, keyID uint64) []byte {
 	return append(key, id...)
 }
 
-func FeegrantReversePrefix(granter sdk.AccAddress) []byte {
-	return accountScopedPrefix(FeegrantReverseKeyPrefix, granter)
-}
-
-func FeegrantReverseKey(granter, grantee sdk.AccAddress) []byte {
-	key := FeegrantReversePrefix(granter)
-	key = append(key, byte(len(grantee)))
-	return append(key, grantee...)
-}
+// Prefixes 0x06 and 0x07 belonged to retired experimental delegation indexes.
+// Keep them reserved; phase one must not write or reinterpret those records.

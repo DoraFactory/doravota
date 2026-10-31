@@ -12,12 +12,20 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr
  cat "$results/unit.stderr.log" "$results/unit.jsonl"; exit 1
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
- TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent \
+ TestPQCAuthPhaseOnePreservesDelegationSemantics \
+ TestPQCAuthPhaseOneDelegationCannotManageKeys \
+ TestPQCAuthPhaseOneRecoveryPreservesDelegations \
+ TestPQCAuthPhaseOneUpgradeDoesNotScanDelegations \
+ TestPQCAuthRevokeRetiredKeyPreservesStateAudit \
+ TestPQCAuthFeegrantExpiryPreservesSDKSemantics \
+ TestPQCAuthExportHeightSafety \
+ TestPQCAuthEmptyStateZeroHeightExport \
+ TestPQCAuthRealFailedMessagesKeepSDKFeegrantSemantics \
  TestPQCAuthSDKKeyringRegistrationAndHybridTransfer \
  TestPQCAuthProposalBudgetsPreserveSDKGasPolicy \
  TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning \
  TestPQCAuthFourApplicationProposalActivationBoundary \
- TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex \
+ TestPQCAuthCandidateUpgradePreservesExistingFeegrants \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \
  TestAminoUpgradeLifecycle \
@@ -31,14 +39,24 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestLegacyWasmStoredProposalDecode \
  TestLegacyWasmVotingProposalEndsWithoutHalting
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ --package github.com/DoraFactory/doravota/app/wasmarchive \
+ TestPostArchiveModuleBoundary
+python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
  TestNewFactorAcknowledgementForExternalOwners
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestIndirectExecutionContainersRejectPQCAuthLifecycleMessages \
+ TestIndirectExecutionInspectionRecursesAndPreservesOrdinaryMessages \
+ TestIndirectExecutionInspectionFailsClosedOnMalformedContainer \
+ TestAuthzNestedLifecycleMessageCannotInheritAnteAuthorization \
  TestBudgetRejectsFreshKeyPoisoning TestBudgetRejectsMalformedFreshKeyWithoutPanic \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestLifecycleMessagesRequireExactAnteAuthorization \
+ TestAllLifecycleServersRejectMissingOrDifferentAnteAuthorization \
+ TestZeroHeightExportRequiresHeightIndependentPQCState \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth \

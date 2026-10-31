@@ -30,6 +30,9 @@ func (app *App) ExportAppStateAndValidators(
 	// Tendermint will start InitChain.
 	height := app.LastBlockHeight() + 1
 	if forZeroHeight {
+		if err := app.PQCAuthKeeper.ValidateZeroHeightExport(ctx); err != nil {
+			return servertypes.ExportedApp{}, err
+		}
 		height = 0
 		app.prepForZeroHeightGenesis(ctx, jailAllowedAddrs)
 	}

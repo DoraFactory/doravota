@@ -61,6 +61,7 @@ import (
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	feegrantkeeper "github.com/cosmos/cosmos-sdk/x/feegrant/keeper"
+	feegrantmodule "github.com/cosmos/cosmos-sdk/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
@@ -557,7 +558,7 @@ func New(
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
 		vesting.NewAppModule(app.AccountKeeper, app.BankKeeper),
 		bank.NewAppModule(appCodec, app.BankKeeper, app.AccountKeeper),
-		newPQCAwareFeegrantAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry, app.PQCAuthKeeper),
+		feegrantmodule.NewAppModule(appCodec, app.AccountKeeper, app.BankKeeper, app.FeeGrantKeeper, app.interfaceRegistry),
 		gov.NewAppModule(appCodec, &app.GovKeeper, app.AccountKeeper, app.BankKeeper),
 		mint.NewAppModule(appCodec, app.MintKeeper, app.AccountKeeper, nil),
 		slashing.NewAppModule(appCodec, app.SlashingKeeper, app.AccountKeeper, app.BankKeeper, app.StakingKeeper, app.interfaceRegistry),
@@ -571,7 +572,7 @@ func New(
 		ica.NewAppModule(app.ICAControllerKeeper, app.ICAHostKeeper),
 		ibctm.NewAppModule(tmLightClientModule),
 		solomachine.NewAppModule(soloLightClientModule),
-		pqcauth.NewAppModule(app.PQCAuthKeeper, app.FeeGrantKeeper),
+		pqcauth.NewAppModule(app.PQCAuthKeeper),
 	)
 
 	// x/upgrade executes scheduled upgrade plans in PreBlock. Register it
@@ -684,11 +685,8 @@ func (app *App) setAnteHandler(txConfig client.TxConfig) {
 				FeegrantKeeper:  app.FeeGrantKeeper,
 				SigGasConsumer:  pqcauthante.PQCSafeSigVerificationGasConsumer,
 			},
-			IBCKeeper:               app.IBCKeeper,
-			PQCAuthKeeper:           app.PQCAuthKeeper,
-			AuthzGrantReader:        app.AuthzKeeper,
-			FeegrantAllowanceReader: app.FeeGrantKeeper,
-			AppCodec:                app.appCodec,
+			IBCKeeper:     app.IBCKeeper,
+			PQCAuthKeeper: app.PQCAuthKeeper,
 		},
 	)
 	if err != nil {

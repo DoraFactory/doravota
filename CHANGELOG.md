@@ -9,12 +9,12 @@ Unreleased development candidate based on v1.0.1. Do not install on mainnet or r
 - Add opt-in PQC Auth for classical accounts, with distinct ML-DSA-65 signing and offline recovery factors. Initial global enforcement is OPTIONAL.
 - Use SDK ML-DSA keyring keys for proofs and transaction signatures; remove the module-specific keygen command and retain explicitly labeled legacy raw-file recovery.
 - Reject locally detectable classical/PQC derived-key reuse for newly registered or rotated factors; preserve restoration and use of old factors to migrate assets. The CLI cannot prove mnemonic independence across other wallets or derivation paths.
-- Integrate canonical transaction decoding, authorization, feegrant routing/indexing, governance delay and proposal verification budgets without reinstating Wasm or Sponsor dependencies.
+- Integrate canonical transaction decoding, direct-signature authorization, governance delay and proposal verification budgets without reinstating Wasm or Sponsor dependencies. Keep native SDK Authz/Feegrant behavior; enrollment does not clear or restrict delegations. Comprehensive delegation protection is deferred to phase two.
 - Require explicit factor-independence acknowledgment for Ledger/watch-only owners when the local private-key check is unavailable; detected reuse remains blocked.
 - Document composite multisig limitations in OPTIONAL and REQUIRED modes.
 - Filter malformed proposal transactions before SDK selection and prevent error fallback from restoring rejected transactions; add four-application budget-activation regressions.
 - Restrict CI prerelease allowance to the PQCAuth development branch.
-- Define the internal post-v1.0.1 candidate plan `v1.1.0`; initialize its store, network domain and existing feegrant index. Production release name and rollout remain subject to review and rehearsal.
+- Define the internal post-v1.0.1 candidate plan `v1.1.0`; initialize its store, OPTIONAL parameters and network domain without scanning accounts or delegations. Remove experimental Feegrant indexes and use PQC module version 3, rejecting old experimental PQC databases. Production release name and rollout remain subject to review and rehearsal; see `docs/PQCAUTH-ROLLOUT-PLAN.md`.
 
 ## [Unreleased]
 

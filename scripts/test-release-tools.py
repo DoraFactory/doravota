@@ -17,9 +17,28 @@ def load(name):
 
 gate = load("check-test-results")
 notes = load("prepare-release-notes")
+candidate = load("candidate-prerelease")
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_candidate_policy_uses_pr_target_not_source_branch(self):
+        branch = "feature/pqcauth-sdk-keyring"
+        for event, ref, base, expected in [
+            ("pull_request", "42/merge", branch, True),
+            ("pull_request", branch, "main", False),
+            ("pull_request", "42/merge", "main", False),
+            ("pull_request", branch, "", False),
+            ("push", branch, "", True),
+            ("workflow_dispatch", branch, "", True),
+            ("push", "main", branch, False),
+            ("workflow_dispatch", "main", branch, False),
+            ("release", branch, branch, False),
+            ("pull_request_target", branch, branch, False),
+            ("", "", "", False),
+        ]:
+            with self.subTest(event=event, ref=ref, base=base):
+                self.assertEqual(candidate.allow_prerelease(event, ref, base), expected)
+
     def test_gate_accepts_required_pass(self):
         gate.check([{"Action": "pass", "Package": "app", "Test": "required"}], {"required"}, "app")
 

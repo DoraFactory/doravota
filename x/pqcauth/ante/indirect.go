@@ -12,6 +12,8 @@ import (
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
+const maxNestedAuthzDepth = 8
+
 // validateNoNestedLifecycleMessages moves the rejection of pqcauth lifecycle
 // operations embedded in executable SDK containers to transaction admission.
 // The message-server fingerprint remains the authoritative second boundary,

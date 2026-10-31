@@ -13,20 +13,18 @@ const stateInvariantRoute = "state-consistency"
 func RegisterInvariants(
 	registry sdk.InvariantRegistry,
 	moduleKeeper Keeper,
-	feegrantSource FeegrantAllowanceSource,
 ) {
 	registry.RegisterRoute(
 		types.ModuleName,
 		stateInvariantRoute,
-		StateInvariant(moduleKeeper, feegrantSource),
+		StateInvariant(moduleKeeper),
 	)
 }
 
-func StateInvariant(moduleKeeper Keeper, feegrantSource FeegrantAllowanceSource) sdk.Invariant {
+func StateInvariant(moduleKeeper Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
-		report := moduleKeeper.AuditStateWithFeegrant(
+		report := moduleKeeper.AuditState(
 			ctx,
-			feegrantSource,
 			types.DefaultStateAuditMaxIssues,
 		)
 		if err := report.Error(); err != nil {

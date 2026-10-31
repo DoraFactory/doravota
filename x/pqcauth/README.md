@@ -10,6 +10,15 @@ IBC Amino compatibility runtime and the ML-DSA mnemonic-warning CLI. This is not
 release or a mainnet activation. The candidate upgrade plan is `v1.1.0`;
 the default development binary reports `v1.1.0-dev`.
 
+Phase one protects direct transaction signing and key management. Existing and
+new Authz/Feegrant capabilities keep standard SDK semantics: a grantee can still
+execute authorized ordinary operations or spend the allowance on fees without
+the owner's PQC factor. Enrollment does not revoke these capabilities or require
+grantees to enroll. This is **not** an all-asset-movements PQC guarantee. Review
+and revoke unwanted delegations separately. A protected grantee still needs its
+own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
+See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
+
 ## Key management
 
 Use the SDK keyring, not a separate PQC key generator:
@@ -73,8 +82,9 @@ dorad tx pqcauth register-key 1 "$SIGNING_PUB" "$SIGNING_PROOF" \
   --keyring-backend file --gas auto --gas-adjustment 1.5 --gas-prices "$GAS_PRICE"
 ```
 
-Revoke outgoing authz and feegrant capabilities before enrollment. Registration
-must be the only message. Enrollment and normal rotations activate at H+1.
+Review outgoing Authz/Feegrant capabilities before enrollment; revocation is
+not a registration precondition. Registration must be the only message.
+Enrollment and normal rotations activate at H+1.
 
 Protected lifecycle commands accept `--pqc-key pqc-signing`. Recovery accepts
 `--recovery-key pqc-recovery`. Generic bank/staking/etc. messages use the bundle
@@ -137,16 +147,18 @@ Export/import preserves this ordering and permits retained keys below that maxim
 ## Application requirements and tests
 
 The app registers the module, store, services, canonical decoder, ordered Ante
-checks, feegrant MsgServer wrapper, and proposal verification budgets. Existing
+checks and proposal verification budgets, using the native SDK Feegrant module. Existing
 SDK proposal gas/byte policy is preserved. The candidate upgrade requires the
 completed v1.0.0 archive state and activated v1.0.1 signing rules. It initializes
-OPTIONAL parameters, assigns an
-upgrade-specific network domain and rebuilds existing feegrant indexes.
+OPTIONAL parameters and assigns an upgrade-specific network domain without
+scanning accounts, Authz grants or Feegrant allowances. No PQC delegation index
+is built or maintained. Internal module version 3 deliberately rejects older
+experimental PQC databases; it does not provide a migration from versions 1/2.
 Completed v1.0.0 and v1.0.1 remain recognized but must not be executed with this
 binary. Existing chains must complete v1.0.1 using its released binary first.
 
-Feegrant predictions use an uncommitted cache; actual mutations share the
-message cache with the SDK feegrant store. Admission checks and the exact
+Feegrant state changes, rollback, expiry and fee charging use the SDK's own
+implementation. Admission checks and the exact
 message authorization marker prevent indirect lifecycle execution. Consensus
 keys and IBC light-client algorithms are outside this module's scope.
 
@@ -156,14 +168,14 @@ GOMAXPROCS=2 go test -mod=readonly -p 2 ./x/pqcauth/... ./app ./cmd/dorad/cmd
 
 App tests cover failed-message rollback with fees retained, nested authz
 routing, SDK-keyring enrollment and hybrid transfer/replay, proposal budgets,
-and upgrade initialization. The current merged runtime passed remote repository
+and no-scan upgrade initialization. The earlier merged runtime passed remote repository
 tests, enabled simulations, a four-validator v1.0.0 -> v1.0.1 -> v1.1.0 upgrade,
 restarts, and the synthetic keyring lifecycle/outage rehearsal. See
 [the v1.0.1 integration record](../../docs/PQCAUTH-V101-INTEGRATION-20261030.md).
 Earlier snapshot evidence in the [integration record](../../docs/PQCAUTH-INTEGRATION.md)
 and [2026-10-27 follow-up](../../docs/PQCAUTH-FOLLOWUP-20261027.md) predates this
 merge and does not establish final merged-candidate snapshot acceptance.
-Final-candidate snapshot rehearsal, public-testnet/IBC acceptance, independent
+Those results predate phase-one simplification. Final-candidate snapshot rehearsal, public-testnet/IBC acceptance, independent
 security review and release approval remain outstanding.
 
 ## Multisig support boundary (v1.1.0)

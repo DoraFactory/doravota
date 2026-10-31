@@ -71,18 +71,11 @@ func (AppModuleBasic) GetQueryCmd() *cobra.Command { return cli.GetQueryCmd() }
 
 type AppModule struct {
 	AppModuleBasic
-	keeper         keeper.Keeper
-	feegrantSource keeper.FeegrantAllowanceSource
+	keeper keeper.Keeper
 }
 
-func NewAppModule(
-	moduleKeeper keeper.Keeper,
-	feegrantSource keeper.FeegrantAllowanceSource,
-) AppModule {
-	if feegrantSource == nil {
-		panic("pqcauth feegrant allowance source is required")
-	}
-	return AppModule{keeper: moduleKeeper, feegrantSource: feegrantSource}
+func NewAppModule(moduleKeeper keeper.Keeper) AppModule {
+	return AppModule{keeper: moduleKeeper}
 }
 
 func (AppModule) IsOnePerModuleType() {}
@@ -91,19 +84,10 @@ func (AppModule) IsAppModule()        {}
 func (am AppModule) RegisterServices(configurator module.Configurator) {
 	types.RegisterMsgServer(configurator.MsgServer(), keeper.NewMsgServer(am.keeper))
 	types.RegisterQueryServer(configurator.QueryServer(), keeper.NewQueryServer(am.keeper))
-	if err := configurator.RegisterMigration(
-		types.ModuleName,
-		1,
-		func(ctx sdk.Context) error {
-			return am.keeper.RebuildFeegrantIndex(ctx, am.feegrantSource)
-		},
-	); err != nil {
-		panic(err)
-	}
 }
 
 func (am AppModule) RegisterInvariants(registry sdk.InvariantRegistry) {
-	keeper.RegisterInvariants(registry, am.keeper, am.feegrantSource)
+	keeper.RegisterInvariants(registry, am.keeper)
 }
 
 func (am AppModule) InitGenesis(
@@ -116,9 +100,6 @@ func (am AppModule) InitGenesis(
 		panic(err)
 	}
 	InitGenesis(ctx, am.keeper, genesis)
-	if err := am.keeper.RebuildFeegrantIndex(ctx, am.feegrantSource); err != nil {
-		panic(err)
-	}
 	return nil
 }
 
@@ -126,7 +107,10 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 	return cdc.MustMarshalJSON(ExportGenesis(ctx, am.keeper))
 }
 
-func (AppModule) ConsensusVersion() uint64 { return 2 }
+// Version 3 is the signature-only candidate. Earlier experimental versions
+// included delegated-capability indexes and must not be silently reused.
+// Production activation initializes a new module from the v1.0.1 baseline.
+func (AppModule) ConsensusVersion() uint64 { return 3 }
 func (am AppModule) BeginBlock(ctx context.Context) error {
 	_, err := am.keeper.NormalizeParams(sdk.UnwrapSDKContext(ctx))
 	return err

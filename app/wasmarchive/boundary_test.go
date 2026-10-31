@@ -17,12 +17,13 @@ func TestPostArchiveModuleBoundary(t *testing.T) {
 		liveWasm, valid  bool
 	}{
 		{name: "existing archive", valid: true},
-		{name: "initialized pqcauth", extraStore: "pqcauth", version: 2, valid: true},
+		{name: "initialized pqcauth", extraStore: "pqcauth", version: 3, valid: true},
 		{name: "uninitialized store", extraStore: "pqcauth"},
-		{name: "missing store", version: 2},
+		{name: "missing store", version: 3},
 		{name: "wrong module version", extraStore: "pqcauth", version: 1},
+		{name: "old experimental delegation index version", extraStore: "pqcauth", version: 2},
 		{name: "unknown store", extraStore: "unexpected"},
-		{name: "live wasm conflict", extraStore: "pqcauth", version: 2, liveWasm: true},
+		{name: "live wasm conflict", extraStore: "pqcauth", version: 3, liveWasm: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := dbm.NewMemDB()
@@ -57,7 +58,7 @@ func TestPostArchiveModuleBoundary(t *testing.T) {
 			}
 			cache.Write()
 			multi.Commit()
-			err := ValidateBoundaryWithModules(log.NewNopLogger(), db, t.TempDir(), nil, map[string]uint64{"pqcauth": 2})
+			err := ValidateBoundaryWithModules(log.NewNopLogger(), db, t.TempDir(), nil, map[string]uint64{"pqcauth": 3})
 			if tc.valid {
 				require.NoError(t, err)
 			} else {

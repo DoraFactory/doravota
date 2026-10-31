@@ -1,13 +1,13 @@
 # PQC Auth integration and enrollment
 
 The supported source baseline for this candidate is the already upgraded
-v1.0.0 archive runtime. The old multi-version SDK bridge and retired execution
+v1.0.1 runtime, including its completed v1.0.0 archive upgrade. The old multi-version SDK bridge and retired execution
 modules are not part of this integration.
 
 ## Chain upgrade
 
 1. Build and review the candidate on `feature/pqcauth-sdk-keyring`.
-2. Rehearse store addition, migration, feegrant-index reconstruction, restart,
+2. Rehearse store addition, bounded PQC initialization, restart,
    archive queries, genesis export/import and ordinary transactions against a
    recent snapshot. Local app tests are not a snapshot rehearsal.
 3. Finalize release identity and upgrade plan before publishing artifacts.
@@ -17,16 +17,21 @@ modules are not part of this integration.
 5. Do not reuse the released `v1.0.0` upgrade handler for the new module.
 
 The handler validates module versions and the archive activation marker, adds
-only the pqcauth store, assigns a chain/upgrade-specific signature domain and
-rebuilds the reverse feegrant index from canonical allowances. Existing account
-addresses, balances and archived contract data are preserved.
+only the pqcauth store and assigns a chain/upgrade-specific signature domain.
+It does not scan accounts or delegations or build any Feegrant reverse index.
+Existing account addresses, balances, Authz/Feegrant permissions and archived
+contract data are preserved. Internal module version 3 is not a migration for
+older experimental PQC version 1/2 databases; do not switch those development
+chains to this binary without a separately reviewed transition.
 
 ## Account enrollment
 
 - Generate fresh SDK ML-DSA signing and offline recovery keys from **different
   dedicated mnemonics**, separate from every classical wallet mnemonic.
-- Revoke outgoing authz/feegrant capabilities, then register both proofs with
-  the classical owner signature. Registration is one top-level message.
+- Review outgoing Authz/Feegrant capabilities, then register both proofs with
+  the classical owner signature. Existing permissions remain valid; revoking
+  unwanted ones is the user's choice, not an enrollment precondition.
+  Registration is one top-level message.
 - Wait until H+1. Verify that a classical-only transfer fails and a correctly
   bound hybrid transaction succeeds. Retain transaction evidence.
 - Offline recovery and key rotation are separate from recovering the original
@@ -41,6 +46,11 @@ identify whether a mnemonic has ever been used elsewhere.
 For commands, candidate defaults, legacy-file compatibility and testing scope,
 see [README](README.md). Full keyring-backed lifecycle rehearsal and production
 operational review remain release acceptance work.
+
+Phase one protects direct signing and key management, not every asset movement
+through delegated capabilities. Recovery does not revoke delegations. Indirect
+key-management execution is still rejected. Comprehensive delegation policy is
+separate phase-two work: see the [rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
 ## Eligibility and hardware owners
 

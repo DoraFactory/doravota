@@ -4,7 +4,6 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	pqcauthante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 	pqcauthkeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
-	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/auth/ante"
@@ -17,11 +16,8 @@ import (
 type HandlerOptions struct {
 	ante.HandlerOptions
 
-	IBCKeeper               *keeper.Keeper
-	PQCAuthKeeper           pqcauthkeeper.Keeper
-	AuthzGrantReader        pqcauthante.AuthzGrantReader
-	FeegrantAllowanceReader pqcauthante.FeegrantAllowanceReader
-	AppCodec                codec.Codec
+	IBCKeeper     *keeper.Keeper
+	PQCAuthKeeper pqcauthkeeper.Keeper
 }
 
 func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
@@ -39,9 +35,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "IBC keeper is required for ante builder")
 	}
 
-	if options.AuthzGrantReader == nil || options.FeegrantAllowanceReader == nil || options.AppCodec == nil {
-		return nil, errorsmod.Wrap(sdkerrors.ErrLogic, "PQC authz, feegrant and codec dependencies are required")
-	}
 	anteDecorators := []sdk.AnteDecorator{
 		ante.NewSetUpContextDecorator(), // outermost AnteDecorator. SetUpContext must be called first
 		ante.NewExtensionOptionsDecorator(pqcauthante.ExtensionOptionChecker(options.ExtensionOptionChecker)),
@@ -57,7 +50,6 @@ func NewAnteHandler(options HandlerOptions) (sdk.AnteHandler, error) {
 		ante.NewValidateSigCountDecorator(options.AccountKeeper),
 		ante.NewSigGasConsumeDecorator(options.AccountKeeper, options.SigGasConsumer),
 		ante.NewSigVerificationDecorator(options.AccountKeeper, options.SignModeHandler),
-		pqcauthante.NewAuthzPQCDecorator(options.PQCAuthKeeper, options.AccountKeeper, options.AuthzGrantReader, options.FeegrantAllowanceReader, options.AppCodec),
 		pqcauthante.NewVerifyPQCDecorator(options.PQCAuthKeeper, options.AccountKeeper),
 		ante.NewIncrementSequenceDecorator(options.AccountKeeper),
 		ibcante.NewRedundantRelayDecorator(options.IBCKeeper),

@@ -42,8 +42,6 @@ jobs:
 
   linux:
     needs: tests
-    env:
-      ALLOW_PRERELEASE: ${{ (github.head_ref || github.ref_name) == 'feature/pqcauth-sdk-keyring' && 'true' || 'false' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -56,6 +54,8 @@ jobs:
             runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - name: Select candidate version policy
+        run: echo "ALLOW_PRERELEASE=$(python3 scripts/candidate-prerelease.py)" >> "$GITHUB_ENV"
       - name: Build and execute candidate artifact
         env:
           ARCH: ${{ matrix.arch }}

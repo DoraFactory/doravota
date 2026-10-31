@@ -42,7 +42,7 @@ type pqcChain struct {
 	stamp  time.Time
 }
 
-func newPQCChain(t *testing.T) *pqcChain {
+func newPQCChain(t *testing.T, params ...pqctypes.Params) *pqcChain {
 	t.Helper()
 	a := policyTestApp(t)
 	key, other := secp256k1.GenPrivKey(), secp256k1.GenPrivKey()
@@ -51,6 +51,12 @@ func newPQCChain(t *testing.T) *pqcChain {
 	cp := tmtypes.DefaultConsensusParams().ToProto()
 	genesis, err := simtestutil.GenesisStateWithValSet(a.AppCodec(), app.NewDefaultGenesisState(a.AppCodec()), tmtypes.NewValidatorSet([]*tmtypes.Validator{tmtypes.NewValidator(ed25519.GenPrivKey().PubKey(), 1)}), []authtypes.GenesisAccount{authtypes.NewBaseAccountWithAddress(owner), authtypes.NewBaseAccountWithAddress(second)}, banktypes.Balance{Address: owner.String(), Coins: sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 100000000))}, banktypes.Balance{Address: second.String(), Coins: sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1000000))})
 	require.NoError(t, err)
+	if len(params) != 0 {
+		require.Len(t, params, 1)
+		pqcGenesis := pqctypes.DefaultGenesisState()
+		pqcGenesis.Params = params[0]
+		genesis[pqctypes.ModuleName] = a.AppCodec().MustMarshalJSON(pqcGenesis)
+	}
 	raw, err := json.Marshal(genesis)
 	require.NoError(t, err)
 	stamp := time.Unix(1700000000, 0)
@@ -114,7 +120,7 @@ func (c *pqcChain) txWithFeeGranter(t *testing.T, key *secp256k1.PrivKey, factor
 	require.NoError(t, err)
 	return raw
 }
-func TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent(t *testing.T) {
+func TestPQCAuthRealFailedMessagesKeepSDKFeegrantSemantics(t *testing.T) {
 	c := newPQCChain(t)
 	a := c.app
 	owner := sdk.AccAddress(c.key.PubKey().Address())
@@ -128,20 +134,14 @@ func TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent(t *testing.T) {
 	ctx := a.NewContext(true)
 	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
 	require.Error(t, err)
-	found, err := a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.False(t, found)
 	require.Equal(t, before.SubRaw(10), a.BankKeeper.GetBalance(ctx, owner, sdk.DefaultBondDenom).Amount)
 	require.Equal(t, uint64(1), a.AccountKeeper.GetAccount(ctx, owner).GetSequence())
-	// Success must update BOTH stores through the routed feegrant MsgServer.
+	// The SDK grant is committed only on successful message execution.
 	result = c.block(t, c.tx(t, c.key, nil, grant))
 	require.Zero(t, result.Code, result.Log)
 	ctx = a.NewContext(true)
 	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
 	require.NoError(t, err)
-	found, err = a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.True(t, found)
 	// An unauthorized nested revoke passes structural Ante but fails in authz.
 	revoke := feegrant.NewMsgRevokeAllowance(owner, grantee)
 	exec := authz.NewMsgExec(grantee, []sdk.Msg{&revoke})
@@ -150,10 +150,7 @@ func TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent(t *testing.T) {
 	ctx = a.NewContext(true)
 	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
 	require.NoError(t, err)
-	found, err = a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.True(t, found)
-	// A successful nested mutation must also use the wrapped MsgServer.
+	// Successful nested mutations retain ordinary SDK routing.
 	authGrant, err := authz.NewMsgGrant(owner, grantee, authz.NewGenericAuthorization(sdk.MsgTypeURL(&revoke)), nil)
 	require.NoError(t, err)
 	result = c.block(t, c.tx(t, c.key, nil, authGrant))
@@ -163,11 +160,8 @@ func TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent(t *testing.T) {
 	ctx = a.NewContext(true)
 	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
 	require.Error(t, err)
-	found, err = a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.False(t, found)
 	// Actual fee consumption is an Ante mutation and MUST persist even when
-	// messages fail. Exhaustion must remove the SDK grant and derived index.
+	// messages fail. Exhaustion must remove the SDK grant.
 	limited, err := feegrant.NewMsgGrantAllowance(&feegrant.BasicAllowance{SpendLimit: sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 10))}, owner, grantee)
 	require.NoError(t, err)
 	result = c.block(t, c.tx(t, c.key, nil, limited))
@@ -180,9 +174,6 @@ func TestPQCAuthRealFailedMessagesKeepFeegrantIndexConsistent(t *testing.T) {
 	require.Equal(t, before.SubRaw(10), a.BankKeeper.GetBalance(ctx, owner, sdk.DefaultBondDenom).Amount)
 	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
 	require.Error(t, err)
-	found, err = a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.False(t, found)
 }
 func TestPQCAuthSDKKeyringRegistrationAndHybridTransfer(t *testing.T) {
 	c := newPQCChain(t)
@@ -257,13 +248,13 @@ func TestPQCAuthProposalBudgetsPreserveSDKGasPolicy(t *testing.T) {
 	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, accepted.Status)
 }
 
-func TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex(t *testing.T) {
+func TestPQCAuthCandidateUpgradePreservesExistingFeegrants(t *testing.T) {
 	c := newPQCChain(t)
 	a := c.app
 	ctx := a.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
 	owner := sdk.AccAddress(c.key.PubKey().Address())
 	grantee := sdk.AccAddress(c.other.PubKey().Address())
-	// Seed canonical pre-upgrade state, deliberately without the derived index.
+	// Seed canonical pre-upgrade state; phase one must leave it untouched.
 	require.NoError(t, a.FeeGrantKeeper.GrantAllowance(ctx, owner, grantee, &feegrant.BasicAllowance{}))
 	versions, err := a.UpgradeKeeper.GetModuleVersionMap(ctx)
 	require.NoError(t, err)
@@ -273,12 +264,11 @@ func TestPQCAuthCandidateUpgradeInitializesExistingFeegrantIndex(t *testing.T) {
 	archive := ctx.KVStore(a.GetKey(wasmarchive.StoreKey))
 	archive.Set([]byte("sentinel"), []byte("preserved"))
 	require.NoError(t, a.UpgradeKeeper.ApplyUpgrade(ctx, upgradetypes.Plan{Name: app.PQCAuthUpgradeName, Height: c.height}))
+	_, err = a.FeeGrantKeeper.GetAllowance(ctx, owner, grantee)
+	require.NoError(t, err)
 	params := a.PQCAuthKeeper.GetParams(ctx)
 	require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EnforcementMode)
 	require.False(t, pqctypes.UsesLegacyDefaultNetworkID(params.NetworkId))
-	found, err := a.PQCAuthKeeper.HasOutgoingFeegrant(ctx, owner)
-	require.NoError(t, err)
-	require.True(t, found)
 	require.Equal(t, []byte("preserved"), archive.Get([]byte("sentinel")))
 	versions, err = a.UpgradeKeeper.GetModuleVersionMap(ctx)
 	require.NoError(t, err)

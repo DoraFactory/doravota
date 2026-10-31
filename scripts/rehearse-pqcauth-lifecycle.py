@@ -225,12 +225,31 @@ class Rehearsal:
             self.receipt(label, self.cli("tx", "pqcauth", "broadcast-bundle", signed, *self.bundle_flags))
         return signed
 
+    def delegated_use(self, label):
+        # Phase one deliberately preserves delegated ordinary operations, even
+        # after enrollment/recovery. Only the grantee signs this execution.
+        unsigned = self.evidence / (label + "-authz.json")
+        unsigned.write_text(self.cli("tx", "bank", "send", self.addresses["owner"],
+                           self.addresses["recipient"], "2peaka", "--from", "owner",
+                           *self.tx_flags, "--generate-only"))
+        self.tx(label + "-authz", "authz", "exec", unsigned, sender="recipient")
+        before = self.balance(self.addresses["owner"])
+        self.tx(label + "-feegrant", "bank", "send", self.addresses["recipient"],
+                self.addresses["recipient"], "1peaka", "--fee-granter",
+                self.addresses["owner"], sender="recipient")
+        assert before - self.balance(self.addresses["owner"]) == 100000
+
     def lifecycle(self):
+        self.tx("pre-enrollment-authz", "authz", "grant", self.addresses["recipient"],
+                "generic", "--msg-type", "/cosmos.bank.v1beta1.MsgSend")
+        self.tx("pre-enrollment-feegrant", "feegrant", "grant", self.addresses["owner"],
+                self.addresses["recipient"], "--spend-limit", "1000000peaka")
         p = self.proof("factor0", 1, "signing", "register-signing", 0)
         r = self.proof("recovery0", 2, "recovery", "register-recovery", 0)
         self.tx("register", "pqcauth", "register-key", "1", p["public_key_base64"], p["proof_base64"],
                 "--recovery-public-key-base64", r["public_key_base64"], "--recovery-proof-base64", r["proof_base64"])
         self.activated("current_signing_key_id", 1)
+        self.delegated_use("after-enrollment")
         self.bundle("offline-transfer", "factor0")
         stale = self.bundle("pre-rotation", "factor0", broadcast=False)
         p = self.proof("factor1", 3, "signing", "rotate-signing", self.policy()["policy_version"])
@@ -266,6 +285,7 @@ class Rehearsal:
         self.ready()
         self.activated("current_signing_key_id", 6)
         self.bundle("recovered-transfer", "factor3")
+        self.delegated_use("after-recovery-and-restart")
         self.reject("pre-recovery-factor-rejected", ["tx", "pqcauth", "set-protection", "true", "--pqc-key", "factor1", "--from", "owner", *self.tx_flags], "does not match")
         self.reject("classic-only-rejected", ["tx", "bank", "send", self.addresses["owner"], self.addresses["recipient"], "1peaka", "--from", "owner", *self.tx_flags], "PQC")
         self.agreement("lifecycle-agreement")
@@ -347,9 +367,12 @@ class Rehearsal:
         assert self.query("pqcauth", "account", self.addresses["owner"]) == account
         self.agreement("history-restart-agreement")
 
-    def recipient_balance(self):
-        balances = self.query("bank", "balances", self.addresses["recipient"])["balances"]
+    def balance(self, address):
+        balances = self.query("bank", "balances", address)["balances"]
         return sum(int(coin["amount"]) for coin in balances if coin["denom"] == "peaka")
+
+    def recipient_balance(self):
+        return self.balance(self.addresses["recipient"])
 
     def execute(self):
         try:
@@ -363,7 +386,8 @@ class Rehearsal:
             self.load()
             self.history_churn()
             balance_after = self.recipient_balance()
-            expected = 4 * 7 + self.rounds * (8 + 1 + 7)
+            # Two delegated sends add 4; their grantee pays 2 * 100000 fees.
+            expected = 4 * 7 + self.rounds * (8 + 1 + 7) + 4 - 2 * 100000
             assert balance_after - balance_before == expected
             self.save("recipient-balance", {"before": str(balance_before), "after": str(balance_after),
                       "expected_increase_peaka": expected})

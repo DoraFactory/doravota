@@ -414,7 +414,12 @@ func (m msgServer) RevokeKey(
 		return nil, err
 	}
 	owner, _ := sdk.AccAddressFromBech32(msg.Owner)
-	policy, found := m.GetEffectiveAccountPolicy(ctx, owner)
+	// Persist any activated rotation before revoking/compacting its old key.
+	// Otherwise the stored policy can still reference the now-revoked key.
+	policy, found, err := m.NormalizeAccountPolicy(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
 	if !found {
 		return nil, types.ErrPolicyNotFound
 	}

@@ -48,8 +48,8 @@ func (app *App) registerPQCAuthUpgrade() {
 		if err := app.PQCAuthKeeper.SetParams(ctx, params); err != nil {
 			return nil, err
 		}
-		// RunMigrations calls the new module's InitGenesis, which already
-		// rebuilds the index. Do not scan every existing grant a second time.
+		// InitGenesis only initializes PQC state. Phase one never scans or
+		// rewrites existing accounts, Authz grants or Feegrant allowances.
 		return updated, nil
 	})
 }
