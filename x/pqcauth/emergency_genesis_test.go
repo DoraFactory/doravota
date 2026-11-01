@@ -23,7 +23,7 @@ func TestIndependentEmergencyExportImport(t *testing.T) {
 	_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 	require.NoError(t, err)
 	p.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: p})
+	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: p, EmergencyOnly: true})
 	require.NoError(t, err)
 	original := k.GetParams(ctx)
 	cdc, ok := k.Codec().(codec.Codec)

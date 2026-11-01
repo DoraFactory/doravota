@@ -683,8 +683,11 @@ func (m msgServer) UpdateParams(
 		)
 	}
 	requested := msg.Params
-	if isOverlappingEmergencyUpdate(current, requested) {
-		return m.scheduleOverlappingEmergency(ctx, current, requested.EmergencyMode)
+	if msg.EmergencyOnly {
+		if !validEmergencyOnlyFields(current, requested) {
+			return nil, types.ErrInvalidParams.Wrap("emergency_only cannot change non-emergency parameters")
+		}
+		return m.scheduleEmergencyOnly(ctx, current, requested.EmergencyMode)
 	}
 	if current.PendingEmergency != nil {
 		return nil, types.ErrInvalidParams.Wrap("wait for the H+1 emergency activation before replacing other parameters")
@@ -699,6 +702,11 @@ func (m msgServer) UpdateParams(
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
+	// A full update that keeps the active pause also keeps its expiry. Renewing
+	// a pause without changing ordinary plans requires explicit emergency_only.
+	if requestedScheduled.EmergencyMode == currentScheduled.EmergencyMode {
+		requestedScheduled.EmergencyExpiresHeight = currentScheduled.EmergencyExpiresHeight
+	}
 	if requestedScheduled.RegistrationMode < currentScheduled.RegistrationMode {
 		return nil, types.ErrInvalidParams.Wrap(
 			"registration mode cannot be relaxed after activation",
@@ -740,12 +748,19 @@ func (m msgServer) UpdateParams(
 				effectiveHeight,
 			)
 		}
-		if requestedScheduled.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL {
+		if requestedScheduled.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL &&
+			requestedScheduled.EmergencyMode != currentScheduled.EmergencyMode {
 			if effectiveHeight > math.MaxUint64-current.MaxEmergencyDurationBlocks {
 				return nil, types.ErrInvalidParams.Wrap("emergency expiration height overflow")
 			}
 			requestedScheduled.EmergencyExpiresHeight =
 				effectiveHeight + current.MaxEmergencyDurationBlocks
+		}
+		// Ordinary restrictions may activate after the retained pause expires.
+		// Do not extend that pause or let the later bundle resurrect it.
+		if requestedScheduled.EmergencyExpiresHeight != 0 && requestedScheduled.EmergencyExpiresHeight <= effectiveHeight {
+			requestedScheduled.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_NORMAL
+			requestedScheduled.EmergencyExpiresHeight = 0
 		}
 		current.Pending = new(types.ScheduledParams)
 		*current.Pending = requestedScheduled
@@ -756,6 +771,7 @@ func (m msgServer) UpdateParams(
 	}
 	return &types.MsgUpdateParamsResponse{
 		ActivationHeight: effectiveHeight,
+		ResultingParams:  current,
 	}, nil
 }
 

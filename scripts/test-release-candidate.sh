@@ -76,6 +76,10 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestReviewCancelOrdinaryRestrictionWhileKeepingPause \
+ TestExplicitEmergencyRenewalPreservesOrdinaryIntent \
+ TestEmergencyOnlyRejectsSmuggledChangesAndPreservesCutoff \
+ TestOrdinaryReplacementDoesNotRenewOrResurrectPause \
  TestEmergencyUpdatePreservesPendingCutoffAndRestrictions \
  TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges \
  TestEmergencyExpiryDoesNotResurrectAtPendingActivation \
@@ -88,6 +92,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestEmergencyIntentWireJSONAndSignBytes \
  TestIndependentEmergencyValidationAndCodec \
  TestVerificationGasUsesSDKBaseline TestVerificationGasPreservesStoredPricesAndActivation \
  TestPhaseOneRejectsFreshRegistrationParameters \

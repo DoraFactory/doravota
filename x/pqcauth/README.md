@@ -229,7 +229,17 @@ measurement boundaries and deployment requirements.
 Restrictive changes to verification limits and history retention wait for the
 safety delay; emergency pauses have their separately bounded fast path.
 
-When a different non-emergency parameter bundle is already queued, an emergency-only
+`MsgUpdateParams.emergency_only` explicitly selects the operation:
+
+- Omitted/false: a full parameter update. Restoring the active ordinary parameters
+  while retaining the active emergency mode cancels a cancellable pending bundle;
+  it does not renew the pause. A different ordinary replacement follows the existing
+  safety delay and cutoff rules.
+- True: change/renew only emergency mode at H+1. Non-emergency fields must match
+  either the complete active or complete queued bundle. The server never infers
+  this intent merely because the requested mode is a pause.
+
+When a non-emergency parameter bundle is already queued, an explicit emergency-only
 request may copy either the active or queued non-emergency fields. The server
 schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
 original cutoff, restrictions and activation height. This does not revoke a queued
@@ -239,6 +249,21 @@ pause. Governance cannot supply the internal schedule or expiration directly.
 Until that H+1 activation, another request that also changes non-emergency fields
 is rejected; submit the emergency update separately, then re-query before an
 unrelated parameter replacement.
+
+Full updates retaining the active emergency mode retain its existing expiry; if
+an ordinary replacement activates after that expiry, its emergency component is
+NORMAL. Renewal requires `emergency_only: true`. Numeric cutoffs remain irreversible;
+neither operation cancels them. A full update with a new emergency mode still has
+full-bundle semantics, including its applicable safety delay; use explicit
+emergency-only scope for a fast pause that must preserve an ordinary plan.
+
+The response's `resulting_params` is the actual stored state, showing both pending
+schedules and expiry. For governance JSON, `emergency_only` is a top-level message
+field, not a Params field. A request must still clear `pending`,
+`pending_activation_height`, `pending_emergency` and `emergency_expires_height`
+from queried state; runtime schedules/expiry cannot be supplied by callers.
+The [GOV-02 fix record](../../docs/PQCAUTH-GOV02-FIXES-20261101.md) describes
+compatibility and regression coverage.
 
 During `PAUSE_PQC_TRANSACTIONS`, exactly one top-level `MsgRecoverKey` or
 `MsgCancelRecovery` may carry an authorization extension. This permits a protected

@@ -13,31 +13,19 @@ func withoutEmergency(p types.ScheduledParams) types.ScheduledParams {
 	return p
 }
 
-// A pure emergency request may carry either the active or the queued bundle.
-// It changes neither bundle's non-emergency fields. In particular an active
-// cutoff of zero is NOT a request to revoke a queued irreversible cutoff here.
-// Existing ordinary-only cancellation and emergency-only bundle semantics are
-// retained when no different non-emergency bundle is waiting.
-func isOverlappingEmergencyUpdate(current, requested types.Params) bool {
-	if current.Pending == nil {
-		return false
-	}
+// An explicitly emergency-only request may carry either the active or queued
+// non-emergency bundle, but cannot change either. This is a validation check,
+// never an inference of the caller's intent from its parameter values.
+func validEmergencyOnlyFields(current, requested types.Params) bool {
 	active := withoutEmergency(current.AsScheduled())
-	pending := withoutEmergency(*current.Pending)
-	if active.Equal(pending) && current.PendingEmergency == nil {
-		return false
-	}
 	want := withoutEmergency(requested.AsScheduled())
-	if !want.Equal(active) && !want.Equal(pending) {
-		return false
+	if want.Equal(active) {
+		return true
 	}
-	return current.PendingEmergency != nil ||
-		requested.EmergencyMode != current.EmergencyMode ||
-		requested.EmergencyMode != current.Pending.EmergencyMode ||
-		requested.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL
+	return current.Pending != nil && want.Equal(withoutEmergency(*current.Pending))
 }
 
-func (m msgServer) scheduleOverlappingEmergency(ctx sdk.Context, current types.Params, mode types.EmergencyMode) (*types.MsgUpdateParamsResponse, error) {
+func (m msgServer) scheduleEmergencyOnly(ctx sdk.Context, current types.Params, mode types.EmergencyMode) (*types.MsgUpdateParamsResponse, error) {
 	if ctx.BlockHeight() < 0 || uint64(ctx.BlockHeight()) == math.MaxUint64 {
 		return nil, types.ErrInvalidParams.Wrap("emergency activation height overflow")
 	}
@@ -49,17 +37,24 @@ func (m msgServer) scheduleOverlappingEmergency(ctx sdk.Context, current types.P
 		}
 		expiry = activation + current.MaxEmergencyDurationBlocks
 	}
-	current.PendingEmergency = &types.EmergencySchedule{Mode: mode, ActivationHeight: activation, ExpiresHeight: expiry}
-	// Copy before editing; Params.Effective and keeper callers may share the
-	// pointer. The original cutoff, budget, enforcement and activation stay put.
-	pending := *current.Pending
-	pending.EmergencyMode, pending.EmergencyExpiresHeight = mode, expiry
-	if expiry != 0 && expiry <= current.PendingActivationHeight {
-		pending.EmergencyMode, pending.EmergencyExpiresHeight = types.EmergencyMode_EMERGENCY_MODE_NORMAL, 0
+	if current.Pending == nil {
+		pending := current.AsScheduled()
+		pending.EmergencyMode, pending.EmergencyExpiresHeight = mode, expiry
+		current.Pending = &pending
+		current.PendingActivationHeight = activation
+	} else {
+		current.PendingEmergency = &types.EmergencySchedule{Mode: mode, ActivationHeight: activation, ExpiresHeight: expiry}
+		// Copy before editing; Params.Effective and keeper callers may share the
+		// pointer. The original cutoff, budget, enforcement and activation stay put.
+		pending := *current.Pending
+		pending.EmergencyMode, pending.EmergencyExpiresHeight = mode, expiry
+		if expiry != 0 && expiry <= current.PendingActivationHeight {
+			pending.EmergencyMode, pending.EmergencyExpiresHeight = types.EmergencyMode_EMERGENCY_MODE_NORMAL, 0
+		}
+		current.Pending = &pending
 	}
-	current.Pending = &pending
 	if err := m.SetParams(ctx, current); err != nil {
 		return nil, err
 	}
-	return &types.MsgUpdateParamsResponse{ActivationHeight: activation}, nil
+	return &types.MsgUpdateParamsResponse{ActivationHeight: activation, ResultingParams: current}, nil
 }

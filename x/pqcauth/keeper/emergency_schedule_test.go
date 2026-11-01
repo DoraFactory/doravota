@@ -33,7 +33,7 @@ func TestEmergencyUpdatePreservesPendingCutoffAndRestrictions(t *testing.T) {
 						}
 						want.EmergencyMode = mode
 						at := ctx.WithBlockHeight(height)
-						response, err = s.UpdateParams(at, &types.MsgUpdateParams{Authority: k.Authority(), Params: want})
+						response, err = s.UpdateParams(at, &types.MsgUpdateParams{Authority: k.Authority(), Params: want, EmergencyOnly: true})
 						require.NoError(t, err)
 						require.Equal(t, uint64(height+1), response.ActivationHeight)
 						stored := k.GetParams(at)
@@ -80,9 +80,9 @@ func TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges(t *testing.T) {
 	}
 	want := base
 	want.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: "unauthorized", Params: want})
+	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: "unauthorized", Params: want, EmergencyOnly: true})
 	require.ErrorIs(t, err, types.ErrInvalidAuthority)
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: want})
+	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: want, EmergencyOnly: true})
 	require.NoError(t, err)
 	before = k.GetParams(ctx)
 	mixed := queued
@@ -91,7 +91,7 @@ func TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges(t *testing.T) {
 	require.ErrorContains(t, err, "H+1 emergency activation")
 	require.Equal(t, before, k.GetParams(ctx))
 	// Explicitly cancel only the emergency, retaining the original cutoff.
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: base})
+	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: base, EmergencyOnly: true})
 	require.NoError(t, err)
 	active, err := k.NormalizeParams(ctx.WithBlockHeight(102))
 	require.NoError(t, err)
@@ -115,7 +115,7 @@ func TestEmergencyExpiryDoesNotResurrectAtPendingActivation(t *testing.T) {
 			require.NoError(t, err)
 			pause := base
 			pause.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
-			_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause})
+			_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause, EmergencyOnly: true})
 			require.NoError(t, err)
 			stored := k.GetParams(ctx)
 			// Skipping directly to a height (query/export/restart) and normalizing
