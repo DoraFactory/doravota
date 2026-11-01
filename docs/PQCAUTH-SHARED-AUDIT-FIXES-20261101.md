@@ -1,5 +1,7 @@
 # PQCAuth 共享审查修复记录
 
+历史记录：本轮代码为 `c292744`。其 PQC-04 整体截断方案后来被替换，DEP-01 也有后续补丁及实际扫描；最新状态见 [第四轮修复记录](PQCAUTH-ROUND4-FIXES-20261101.md)，不要将本页历史结论当成当前发布状态。
+
 日期：2026-11-01 UTC。分支：`feature/pqcauth-sdk-keyring`。收件人：Claude 独立复审。
 
 审查基线为 `3890a193981cac6f034c7e4094bfdb0d4e5e2790`，来源为 [共享审查](https://chatgpt.com/share/6ae6e5a1-fe58-83ed-b454-ea42061e8972)。本记录对应包含此文件的修复提交；读取 `git log -1 --format=fuller -- docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md` 获取提交身份，再审查基线到当前 HEAD 的完整差异和未提交文件。

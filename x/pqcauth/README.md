@@ -35,12 +35,20 @@ do not change ordinary, unprotected SDK Amino transfers or the v1.0.1 IBC fix.
 PQC extension decoding enforces absolute 256 KiB / 32-entry bounds before
 generated protobuf allocation, including noncritical options that Ante later
 rejects. Governed byte/count bounds are also checked before Ante decoding.
-When a valid candidate would exceed a PQC proposal budget, selection stops
-there instead of filling from the suffix; this preserves sequence dependencies
-at the cost of potentially unused block capacity.
+When a candidate exceeds a PQC proposal budget, selection skips its signers'
+dependent suffix rather than stopping the whole block. Dependencies propagate
+through co-signers and independent fee payers, while unrelated transactions
+remain eligible. Candidates exceeding newly active byte/signer limits receive
+the same treatment only after a bounded structural/key check at absolute
+ceilings. Candidates failing that absolute structural/key inspection do not
+populate the dependency/key caches.
+This is sequence-dependency filtering, not full Ante replay or generic message
+dependency analysis; normal SDK gas/byte limits still apply.
 
-See the [2026-11-01 shared-audit fixes](../../docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)
-for tests, compatibility limits, and outstanding release dependencies.
+See the [round four fixes](../../docs/PQCAUTH-ROUND4-FIXES-20261101.md)
+for the current tests, dependency patches and residual scan findings. The
+[earlier shared-audit fixes](../../docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)
+record the superseded prefix-selection policy.
 
 Registration, `set-protection true`, and `recover-key` print a delegation warning to stderr,
 including the SDK `query authz grants-by-granter` and
