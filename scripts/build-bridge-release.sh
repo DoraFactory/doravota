@@ -58,7 +58,11 @@ fi
 # Exercise the generated SDK genesis through the real startup path. Supplying
 # --chain-id here would hide failures in the application's genesis fallback.
 set +e
-timeout 8 "release/${binary}" start --with-comet=false --home "$smoke_home" >"${smoke_home}/startup.log" 2>&1
+# Smoke must not compete with existing nodes for RPC/API/gRPC ports. ABCI
+# binds an ephemeral loopback port; no public listener is needed for this check.
+timeout 8 "release/${binary}" start --with-comet=false --home "$smoke_home" \
+ --address tcp://127.0.0.1:0 --grpc.enable=false --grpc-web.enable=false --api.enable=false \
+ >"${smoke_home}/startup.log" 2>&1
 startup_status=$?
 set -e
 # BusyBox timeout propagates a graceful child's zero exit; GNU returns 124.
