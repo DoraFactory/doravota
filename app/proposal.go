@@ -71,11 +71,22 @@ func (app *App) limitPQCProposal(ctx sdk.Context, decoder sdk.TxDecoder, txs [][
 		}
 		inspection, err := tracker.Inspect(ctx, tx, params)
 		cost := inspection.Cost.Total()
-		if err != nil || cost > uint64(params.EffectiveMaxPQCVerificationsPerTx()) || cost > limit-total {
+		if err != nil {
+			if reject {
+				return nil, err
+			}
+			// An invalid inspection cannot be a valid CheckTx prerequisite.
+			continue
+		}
+		if cost > uint64(params.EffectiveMaxPQCVerificationsPerTx()) || cost > limit-total {
 			if reject {
 				return nil, fmt.Errorf("PQC proposal verification budget or structure invalid")
 			}
-			continue
+			// Preserve a prefix of the SDK-selected order. A skipped transaction
+			// may advance any signer's (including a separate payer's) sequence,
+			// or change state needed by a later transaction. Keeping a later
+			// suffix without replaying Ante would break those dependencies.
+			return selected, nil
 		}
 		total += cost
 		tracker.Commit(inspection)

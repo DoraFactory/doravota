@@ -5,12 +5,33 @@ import (
 	"testing"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRegistrationRejectsIncompatibleBackend(t *testing.T) {
+	var output bytes.Buffer
+	ctx := cliTestClientContext(t, &output)
+	keys := keyring.NewInMemory(ctx.Codec)
+	owner, _, err := keys.NewMnemonic("owner", keyring.English, sdk.FullFundraiserPath, "", hd.Secp256k1)
+	require.NoError(t, err)
+	pub, err := owner.GetPubKey()
+	require.NoError(t, err)
+	ledger, err := keyring.NewLedgerRecord("owner", pub, hd.NewFundraiserParams(0, sdk.CoinType, 0))
+	require.NoError(t, err)
+	cmd := registerKeyCommand()
+	local := ctx.WithKeyring(keys).WithFromName("owner")
+	require.NoError(t, checkRegistrationBackend(cmd, local))
+	require.NoError(t, cmd.Flags().Set(flags.FlagSignMode, "amino-json"))
+	require.ErrorContains(t, checkRegistrationBackend(cmd, local), "direct")
+	require.NoError(t, cmd.Flags().Set(flags.FlagSignMode, "direct"))
+	require.NoError(t, checkRegistrationBackend(cmd, local))
+	require.ErrorContains(t, checkRegistrationBackend(cmd, ctx.WithKeyring(externalOwnerKeyring{keys, ledger}).WithFromName("owner")), "Ledger")
+}
 
 type externalOwnerKeyring struct {
 	keyring.Keyring

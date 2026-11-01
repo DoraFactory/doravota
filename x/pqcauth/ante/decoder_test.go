@@ -1,7 +1,9 @@
 package ante
 
 import (
+	"bytes"
 	"errors"
+	"runtime"
 	"testing"
 
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
@@ -11,6 +13,60 @@ import (
 
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
+
+func TestPQCWireRejectsAmplificationBeforeDecode(t *testing.T) {
+	for _, nonCritical := range []bool{false, true} {
+		for _, n := range []int{33, 32760, 500000} {
+			ext := append([]byte{8, 1}, bytes.Repeat([]byte{18, 0}, n)...)
+			body := &txtypes.TxBody{}
+			options := []*codectypes.Any{{TypeUrl: types.ExtensionPQCAuthTypeURL, Value: ext}}
+			if nonCritical {
+				body.NonCriticalExtensionOptions = options
+			} else {
+				body.ExtensionOptions = options
+			}
+			bz, err := body.Marshal()
+			require.NoError(t, err)
+			raw, err := (&txtypes.TxRaw{BodyBytes: bz}).Marshal()
+			require.NoError(t, err)
+			called := false
+			decoder := CanonicalPQCAuthTxDecoder(func([]byte) (sdk.Tx, error) { called = true; return nil, nil })
+			runtime.GC()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			_, err = decoder(raw)
+			runtime.ReadMemStats(&after)
+			require.ErrorIs(t, err, types.ErrInvalidExtension)
+			require.False(t, called)
+			// Generous bound for runtime/test noise; the old decoder allocated
+			// 12.6 MB / 202.6 MB for the larger two cases.
+			require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(1<<20))
+		}
+	}
+}
+
+func TestPQCWirePreflightBoundaries(t *testing.T) {
+	for _, n := range []int{0, 1, 32} {
+		raw := append([]byte{8, 1}, bytes.Repeat([]byte{18, 0}, n)...)
+		require.NoError(t, preflightPQCExtension(raw, types.AbsoluteMaxPQCAuthBytes, types.AbsoluteMaxPQCSigners))
+	}
+	require.Error(t, preflightPQCExtension(bytes.Repeat([]byte{18, 0}, 3), 100, 2))
+	for _, raw := range [][]byte{{0xff}, {18, 0xff}, {0}, {0x0b}, {18, 3, 1}, {8, 0xff}} {
+		require.Error(t, preflightPQCExtension(raw, 100, 32))
+	}
+}
+
+func FuzzPQCWirePreflightDoesNotPanic(f *testing.F) {
+	f.Add([]byte{8, 1, 18, 0})
+	f.Add([]byte{0xff})
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		if len(raw) > int(types.AbsoluteMaxPQCAuthBytes)+1 {
+			return
+		}
+		_ = preflightPQCExtension(raw, types.AbsoluteMaxPQCAuthBytes, types.AbsoluteMaxPQCSigners)
+		_ = preflightPQCWire(raw)
+	})
+}
 
 func TestCanonicalPQCAuthTxDecoderChecksOriginalWireBytes(t *testing.T) {
 	canonical := encodedWireTx(t, false, false)

@@ -118,7 +118,8 @@ func (EmergencyMode) EnumDescriptor() ([]byte, []int) {
 }
 
 // RegistrationMode controls which classic accounts may bootstrap pqcauth.
-// Transitions are monotonic: OPEN -> FRESH_ACCOUNTS_ONLY -> CLOSED.
+// Phase one supports OPEN -> CLOSED. FRESH_ACCOUNTS_ONLY retains its wire
+// number for compatibility but is rejected until safe enrollment retry exists.
 type RegistrationMode int32
 
 const (

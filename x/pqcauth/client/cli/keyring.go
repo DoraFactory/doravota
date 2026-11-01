@@ -14,6 +14,29 @@ const flagRecoveryKey = "recovery-key"
 const flagLegacyKeyFile = "legacy-key-file"
 const flagAcknowledgeIndependentFactors = "acknowledge-independent-factors"
 
+func checkRegistrationBackend(cmd *cobra.Command, ctx client.Context) error {
+	mode, err := cmd.Flags().GetString(flags.FlagSignMode)
+	if err != nil {
+		return err
+	}
+	if mode != "" && mode != "direct" {
+		return fmt.Errorf("PQC registration and protected transactions require --sign-mode direct")
+	}
+	if ctx.Keyring != nil && ctx.GetFromName() != "" {
+		record, err := ctx.Keyring.Key(ctx.GetFromName())
+		if err != nil {
+			return err
+		}
+		if record == nil {
+			return fmt.Errorf("owner keyring record is missing")
+		}
+		if record.GetLedger() != nil {
+			return fmt.Errorf("PQC registration is unsupported with this SDK's Amino-only Ledger backend; a DIRECT-capable signer with PQC extension support is required")
+		}
+	}
+	return nil
+}
+
 func addFactorIndependenceFlag(cmd *cobra.Command) {
 	cmd.Flags().Bool(flagAcknowledgeIndependentFactors, false, "Acknowledge that new PQC factors use separate dedicated mnemonics when owner-key independence cannot be checked (Ledger/watch-only/offline)")
 }

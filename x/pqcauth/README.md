@@ -19,6 +19,29 @@ and revoke unwanted delegations separately. A protected grantee still needs its
 own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
 See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
+Phase-one enrollment supports OPEN and CLOSED only. FRESH_ACCOUNTS_ONLY keeps
+its protobuf enum number but is rejected in genesis, active/pending parameters,
+and governance requests. The execution path also fails closed for that value.
+There is no enrollment commitment or safe fresh-only retry protocol in this
+release. Under OPEN, a message-stage out-of-gas registration can be retried with
+the new SDK sequence and sufficient gas while enrollment remains open.
+
+Enrollment itself now requires SIGN_MODE_DIRECT for every signer. The CLI
+rejects explicit non-direct modes and the current SDK's Amino-only Ledger
+backend. Offline/watch-only workflows still need a compatible external signer;
+the CLI cannot certify an unknown wallet's PQC-extension support. These rules
+do not change ordinary, unprotected SDK Amino transfers or the v1.0.1 IBC fix.
+
+PQC extension decoding enforces absolute 256 KiB / 32-entry bounds before
+generated protobuf allocation, including noncritical options that Ante later
+rejects. Governed byte/count bounds are also checked before Ante decoding.
+When a valid candidate would exceed a PQC proposal budget, selection stops
+there instead of filling from the suffix; this preserves sequence dependencies
+at the cost of potentially unused block capacity.
+
+See the [2026-11-01 shared-audit fixes](../../docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)
+for tests, compatibility limits, and outstanding release dependencies.
+
 Registration, `set-protection true`, and `recover-key` print a delegation warning to stderr,
 including the SDK `query authz grants-by-granter` and
 `query feegrant grants-by-granter` commands. They do not query or revoke grants

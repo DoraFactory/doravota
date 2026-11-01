@@ -202,6 +202,28 @@ func auditEffectiveOwnerState(
 		return // ValidateGenesis already emitted the canonical-address issue.
 	}
 	effective := policy.Effective(height)
+	for _, ref := range []struct {
+		id   uint64
+		role KeyRole
+	}{
+		{effective.CurrentSigningKeyId, KeyRole_KEY_ROLE_SIGNING},
+		{effective.RecoveryKeyId, KeyRole_KEY_ROLE_RECOVERY},
+	} {
+		// Before H+1 an initial registration has only pending references.
+		if ref.id == 0 {
+			continue
+		}
+		active := false
+		for _, key := range keys {
+			if key.KeyId == ref.id && key.Role == ref.role && key.IsEffective(height) {
+				active = true
+				break
+			}
+		}
+		if !active {
+			report.AddIssue(maxIssues, "inactive_current_key", owner, fmt.Sprintf("current %s key %d is not effective at height %d", ref.role, ref.id, height))
+		}
+	}
 	for _, key := range keys {
 		if key.CreatedHeight > key.EffectiveHeight {
 			report.AddIssue(

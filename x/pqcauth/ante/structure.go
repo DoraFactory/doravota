@@ -196,8 +196,8 @@ func ExtractExtension(
 	if encoded == nil {
 		return nil, false, nil
 	}
-	if uint32(len(encoded)) > params.EffectiveMaxPQCAuthBytes() {
-		return nil, false, errorsmod.Wrap(types.ErrInvalidExtension, "pqcauth extension exceeds size limit")
+	if err := preflightPQCExtension(encoded, params.EffectiveMaxPQCAuthBytes(), params.EffectiveMaxPQCSigners()); err != nil {
+		return nil, false, err
 	}
 
 	var extension types.ExtensionPQCAuth

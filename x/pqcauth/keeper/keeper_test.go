@@ -457,7 +457,10 @@ func TestMsgServerEnforcesFreshAccountRegistrationMode(t *testing.T) {
 	params := types.DefaultParams()
 	params.RegistrationMode =
 		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	require.NoError(t, moduleKeeper.SetParams(ctx, params))
+	require.ErrorIs(t, moduleKeeper.SetParams(ctx, params), types.ErrInvalidParams)
+	// Invalid experimental state must still fail closed if injected below the
+	// validated setter; a fresh marker cannot re-enable unsupported enrollment.
+	ctx.KVStore(moduleKeeper.storeKey).Set(types.ParamsKey, moduleKeeper.cdc.MustMarshal(&params))
 
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x19}, 20)).String()
 	signingPublicKey, signingPrivateKey := keyPair(33)
@@ -492,12 +495,12 @@ func TestMsgServerEnforcesFreshAccountRegistrationMode(t *testing.T) {
 	notFresh, err := execution.CaptureRegistrationCandidate(base, message, false)
 	require.NoError(t, err)
 	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(notFresh), message)
-	require.ErrorIs(t, err, types.ErrFreshRegistrationOnly)
+	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 
 	fresh, err := execution.CaptureRegistrationCandidate(base, message, true)
 	require.NoError(t, err)
 	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(fresh), message)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 }
 
 func TestStateInvariantRejectsNativeMLDSAOwner(t *testing.T) {
@@ -1020,6 +1023,10 @@ func TestRegistrationModeTransitionIsDelayedAndIrreversibleAfterActivation(t *te
 	restricted := current
 	restricted.RegistrationMode =
 		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	_, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: restricted})
+	require.ErrorIs(t, err, types.ErrInvalidParams)
+	require.Nil(t, moduleKeeper.GetParams(ctx).Pending)
+	restricted.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
 	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
 		Authority: moduleKeeper.Authority(),
 		Params:    restricted,
@@ -1033,7 +1040,7 @@ func TestRegistrationModeTransitionIsDelayedAndIrreversibleAfterActivation(t *te
 	)
 	require.Equal(
 		t,
-		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY,
+		types.RegistrationMode_REGISTRATION_MODE_CLOSED,
 		moduleKeeper.GetParams(ctx).EffectiveRegistrationMode(35),
 	)
 

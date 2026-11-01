@@ -31,7 +31,8 @@ enum EmergencyMode {
 }
 
 // RegistrationMode controls which classic accounts may bootstrap pqcauth.
-// Transitions are monotonic: OPEN -> FRESH_ACCOUNTS_ONLY -> CLOSED.
+// Phase one supports OPEN -> CLOSED. FRESH_ACCOUNTS_ONLY retains its wire
+// number for compatibility but is rejected until safe enrollment retry exists.
 enum RegistrationMode {
   REGISTRATION_MODE_UNSPECIFIED = 0;
   REGISTRATION_MODE_OPEN = 1;

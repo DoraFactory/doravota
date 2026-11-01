@@ -26,8 +26,9 @@ func TestRegistrationModesAndLegacyCutoff(t *testing.T) {
 	require.NoError(t, CheckRegistrationAllowed(params, 10, false))
 
 	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, false), ErrFreshRegistrationOnly)
-	require.NoError(t, CheckRegistrationAllowed(params, 10, true))
+	require.ErrorIs(t, params.Validate(), ErrInvalidParams)
+	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, false), ErrRegistrationClosed)
+	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, true), ErrRegistrationClosed)
 
 	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_CLOSED
 	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, true), ErrRegistrationClosed)
@@ -43,16 +44,32 @@ func TestRegistrationModesAndLegacyCutoff(t *testing.T) {
 func TestRegistrationModeActivatesAtomically(t *testing.T) {
 	params := DefaultParams()
 	pending := params.AsScheduled()
-	pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+	pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_CLOSED
 	params.Pending = &pending
 	params.PendingActivationHeight = 101
 
 	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(100))
 	require.Equal(
 		t,
-		RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY,
+		RegistrationMode_REGISTRATION_MODE_CLOSED,
 		params.EffectiveRegistrationMode(101),
 	)
+}
+
+func TestPhaseOneRejectsFreshRegistrationParameters(t *testing.T) {
+	for _, enforcement := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED} {
+		params := DefaultParams()
+		params.EnforcementMode = enforcement
+		params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+		require.ErrorIs(t, params.Validate(), ErrInvalidParams)
+		require.ErrorIs(t, ValidateGenesis(GenesisState{Params: params}), ErrInvalidParams)
+		params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_OPEN
+		pending := params.AsScheduled()
+		pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
+		params.Pending = &pending
+		params.PendingActivationHeight = 100
+		require.ErrorIs(t, params.Validate(), ErrInvalidParams)
+	}
 }
 
 func TestEmergencyModeAutoExpiresAtExactHeight(t *testing.T) {

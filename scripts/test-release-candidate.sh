@@ -12,6 +12,9 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr
  cat "$results/unit.stderr.log" "$results/unit.jsonl"; exit 1
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ TestPQCAuthRegistrationRequiresDirect \
+ TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure \
+ TestPQCAuthProposalPreservesSequenceDependencies \
  TestPQCAuthFreshClassicSDKDryRun \
  TestPQCAuthProtectedSimulationVersusDeliveryGas \
  TestPQCAuthGovernanceRejectsUnusableCapacity \
@@ -48,11 +51,13 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPostArchiveModuleBoundary
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client/cli \
+ TestRegistrationRejectsIncompatibleBackend \
  TestNewFactorAcknowledgementForExternalOwners \
  TestRecoveryBundleCommandsPrepareAndSignRoundTrip \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestPQCWireRejectsAmplificationBeforeDecode TestPQCWirePreflightBoundaries \
  TestBudgetSimulationPlaceholderIsolation \
  TestExtensionAtCapacityByteFloor \
  TestIndirectExecutionContainersRejectPQCAuthLifecycleMessages \
@@ -63,6 +68,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestAuditStateRejectsInactiveCurrentKeys \
  TestLifecycleMessagesRequireExactAnteAuthorization \
  TestAllLifecycleServersRejectMissingOrDifferentAnteAuthorization \
  TestZeroHeightExportRequiresHeightIndependentPQCState \
@@ -71,6 +77,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestPhaseOneRejectsFreshRegistrationParameters \
  TestPQCParameterCapacityBounds TestPQCAuthByteFloorCoversMaximumEncoding TestPQCBlockGasCapacity
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth \

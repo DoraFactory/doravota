@@ -586,7 +586,7 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 		freshOnly,
 		true,
 	)
-	require.ErrorIs(t, err, types.ErrFreshRegistrationOnly)
+	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 	freshCtx, err := execution.CaptureRegistrationCandidate(ctx, register, true)
 	require.NoError(t, err)
 	err = decorator.validateLifecycleProofs(
@@ -595,7 +595,7 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 		freshOnly,
 		true,
 	)
-	require.NoError(t, err)
+	require.ErrorIs(t, err, types.ErrRegistrationClosed)
 
 	unexpectedID := *register
 	unexpectedID.ExpectedSigningKeyId = 2

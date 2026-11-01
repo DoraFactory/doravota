@@ -63,6 +63,20 @@ func TestAuditStateReportsConsistentCounts(t *testing.T) {
 	require.Equal(t, uint64(1), report.KeySequences)
 }
 
+func TestAuditStateRejectsInactiveCurrentKeys(t *testing.T) {
+	for _, id := range []uint64{1, 2} {
+		k, ctx := setupKeeper(t, 10)
+		owner := seedAuditableState(t, k, ctx)
+		key, found := k.GetKey(ctx, owner, id)
+		require.True(t, found)
+		key.InactiveFromHeight = 5
+		require.NoError(t, k.SetKey(ctx, owner, key))
+		report := k.AuditState(ctx, 100)
+		require.False(t, report.Consistent)
+		require.True(t, auditIssueCodes(report)["inactive_current_key"])
+	}
+}
+
 func TestAuditStateRequiresPolicyAndSequenceForCommittedOwners(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 10)
 	owner := seedAuditableState(t, moduleKeeper, ctx)

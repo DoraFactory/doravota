@@ -424,8 +424,10 @@ func normalizeRegistrationMode(mode RegistrationMode) RegistrationMode {
 }
 
 func validRegistrationMode(mode RegistrationMode) bool {
-	return mode >= RegistrationMode_REGISTRATION_MODE_OPEN &&
-		mode <= RegistrationMode_REGISTRATION_MODE_CLOSED
+	// Phase one deliberately excludes fresh-only registration: a successful
+	// Ante followed by a failed message consumes freshness without enrolling.
+	return mode == RegistrationMode_REGISTRATION_MODE_OPEN ||
+		mode == RegistrationMode_REGISTRATION_MODE_CLOSED
 }
 
 func CryptoAlgorithm(algorithm Algorithm) (pqccrypto.Algorithm, error) {

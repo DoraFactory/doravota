@@ -53,11 +53,14 @@ func registerKeyCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "register-key [expected-key-id] [public-key-base64] [proof-base64]",
 		Short: "Register distinct ML-DSA-65 signing and recovery keys at H+1",
-		Long:  "Register distinct ML-DSA-65 signing and recovery keys at H+1.\n\nPQCAuth protects your directly signed transactions and key management. Existing Authz and Feegrant authorizations remain valid; review and revoke unwanted delegations separately.",
+		Long:  "Register distinct ML-DSA-65 signing and recovery keys at H+1. Requires DIRECT signing and a backend supporting protected PQC transactions; the current SDK Ledger backend is unsupported.\n\nPQCAuth protects your directly signed transactions and key management. Existing Authz and Feegrant authorizations remain valid; review and revoke unwanted delegations separately.",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(command)
 			if err != nil {
+				return err
+			}
+			if err := checkRegistrationBackend(command, clientCtx); err != nil {
 				return err
 			}
 			keyID, publicKey, proof, err := parseKeyMaterial(args)

@@ -54,6 +54,14 @@ func (d VerifyPQCDecorator) AnteHandle(
 			return ctx, err
 		}
 	}
+	for _, msg := range tx.GetMsgs() {
+		if _, enrolling := msg.(*types.MsgRegisterKey); enrolling {
+			// Enrollment requires the same signing capability as protection.
+			if err := requireDirectSignMode(tx, simulate); err != nil {
+				return ctx, err
+			}
+		}
+	}
 	if err := d.validateLifecycleProofs(stateCtx, tx, params, simulate); err != nil {
 		return ctx, err
 	}
