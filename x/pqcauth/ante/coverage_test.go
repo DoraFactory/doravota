@@ -734,10 +734,10 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 	require.Same(t, cancel, topLevelLifecycleMessage(extensionOptionsTxStub{
 		messages: []sdk.Msg{cancel},
 	}))
-	require.True(t, isRecoveryCancellation(extensionOptionsTxStub{
+	require.True(t, isRecoveryEscape(extensionOptionsTxStub{
 		messages: []sdk.Msg{cancel},
 	}))
-	require.False(t, isRecoveryCancellation(extensionOptionsTxStub{
+	require.False(t, isRecoveryEscape(extensionOptionsTxStub{
 		messages: []sdk.Msg{cancel, cancel},
 	}))
 	require.Nil(t, topLevelLifecycleMessage(extensionOptionsTxStub{
@@ -776,7 +776,7 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrUnsupportedAlgorithm)
 }
 
-func TestFullPauseAllowsOnlyProtectedRecoveryCancellationExtension(t *testing.T) {
+func TestFullPauseAllowsOnlyProtectedRecoveryEscapeExtension(t *testing.T) {
 	ctx, moduleKeeper, _, _, _ := setupAnteTest(t)
 	params := moduleKeeper.GetParams(ctx)
 	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
@@ -816,6 +816,27 @@ func TestFullPauseAllowsOnlyProtectedRecoveryCancellationExtension(t *testing.T)
 		signatures: directSignatures,
 	}, true, next)
 	require.NoError(t, err)
+}
+
+func TestRecoveryEscapeRequiresSingleTopLevelMessage(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		messages []sdk.Msg
+		allowed  bool
+	}{
+		{"recover", []sdk.Msg{&types.MsgRecoverKey{}}, true},
+		{"cancel", []sdk.Msg{&types.MsgCancelRecovery{}}, true},
+		{"empty", nil, false},
+		{"nil recover", []sdk.Msg{(*types.MsgRecoverKey)(nil)}, false},
+		{"nil cancel", []sdk.Msg{(*types.MsgCancelRecovery)(nil)}, false},
+		{"ordinary", []sdk.Msg{&types.MsgSetProtection{}}, false},
+		{"batch", []sdk.Msg{&types.MsgRecoverKey{}, &types.MsgSetProtection{}}, false},
+		{"two recoveries", []sdk.Msg{&types.MsgRecoverKey{}, &types.MsgRecoverKey{}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.allowed, isRecoveryEscape(extensionOptionsTxStub{messages: tc.messages}))
+		})
+	}
 }
 
 func FuzzExtractExtensionDoesNotPanic(f *testing.F) {

@@ -30,7 +30,7 @@ func (k Keeper) ValidateZeroHeightExport(ctx sdk.Context) error {
 		}
 	}
 	params := k.GetParams(ctx).Effective(ctx.BlockHeight())
-	if params.PendingActivationHeight != 0 || params.RegistrationCutoffHeight != 0 || params.EmergencyExpiresHeight != 0 {
+	if params.PendingActivationHeight != 0 || params.PendingEmergency != nil || params.RegistrationCutoffHeight != 0 || params.EmergencyExpiresHeight != 0 {
 		return unsupported()
 	}
 	return nil

@@ -416,9 +416,9 @@ func TestQueryCommandsRoundTripOverGRPC(t *testing.T) {
 			require.NoError(t, command.Execute())
 			require.NotEmpty(t, output.Bytes())
 			if testCase.name == "estimate-verification-gas" {
-				require.Contains(t, output.String(), `"signature_gas": 500000`)
-				require.Contains(t, output.String(), `"proof_gas": 750000`)
-				require.Contains(t, output.String(), `"total": 1250000`)
+				require.Contains(t, output.String(), `"signature_gas": 1500`)
+				require.Contains(t, output.String(), `"proof_gas": 2250`)
+				require.Contains(t, output.String(), `"total": 3750`)
 			}
 		})
 	}

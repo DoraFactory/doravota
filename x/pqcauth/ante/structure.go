@@ -63,7 +63,7 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 	}
 	if found {
 		if params.EmergencyMode == types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS &&
-			!isRecoveryCancellation(tx) {
+			!isRecoveryEscape(tx) {
 			return ctx, types.ErrEmergencyPause
 		}
 		if err := requireDirectSignMode(tx, simulate); err != nil {
@@ -74,12 +74,20 @@ func (d ValidatePQCStructureDecorator) AnteHandle(
 	return next(ctx, tx, simulate)
 }
 
-func isRecoveryCancellation(tx sdk.Tx) bool {
+func isRecoveryEscape(tx sdk.Tx) bool {
 	if len(tx.GetMsgs()) != 1 {
 		return false
 	}
-	_, ok := tx.GetMsgs()[0].(*types.MsgCancelRecovery)
-	return ok
+	switch message := tx.GetMsgs()[0].(type) {
+	case *types.MsgRecoverKey:
+		// Only the structural pause gate is bypassed. All SDK signatures,
+		// recovery proofs, payer factors and verification budgets still apply.
+		return message != nil
+	case *types.MsgCancelRecovery:
+		return message != nil
+	default:
+		return false
+	}
 }
 
 // pqcStateContext maps the SDK's height-zero gas-simulation context to the

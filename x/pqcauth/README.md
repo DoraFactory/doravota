@@ -202,7 +202,7 @@ claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
 | Enforcement | OPTIONAL (enrolled self-protected accounts still require PQC) |
 | Registration | OPEN |
 | Emergency mode | NORMAL |
-| Signature / proof verification gas | 250,000 each |
+| Signature / proof verification gas | 750 each (SDK ML-DSA-65 baseline) |
 | Maximum PQC signers / extension bytes | 8 / 65,536 |
 | Maximum verifications per transaction / block | 16 / 400 |
 | Retained key records per role | 16 |
@@ -210,8 +210,43 @@ claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
 | Maximum emergency duration | 17,280 blocks |
 
 These are candidate defaults, not a statement of live chain parameters.
+Both verification prices have a 750 floor. They reference the pinned SDK
+constant, not the live x/auth parameter: changing x/auth governance prices does
+not automatically change PQCAuth prices. Explicit stored prices, including the
+former 250,000 values, remain unchanged until an authorized parameter update.
+An ordinary protected send adds one 750-gas PQC authorization verification to
+the SDK account-signature, transaction-byte, store and message-execution costs;
+750 is not its total gas. Registration with signing and recovery keys has two
+proof verifications (1,500 crypto gas before other costs).
+The CLI signs the PQC document, attaches its extension, then signs the complete
+transaction with the account key in DIRECT mode; offline bundles preserve the
+same ordering and binding. No signature check or domain changes with this price.
+The shared 400-verification block budget remains unchanged and can still be
+contended by valid native ML-DSA and PQCAuth traffic. Repricing is not an
+anti-spam or fair-inclusion guarantee. See the
+[gas alignment record](../../docs/PQCAUTH-GAS-ALIGNMENT-20261101.md) for tests,
+measurement boundaries and deployment requirements.
 Restrictive changes to verification limits and history retention wait for the
 safety delay; emergency pauses have their separately bounded fast path.
+
+When a different non-emergency parameter bundle is already queued, an emergency-only
+request may copy either the active or queued non-emergency fields. The server
+schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
+original cutoff, restrictions and activation height. This does not revoke a queued
+cutoff or activate REQUIRED/budget reductions early. The queued emergency component
+is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
+pause. Governance cannot supply the internal schedule or expiration directly.
+Until that H+1 activation, another request that also changes non-emergency fields
+is rejected; submit the emergency update separately, then re-query before an
+unrelated parameter replacement.
+
+During `PAUSE_PQC_TRANSACTIONS`, exactly one top-level `MsgRecoverKey` or
+`MsgCancelRecovery` may carry an authorization extension. This permits a protected
+independent payer to fund recovery without bypassing the owner's account signature,
+recovery signature, new-key proof, payer authentication or verification budgets.
+It does not permit ordinary protected sends, message batches or nested lifecycle
+execution. This chain-level support does not add multi-signer CLI orchestration.
+See the [emergency fixes record](../../docs/PQCAUTH-EMERGENCY-FIXES-20261101.md).
 
 Key history is compacted over the complete owner's key prefix, separately for
 signing and recovery roles. Current and pending policy keys are pinned.

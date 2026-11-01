@@ -6,7 +6,55 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
+
+func TestVerificationGasUsesSDKBaseline(t *testing.T) {
+	// An SDK dependency update must not silently reprice this consensus rule.
+	require.Equal(t, uint64(750), authtypes.DefaultSigVerifyCostMlDsa65)
+	require.Equal(t, authtypes.DefaultSigVerifyCostMlDsa65, DefaultSignatureVerificationGas)
+	require.Equal(t, DefaultSignatureVerificationGas, DefaultProofVerificationGas)
+	require.Equal(t, DefaultSignatureVerificationGas, MinimumSignatureVerificationGas)
+	require.Equal(t, DefaultProofVerificationGas, MinimumProofVerificationGas)
+	for _, price := range []uint64{0, 749, 750, 751, 250_000} {
+		p := DefaultParams()
+		p.SignatureVerificationGas, p.ProofVerificationGas = price, price
+		genesis := DefaultGenesisState()
+		genesis.Params = p
+		current := DefaultParams()
+		pending := p.AsScheduled()
+		current.Pending, current.PendingActivationHeight = &pending, 100
+		for _, err := range []error{p.Validate(), p.ValidateGovernanceUpdate(), ValidateGenesis(*genesis), current.Validate()} {
+			if price < 750 {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		}
+	}
+}
+
+func TestVerificationGasPreservesStoredPricesAndActivation(t *testing.T) {
+	p := DefaultParams()
+	p.SignatureVerificationGas, p.ProofVerificationGas = 250_000, 250_000
+	pending := p.AsScheduled()
+	pending.SignatureVerificationGas, pending.ProofVerificationGas = 750, 750
+	p.Pending, p.PendingActivationHeight = &pending, 100
+	require.NoError(t, p.Validate())
+	for _, height := range []int64{99, 100, 101} {
+		effective := p.Effective(height)
+		want := uint64(750)
+		if height < 100 {
+			want = 250_000
+		}
+		require.Equal(t, want, effective.EffectiveSignatureVerificationGas())
+		require.Equal(t, want, effective.EffectiveProofVerificationGas())
+		estimate, err := EstimateVerificationGas(effective, 1, 2)
+		require.NoError(t, err)
+		require.Equal(t, 3*want, estimate.Total)
+	}
+	require.Equal(t, uint64(250_000), p.SignatureVerificationGas, "reading effective params must not rewrite stored prices")
+}
 
 func TestDefaultParamsValidate(t *testing.T) {
 	params := DefaultParams()

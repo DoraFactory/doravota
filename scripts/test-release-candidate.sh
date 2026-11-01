@@ -20,6 +20,9 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthProposalParameterLimitDoesNotPoisonKeys \
  TestPQCAuthFreshClassicSDKDryRun \
  TestPQCAuthProtectedSimulationVersusDeliveryGas \
+ TestPQCAuthVerificationPriceAppliedToSimulationAndDelivery \
+ TestPQCAuthProofPriceAppliedToSimulationAndDelivery \
+ TestPQCAuthFullPauseProtectedRecoveryPayer \
  TestPQCAuthGovernanceRejectsUnusableCapacity \
  TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer \
  TestPQCAuthNativeMultisigAtMinimumBudget \
@@ -60,6 +63,8 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestRecoveryEscapeRequiresSingleTopLevelMessage \
+ TestFullPauseAllowsOnlyProtectedRecoveryEscapeExtension \
  TestPQCWireRejectsAmplificationBeforeDecode TestPQCWirePreflightBoundaries \
  TestBudgetSimulationPlaceholderIsolation \
  TestExtensionAtCapacityByteFloor \
@@ -71,6 +76,9 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestEmergencyUpdatePreservesPendingCutoffAndRestrictions \
+ TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges \
+ TestEmergencyExpiryDoesNotResurrectAtPendingActivation \
  TestAuditStateRejectsInactiveCurrentKeys \
  TestLifecycleMessagesRequireExactAnteAuthorization \
  TestAllLifecycleServersRejectMissingOrDifferentAnteAuthorization \
@@ -80,11 +88,13 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestIndependentEmergencyValidationAndCodec \
+ TestVerificationGasUsesSDKBaseline TestVerificationGasPreservesStoredPricesAndActivation \
  TestPhaseOneRejectsFreshRegistrationParameters \
  TestPQCParameterCapacityBounds TestPQCAuthByteFloorCoversMaximumEncoding TestPQCBlockGasCapacity
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth \
- TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip
+ TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip TestIndependentEmergencyExportImport
 if ! go test ./app -run '^TestApp(StateDeterminism|ImportExport|SimulationAfterImport)$' \
  -Enabled=true -Seed=42 -NumBlocks=10 -BlockSize=5 -Commit=true -count=1 -timeout=180s \
  -json >"$results/simulations.jsonl" 2>"$results/simulations.stderr.log"; then

@@ -6,11 +6,15 @@ import (
 	"fmt"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 const (
-	DefaultSignatureVerificationGas     uint64 = 250_000
-	DefaultProofVerificationGas         uint64 = 250_000
+	// Both authorization signatures and key proofs use the SDK ML-DSA-65
+	// verifier. Price the primitive at the same pinned SDK baseline (750),
+	// independently of transaction-byte, store and business-execution gas.
+	DefaultSignatureVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
+	DefaultProofVerificationGas         uint64 = authtypes.DefaultSigVerifyCostMlDsa65
 	DefaultMaxPQCSigners                uint32 = 8
 	DefaultMaxPQCAuthBytes              uint32 = 64 * 1024
 	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
@@ -38,11 +42,11 @@ const (
 	MinimumMaxPQCSigners            uint32 = 2
 	MinimumMaxPQCVerificationsPerTx uint32 = 3
 
-	// Consensus gas floors prevent governance from making ML-DSA verification
-	// effectively free. They must only be lowered through a coordinated binary
-	// upgrade backed by target-hardware benchmarks.
-	MinimumSignatureVerificationGas uint64 = 250_000
-	MinimumProofVerificationGas     uint64 = 250_000
+	// Keep the same primitive floor as native SDK ML-DSA. These are consensus
+	// constants, not a live link to x/auth governance parameters. Existing
+	// explicitly stored higher PQCAuth prices remain in effect.
+	MinimumSignatureVerificationGas uint64 = authtypes.DefaultSigVerifyCostMlDsa65
+	MinimumProofVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
 )
 
 var defaultNetworkID = sha256.Sum256([]byte("doravota/pqcauth/network/v1"))
@@ -133,6 +137,28 @@ func (p Params) Validate() error {
 			)
 		}
 	}
+	if e := p.PendingEmergency; e != nil {
+		if p.Pending == nil || e.ActivationHeight == 0 || e.ActivationHeight > p.PendingActivationHeight {
+			return fmt.Errorf("%w: independent emergency requires a pending bundle at or after its activation", ErrInvalidParams)
+		}
+		if e.Mode != EmergencyMode_EMERGENCY_MODE_NORMAL && e.Mode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS && e.Mode != EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
+			return fmt.Errorf("%w: invalid independent emergency mode", ErrInvalidParams)
+		}
+		if e.Mode == EmergencyMode_EMERGENCY_MODE_NORMAL {
+			if e.ExpiresHeight != 0 {
+				return fmt.Errorf("%w: normal independent emergency cannot expire", ErrInvalidParams)
+			}
+		} else if e.ExpiresHeight <= e.ActivationHeight || e.ExpiresHeight-e.ActivationHeight > p.MaxEmergencyDurationBlocks {
+			return fmt.Errorf("%w: invalid independent emergency duration", ErrInvalidParams)
+		}
+		mode, expiry := e.Mode, e.ExpiresHeight
+		if expiry != 0 && expiry <= p.PendingActivationHeight {
+			mode, expiry = EmergencyMode_EMERGENCY_MODE_NORMAL, 0
+		}
+		if p.Pending.EmergencyMode != mode || p.Pending.EmergencyExpiresHeight != expiry {
+			return fmt.Errorf("%w: pending bundle must preserve independent emergency expiry", ErrInvalidParams)
+		}
+	}
 	return nil
 }
 
@@ -140,7 +166,7 @@ func (p Params) Validate() error {
 // proposal. Emergency expiration is deliberately absent from that authority:
 // the message server computes it from the immutable maximum duration.
 func (p Params) ValidateGovernanceUpdate() error {
-	if p.Pending != nil || p.PendingActivationHeight != 0 {
+	if p.Pending != nil || p.PendingActivationHeight != 0 || p.PendingEmergency != nil {
 		return fmt.Errorf("%w: governance message cannot supply a nested pending schedule", ErrInvalidParams)
 	}
 	if p.EmergencyExpiresHeight != 0 {
@@ -278,8 +304,8 @@ func (p Params) EffectiveRegistrationMode(height int64) RegistrationMode {
 	return normalizeRegistrationMode(effective.RegistrationMode)
 }
 
-// Effective atomically applies the complete pending parameter bundle at its
-// activation height. The returned copy never contains an activated schedule.
+// Effective applies the pending parameter bundle and its independent emergency
+// override at their own heights. The returned copy contains no activated schedule.
 func (p Params) Effective(height int64) Params {
 	p.RecoveryDelayBlocks = p.EffectiveRecoveryDelayBlocks()
 	p.MaxPqcVerificationsPerTx = p.EffectiveMaxPQCVerificationsPerTx()
@@ -293,6 +319,10 @@ func (p Params) Effective(height int64) Params {
 		p.ApplyScheduled(*p.Pending)
 		p.Pending = nil
 		p.PendingActivationHeight = 0
+	}
+	if e := p.PendingEmergency; e != nil && uint64(height) >= e.ActivationHeight {
+		p.EmergencyMode, p.EmergencyExpiresHeight = e.Mode, e.ExpiresHeight
+		p.PendingEmergency = nil
 	}
 	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
 		p.EmergencyExpiresHeight != 0 &&

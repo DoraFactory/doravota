@@ -683,6 +683,12 @@ func (m msgServer) UpdateParams(
 		)
 	}
 	requested := msg.Params
+	if isOverlappingEmergencyUpdate(current, requested) {
+		return m.scheduleOverlappingEmergency(ctx, current, requested.EmergencyMode)
+	}
+	if current.PendingEmergency != nil {
+		return nil, types.ErrInvalidParams.Wrap("wait for the H+1 emergency activation before replacing other parameters")
+	}
 	lockedCutoff := current.RegistrationCutoffHeight
 	if lockedCutoff == 0 && current.Pending != nil {
 		lockedCutoff = current.Pending.RegistrationCutoffHeight

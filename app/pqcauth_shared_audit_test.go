@@ -108,7 +108,16 @@ func TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure(t *testing.T) {
 			c := newPQCChain(t, p)
 			msg, factor := auditRegister(t, c)
 			owner := sdk.AccAddress(c.key.PubKey().Address())
-			raw := auditResign(t, c, c.key, c.tx(t, c.key, nil, msg), 679790, 0, signing.SignMode_SIGN_MODE_DIRECT)
+			full := c.tx(t, c.key, nil, msg)
+			gas, _, err := c.app.Simulate(full)
+			require.NoError(t, err)
+			require.Greater(t, gas.GasUsed, uint64(1000))
+			// Fail in message execution, not Ante, under the current proof price.
+			// A literal limit calibrated to 250,000/verification no longer tests OOG.
+			raw := auditResign(t, c, c.key, full, gas.GasUsed-1000, 0, signing.SignMode_SIGN_MODE_DIRECT)
+			check, err := c.app.CheckTx(&abci.RequestCheckTx{Tx: raw})
+			require.NoError(t, err)
+			require.Zero(t, check.Code, check.Log)
 			r := c.block(t, raw)
 			require.NotZero(t, r.Code)
 			require.Contains(t, r.Log, "out of gas")

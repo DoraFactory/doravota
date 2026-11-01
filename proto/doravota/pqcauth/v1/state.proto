@@ -111,6 +111,15 @@ message Params {
   // signatures, pqcauth signatures, lifecycle proofs, and recovery signatures.
   // Zero in legacy state maps to the protocol default.
   uint32 max_pqc_verifications_per_block = 19;
+  // H+1 emergency-only update while a different parameter bundle is pending.
+  // Other pending parameters retain their original activation height.
+  EmergencySchedule pending_emergency = 20;
+}
+
+message EmergencySchedule {
+  EmergencyMode mode = 1;
+  uint64 activation_height = 2;
+  uint64 expires_height = 3;
 }
 
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The

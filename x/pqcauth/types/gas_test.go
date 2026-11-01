@@ -12,9 +12,9 @@ func TestEstimateVerificationGas(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), estimate.SignatureVerifications)
 	require.Equal(t, uint64(3), estimate.ProofVerifications)
-	require.Equal(t, uint64(500_000), estimate.SignatureGas)
-	require.Equal(t, uint64(750_000), estimate.ProofGas)
-	require.Equal(t, uint64(1_250_000), estimate.Total)
+	require.Equal(t, uint64(1_500), estimate.SignatureGas)
+	require.Equal(t, uint64(2_250), estimate.ProofGas)
+	require.Equal(t, uint64(3_750), estimate.Total)
 }
 
 func TestEstimateVerificationGasUsesSafeEffectiveDefaults(t *testing.T) {

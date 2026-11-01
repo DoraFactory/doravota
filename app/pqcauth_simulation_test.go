@@ -1,8 +1,10 @@
 package app_test
 
 import (
+	"fmt"
 	"testing"
 
+	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdktx "github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -69,4 +71,72 @@ func TestPQCAuthProtectedSimulationVersusDeliveryGas(t *testing.T) {
 	result := c.block(t, raw)
 	require.Zero(t, result.Code, result.Log)
 	require.GreaterOrEqual(t, gas.GasUsed, uint64(result.GasUsed))
+}
+
+// Compare actual signed protected sends, not just the estimation helper.
+// 750 and 751 have equal protobuf varint length, so the one-gas difference
+// isolates one authorization verification without changing parameter-read gas.
+func TestPQCAuthVerificationPriceAppliedToSimulationAndDelivery(t *testing.T) {
+	simulated := make(map[uint64]uint64)
+	delivered := make(map[uint64]int64)
+	for _, price := range []uint64{750, 751, 250_000} {
+		t.Run(fmt.Sprint(price), func(t *testing.T) {
+			p := pqctypes.DefaultParams()
+			p.SignatureVerificationGas, p.ProofVerificationGas = price, price
+			c := newPQCChain(t, p)
+			factor, _ := reviewEnroll(t, c)
+			msg := selectionSend(c.key, c.other)
+			raw := c.tx(t, c.key, factor, msg)
+			gas, _, err := c.app.Simulate(raw)
+			require.NoError(t, err)
+			check, err := c.app.CheckTx(&abci.RequestCheckTx{Tx: raw})
+			require.NoError(t, err)
+			require.Zero(t, check.Code, check.Log)
+			result := c.block(t, raw)
+			require.Zero(t, result.Code, result.Log)
+			require.GreaterOrEqual(t, gas.GasUsed, uint64(result.GasUsed))
+			simulated[price], delivered[price] = gas.GasUsed, result.GasUsed
+			t.Logf("verification price=%d, tx bytes=%d, simulated=%d, delivered=%d", price, len(raw), gas.GasUsed, result.GasUsed)
+			// A valid classical signature is still insufficient without the factor.
+			rejected := c.block(t, c.tx(t, c.key, nil, msg))
+			require.NotZero(t, rejected.Code)
+			c.block(t, nil)
+			require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
+		})
+	}
+	require.Equal(t, uint64(1), simulated[751]-simulated[750])
+	require.Equal(t, int64(1), delivered[751]-delivered[750])
+	require.Greater(t, simulated[250_000], simulated[750])
+	require.Greater(t, delivered[250_000], delivered[750])
+}
+
+func TestPQCAuthProofPriceAppliedToSimulationAndDelivery(t *testing.T) {
+	simulated := make(map[uint64]uint64)
+	delivered := make(map[uint64]int64)
+	for _, price := range []uint64{750, 751, 250_000} {
+		t.Run(fmt.Sprint(price), func(t *testing.T) {
+			p := pqctypes.DefaultParams()
+			p.ProofVerificationGas = price
+			c := newPQCChain(t, p)
+			msg, _ := auditRegister(t, c)
+			raw := c.tx(t, c.key, nil, msg)
+			gas, _, err := c.app.Simulate(raw)
+			require.NoError(t, err)
+			check, err := c.app.CheckTx(&abci.RequestCheckTx{Tx: raw})
+			require.NoError(t, err)
+			require.Zero(t, check.Code, check.Log)
+			result := c.block(t, raw)
+			require.Zero(t, result.Code, result.Log)
+			require.GreaterOrEqual(t, gas.GasUsed, uint64(result.GasUsed))
+			simulated[price], delivered[price] = gas.GasUsed, result.GasUsed
+			t.Logf("proof price=%d, tx bytes=%d, simulated=%d, delivered=%d", price, len(raw), gas.GasUsed, result.GasUsed)
+			c.block(t, nil)
+			require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
+		})
+	}
+	// Signing and recovery key enrollment each verify one proof.
+	require.Equal(t, uint64(2), simulated[751]-simulated[750])
+	require.Equal(t, int64(2), delivered[751]-delivered[750])
+	require.Greater(t, simulated[250_000], simulated[750])
+	require.Greater(t, delivered[250_000], delivered[750])
 }
