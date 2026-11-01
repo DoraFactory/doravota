@@ -12,6 +12,8 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr
  cat "$results/unit.stderr.log" "$results/unit.jsonl"; exit 1
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
+ TestPQCAuthFreshClassicSDKDryRun \
+ TestPQCAuthProtectedSimulationVersusDeliveryGas \
  TestPQCAuthGovernanceRejectsUnusableCapacity \
  TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer \
  TestPQCAuthNativeMultisigAtMinimumBudget \
@@ -51,6 +53,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestBudgetSimulationPlaceholderIsolation \
  TestExtensionAtCapacityByteFloor \
  TestIndirectExecutionContainersRejectPQCAuthLifecycleMessages \
  TestIndirectExecutionInspectionRecursesAndPreservesOrdinaryMessages \

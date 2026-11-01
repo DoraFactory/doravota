@@ -5,6 +5,7 @@ import (
 
 	errorsmod "cosmossdk.io/errors"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	cryptomultisig "github.com/cosmos/cosmos-sdk/crypto/types/multisig"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -63,6 +64,18 @@ func (t *PQCVerificationBudgetTracker) Inspect(
 	tx sdk.Tx,
 	params types.Params,
 ) (PQCVerificationInspection, error) {
+	// Proposal inspection must always use the strict path, independently of
+	// any context execution flags. Only Ante's explicit simulate argument may
+	// enable SDK placeholder compatibility.
+	return t.inspect(ctx, tx, params, false)
+}
+
+func (t *PQCVerificationBudgetTracker) inspect(
+	ctx sdk.Context,
+	tx sdk.Tx,
+	params types.Params,
+	simulate bool,
+) (PQCVerificationInspection, error) {
 	inspection := PQCVerificationInspection{}
 	extension, found, err := ExtractExtension(tx, params)
 	if err != nil {
@@ -100,6 +113,13 @@ func (t *PQCVerificationBudgetTracker) Inspect(
 		publicKey := t.persistedOrTrackedKey(ctx, sdk.AccAddress(rawSigner), signerKey)
 		if publicKey == nil {
 			publicKey = signatures[index].PubKey
+			// SDK Factory.BuildSimTx uses an empty secp256k1 key for dry-run
+			// without a local keyring. It is not an account-key discovery.
+			// Keep arbitrary wrong/malformed keys strict, even in simulation;
+			// in particular do not erase native ML-DSA verification costs.
+			if placeholder, ok := publicKey.(*secp256k1.PubKey); simulate && ok && placeholder != nil && len(placeholder.Key) == 0 {
+				publicKey = nil
+			}
 			if publicKey != nil {
 				// A proposal may contain transactions that later fail Ante. Do
 				// not let an unrelated key in such a transaction poison the
@@ -239,7 +259,7 @@ func (d ValidatePQCVerificationBudgetDecorator) AnteHandle(
 ) (sdk.Context, error) {
 	stateCtx := pqcStateContext(ctx, simulate)
 	params := d.keeper.GetParams(stateCtx).Effective(stateCtx.BlockHeight())
-	inspection, err := NewPQCVerificationBudgetTracker(d.accountKeeper).Inspect(stateCtx, tx, params)
+	inspection, err := NewPQCVerificationBudgetTracker(d.accountKeeper).inspect(stateCtx, tx, params, simulate)
 	if err != nil {
 		return ctx, err
 	}
