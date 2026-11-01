@@ -7,10 +7,13 @@ import (
 	"time"
 
 	"github.com/DoraFactory/doravota/app"
+	pqcante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	tmtypes "github.com/cometbft/cometbft/types"
+	sdkclient "github.com/cosmos/cosmos-sdk/client"
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -22,6 +25,14 @@ import (
 )
 
 func TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning(t *testing.T) {
+	testProposalRejectsFreshKeyPoisoning(t, false)
+}
+
+func TestPQCAuthProposalParameterLimitDoesNotPoisonKeys(t *testing.T) {
+	testProposalRejectsFreshKeyPoisoning(t, true)
+}
+
+func testProposalRejectsFreshKeyPoisoning(t *testing.T, governedLimit bool) {
 	a := policyTestApp(t)
 	native, err := mldsa65.GenPrivKey()
 	require.NoError(t, err)
@@ -57,6 +68,30 @@ func TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning(t *testing.T) {
 		return raw
 	}
 	txs := [][]byte{makeTx(secp256k1.GenPrivKey(), 0)}
+	if governedLimit {
+		decoded, err := a.TxConfig().TxDecoder()(txs[0])
+		require.NoError(t, err)
+		builder, err := a.TxConfig().WrapTxBuilder(decoded)
+		require.NoError(t, err)
+		ext := &pqctypes.ExtensionPQCAuth{FormatVersion: 1}
+		for i := uint32(0); i < 3; i++ {
+			ext.Signatures = append(ext.Signatures, pqctypes.SignerPQCSignature{Signer: sender.String(), SignerIndex: i, KeyId: 1, PolicyVersion: 1, Algorithm: pqctypes.Algorithm_ALGORITHM_ML_DSA_65, Signature: make([]byte, 3309)})
+		}
+		option, err := codectypes.NewAnyWithValue(ext)
+		require.NoError(t, err)
+		builder.(sdkclient.ExtendedTxBuilder).SetExtensionOptions(option)
+		txs[0], err = a.TxConfig().TxEncoder()(builder.GetTx())
+		require.NoError(t, err)
+		// The first failure is a governed limit; retry must still detect the
+		// unrelated public key before updating either blocked signers or keys.
+		_, _, err = pqcante.ExtractExtension(builder.GetTx(), pqc.Params)
+		require.Error(t, err)
+		ceilings := pqc.Params
+		ceilings.MaxPqcSigners = pqctypes.AbsoluteMaxPQCSigners
+		ceilings.MaxPqcAuthBytes = pqctypes.AbsoluteMaxPQCAuthBytes
+		_, err = pqcante.NewPQCVerificationBudgetTracker(a.AccountKeeper).Inspect(a.NewContext(true), builder.GetTx(), ceilings)
+		require.ErrorContains(t, err, "public key does not match signer address")
+	}
 	for seq := uint64(0); seq <= uint64(pqc.Params.MaxPqcVerificationsPerBlock); seq++ {
 		txs = append(txs, makeTx(&native, seq))
 	}

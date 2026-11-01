@@ -24,6 +24,10 @@ build_tags=netgo,osusergo
 CGO_ENABLED=0 go build -buildvcs=false -trimpath -tags "$build_tags" \
  -ldflags "-s -w -X github.com/cosmos/cosmos-sdk/version.Version=${VERSION} -X github.com/cosmos/cosmos-sdk/version.Commit=${commit_sha} -X github.com/cosmos/cosmos-sdk/version.BuildTags=${build_tags}" \
  -o "release/${binary}" ./cmd/dorad
+# Preserve the toolchain and linked modules from the actual artifact, not only
+# the versions requested by CI. Audit this alongside the binary checksum.
+go version -m "release/${binary}" > "release/${binary}.buildinfo.txt"
+grep -F "$(go env GOVERSION)" "release/${binary}.buildinfo.txt" >/dev/null
 if readelf -l "release/${binary}" | grep -q INTERP; then exit 1; fi
 if readelf -d "release/${binary}" | grep -q NEEDED; then exit 1; fi
 test "$("release/${binary}" version)" = "$VERSION"

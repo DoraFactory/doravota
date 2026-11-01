@@ -161,5 +161,5 @@ func TestPQCAuthProposalPreservesSequenceDependencies(t *testing.T) {
 	// The omitted account's sequence remains zero; its registration can retry.
 	r := c.block(t, araw)
 	require.Zero(t, r.Code, r.Log)
-	t.Log("all 3 passed sequential CheckTx; budget truncates before A, preserving its prerequisites")
+	t.Log("all 3 passed sequential CheckTx; omitted A and its dependent sequence, preserving prerequisites")
 }

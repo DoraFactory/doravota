@@ -4,10 +4,12 @@ import (
 	"fmt"
 
 	pqcauthante "github.com/DoraFactory/doravota/x/pqcauth/ante"
+	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 )
 
 // Keep the current SDK proposal policy and governed gas/byte limits. Only add
@@ -61,6 +63,10 @@ func (app *App) limitPQCProposal(ctx sdk.Context, decoder sdk.TxDecoder, txs [][
 	var total uint64
 	limit := uint64(params.EffectiveMaxPQCVerificationsPerBlock())
 	selected := make([][]byte, 0, len(txs))
+	// A budget omission must not strand a later sequence from any of its
+	// signers. Keep this local to selection: it is not an authentication cache
+	// or a consensus rule against unrelated transactions later in the list.
+	blocked := make(map[string]bool)
 	for _, raw := range txs {
 		tx, err := decoder(raw)
 		if err != nil {
@@ -70,23 +76,53 @@ func (app *App) limitPQCProposal(ctx sdk.Context, decoder sdk.TxDecoder, txs [][
 			continue
 		}
 		inspection, err := tracker.Inspect(ctx, tx, params)
-		cost := inspection.Cost.Total()
+		parameterLimited := false
 		if err != nil {
 			if reject {
 				return nil, err
 			}
-			// An invalid inspection cannot be a valid CheckTx prerequisite.
+			// A previously valid candidate may exceed newly activated signer or
+			// byte limits. Recheck within the immutable wire ceilings to distinguish
+			// that case from malformed input/key poisoning. Never commit discoveries
+			// from this retry, nor relax ProcessProposal's actual governed limits.
+			ceilings := params
+			ceilings.MaxPqcSigners = pqctypes.AbsoluteMaxPQCSigners
+			ceilings.MaxPqcAuthBytes = pqctypes.AbsoluteMaxPQCAuthBytes
+			inspection, err = tracker.Inspect(ctx, tx, ceilings)
+			if err != nil {
+				continue
+			}
+			parameterLimited = true
+		}
+		// Inspect has already checked this interface and metadata. GetSigners
+		// derives addresses from messages and includes an independent fee payer;
+		// extension entries and the fee granter are not a signer authority.
+		signers, err := tx.(authsigning.SigVerifiableTx).GetSigners()
+		if err != nil {
+			if reject {
+				return nil, err
+			}
 			continue
 		}
+		dependent := false
+		for _, signer := range signers {
+			dependent = dependent || blocked[string(signer)]
+		}
+		cost := inspection.Cost.Total()
 		if cost > uint64(params.EffectiveMaxPQCVerificationsPerTx()) || cost > limit-total {
 			if reject {
 				return nil, fmt.Errorf("PQC proposal verification budget or structure invalid")
 			}
-			// Preserve a prefix of the SDK-selected order. A skipped transaction
-			// may advance any signer's (including a separate payer's) sequence,
-			// or change state needed by a later transaction. Keeping a later
-			// suffix without replaying Ante would break those dependencies.
-			return selected, nil
+			parameterLimited = true
+		}
+		if parameterLimited || dependent {
+			// Propagate across all co-signers: omitting A+B after an omitted A
+			// also strands B's next sequence. Unrelated zero-cost work can proceed
+			// even when the PQC block budget is exhausted.
+			for _, signer := range signers {
+				blocked[string(signer)] = true
+			}
+			continue
 		}
 		total += cost
 		tracker.Commit(inspection)

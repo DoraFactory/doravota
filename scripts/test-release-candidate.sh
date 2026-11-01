@@ -15,6 +15,9 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthRegistrationRequiresDirect \
  TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure \
  TestPQCAuthProposalPreservesSequenceDependencies \
+ TestPQCAuthProposalBudgetKeepsIndependentTransactions \
+ TestPQCAuthProposalParameterActivationDependencies \
+ TestPQCAuthProposalParameterLimitDoesNotPoisonKeys \
  TestPQCAuthFreshClassicSDKDryRun \
  TestPQCAuthProtectedSimulationVersusDeliveryGas \
  TestPQCAuthGovernanceRejectsUnusableCapacity \

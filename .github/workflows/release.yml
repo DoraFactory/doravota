@@ -72,5 +72,6 @@ jobs:
             release/dorad-${{ github.ref_name }}-linux-amd64.tar.gz
             release/sha256sum.txt
             release/build-info.txt
+            release/dorad-${{ github.ref_name }}-linux-amd64.buildinfo.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

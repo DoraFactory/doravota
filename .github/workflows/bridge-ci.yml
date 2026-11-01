@@ -134,4 +134,5 @@ jobs:
             release/*.tar.gz
             release/sha256sum.txt
             release/build-info.txt
+            release/*.buildinfo.txt
           if-no-files-found: error
