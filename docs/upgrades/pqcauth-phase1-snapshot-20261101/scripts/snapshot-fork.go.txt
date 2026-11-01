@@ -1,0 +1,122 @@
+// snapshot-fork is an OFFLINE, TEST-ONLY preparation tool. Never run on a live home.
+// It preserves the raw application database and creates one explicitly synthetic
+// fork seed height, replacing consensus keys and limiting staking to four validators.
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+ "path/filepath"
+ "time"
+ "math/big"
+ "bytes"
+
+ apppkg "github.com/DoraFactory/doravota/app"
+ "github.com/cosmos/cosmos-sdk/baseapp"
+ sdk "github.com/cosmos/cosmos-sdk/types"
+ storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
+ codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+ sdked "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
+ staking "github.com/cosmos/cosmos-sdk/x/staking/types"
+ slashing "github.com/cosmos/cosmos-sdk/x/slashing/types"
+ dbm "github.com/cometbft/cometbft-db"
+ appdb "github.com/cosmos/cosmos-db"
+ "cosmossdk.io/math"
+ "github.com/cosmos/cosmos-sdk/x/authz"
+ "cosmossdk.io/log/v2"
+ "github.com/cometbft/cometbft/privval"
+ tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+ tmstate "github.com/cometbft/cometbft/state"
+ tmstore "github.com/cometbft/cometbft/store"
+ tmtypes "github.com/cometbft/cometbft/types"
+)
+
+type opts map[string]interface{}
+func(o opts)Get(k string)interface{}{ return o[k] }
+func must(e error){if e!=nil {panic(e)}}
+func main(){
+ if len(os.Args)!=3 {panic("usage: snapshot-fork inspect|fork /isolated/home")}
+ mode,home:=os.Args[1],os.Args[2]
+ if mode!="inspect" && mode!="fork" {panic("unknown mode")}
+ if !bytes.Contains([]byte(home),[]byte("snapshot-rehearsal")){panic("requires isolated snapshot-rehearsal path")}
+ c:=sdk.GetConfig();c.SetBech32PrefixForAccount("dora","dorapub");c.SetBech32PrefixForValidator("doravaloper","doravaloperpub");c.SetBech32PrefixForConsensusNode("doravalcons","doravalconspub")
+ db,e:=appdb.NewDB("application",appdb.GoLevelDBBackend,filepath.Join(home,"data"));must(e)
+ a:=apppkg.New(log.NewNopLogger(),db,nil,true,map[int64]bool{},home,0,apppkg.MakeEncodingConfig(),opts{"home":home},baseapp.SetChainID("pqc-phase1-snapshot-20261101"))
+ defer a.Close()
+ sdb,e:=dbm.NewDB("state",dbm.GoLevelDBBackend,filepath.Join(home,"data"));must(e);defer sdb.Close()
+ ss:=tmstate.NewStore(sdb,tmstate.StoreOptions{DiscardABCIResponses:false});s,e:=ss.Load();must(e)
+ h:=a.LastBlockHeight()
+ fmt.Printf("source height=%d comet_height=%d chain=%s apphash=%X comet_apphash=%X\n",h,s.LastBlockHeight,s.ChainID,a.LastCommitID().Hash,s.AppHash)
+ if h!=s.LastBlockHeight || !bytes.Equal(a.LastCommitID().Hash,s.AppHash){panic("snapshot app/state mismatch; do not fork")}
+ ctx:=a.NewUncachedContext(false,tmproto.Header{Height:h+1,Time:s.LastBlockTime.Add(time.Second),ChainID:"pqc-phase1-snapshot-20261101"})
+ vals,e:=a.StakingKeeper.GetBondedValidatorsByPower(ctx);must(e)
+ fmt.Printf("bonded validators=%d\n",len(vals))
+ if mode=="inspect" {return}
+ if s.ChainID!="vota-ash" || len(vals)<4 {panic("unexpected source")}
+ original:=a.LastCommitID()
+ roots:=a.CommitMultiStore().(interface{ GetCommitInfo(int64)(*storetypes.CommitInfo,error) })
+ before,e:=roots.GetCommitInfo(h);must(e)
+ p,e:=a.StakingKeeper.GetParams(ctx);must(e);p.MaxValidators=4;must(a.StakingKeeper.SetParams(ctx,p))
+ var pvs []*privval.FilePV
+ var tvs []*tmtypes.Validator
+ var records []map[string]interface{}
+ for i,v:=range vals[:4]{
+  keydir:=filepath.Join(home,"test-keys",fmt.Sprint(i));must(os.MkdirAll(keydir,0700))
+  pv:=privval.GenFilePV(filepath.Join(keydir,"priv_validator_key.json"),filepath.Join(keydir,"priv_validator_state.json"));pv.Save();pvs=append(pvs,pv)
+  old,e:=v.GetConsAddr();must(e);ctx.KVStore(a.GetKey(staking.StoreKey)).Delete(staking.GetValidatorByConsAddrKey(old))
+  pub,e:=pv.GetPubKey();must(e);spub:=&sdked.PubKey{Key:pub.Bytes()};v.ConsensusPubkey,e=codectypes.NewAnyWithValue(spub);must(e)
+  must(a.StakingKeeper.SetValidator(ctx,v));must(a.StakingKeeper.SetValidatorByConsAddr(ctx,v));must(a.SlashingKeeper.AddPubkey(ctx,spub))
+  addr:=sdk.ConsAddress(pub.Address());must(a.SlashingKeeper.SetValidatorSigningInfo(ctx,addr,slashing.ValidatorSigningInfo{Address:addr.String(),StartHeight:h+1,JailedUntil:time.Unix(0,0)}))
+  power:=v.ConsensusPower(a.StakingKeeper.PowerReduction(ctx));tvs=append(tvs,tmtypes.NewValidator(pub,power))
+  records=append(records,map[string]interface{}{"node":i,"operator":v.OperatorAddress,"old_consensus":sdk.ConsAddress(old).String(),"new_consensus":addr.String(),"power":power})
+ }
+ _,e=a.StakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx);must(e)
+ lastvals,e:=a.StakingKeeper.GetLastValidators(ctx);must(e);if len(lastvals)!=4 {panic("expected four validators")}
+ gp,e:=a.GovKeeper.Params.Get(ctx);must(e)
+ originalGov:=gp
+ period:=12*time.Second;expedited:=6*time.Second;gp.VotingPeriod=&period;gp.ExpeditedVotingPeriod=&expedited
+ gp.MinDeposit=sdk.NewCoins(sdk.NewInt64Coin("peaka",1));gp.ExpeditedMinDeposit=sdk.NewCoins(sdk.NewInt64Coin("peaka",2));must(a.GovKeeper.Params.Set(ctx,gp))
+ faucet,e:=sdk.AccAddressFromBech32(os.Getenv("TEST_FAUCET_ADDR"));must(e)
+ funds:=sdk.NewCoins(sdk.NewCoin("peaka",math.NewIntFromBigInt(func()*big.Int{n,_:=new(big.Int).SetString("200000000000000000000000",10);return n}())))
+ must(a.BankKeeper.MintCoins(ctx,"mint",funds));must(a.BankKeeper.SendCoinsFromModuleToAccount(ctx,"mint",faucet,funds))
+ expires:=ctx.BlockTime().Add(365*24*time.Hour);var voters []string
+ for _,v:=range vals[:4] {op,e:=sdk.ValAddressFromBech32(v.OperatorAddress);must(e);granter:=sdk.AccAddress(op);must(a.AuthzKeeper.SaveGrant(ctx,faucet,granter,authz.NewGenericAuthorization("/cosmos.gov.v1.MsgVote"),&expires));voters=append(voters,granter.String())}
+ vb,e:=json.Marshal(voters);must(e);must(os.WriteFile(filepath.Join(home,"voters.json"),vb,0644))
+ gb,e:=json.Marshal(originalGov);must(e);must(os.WriteFile(filepath.Join(home,"original-gov.json"),gb,0644))
+ cid:=a.CommitMultiStore().Commit();if cid.Version!=h+1 {panic("unexpected commit height")}
+ after,e:=roots.GetCommitInfo(h+1);must(e)
+ var changed []string
+ var preserved []string
+ for _,old:=range before.StoreInfos {for _,next:=range after.StoreInfos {if old.Name==next.Name {
+  if bytes.Equal(old.CommitId.Hash,next.CommitId.Hash){preserved=append(preserved,old.Name)}else{
+   changed=append(changed,old.Name)
+   if old.Name!="staking" && old.Name!="slashing" && old.Name!="bank" && old.Name!="params" && old.Name!="gov" && old.Name!="authz" && old.Name!="acc" {panic("unexpected changed store: "+old.Name)}
+  }
+ }}}
+ set:=tmtypes.NewValidatorSet(tvs)
+ s.ChainID="pqc-phase1-snapshot-20261101"
+ s.Validators=set;s.NextValidators=set.Copy();s.LastValidators=set.Copy()
+ // The fork seed is a synthetic preparation checkpoint, not a mainnet block.
+ // Keep the original block store in the pristine copy; the rehearsal begins here.
+ last:=&tmtypes.Commit{Height:h,Round:0,BlockID:s.LastBlockID,Signatures:[]tmtypes.CommitSig{}}
+ block:=tmtypes.MakeBlock(h+1,nil,last,nil)
+ block.Header.Populate(s.Version.Consensus,s.ChainID,ctx.BlockTime(),s.LastBlockID,set.Hash(),set.Hash(),s.ConsensusParams.Hash(),original.Hash,s.LastResultsHash,set.GetProposer().Address)
+ parts,e:=block.MakePartSet(tmtypes.BlockPartSizeBytes);must(e)
+ id:=tmtypes.BlockID{Hash:block.Hash(),PartSetHeader:parts.Header()}
+ sigs:=make([]tmtypes.CommitSig,len(set.Validators))
+ for j,v:=range set.Validators {for _,pv:=range pvs {pub,_:=pv.GetPubKey();if bytes.Equal(pub.Address(),v.Address){
+  vote:=&tmproto.Vote{Type:tmproto.PrecommitType,Height:h+1,Round:0,BlockID:id.ToProto(),Timestamp:ctx.BlockTime().Add(time.Second),ValidatorAddress:v.Address,ValidatorIndex:int32(j)}
+  must(pv.SignVote(s.ChainID,vote));sigs[j]=tmtypes.CommitSig{BlockIDFlag:tmtypes.BlockIDFlagCommit,Signature:vote.Signature,ValidatorAddress:v.Address,Timestamp:vote.Timestamp}
+ }}}
+ commit:=&tmtypes.Commit{Height:h+1,Round:0,BlockID:id,Signatures:sigs};must(set.VerifyCommit(s.ChainID,id,h+1,commit))
+ bdb,e:=dbm.NewDB("blockstore",dbm.GoLevelDBBackend,filepath.Join(home,"data"));must(e);defer bdb.Close()
+ bs:=tmstore.NewBlockStore(bdb);if bs.Height()==h+1 {must(bs.DeleteLatestBlock())};if bs.Height()!=h {panic(fmt.Sprintf("blockstore height mismatch %d",bs.Height()))};bs.SaveBlock(block,parts,commit)
+ s.LastBlockHeight=h+1;s.LastBlockID=id;s.LastBlockTime=ctx.BlockTime();s.AppHash=cid.Hash;s.LastHeightValidatorsChanged=h+2
+ must(ss.Bootstrap(s))
+ // CometBFT caches genesis separately from config/genesis.json. Remove the old
+ // cached document so startup reads the isolated chain ID and test validators.
+ must(sdb.DeleteSync([]byte("genesisDoc")))
+ report:=map[string]interface{}{"source_height":h,"source_app_hash":fmt.Sprintf("%X",original.Hash),"fork_seed_height":h+1,"fork_app_hash":fmt.Sprintf("%X",cid.Hash),"chain_id":s.ChainID,"validators":records,"changed_stores":changed,"preserved_stores":preserved,"note":"Synthetic offline checkpoint; staking max validators=4; other validators unbonded through keeper; test faucet minted 200000 DORA; gov 12s voting; MsgVote authz for replaced validators; all Wasm and IBC stores retained byte-identical. Not a mainnet block."}
+ out,e:=json.MarshalIndent(report,"","  ");must(e);must(os.WriteFile(filepath.Join(home,"fork-report.json"),out,0644));fmt.Println(string(out))
+}

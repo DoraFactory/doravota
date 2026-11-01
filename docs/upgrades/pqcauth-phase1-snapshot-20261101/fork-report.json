@@ -1,0 +1,59 @@
+{
+  "chain_id": "pqc-phase1-snapshot-20261101",
+  "changed_stores": [
+    "acc",
+    "authz",
+    "bank",
+    "gov",
+    "slashing",
+    "staking"
+  ],
+  "fork_app_hash": "A42CDE78C9358125545E25322F255E93A89320893E96FFB9F364B8CF91110C12",
+  "fork_seed_height": 18029708,
+  "note": "Synthetic offline checkpoint; staking max validators=4; other validators unbonded through keeper; test faucet minted 200000 DORA; gov 12s voting; MsgVote authz for replaced validators; all Wasm and IBC stores retained byte-identical. Not a mainnet block.",
+  "preserved_stores": [
+    "consensus",
+    "distribution",
+    "evidence",
+    "feegrant",
+    "ibc",
+    "icacontroller",
+    "icahost",
+    "mint",
+    "transfer",
+    "upgrade",
+    "wasm"
+  ],
+  "source_app_hash": "7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93",
+  "source_height": 18029707,
+  "validators": [
+    {
+      "new_consensus": "doravalcons1u5xprsrs5au4mh22fufqye8y9h5rq5taxn6k94",
+      "node": 0,
+      "old_consensus": "doravalcons17wm5d37urqhhetm2khrqmflc8zvu5ycp887ndt",
+      "operator": "doravaloper14uz8dt79a03g8alr5qa56lgad6djcstvrxkwpg",
+      "power": 6854112
+    },
+    {
+      "new_consensus": "doravalcons1rcyrvxyv4xt60q3mm8tywmsd6r06ve2njkynjg",
+      "node": 1,
+      "old_consensus": "doravalcons1vf9jj4m6vtdszq52yup5pkve3x6as4d57z84uy",
+      "operator": "doravaloper1l4z87uexawfzlmtr3006a0ru0wr54sam7mj0jw",
+      "power": 5131828
+    },
+    {
+      "new_consensus": "doravalcons1dm3zgz2gxv9ktcecdtw6nf0tu33hmny6gp8q9x",
+      "node": 2,
+      "old_consensus": "doravalcons1k0xr49kld4n3kw58a6xm8cqpwcuhd8c3h6sm69",
+      "operator": "doravaloper1vsq4dwt8qpwr2mqeg2aww096l9tu0ryxrqx4nk",
+      "power": 5053175
+    },
+    {
+      "new_consensus": "doravalcons1q2nwsqekqjl4p976lw2awml679mz2dv35pkafh",
+      "node": 3,
+      "old_consensus": "doravalcons1c800grfqj7yd8wtgh4kkvx848n4we3lapfgw46",
+      "operator": "doravaloper1z6kfew2nhuh02szc2hdecw4fqey2d32auucvux",
+      "power": 5004904
+    }
+  ]
+}

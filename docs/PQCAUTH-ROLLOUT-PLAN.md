@@ -81,4 +81,6 @@ Claude 对 `a2de29d` 的独立复审确认原五项发现均已处理，详见 [
 
 可复现入口：`scripts/test-release-candidate.sh` 和 `scripts/rehearse-pqcauth-lifecycle.py`。全仓日志位于 `build/test-results-phase1/`；本次二进制、模糊测试及四验证人证据位于 `/tmp/doravota-phase1.yoZGn3/`，其中 `four-validator-lifecycle-retry/evidence/result.json` 为成功结果。第一次实节点尝试受 socket 权限限制，节点未启动；权限开放后的独立重试完成了上述验收。测试节点均已停止，未操作公共链或已有钱包。
 
-后续顺序：冻结候选源码和产物 → 最新真实快照/最低配置/升级中断恢复演练 → 公共测试网及 IBC 验收 → 独立审查和单独批准发布。旧实验性 PQC 模块版本 1/2 数据库不允许直接切换至本版（内部模块版本 3）。
+2026-11-01：冻结候选 `b3f289d` 已通过当天最新主网快照的同机四验证人顺序升级和中断恢复演练，见 [快照演练报告](PQCAUTH-SNAPSHOT-REHEARSAL-20261101.md)。容器限制为总计 4 核/12 GiB，不能等同于独立物理最低硬件或冷缓存验收；未操作公共链。
+
+后续顺序：保持候选源码和产物可追溯 → 补充最低物理配置/跨机器/长期负载验证 → 公共测试网及 IBC 验收 → 独立审查和单独批准发布。旧实验性 PQC 模块版本 1/2 数据库不允许直接切换至本版（内部模块版本 3）。

@@ -1,0 +1,16 @@
+package main
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+ "path/filepath"
+ "cosmossdk.io/log/v2"
+ "github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
+ dbm "github.com/cosmos/cosmos-db"
+)
+func main(){
+ db,e:=dbm.NewDB("application",dbm.GoLevelDBBackend,filepath.Join(os.Args[1],"data"));if e!=nil{panic(e)};defer db.Close()
+ s:=rootmulti.NewStore(db,log.NewNopLogger());h:=rootmulti.GetLatestVersion(db);ci,e:=s.GetCommitInfo(h);if e!=nil{panic(e)}
+ roots:=map[string]string{};for _,v:=range ci.StoreInfos{roots[v.Name]=fmt.Sprintf("%X",v.CommitId.Hash)}
+ if e=json.NewEncoder(os.Stdout).Encode(map[string]any{"height":h,"apphash":fmt.Sprintf("%X",ci.Hash()),"roots":roots});e!=nil{panic(e)}
+}

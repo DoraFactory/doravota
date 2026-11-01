@@ -1,0 +1,28 @@
+{
+  "params": {
+    "enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+    "network_id": "gAvM3THBZQl6ZtFgYL48uNBcmT7zP82lOcF/4Ng2k34=",
+    "allowed_algorithms": [
+      "ALGORITHM_ML_DSA_65"
+    ],
+    "signature_verification_gas": "250000",
+    "proof_verification_gas": "250000",
+    "max_pqc_signers": 8,
+    "max_pqc_auth_bytes": 65536,
+    "max_retained_key_records_per_role": 16,
+    "registration_cutoff_height": "0",
+    "emergency_mode": "EMERGENCY_MODE_NORMAL",
+    "pending": null,
+    "pending_activation_height": "0",
+    "governance_safety_delay_blocks": "17280",
+    "max_emergency_duration_blocks": "17280",
+    "emergency_expires_height": "0",
+    "registration_mode": "REGISTRATION_MODE_OPEN",
+    "recovery_delay_blocks": "17280",
+    "max_pqc_verifications_per_tx": 16,
+    "max_pqc_verifications_per_block": 400
+  },
+  "effective_enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+  "effective_emergency_mode": "EMERGENCY_MODE_NORMAL",
+  "effective_registration_mode": "REGISTRATION_MODE_OPEN"
+}

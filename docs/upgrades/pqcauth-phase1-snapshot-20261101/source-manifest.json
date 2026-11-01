@@ -1,0 +1,10 @@
+{
+  "source": "https://server-1.itrocket.net/mainnet/doravota/doravota_2026-11-01_18029707_snap.tar.lz4",
+  "height": 18029707,
+  "compressed_bytes": 4977990807,
+  "expanded_bytes": 7070452244,
+  "files_and_directories": 20900,
+  "sha256": "680b7c73deb36aacce4ba2158064e50bef0be9d78286cc286070dd8cd2f5b59b",
+  "hash_provenance": "locally calculated, not a vendor signature",
+  "extracted_at": 1793493513.3344834
+}

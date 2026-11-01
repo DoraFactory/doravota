@@ -1,0 +1,60 @@
+{
+  "source_height": 18029707,
+  "confirmations": [
+    {
+      "endpoint": "https://vota-rpc.dorafactory.org",
+      "header": {
+        "version": {
+          "block": "11"
+        },
+        "chain_id": "vota-ash",
+        "height": "18029708",
+        "time": "2026-11-01T00:01:15.345170621Z",
+        "last_block_id": {
+          "hash": "0909A6FCEF32CDA6015B4B307EE25C09402AF2857C33311ED819E8C9C866D3C1",
+          "parts": {
+            "total": 1,
+            "hash": "F0082885BA81AC15FB093FEE9C6FD8B4A8E88E587B1ADC53DFA966222A063B64"
+          }
+        },
+        "last_commit_hash": "D2A7D9D55395F33E0047DB837599993A470E58FF4243F62129A8261300ECE265",
+        "data_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "validators_hash": "7483AED6A6A8F667C113DBEF9FD07646797EF6CA65732013911F380D90F6B602",
+        "next_validators_hash": "7483AED6A6A8F667C113DBEF9FD07646797EF6CA65732013911F380D90F6B602",
+        "consensus_hash": "260865A609E0A9402965C22E35B74223BD2A2D83CAF58D58D7FE6F02E8A6B17E",
+        "app_hash": "7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93",
+        "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "proposer_address": "C1DEF40D209788D3B968BD6D6618F53CEAECC7FD"
+      }
+    },
+    {
+      "endpoint": "https://doravota-mainnet-rpc.itrocket.net",
+      "header": {
+        "version": {
+          "block": "11"
+        },
+        "chain_id": "vota-ash",
+        "height": "18029708",
+        "time": "2026-11-01T00:01:15.345170621Z",
+        "last_block_id": {
+          "hash": "0909A6FCEF32CDA6015B4B307EE25C09402AF2857C33311ED819E8C9C866D3C1",
+          "parts": {
+            "total": 1,
+            "hash": "F0082885BA81AC15FB093FEE9C6FD8B4A8E88E587B1ADC53DFA966222A063B64"
+          }
+        },
+        "last_commit_hash": "D2A7D9D55395F33E0047DB837599993A470E58FF4243F62129A8261300ECE265",
+        "data_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "validators_hash": "7483AED6A6A8F667C113DBEF9FD07646797EF6CA65732013911F380D90F6B602",
+        "next_validators_hash": "7483AED6A6A8F667C113DBEF9FD07646797EF6CA65732013911F380D90F6B602",
+        "consensus_hash": "260865A609E0A9402965C22E35B74223BD2A2D83CAF58D58D7FE6F02E8A6B17E",
+        "app_hash": "7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93",
+        "last_results_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "evidence_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+        "proposer_address": "C1DEF40D209788D3B968BD6D6618F53CEAECC7FD"
+      }
+    }
+  ],
+  "scope": "TLS RPC header comparison; not a standalone light-client verification"
+}

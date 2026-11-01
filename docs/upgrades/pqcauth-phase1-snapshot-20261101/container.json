@@ -1,0 +1,24 @@
+{
+  "name": "/pqcauth-snapshot-20261101-hj0o2X",
+  "state": "exited",
+  "exit_code": 0,
+  "oom_killed": false,
+  "network": "none",
+  "memory_bytes": 12884901888,
+  "memory_plus_swap_bytes": 12884901888,
+  "nano_cpus": 4000000000,
+  "read_bps": [
+    {
+      "Path": "/dev/md2",
+      "Rate": 104857600
+    }
+  ],
+  "write_bps": [
+    {
+      "Path": "/dev/md2",
+      "Rate": 62914560
+    }
+  ],
+  "pids_limit": 512,
+  "readonly_root": true
+}
