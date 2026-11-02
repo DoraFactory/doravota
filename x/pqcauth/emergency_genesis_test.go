@@ -1,6 +1,7 @@
 package pqcauth
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/DoraFactory/doravota/x/pqcauth/keeper"
@@ -10,6 +11,15 @@ import (
 )
 
 func TestIndependentEmergencyExportImport(t *testing.T) {
+	for _, ordinary := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ordinary=%t", ordinary), func(t *testing.T) {
+			testEmergencyExportImport(t, ordinary)
+		})
+	}
+}
+
+func testEmergencyExportImport(t *testing.T, ordinary bool) {
+	t.Helper()
 	ctx, k := setupGenesisTest(t, 100)
 	p := types.DefaultParams()
 	p.NetworkId = types.NetworkIDForChain(ctx.ChainID())
@@ -20,12 +30,15 @@ func TestIndependentEmergencyExportImport(t *testing.T) {
 	queued.RegistrationCutoffHeight = 111
 	queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
 	s := keeper.NewMsgServer(k)
-	_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
-	require.NoError(t, err)
+	if ordinary {
+		_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
+		require.NoError(t, err)
+	}
 	p.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: p, EmergencyOnly: true})
+	_, err := s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: p, EmergencyOnly: true})
 	require.NoError(t, err)
 	original := k.GetParams(ctx)
+	require.NotNil(t, original.PendingEmergency)
 	cdc, ok := k.Codec().(codec.Codec)
 	require.True(t, ok)
 	require.Error(t, k.ValidateZeroHeightExport(ctx.WithBlockHeight(101)))

@@ -13,6 +13,7 @@ if ! go test ./... -count=1 -json >"$results/unit.jsonl" 2>"$results/unit.stderr
 fi
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthGovernanceEndBlockOrderingAndRollback \
+ TestPQCAuthGovernanceEmergencyGuardAndResubmission \
  TestPQCAuthSignedGovernanceSubmissionVoteAndRollback \
  TestPQCAuthBoundedMixedBudgetAndRecovery \
  TestPQCAuthBoundedInvalidAdmission \
@@ -80,6 +81,8 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestEmergencyOnlyRejectsSameBlockFullUpdate \
+ TestEmergencyOnlySameBlockExplicitReplacement \
  TestReviewCancelOrdinaryRestrictionWhileKeepingPause \
  TestExplicitEmergencyRenewalPreservesOrdinaryIntent \
  TestEmergencyOnlyRejectsSmuggledChangesAndPreservesCutoff \

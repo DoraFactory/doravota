@@ -43,7 +43,6 @@ func (m msgServer) scheduleEmergencyOnly(ctx sdk.Context, current types.Params, 
 		current.Pending = &pending
 		current.PendingActivationHeight = activation
 	} else {
-		current.PendingEmergency = &types.EmergencySchedule{Mode: mode, ActivationHeight: activation, ExpiresHeight: expiry}
 		// Copy before editing; Params.Effective and keeper callers may share the
 		// pointer. The original cutoff, budget, enforcement and activation stay put.
 		pending := *current.Pending
@@ -53,6 +52,10 @@ func (m msgServer) scheduleEmergencyOnly(ctx sdk.Context, current types.Params, 
 		}
 		current.Pending = &pending
 	}
+	// Protect every explicit emergency update until H+1, including the case
+	// with no pre-existing ordinary bundle. Otherwise a later full update in
+	// the same block could silently cancel or replace the emergency schedule.
+	current.PendingEmergency = &types.EmergencySchedule{Mode: mode, ActivationHeight: activation, ExpiresHeight: expiry}
 	if err := m.SetParams(ctx, current); err != nil {
 		return nil, err
 	}

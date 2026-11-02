@@ -248,13 +248,19 @@ is synchronized to the new mode and bounded expiry so it cannot resurrect an exp
 pause. Governance cannot supply the internal schedule or expiration directly.
 Until that H+1 activation, any full parameter update is rejected; submit the
 emergency update separately, then re-query before a full parameter replacement.
-This guard applies to the overlapping `pending_emergency` representation. With no
-ordinary plan, the emergency-only update uses an H+1 `pending` bundle instead:
-a later authorized full update in the same block can cancel that bundle. Message
-order therefore matters. Within one governance proposal, a later failed message
-rolls back earlier message writes; across proposals it does not roll back an
-already successful proposal. These existing semantics are covered by the
-[governance execution tests](../../docs/PQCAUTH-GOVERNANCE-LOAD-TESTS-20261102.md).
+Every explicit emergency-only update sets `pending_emergency`, even with no
+pre-existing ordinary plan. A later full update in the same block must fail, not
+silently cancel or replace the emergency schedule. Explicit emergency-only
+replacement, renewal or release remains authorized and follows message order.
+
+Submit emergency pauses as separate governance proposals, without batching full
+parameter updates into the same proposal. A later failed message rolls back all
+earlier messages in that proposal, including the pause. Across proposals, a failed
+full update does not roll back the already successful emergency proposal. The
+failed proposal remains FAILED and is not automatically retried at H+1: after the
+pause activates, re-query parameters and submit a new proposal if still needed.
+If the full update executes first, a subsequent emergency-only update preserves
+its ordinary schedule. See the [same-block guard fix and execution regressions](../../docs/PQCAUTH-SAMEBLOCK-EMERGENCY-FIX-20261102.md).
 
 Full updates retaining the active emergency mode retain its existing expiry; if
 an ordinary replacement activates after that expiry, its emergency component is

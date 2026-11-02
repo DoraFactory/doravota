@@ -87,11 +87,8 @@ func TestPQCAuthSignedGovernanceSubmissionVoteAndRollback(t *testing.T) {
 			}
 			proposal, err = c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), id)
 			require.NoError(t, err)
-			wantStatus := gov.StatusPassed
-			if ordinary {
-				wantStatus = gov.StatusFailed
-			}
-			require.Equal(t, wantStatus, proposal.Status, proposal.FailedReason)
+			require.Equal(t, gov.StatusFailed, proposal.Status, proposal.FailedReason)
+			require.Contains(t, proposal.FailedReason, "wait for the H+1 emergency activation")
 			require.Equal(t, before, c.app.PQCAuthKeeper.GetParams(c.app.NewContext(true)))
 			require.Equal(t, balance.SubRaw(20), c.app.BankKeeper.GetBalance(c.app.NewContext(true), owner, sdk.DefaultBondDenom).Amount, "deposit refunded; only two normal tx fees retained")
 			require.Equal(t, uint64(2), c.app.AccountKeeper.GetAccount(c.app.NewContext(true), owner).GetSequence())
@@ -132,17 +129,12 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 					switch scenario {
 					case "same-proposal":
 						seedPQCReadyProposal(t, c, ctx, 10, pause, cancel)
-						if ordinary {
-							want[10] = gov.StatusFailed
-						}
+						want[10] = gov.StatusFailed
 					case "separate-pause-first":
 						// Deliberately insert higher ID first; queue order is expiry/ID.
 						seedPQCReadyProposal(t, c, ctx, 20, cancel)
 						seedPQCReadyProposal(t, c, ctx, 10, pause)
-						want[20] = gov.StatusPassed
-						if ordinary {
-							want[20] = gov.StatusFailed
-						}
+						want[20] = gov.StatusFailed
 					case "separate-cancel-first":
 						seedPQCReadyProposal(t, c, ctx, 20, pause)
 						seedPQCReadyProposal(t, c, ctx, 10, cancel)
@@ -169,9 +161,9 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 						}
 					}
 					stored := c.app.PQCAuthKeeper.GetParams(read)
-					wantPaused := scenario == "separate-cancel-first" || scenario == "failed-then-valid" || (ordinary && scenario == "separate-pause-first")
+					wantPaused := scenario == "separate-cancel-first" || scenario == "failed-then-valid" || scenario == "separate-pause-first"
 					wantOrdinary := ordinary && scenario != "separate-cancel-first"
-					if scenario == "rollback-all" || (ordinary && scenario == "same-proposal") {
+					if scenario == "rollback-all" || scenario == "same-proposal" {
 						require.Equal(t, initial, stored, "failed proposal must roll back earlier PQC writes")
 					}
 					if wantOrdinary {
@@ -195,10 +187,90 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 						}
 						require.Equal(t, wantEnforcement, p.EnforcementMode)
 					}
+					for id, status := range want {
+						p, err := c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), id)
+						require.NoError(t, err)
+						require.Equal(t, status, p.Status, "failed proposals must not be automatically retried")
+					}
 					require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
 					t.Logf("actual gov EndBlock + commits: proposals=%v, pause=%t ordinary=%t, final height=%d", want, wantPaused, wantOrdinary, c.height)
 				})
 			}
+		}
+	}
+}
+
+func TestPQCAuthGovernanceEmergencyGuardAndResubmission(t *testing.T) {
+	for _, mode := range []pqctypes.EmergencyMode{pqctypes.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS, pqctypes.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS} {
+		for _, emergencyFirst := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/emergency-first=%t", mode, emergencyFirst), func(t *testing.T) {
+				base := pqctypes.DefaultParams()
+				base.GovernanceSafetyDelayBlocks = 4
+				base.MaxEmergencyDurationBlocks = 20
+				c := newPQCChain(t, base)
+				base = c.app.PQCAuthKeeper.GetParams(c.app.NewContext(true))
+				pause, full := base, base
+				pause.EmergencyMode = mode
+				full.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				authority := c.app.PQCAuthKeeper.Authority()
+				ctx := c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: 2, Time: c.stamp.Add(2 * time.Second)})
+				pauseID, fullID := uint64(10), uint64(20)
+				if !emergencyFirst {
+					pauseID, fullID = fullID, pauseID
+				}
+				seedPQCReadyProposal(t, c, ctx, pauseID, &pqctypes.MsgUpdateParams{Authority: authority, Params: pause, EmergencyOnly: true})
+				seedPQCReadyProposal(t, c, ctx, fullID, &pqctypes.MsgUpdateParams{Authority: authority, Params: full})
+				c.app.SimWriteState()
+				c.block(t, nil)
+				paused, err := c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), pauseID)
+				require.NoError(t, err)
+				require.Equal(t, gov.StatusPassed, paused.Status)
+				p, err := c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), fullID)
+				require.NoError(t, err)
+				want := gov.StatusPassed
+				if emergencyFirst {
+					want = gov.StatusFailed
+					require.Contains(t, p.FailedReason, "wait for the H+1 emergency activation")
+				}
+				require.Equal(t, want, p.Status)
+				// H+1 is evaluated inside real BeginBlock/EndBlock. A NEW proposal
+				// can update ordinary parameters while preserving the active pause.
+				if emergencyFirst {
+					ctx = c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: 3, Time: c.stamp.Add(3 * time.Second)})
+					full.EmergencyMode = mode
+					seedPQCReadyProposal(t, c, ctx, 30, &pqctypes.MsgUpdateParams{Authority: authority, Params: full})
+					c.app.SimWriteState()
+				}
+				c.block(t, nil)
+				state := c.app.PQCAuthKeeper.GetParams(c.app.NewContext(true)).Effective(3)
+				require.Nil(t, state.PendingEmergency)
+				require.Equal(t, mode, state.EmergencyMode)
+				require.Equal(t, uint64(23), state.EmergencyExpiresHeight)
+				activation := uint64(6)
+				if emergencyFirst {
+					activation = 7
+					p, err = c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), 30)
+					require.NoError(t, err)
+					require.Equal(t, gov.StatusPassed, p.Status)
+				}
+				require.Equal(t, activation, state.PendingActivationHeight)
+				for c.height < 24 {
+					c.block(t, nil)
+					state = c.app.PQCAuthKeeper.GetParams(c.app.NewContext(true)).Effective(c.height)
+					wantMode := mode
+					if c.height >= 23 {
+						wantMode = pqctypes.EmergencyMode_EMERGENCY_MODE_NORMAL
+					}
+					require.Equal(t, wantMode, state.EmergencyMode)
+					if uint64(c.height) >= activation {
+						require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED, state.EnforcementMode)
+					}
+				}
+				p, err = c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), fullID)
+				require.NoError(t, err)
+				require.Equal(t, want, p.Status, "the failed original is not retried when the new proposal succeeds")
+				require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
+			})
 		}
 	}
 }
