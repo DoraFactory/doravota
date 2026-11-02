@@ -101,7 +101,7 @@ func TestPQCAuthRegistrationRequiresDirect(t *testing.T) {
 }
 
 func TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure(t *testing.T) {
-	for _, mode := range []pqctypes.EnforcementMode{pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED} {
+	for _, mode := range []pqctypes.EnforcementMode{pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED} {
 		t.Run(mode.String(), func(t *testing.T) {
 			p := pqctypes.DefaultParams()
 			p.EnforcementMode = mode

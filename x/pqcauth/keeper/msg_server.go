@@ -869,6 +869,13 @@ func VerifyKeyProof(
 		return err
 	}
 	ctx.GasMeter().ConsumeGas(params.EffectiveProofVerificationGas(), "pqcauth key proof verification")
+	// Recheck is a trusted local admission mode, not a transaction flag.
+	// Ordered owner sequences and the lifecycle checks protect the current
+	// policy/key binding. Review this assumption before enabling unordered
+	// account transactions: recovery proofs derive policy version from state.
+	if ctx.IsReCheckTx() {
+		return nil
+	}
 	start := time.Now()
 	verifyErr := pqccrypto.Verify(cryptoAlgorithm, publicKey, signBytes, signatureContext, proof)
 	types.RecordVerification(start, types.VerificationKindKeyProof, verifyErr)

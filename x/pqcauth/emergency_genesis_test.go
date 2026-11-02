@@ -28,7 +28,7 @@ func testEmergencyExportImport(t *testing.T, ordinary bool) {
 	require.NoError(t, k.SetParams(ctx, p))
 	queued := p
 	queued.RegistrationCutoffHeight = 111
-	queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	s := keeper.NewMsgServer(k)
 	if ordinary {
 		_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})

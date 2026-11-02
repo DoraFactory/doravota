@@ -282,10 +282,10 @@ func TestVerifyPQCDecoratorAcceptsValidHybridAuthorization(t *testing.T) {
 	require.True(t, called)
 }
 
-func TestNativeMLDSAAccountSatisfiesGlobalRequiredWithoutPQCAuth(t *testing.T) {
+func TestNativeMLDSAAccountSatisfiesRegisteredRequirementWithoutPQCAuth(t *testing.T) {
 	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
 	params := moduleKeeper.GetParams(ctx)
-	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 
 	privateKey, err := sdkmldsa65.GenPrivKey()
@@ -324,10 +324,10 @@ func TestNativeMLDSAAccountSatisfiesGlobalRequiredWithoutPQCAuth(t *testing.T) {
 	require.True(t, called)
 }
 
-func TestRequiredModeKeepsDirectClassicRegistrationBootstrapOpen(t *testing.T) {
+func TestRegisteredRequirementKeepsDirectClassicRegistrationBootstrapOpen(t *testing.T) {
 	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
 	params := moduleKeeper.GetParams(ctx)
-	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 
 	classicPrivateKey := secp256k1.GenPrivKey()
@@ -477,10 +477,10 @@ func TestNativeMLDSAAccountCannotRegisterPQCAuth(t *testing.T) {
 	require.ErrorIs(t, err, types.ErrIneligibleAccount)
 }
 
-func TestRequiredModeAcceptsMixedNativeAndProtectedClassicSigners(t *testing.T) {
+func TestRegisteredRequirementAcceptsMixedNativeAndProtectedClassicSigners(t *testing.T) {
 	ctx, moduleKeeper, accountKeeper, txConfig, pqcPrivateKey := setupAnteTest(t)
 	params := moduleKeeper.GetParams(ctx)
-	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 
 	nativePrivateKey, err := sdkmldsa65.GenPrivKey()
@@ -1117,7 +1117,6 @@ func TestRegisteredPolicyWithUnavailableSigningKeyFailsClosed(t *testing.T) {
 		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
 		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED,
-		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED,
 	} {
 		t.Run(mode.String(), func(t *testing.T) {
 			ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
@@ -1342,6 +1341,15 @@ func TestRecoveryAuthorizationBindsCompleteTransactionIntent(t *testing.T) {
 			if testCase.mutate == nil {
 				require.NoError(t, err)
 				require.True(t, called)
+				meter := newRecordingGasMeter()
+				_, err = decorator.AnteHandle(ctx.WithIsReCheckTx(true).WithGasMeter(meter), builder.GetTx(), false,
+					func(ctx sdk.Context, _ sdk.Tx, _ bool) (sdk.Context, error) { return ctx, nil })
+				require.NoError(t, err)
+				for _, descriptor := range []string{"pqcauth key proof verification", "pqcauth recovery signature verification"} {
+					charges := meter.chargesFor(descriptor)
+					require.Len(t, charges, 1)
+					require.EqualValues(t, 750, charges[0].amount)
+				}
 			} else {
 				require.ErrorIs(t, err, types.ErrUnauthorized)
 				require.False(t, called)

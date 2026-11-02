@@ -21,7 +21,7 @@ func TestEmergencyOnlyRejectsSameBlockFullUpdate(t *testing.T) {
 					s := NewMsgServer(k)
 					if ordinary {
 						queued := base
-						queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+						queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 						require.NoError(t, err)
 					}
@@ -41,7 +41,7 @@ func TestEmergencyOnlyRejectsSameBlockFullUpdate(t *testing.T) {
 					require.Equal(t, wantExpiry, before.PendingEmergency.ExpiresHeight)
 					full := base // Prepared from state before the emergency update.
 					if tighten {
-						full.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+						full.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 					}
 					r, err = s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: full})
 					require.ErrorContains(t, err, "wait for the H+1 emergency activation")
@@ -75,7 +75,7 @@ func TestEmergencyOnlyRejectsSameBlockFullUpdate(t *testing.T) {
 						require.Equal(t, wantMode, p.EmergencyMode)
 						wantEnforcement := types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL
 						if tighten && h >= 111 {
-							wantEnforcement = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+							wantEnforcement = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						}
 						require.Equal(t, wantEnforcement, p.EnforcementMode)
 					}

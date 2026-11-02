@@ -137,7 +137,9 @@ func TestPQCAuthBoundedInvalidAdmission(t *testing.T) {
 	owner := sdk.AccAddress(c.key.PubKey().Address())
 	before := c.app.AccountKeeper.GetAccount(c.app.NewContext(true), owner).GetSequence()
 	balance := c.app.BankKeeper.GetBalance(c.app.NewContext(true), owner, sdk.DefaultBondDenom)
-	for _, kind := range []abci.CheckTxType{abci.CheckTxType_New, abci.CheckTxType_Recheck} {
+	// Invalid signatures never enter the real mempool. Recheck only receives
+	// previously admitted bytes; test that lifecycle separately below.
+	for _, kind := range []abci.CheckTxType{abci.CheckTxType_New} {
 		start := time.Now()
 		for i := 0; i < 300; i++ {
 			r, err := c.app.CheckTx(&abci.RequestCheckTx{Tx: bad, Type: kind})

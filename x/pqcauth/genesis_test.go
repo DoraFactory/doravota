@@ -69,7 +69,7 @@ func TestExportGenesisNormalizesActivatedParamsAndPolicies(t *testing.T) {
 	ctx, moduleKeeper := setupGenesisTest(t, 50)
 	params := types.DefaultParams()
 	scheduled := params.AsScheduled()
-	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	params.Pending = &scheduled
 	params.PendingActivationHeight = 50
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))

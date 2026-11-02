@@ -50,6 +50,18 @@ for the current tests, dependency patches and residual scan findings. The
 [earlier shared-audit fixes](../../docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)
 record the superseded prefix-selection policy.
 
+Recheck reuses the cryptographic validity established for the same transaction
+bytes by CheckTx(New). It still performs state/structure/key/policy and SDK
+sequence checks and charges the configured verification gas; only the three
+ML-DSA calls (authorization, recovery authorization, key proof) are skipped.
+FinalizeBlock always verifies independently. Recheck is a trusted local ABCI
+mode, not a broadcast transaction flag or an API for authenticating new bytes.
+This application disables SDK unordered transactions. Review the recovery
+document's state-derived policy-version binding before enabling that feature;
+the regression gate intentionally rejects such an unreviewed configuration.
+See the [recheck fixes and executed tests](../../docs/PQCAUTH-RECHECK-FIXES-20261102.md)
+and [remaining parameter decisions](../../docs/PQCAUTH-PARAMETER-DECISIONS-20261102.md).
+
 Registration, `set-protection true`, and `recover-key` print a delegation warning to stderr,
 including the SDK `query authz grants-by-granter` and
 `query feegrant grants-by-granter` commands. They do not query or revoke grants
@@ -210,6 +222,9 @@ claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
 | Maximum emergency duration | 17,280 blocks |
 
 These are candidate defaults, not a statement of live chain parameters.
+Phase one rejects global `REQUIRED` in active/pending/genesis/governance
+parameters. Its enum number is reserved, never silently mapped to OPTIONAL.
+`REQUIRED_FOR_REGISTERED` remains available after the governance safety delay.
 Both verification prices have a 750 floor. They reference the pinned SDK
 constant, not the live x/auth parameter: changing x/auth governance prices does
 not automatically change PQCAuth prices. Explicit stored prices, including the
@@ -243,7 +258,7 @@ When a non-emergency parameter bundle is already queued, an explicit emergency-o
 request may copy either the active or queued non-emergency fields. The server
 schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
 original cutoff, restrictions and activation height. This does not revoke a queued
-cutoff or activate REQUIRED/budget reductions early. The queued emergency component
+cutoff or activate REQUIRED_FOR_REGISTERED/budget reductions early. The queued emergency component
 is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
 pause. Governance cannot supply the internal schedule or expiration directly.
 Until that H+1 activation, any full parameter update is rejected; submit the
@@ -334,10 +349,11 @@ composite public keys, including threshold accounts whose members are all
 ML-DSA, are currently classified as unsupported by PQCAuth. Ordinary SDK
 multisig transactions can use OPTIONAL mode, subject to SDK verification and
 PQC verification budgets. They cannot register an additional PQCAuth factor.
-Global REQUIRED mode rejects these accounts, including all-ML-DSA multisigs.
-Do not enable REQUIRED on an existing network before a separately reviewed
-multisig support/migration policy is deployed and tested. Moving a treasury to
-an ML-DSA multisig is not a workaround for this REQUIRED-mode restriction.
+Global REQUIRED is disabled in phase one. Its reserved runtime semantics would
+reject these accounts, including all-ML-DSA multisigs. Re-enabling it requires a
+separately reviewed multisig/wallet/relayer migration policy, not a governance
+parameter change. Experimental state already using/queuing REQUIRED is not a
+supported drop-in upgrade source; do not silently downgrade it to OPTIONAL.
 An OPTIONAL-mode signature test is not wallet support or migration approval.
 
 ## Ledger, watch-only and offline owners

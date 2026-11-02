@@ -17,6 +17,12 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthSignedGovernanceSubmissionVoteAndRollback \
  TestPQCAuthBoundedMixedBudgetAndRecovery \
  TestPQCAuthBoundedInvalidAdmission \
+ TestPQCAuthRecheckPreservesGasAndDelivery \
+ TestPQCAuthRecheckDoesNotAuthenticateNewBytes \
+ TestPQCAuthRecheckRejectsChangedPolicy \
+ TestPQCAuthRecheckRejectsPauseAndSequence \
+ TestPQCAuthRecheckRequiresOrderedLifecycle \
+ TestPQCAuthRecheckBoundedSevenSigners \
  TestPQCAuthRegistrationRequiresDirect \
  TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure \
  TestPQCAuthProposalPreservesSequenceDependencies \
@@ -68,6 +74,8 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
+ TestRecheckKeepsAuthorizationGasAndKeyChecks \
+ TestRecoveryAuthorizationBindsCompleteTransactionIntent \
  TestRecoveryEscapeRequiresSingleTopLevelMessage \
  TestFullPauseAllowsOnlyProtectedRecoveryEscapeExtension \
  TestPQCWireRejectsAmplificationBeforeDecode TestPQCWirePreflightBoundaries \
@@ -81,6 +89,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestPhaseOneRequiredGovernanceCannotWriteState TestRecheckKeyProofRetainsGas \
  TestEmergencyOnlyRejectsSameBlockFullUpdate \
  TestEmergencyOnlySameBlockExplicitReplacement \
  TestReviewCancelOrdinaryRestrictionWhileKeepingPause \
@@ -99,6 +108,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestPhaseOneRejectsGlobalRequired \
  TestEmergencyIntentWireJSONAndSignBytes \
  TestIndependentEmergencyValidationAndCodec \
  TestVerificationGasUsesSDKBaseline TestVerificationGasPreservesStoredPricesAndActivation \

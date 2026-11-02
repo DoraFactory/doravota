@@ -1136,7 +1136,7 @@ func TestGovernanceSafetyDelayClassification(t *testing.T) {
 		{
 			name: "enforcement escalation",
 			mutate: func(requested *types.ScheduledParams) {
-				requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 			},
 			restrictive: true,
 		},
@@ -1194,7 +1194,7 @@ func TestGovernanceSafetyDelayClassification(t *testing.T) {
 			name: "enforcement relaxation",
 			current: func() types.ScheduledParams {
 				value := base
-				value.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				value.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 				return value
 			}(),
 			mutate: func(requested *types.ScheduledParams) {
@@ -1228,7 +1228,7 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
 	params := types.DefaultParams()
 	scheduled := params.AsScheduled()
-	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	scheduled.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	scheduled.EmergencyExpiresHeight = 40
 	scheduled.MaxPqcSigners = 4

@@ -83,7 +83,7 @@ func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 
 	params := moduleKeeper.GetParams(ctx)
 	pending := params.AsScheduled()
-	pending.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	pending.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	params.Pending = &pending
 	params.PendingActivationHeight = uint64(ctx.BlockHeight())
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))

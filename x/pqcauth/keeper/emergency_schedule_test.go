@@ -21,7 +21,7 @@ func TestEmergencyUpdatePreservesPendingCutoffAndRestrictions(t *testing.T) {
 						s := NewMsgServer(k)
 						queued := base
 						queued.RegistrationCutoffHeight = cutoff
-						queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+						queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						queued.MaxPqcSigners = 2
 						queued.MaxPqcVerificationsPerTx = 3
 						response, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})

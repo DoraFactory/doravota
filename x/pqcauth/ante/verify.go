@@ -301,6 +301,13 @@ func (d VerifyPQCDecorator) AnteHandle(
 			params.EffectiveSignatureVerificationGas(),
 			"pqcauth transaction signature verification",
 		)
+		// CometBFT rechecks the same bytes already admitted by CheckTx(New).
+		// Keep the state bindings above and SDK sequence checks, but do not
+		// repeat immutable cryptographic work. FinalizeBlock never takes this
+		// path and always verifies, including for a malicious proposal.
+		if ctx.IsReCheckTx() {
+			continue
+		}
 		start := time.Now()
 		verifyErr := pqccrypto.Verify(
 			algorithm,

@@ -41,7 +41,7 @@ func TestReviewCancelOrdinaryRestrictionWhileKeepingPause(t *testing.T) {
 				queued.Pending = nil
 				queued.PendingActivationHeight = 0
 				queued.PendingEmergency = nil
-				queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 				if closed {
 					queued.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
 				}
@@ -96,7 +96,7 @@ func TestExplicitEmergencyRenewalPreservesOrdinaryIntent(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, uint64(121), active.EmergencyExpiresHeight)
 			queued := pause
-			queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+			queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 			queued.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
 			_, err = s.UpdateParams(ctx.WithBlockHeight(100), &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 			require.NoError(t, err)
@@ -107,7 +107,7 @@ func TestExplicitEmergencyRenewalPreservesOrdinaryIntent(t *testing.T) {
 			require.Equal(t, uint64(102), r.ActivationHeight)
 			require.Equal(t, uint64(110), stored.PendingActivationHeight)
 			require.Equal(t, uint64(132), stored.PendingEmergency.ExpiresHeight)
-			require.Equal(t, types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED, stored.Effective(110).EnforcementMode)
+			require.Equal(t, types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, stored.Effective(110).EnforcementMode)
 			require.Equal(t, types.RegistrationMode_REGISTRATION_MODE_CLOSED, stored.Effective(110).RegistrationMode)
 			// Once the explicit renewal activates, an ordinary full cancellation
 			// remains possible and preserves that exact expiry, without renewal.
@@ -181,7 +181,7 @@ func TestOrdinaryReplacementDoesNotRenewOrResurrectPause(t *testing.T) {
 			require.NoError(t, k.SetParams(ctx, base))
 			queued := base
 			queued.EmergencyExpiresHeight = 0
-			queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+			queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 			_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 			require.NoError(t, err)
 			replacement := base

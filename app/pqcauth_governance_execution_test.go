@@ -41,7 +41,7 @@ func TestPQCAuthSignedGovernanceSubmissionVoteAndRollback(t *testing.T) {
 			p.GovernanceSafetyDelayBlocks = 4
 			if ordinary {
 				pending := p.AsScheduled()
-				pending.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				pending.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 				p.Pending, p.PendingActivationHeight = &pending, 20
 			}
 			c := newPQCChain(t, p)
@@ -110,7 +110,7 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 					initial := base
 					if ordinary {
 						pending := base.AsScheduled()
-						pending.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+						pending.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						initial.Pending, initial.PendingActivationHeight = &pending, 6
 					}
 					c := newPQCChain(t, initial)
@@ -169,7 +169,7 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 					if wantOrdinary {
 						require.NotNil(t, stored.Pending)
 						require.Equal(t, uint64(6), stored.PendingActivationHeight)
-						require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED, stored.Pending.EnforcementMode)
+						require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, stored.Pending.EnforcementMode)
 					}
 					// Check committed H+1 activation, old ordinary activation, expiry,
 					// and subsequent blocks; failed gov messages must not halt the app.
@@ -183,7 +183,7 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 						require.Equal(t, wantMode, p.EmergencyMode)
 						wantEnforcement := pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL
 						if wantOrdinary && c.height >= 6 {
-							wantEnforcement = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+							wantEnforcement = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						}
 						require.Equal(t, wantEnforcement, p.EnforcementMode)
 					}
@@ -211,7 +211,7 @@ func TestPQCAuthGovernanceEmergencyGuardAndResubmission(t *testing.T) {
 				base = c.app.PQCAuthKeeper.GetParams(c.app.NewContext(true))
 				pause, full := base, base
 				pause.EmergencyMode = mode
-				full.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+				full.EnforcementMode = pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 				authority := c.app.PQCAuthKeeper.Authority()
 				ctx := c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: 2, Time: c.stamp.Add(2 * time.Second)})
 				pauseID, fullID := uint64(10), uint64(20)
@@ -263,7 +263,7 @@ func TestPQCAuthGovernanceEmergencyGuardAndResubmission(t *testing.T) {
 					}
 					require.Equal(t, wantMode, state.EmergencyMode)
 					if uint64(c.height) >= activation {
-						require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED, state.EnforcementMode)
+						require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, state.EnforcementMode)
 					}
 				}
 				p, err = c.app.GovKeeper.Proposals.Get(c.app.NewContext(true), fullID)

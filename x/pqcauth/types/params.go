@@ -440,8 +440,11 @@ func (p Params) EffectiveRecoveryDelayBlocks() uint64 {
 }
 
 func validEnforcementMode(mode EnforcementMode) bool {
+	// Phase one is opt-in: global REQUIRED is reserved until composite
+	// accounts, wallets and relayers have a reviewed migration path. Keep the
+	// wire enum and fail-closed runtime handling; never map it to OPTIONAL.
 	return mode >= EnforcementMode_ENFORCEMENT_MODE_DISABLED &&
-		mode <= EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+		mode <= EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 }
 
 func normalizeRegistrationMode(mode RegistrationMode) RegistrationMode {

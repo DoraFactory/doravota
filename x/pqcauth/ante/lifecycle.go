@@ -293,7 +293,7 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				params.EffectiveProofVerificationGas(),
 				lifecycleProofGasDescriptor(simulate, "recovery signature"),
 			)
-			if !simulate {
+			if !simulate && !ctx.IsReCheckTx() {
 				start := time.Now()
 				verifyErr := pqccrypto.Verify(
 					algorithm,

@@ -75,9 +75,8 @@ func verifyMLDSA65(publicKey, message, context, signature []byte) error {
 	}
 
 	key := sdkmldsa65.PubKey{Key: append([]byte(nil), publicKey...)}
-	if _, err := cmtmldsa65.NewPubKeyFromBytes(key.Key); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalidPublicKey, err)
-	}
+	// SDK VerifySignature parses and validates the packed public key, returning
+	// false on failure. Do not parse it a second time and discard the result.
 	if !key.VerifySignature(domainSeparatedMessage(message, context), signature) {
 		return ErrInvalidSignature
 	}

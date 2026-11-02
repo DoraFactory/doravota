@@ -105,7 +105,7 @@ func TestRegistrationModeActivatesAtomically(t *testing.T) {
 }
 
 func TestPhaseOneRejectsFreshRegistrationParameters(t *testing.T) {
-	for _, enforcement := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED} {
+	for _, enforcement := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED} {
 		params := DefaultParams()
 		params.EnforcementMode = enforcement
 		params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
@@ -138,12 +138,12 @@ func TestEmergencyModeAutoExpiresAtExactHeight(t *testing.T) {
 func TestParamsEnforcementActivatesAtExactHeight(t *testing.T) {
 	params := DefaultParams()
 	pending := params.AsScheduled()
-	pending.EnforcementMode = EnforcementMode_ENFORCEMENT_MODE_REQUIRED
+	pending.EnforcementMode = EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	params.Pending = &pending
 	params.PendingActivationHeight = 101
 
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(100))
-	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_REQUIRED, params.EffectiveEnforcementMode(101))
+	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, params.EffectiveEnforcementMode(101))
 }
 
 func TestPQCVerificationBudgetsActivateAtomically(t *testing.T) {
