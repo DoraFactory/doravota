@@ -1,0 +1,17 @@
+{
+  "kind": "classic",
+  "post_hoc_diagnostic": true,
+  "not_release_acceptance": true,
+  "discard_first_loaded_intervals": 3,
+  "raw_loaded_interval_count": 24,
+  "discarded_intervals_seconds": [
+    54.857698917388916,
+    5.448328971862793,
+    5.264437198638916
+  ],
+  "baseline_p95_seconds": 5.360197067260742,
+  "raw_loaded_p95_seconds": 5.659398794174194,
+  "remaining_sample_count": 21,
+  "remaining_p95_seconds": 5.407073020935059,
+  "remaining_p95_increase_percent": 0.8745192217022746
+}

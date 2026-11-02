@@ -1,0 +1,330 @@
+{
+  "chain_id": "isolated-amino-v101-rehearsal",
+  "validators": 4,
+  "old_sha256": "5c741ca406ee2ecb811dd62d83e9a446fee051e2947522525c2560a0a7ce968a",
+  "new_sha256": "04bd2d0dced7ccf1f993a70fb2be6b1718e0f1852c27f1bdeef0fa49eaea1696",
+  "scope": "isolated sequential governance upgrades; not a mainnet snapshot or public IBC test",
+  "before_transfer": "2594A08494D0BDCF9EE4740E10F1B0FA7A800F4B24EA7F8A850595392C437A2A",
+  "proposal_tx": "4C6D6FBB585204C6305BEB70412EA795BCDBA8C74B297267399EE81B43A0B0B5",
+  "vote_txs": [
+    "09912B8FA9F8FD5002635732419FA1C34658A2EE011C8769E30FF82EAC00ED8D",
+    "D09B8342363797FEBCE1F20201A1D41E7F0B51837375E0E8E7F48B68BD90D15D",
+    "436D756C5B27EDEFE3DD9B9CEE0AAA103ADBFFE882DD6B76A561AAFDD1DA311F",
+    "F6F01C1C14B1676CFF42D85FC7DB0754AEF5BE38D80609A318B4AA78CF799D02"
+  ],
+  "proposal": {
+    "proposal": {
+      "id": "1",
+      "messages": [
+        {
+          "type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "plan": {
+              "name": "v1.0.1",
+              "time": "0001-01-01T00:00:00Z",
+              "height": "85",
+              "info": "isolated rehearsal"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "4000000000000000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2026-11-02T15:34:34.45898685Z",
+      "deposit_end_time": "2026-11-02T15:44:34.45898685Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "1"
+        }
+      ],
+      "voting_start_time": "2026-11-02T15:34:34.45898685Z",
+      "voting_end_time": "2026-11-02T15:34:49.45898685Z",
+      "title": "Isolated v1.0.1 upgrade",
+      "summary": "Temporary four-validator rehearsal only",
+      "proposer": "dora1auy0v45kjt5a8twfm75nhj8uuuqm00rj5edct5"
+    }
+  },
+  "premature_start_rejected": true,
+  "after_upgrade": [
+    {
+      "latest_block_hash": "2921084FA9E3E77F421B841B34A0E895C2EC7A7EC5682A7675CDBD6E576F38FB",
+      "latest_app_hash": "96DAA8EEAF90BFF11A1527FECE289122B2A9948D44009E158F9063E75E533B87",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-11-02T15:35:38.625588483Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "2921084FA9E3E77F421B841B34A0E895C2EC7A7EC5682A7675CDBD6E576F38FB",
+      "latest_app_hash": "96DAA8EEAF90BFF11A1527FECE289122B2A9948D44009E158F9063E75E533B87",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-11-02T15:35:38.625588483Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "2921084FA9E3E77F421B841B34A0E895C2EC7A7EC5682A7675CDBD6E576F38FB",
+      "latest_app_hash": "96DAA8EEAF90BFF11A1527FECE289122B2A9948D44009E158F9063E75E533B87",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-11-02T15:35:38.625588483Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "2921084FA9E3E77F421B841B34A0E895C2EC7A7EC5682A7675CDBD6E576F38FB",
+      "latest_app_hash": "96DAA8EEAF90BFF11A1527FECE289122B2A9948D44009E158F9063E75E533B87",
+      "latest_block_height": "89",
+      "latest_block_time": "2026-11-02T15:35:38.625588483Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    }
+  ],
+  "after_transfer": "22355198749BBA0C686600C001A715CD5BCE12164941AB0DC8E8F29C0EE3B824",
+  "matching_app_hash": {
+    "height": 87,
+    "hash": "4459DB76C950C77F943B6BA44E74C8BB8F60C86FDACBC8FAE491648A3F282685",
+    "nodes": 4
+  },
+  "after_restart": [
+    {
+      "latest_block_hash": "9BFC4B841D5D1241AE7E3E1799949021A4DD81904881002BA8131A994B74BF39",
+      "latest_app_hash": "F21EE849FEEE6B21D13FD67C5EB9E6D6BC8BB493B55180441AC4DBCBC48AAC56",
+      "latest_block_height": "94",
+      "latest_block_time": "2026-11-02T15:35:43.47641067Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "9BFC4B841D5D1241AE7E3E1799949021A4DD81904881002BA8131A994B74BF39",
+      "latest_app_hash": "F21EE849FEEE6B21D13FD67C5EB9E6D6BC8BB493B55180441AC4DBCBC48AAC56",
+      "latest_block_height": "94",
+      "latest_block_time": "2026-11-02T15:35:43.47641067Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "9BFC4B841D5D1241AE7E3E1799949021A4DD81904881002BA8131A994B74BF39",
+      "latest_app_hash": "F21EE849FEEE6B21D13FD67C5EB9E6D6BC8BB493B55180441AC4DBCBC48AAC56",
+      "latest_block_height": "94",
+      "latest_block_time": "2026-11-02T15:35:43.47641067Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "9BFC4B841D5D1241AE7E3E1799949021A4DD81904881002BA8131A994B74BF39",
+      "latest_app_hash": "F21EE849FEEE6B21D13FD67C5EB9E6D6BC8BB493B55180441AC4DBCBC48AAC56",
+      "latest_block_height": "94",
+      "latest_block_time": "2026-11-02T15:35:43.47641067Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    }
+  ],
+  "restart_matching_app_hash": {
+    "height": 92,
+    "hash": "7E38010A434812817084353080307A06FE1EAEE0D60A56748F96E16A37A6AF83",
+    "nodes": 4
+  },
+  "upgrade_height": 85,
+  "pqc_sha256": "b10e90aa1db0824a98ca3e59b3b09fad23b8a6ef3ec400fb0383fa334bec9878",
+  "pqc_proposal_tx": "43D8D1D2EF8B40CF38D1ACAC01AE954CCF4A38FEDB8BD4ED4550DB1C4198420E",
+  "pqc_vote_txs": [
+    "464C66642201C41E1C6CD9C9652C4D6606691ED3570264E01248A6D910E5A3D8",
+    "5360B72621ABEA0685D189608FB1F6213DDA9D02584ABEB0E5ECC2428FFFEF65",
+    "27824E1ED25A9A2CE9C8931C8173A4D9E3594121F6129B82B6C879D0ACA0FDE0",
+    "5B7D7B202AFFCEF3F04A910576E4787892D3A086415D646ED0B8440AD66E6C0F"
+  ],
+  "pqc_proposal": {
+    "proposal": {
+      "id": "2",
+      "messages": [
+        {
+          "type": "/cosmos.upgrade.v1beta1.MsgSoftwareUpgrade",
+          "value": {
+            "authority": "dora10d07y265gmmuvt4z0w9aw880jnsr700jeckgp9",
+            "plan": {
+              "name": "v1.1.0",
+              "time": "0001-01-01T00:00:00Z",
+              "height": "197",
+              "info": "isolated rehearsal"
+            }
+          }
+        }
+      ],
+      "status": "PROPOSAL_STATUS_PASSED",
+      "final_tally_result": {
+        "yes_count": "4000000000000000000000",
+        "abstain_count": "0",
+        "no_count": "0",
+        "no_with_veto_count": "0"
+      },
+      "submit_time": "2026-11-02T15:35:47.790877376Z",
+      "deposit_end_time": "2026-11-02T15:45:47.790877376Z",
+      "total_deposit": [
+        {
+          "denom": "peaka",
+          "amount": "1"
+        }
+      ],
+      "voting_start_time": "2026-11-02T15:35:47.790877376Z",
+      "voting_end_time": "2026-11-02T15:36:02.790877376Z",
+      "title": "Isolated PQCAuth upgrade after v1.0.1",
+      "summary": "Temporary four-validator rehearsal only",
+      "proposer": "dora1auy0v45kjt5a8twfm75nhj8uuuqm00rj5edct5"
+    }
+  },
+  "pqc_premature_start_rejected": true,
+  "pqc_after_upgrade": [
+    {
+      "latest_block_hash": "30C3F9AB8CD48A13C9C41856DCC64BE5B7441005408FC1E6C635CC33B6024A3D",
+      "latest_app_hash": "2FC6301FBC6DE3A6C030DF9032270A281C5D4A399138B23917D65E14056F39A0",
+      "latest_block_height": "201",
+      "latest_block_time": "2026-11-02T15:37:09.570012339Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "30C3F9AB8CD48A13C9C41856DCC64BE5B7441005408FC1E6C635CC33B6024A3D",
+      "latest_app_hash": "2FC6301FBC6DE3A6C030DF9032270A281C5D4A399138B23917D65E14056F39A0",
+      "latest_block_height": "201",
+      "latest_block_time": "2026-11-02T15:37:09.570012339Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "30C3F9AB8CD48A13C9C41856DCC64BE5B7441005408FC1E6C635CC33B6024A3D",
+      "latest_app_hash": "2FC6301FBC6DE3A6C030DF9032270A281C5D4A399138B23917D65E14056F39A0",
+      "latest_block_height": "201",
+      "latest_block_time": "2026-11-02T15:37:09.570012339Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "30C3F9AB8CD48A13C9C41856DCC64BE5B7441005408FC1E6C635CC33B6024A3D",
+      "latest_app_hash": "2FC6301FBC6DE3A6C030DF9032270A281C5D4A399138B23917D65E14056F39A0",
+      "latest_block_height": "201",
+      "latest_block_time": "2026-11-02T15:37:09.570012339Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    }
+  ],
+  "pqc_after_transfer": "856A913A294E94ACBC67B932D1BAB4B7415EB078ED5F9C2BE9E02BB2F1771CA9",
+  "pqc_params": {
+    "params": {
+      "enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+      "network_id": "WoF9maXqWFMF7/ifzL9eK01bOtAtJatV03X40HxRjhU=",
+      "emergency_mode": "EMERGENCY_MODE_NORMAL",
+      "pending": null,
+      "pending_activation_height": "0",
+      "governance_safety_delay_blocks": "17280",
+      "max_emergency_duration_blocks": "46080",
+      "emergency_expires_height": "0",
+      "recovery_delay_blocks": "107520",
+      "pending_emergency": null,
+      "verification_gas": "750"
+    },
+    "effective_enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+    "effective_emergency_mode": "EMERGENCY_MODE_NORMAL"
+  },
+  "pqc_matching_app_hash": {
+    "height": 199,
+    "hash": "05977DA63C5BAD20754F047E36C96C97A1BD52658BC83084D4943F8278477F2A",
+    "nodes": 4
+  },
+  "pqc_after_restart": [
+    {
+      "latest_block_hash": "AE3BE21FFDB8C2E33C2DA7998972C2FE713A8E997851BD2ECF58BD24E305CB1D",
+      "latest_app_hash": "DA5C30A0E989979AC72DA0D6EC67E42D0506940A01AC6B852A0EFB68C26B0CFF",
+      "latest_block_height": "206",
+      "latest_block_time": "2026-11-02T15:37:14.342472464Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "AE3BE21FFDB8C2E33C2DA7998972C2FE713A8E997851BD2ECF58BD24E305CB1D",
+      "latest_app_hash": "DA5C30A0E989979AC72DA0D6EC67E42D0506940A01AC6B852A0EFB68C26B0CFF",
+      "latest_block_height": "206",
+      "latest_block_time": "2026-11-02T15:37:14.342472464Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "AE3BE21FFDB8C2E33C2DA7998972C2FE713A8E997851BD2ECF58BD24E305CB1D",
+      "latest_app_hash": "DA5C30A0E989979AC72DA0D6EC67E42D0506940A01AC6B852A0EFB68C26B0CFF",
+      "latest_block_height": "206",
+      "latest_block_time": "2026-11-02T15:37:14.342472464Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    },
+    {
+      "latest_block_hash": "AE3BE21FFDB8C2E33C2DA7998972C2FE713A8E997851BD2ECF58BD24E305CB1D",
+      "latest_app_hash": "DA5C30A0E989979AC72DA0D6EC67E42D0506940A01AC6B852A0EFB68C26B0CFF",
+      "latest_block_height": "206",
+      "latest_block_time": "2026-11-02T15:37:14.342472464Z",
+      "earliest_block_hash": "2C12E12C11BDF65C4406DBE18B7A1226D9885B621BE8394CC36C6EAA1A0E272C",
+      "earliest_app_hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "earliest_block_height": "1",
+      "earliest_block_time": "2026-11-02T15:34:25.950964137Z",
+      "catching_up": false
+    }
+  ],
+  "pqc_restart_transfer": "E0B10DCF312B0968F74A85021E21B1379AC2207F465483286C1DFAED45670747",
+  "pqc_restart_matching_app_hash": {
+    "height": 204,
+    "hash": "497B6E11F60E26C61ED4DD802E840DF294CD5D3878C2E3B23A80569209800619",
+    "nodes": 4
+  },
+  "pqc_upgrade_height": 197,
+  "status": "PASS"
+}

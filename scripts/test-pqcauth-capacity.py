@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 import urllib.error
 
 spec = importlib.util.spec_from_file_location("capacity", Path(__file__).with_name("rehearse-pqcauth-capacity.py"))
@@ -60,6 +61,61 @@ class Node:
 
 
 class CapacityObserverTests(unittest.TestCase):
+    def test_gate_pause_disconnects_flows_and_resume_reenables_acceptance(self):
+        gate = object.__new__(capacity.LoopbackGate)
+        gate.lock = capacity.threading.Lock()
+        gate.enabled = True
+        flow = (Mock(), Mock())
+        gate.flows = {flow}
+        gate.pause()
+        self.assertFalse(gate.enabled)
+        for sock in flow:
+            sock.shutdown.assert_called_once_with(capacity.socket.SHUT_RDWR)
+            sock.close.assert_called_once()
+        gate.resume()
+        self.assertTrue(gate.enabled)
+
+    def test_isolated_prefill_checks_every_pool(self):
+        r = Mock()
+        def reply(path, node):
+            return {"status": {"sync_info": {"latest_block_height": "50"}},
+                    "net_info": {"n_peers": "0"}, "num_unconfirmed_txs": {"n_txs": "5000"}}[path]
+        r.rpc.side_effect = reply
+        self.assertEqual(len(capacity.verify_isolated_pools(r, 50, 5000)), 4)
+        self.assertEqual(r.rpc.call_count, 12)
+        for path, value in [("status", {"sync_info": {"latest_block_height": "51"}}),
+                            ("net_info", {"n_peers": "1"}),
+                            ("num_unconfirmed_txs", {"n_txs": "4999"})]:
+            with self.subTest(path=path):
+                r.rpc.side_effect = lambda p, n: value if p == path and n == 3 else reply(p, n)
+                with self.assertRaises(ValueError):
+                    capacity.verify_isolated_pools(r, 50, 5000)
+
+    def test_forwarding_is_opt_in_loopback_only_and_no_unsafe_rpc(self):
+        with tempfile.TemporaryDirectory() as directory:
+            r = object.__new__(capacity.lifecycle.Rehearsal)
+            r.ids = ["test" + str(i) for i in range(4)]
+            r.evidence = r.root = Path(directory)
+            r.binary = Path("/synthetic/dorad")
+            r.base, r.epoch = 28657, 0
+            r.logs, r.processes, r.env = [], {}, {}
+            try:
+                with patch.object(capacity.lifecycle.subprocess, "Popen") as popen:
+                    r.start(0)
+                    regular = popen.call_args.args[0]
+                    self.assertNotIn("--rpc.unsafe=true", regular)
+                    self.assertTrue(regular[regular.index("--p2p.persistent_peers") + 1])
+                    r.start(0, peer_ports=[29656, 29756, 29856, 29956])
+                    isolated = popen.call_args.args[0]
+                    self.assertNotIn("--rpc.unsafe=true", isolated)
+                    self.assertIn("--p2p.pex=false", isolated)
+                    self.assertEqual(isolated[isolated.index("--p2p.persistent_peers") + 1],
+                                     "test1@127.0.0.1:29756,test2@127.0.0.1:29856,test3@127.0.0.1:29956")
+                    self.assertEqual(isolated[isolated.index("--rpc.laddr") + 1], "tcp://127.0.0.1:28657")
+            finally:
+                for log in r.logs:
+                    log.close()
+
     def test_hybrid_genesis_installs_only_fixture_owner_keys(self):
         owners = [f"owner{i}" for i in range(7)]
         keys = {owner: {"@type": "/cosmos.crypto.secp256k1.PubKey", "key": owner} for owner in owners}

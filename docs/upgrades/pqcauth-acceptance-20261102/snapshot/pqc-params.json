@@ -1,0 +1,17 @@
+{
+  "params": {
+    "enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+    "network_id": "gAvM3THBZQl6ZtFgYL48uNBcmT7zP82lOcF/4Ng2k34=",
+    "emergency_mode": "EMERGENCY_MODE_NORMAL",
+    "pending": null,
+    "pending_activation_height": "0",
+    "governance_safety_delay_blocks": "17280",
+    "max_emergency_duration_blocks": "46080",
+    "emergency_expires_height": "0",
+    "recovery_delay_blocks": "107520",
+    "pending_emergency": null,
+    "verification_gas": "750"
+  },
+  "effective_enforcement_mode": "ENFORCEMENT_MODE_OPTIONAL",
+  "effective_emergency_mode": "EMERGENCY_MODE_NORMAL"
+}

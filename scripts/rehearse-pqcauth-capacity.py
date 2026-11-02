@@ -13,7 +13,10 @@ import json
 import math
 import os
 from pathlib import Path
+import select
+import socket
 import subprocess
+import threading
 import time
 import traceback
 import urllib.error
@@ -41,6 +44,118 @@ def account_number(value):
 
 def block_time(block):
     return datetime.datetime.fromisoformat(block["header"]["time"].replace("Z", "+00:00")).timestamp()
+
+
+def verify_isolated_pools(r, height, count):
+    """Fail closed if any test node has peers, a different state, or wrong backlog."""
+    states = []
+    for i in range(4):
+        state = {"node": i, "height": int(r.rpc("status", i)["sync_info"]["latest_block_height"]),
+                 "peers": int(r.rpc("net_info", i)["n_peers"]),
+                 "transactions": int(r.rpc("num_unconfirmed_txs", i)["n_txs"])}
+        states.append(state)
+        if state["height"] != height or state["peers"] != 0 or state["transactions"] != count:
+            raise ValueError(f"isolated prefill invariant failed: {state}; expected height={height}, count={count}")
+    return states
+
+
+class LoopbackGate:
+    """Test-only TCP forwarding; pause links without restarting any application.
+
+    Baseline and loaded phases both traverse the same loopback forwarders.
+    No payload changes, unsafe RPC, host firewall changes or external sockets.
+    """
+    def __init__(self, base):
+        ephemeral_path = Path("/proc/sys/net/ipv4/ip_local_port_range")
+        ephemeral = tuple(map(int, ephemeral_path.read_text().split())) if ephemeral_path.exists() else None
+        self.ports = lifecycle.rehearsal_ports(base + 1000, ephemeral)[::2]
+        lifecycle.check_listener_ports(self.ports)
+        self.lock = threading.Lock()
+        self.enabled = True
+        self.stopped = threading.Event()
+        self.flows, self.listeners = set(), []
+        try:
+            for i, port in enumerate(self.ports):
+                listener = socket.socket()
+                self.listeners.append(listener)
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                listener.bind(("127.0.0.1", port))
+                listener.listen(16)
+                listener.settimeout(.2)
+                threading.Thread(target=self.accept, args=(listener, base + 100*i - 1), daemon=True).start()
+        except BaseException:
+            self.close()
+            raise
+
+    @staticmethod
+    def disconnect(flow):
+        for sock in flow:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+
+    def accept(self, listener, target):
+        while not self.stopped.is_set():
+            try:
+                client, _ = listener.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            with self.lock:
+                if not self.enabled:
+                    client.close()
+                    continue
+            try:
+                upstream = socket.create_connection(("127.0.0.1", target), timeout=5)
+            except OSError:
+                client.close()
+                continue
+            flow = (client, upstream)
+            with self.lock:
+                if not self.enabled or self.stopped.is_set():
+                    self.disconnect(flow)
+                    continue
+                self.flows.add(flow)
+            threading.Thread(target=self.forward, args=(flow,), daemon=True).start()
+
+    def forward(self, flow):
+        try:
+            for sock in flow:
+                sock.settimeout(5)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            while not self.stopped.is_set():
+                ready, _, _ = select.select(flow, [], [], .2)
+                for source in ready:
+                    data = source.recv(65536)
+                    if not data:
+                        return
+                    destination = flow[1] if source is flow[0] else flow[0]
+                    destination.sendall(data)
+        except (OSError, ValueError):
+            pass
+        finally:
+            with self.lock:
+                self.flows.discard(flow)
+                self.disconnect(flow)
+
+    def pause(self):
+        with self.lock:
+            self.enabled = False
+            for flow in self.flows:
+                self.disconnect(flow)
+
+    def resume(self):
+        with self.lock:
+            self.enabled = True
+
+    def close(self):
+        self.stopped.set()
+        self.pause()
+        for listener in self.listeners:
+            listener.close()
 
 
 def install_hybrid_public_keys(genesis, generated):
@@ -156,13 +271,19 @@ def main():
     parser.add_argument("--rpc-port", type=int, default=28657)
     parser.add_argument("--baseline-blocks", type=int, default=12)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--all-validator-pools", action="store_true",
+                        help="offline test only: prefill every validator, then reconnect over loopback")
     args = parser.parse_args()
     if not 1 <= args.count <= 5000 or args.baseline_blocks < 3 or args.timeout <= 0:
         parser.error("count must be 1..5000; baseline-blocks >= 3; timeout > 0")
     args.rounds = 1
     fixture = Path(args.fixture_binary).resolve(strict=True)
     r = lifecycle.Rehearsal(args)
+    gate = None
     result = {"kind": args.kind, "requested_txs": args.count, "signers_per_tx": 7, "declared_gas_per_tx": 3000000,
+              "prefill_mode": "all-validator-pools" if args.all_validator_pools else "node0-only",
+              "admission_rpc_requests": args.count * (4 if args.all_validator_pools else 1),
+              "admission_p95_scope": "node0 broadcast_tx_sync requests only",
               "limitations": ["single shared host, not minimum hardware certification",
                               "synthetic funded accounts, no fee economics conclusion",
                               "homogeneous valid load, not exhaustive malicious admission testing"],
@@ -175,6 +296,9 @@ def main():
                            check=True, timeout=610)
     try:
         r.setup()
+        if args.all_validator_pools:
+            gate = LoopbackGate(r.base)
+            r.save("loopback-gate", {"ports": gate.ports, "scope": "same forwarders for baseline and load; no unsafe RPC"})
         gp = r.root / "node0/config/genesis.json"
         genesis = json.loads(gp.read_text())
         config = {"chain_id": r.chain, "kind": args.kind, "phase": "prepare", "count": args.count,
@@ -194,8 +318,11 @@ def main():
             (r.root / f"node{i}/config/genesis.json").write_text(json.dumps(genesis))
             cp = r.root / f"node{i}/config/config.toml"
             cp.write_text(cp.read_text().replace('timeout_commit = "1s"', 'timeout_commit = "5s"'))
-            r.start(i)
+            r.start(i, peer_ports=gate.ports if gate else None)
         r.ready()
+        if args.all_validator_pools:
+            warmup = r.height()
+            r.wait(lambda: r.height() >= warmup + 3)
         first = r.height()
         r.wait(lambda: r.height() >= first + args.baseline_blocks, seconds=180)
         baseline = [r.rpc(f"block?height={h}")["block"] for h in range(first, first + args.baseline_blocks + 1)]
@@ -207,9 +334,17 @@ def main():
         generate(config)
         # Temporarily remove quorum so initial CheckTx genuinely fills the pool.
         # All validators and all funds are synthetic and owned by this process.
-        for i in (1, 2, 3):
-            r.stop(i)
+        if args.all_validator_pools:
+            before_pause = r.height()
+            r.wait(lambda: all(int(r.rpc("status", i)["sync_info"]["latest_block_height"]) > before_pause for i in range(4)))
+            gate.pause()
+            r.wait(lambda: all(int(r.rpc("net_info", i)["n_peers"]) == 0 for i in range(4)))
+        else:
+            for i in (1, 2, 3):
+                r.stop(i)
         start_height = r.height()
+        if args.all_validator_pools:
+            r.save("isolated-empty-pools", verify_isolated_pools(r, start_height, 0))
         admissions = []
         begin = time.monotonic()
         url = f"http://127.0.0.1:{r.base}/"
@@ -226,14 +361,27 @@ def main():
                 logs.write(json.dumps(record) + "\n")
                 assert "result" in data and int(data["result"]["code"]) == 0, record
                 admissions.append(elapsed)
+                if args.all_validator_pools:
+                    # Same signed bytes, same sequence order, distinct local pools.
+                    for node in (1, 2, 3):
+                        other = urllib.request.Request(f"http://127.0.0.1:{r.base + 100*node}/",
+                                                       req.data, {"Content-Type": "application/json"})
+                        with urllib.request.urlopen(other, timeout=30) as response:
+                            reply = json.load(response)
+                        logs.write(json.dumps({"index": index, "node": node, "response": reply}) + "\n")
+                        assert "result" in reply and int(reply["result"]["code"]) == 0, reply
                 if (index + 1) % 500 == 0:
                     print("admitted", index + 1, "seconds", round(time.monotonic() - begin, 2), flush=True)
         assert int(r.rpc("num_unconfirmed_txs")["n_txs"]) == args.count
         result["admission_seconds"] = time.monotonic() - begin
         result["admission_p95_seconds"] = percentile(admissions, .95)
         r.save("full-mempool", r.rpc("num_unconfirmed_txs"))
-        for i in (1, 2, 3):
-            r.start(i)
+        if args.all_validator_pools:
+            r.save("isolated-full-pools", verify_isolated_pools(r, start_height, args.count))
+            gate.resume()
+        else:
+            for i in (1, 2, 3):
+                r.start(i)
         drain_start = time.monotonic()
         blocks = []
         committed = 0
@@ -276,8 +424,12 @@ def main():
                       max_verifications_in_block=max(b["signature_verifications"] for b in blocks),
                       functional_pass=True)
         result["p95_within_15_percent_baseline"] = bool(loaded and result["loaded_p95_seconds"] <= 1.15 * result["baseline_p95_seconds"])
-        # Initial resume interval excluded because quorum was intentionally stopped.
-        # This does not measure recheck alone; do not infer it from block intervals.
+        result["loaded_interval_count"] = len(loaded)
+        # These are RAW header-time intervals, not steady-state timings: a header
+        # may derive its timestamp from votes preceding the injected partition,
+        # so even the first adjacent nonempty-block interval can include the pause.
+        # Preserve the raw samples; do not infer isolated recheck CPU or release
+        # acceptance from this comparison.
         r.save("result", result)
         print(json.dumps(result, indent=2), flush=True)
     except BaseException:
@@ -285,6 +437,8 @@ def main():
         r.save("result", result)
         raise
     finally:
+        if gate:
+            gate.close()
         for i in list(r.processes):
             r.stop(i)
         for log in r.logs:

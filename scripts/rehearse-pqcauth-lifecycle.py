@@ -197,8 +197,11 @@ class Rehearsal:
         self.save("binary", {"sha256": hashlib.sha256(self.binary.read_bytes()).hexdigest(),
                              "version": self.cli("version").strip(), "chain_id": self.chain})
 
-    def start(self, i):
-        peers = ",".join(f"{self.ids[j]}@127.0.0.1:{self.base + 100*j - 1}" for j in range(4) if j != i)
+    def start(self, i, peer_ports=None):
+        ports = peer_ports if peer_ports is not None else [self.base + 100*j - 1 for j in range(4)]
+        peers = ",".join(f"{self.ids[j]}@127.0.0.1:{ports[j]}" for j in range(4) if j != i)
+        # Test-only forwarding mode must not discover direct paths around gates.
+        extra = ["--p2p.pex=false"] if peer_ports is not None else []
         log = (self.evidence / f"node{i}-{self.epoch}.log").open("w")
         self.logs.append(log)
         port = self.base + 100 * i
@@ -206,7 +209,7 @@ class Rehearsal:
             [str(self.binary), "start", "--home", str(self.root / f"node{i}"),
              "--minimum-gas-prices", "0peaka", "--rpc.laddr", f"tcp://127.0.0.1:{port}",
              "--p2p.laddr", f"tcp://127.0.0.1:{port-1}", "--p2p.persistent_peers", peers,
-             "--grpc.enable=false", "--grpc-web.enable=false", "--api.enable=false", "--rpc.pprof_laddr", ""],
+             "--grpc.enable=false", "--grpc-web.enable=false", "--api.enable=false", "--rpc.pprof_laddr", "", *extra],
             env=self.env, stdout=log, stderr=subprocess.STDOUT)
         self.epoch += 1
 

@@ -1,0 +1,26 @@
+[
+  {
+    "node": 0,
+    "height": 36,
+    "peers": 0,
+    "transactions": 5000
+  },
+  {
+    "node": 1,
+    "height": 36,
+    "peers": 0,
+    "transactions": 5000
+  },
+  {
+    "node": 2,
+    "height": 36,
+    "peers": 0,
+    "transactions": 5000
+  },
+  {
+    "node": 3,
+    "height": 36,
+    "peers": 0,
+    "transactions": 5000
+  }
+]

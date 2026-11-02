@@ -1,0 +1,91 @@
+{
+  "status": "PASS",
+  "chain_id": "pqc-phase1-snapshot-20261101",
+  "source_height": 18029707,
+  "candidate_commit": "91fc4592f8ff0038cc0af43969036ba96b78b4ca",
+  "limits": {
+    "cpus": 4,
+    "memory_bytes": 12884901888,
+    "minimum_free_disk_bytes": 42949672960
+  },
+  "transactions": [
+    {
+      "operation": "baseline-transfer",
+      "hash": "18AFDAF485654B07247AADFF13B15BAA7D29A79E73625E2CB79990D2B15B7833",
+      "height": "18029712",
+      "code": 0
+    },
+    {
+      "operation": "v1.0.1-submit",
+      "hash": "CF231003C4CDAF2C44E9CD48CBA9EC36325FFACCB4F6991048C039343489FF15",
+      "height": "18029714",
+      "code": 0
+    },
+    {
+      "operation": "v1.0.1-vote",
+      "hash": "65AACA8BD9D014082154CE5A3013CF4892B30C40855864528A803ED7179B3E46",
+      "height": "18029715",
+      "code": 0
+    },
+    {
+      "operation": "v101-transfer",
+      "hash": "2F5F5FD9EB69B420D3467704D9686E2C4E292AF7A4B49575A0BE0058FCA897EE",
+      "height": "18029782",
+      "code": 0
+    },
+    {
+      "operation": "v1.1.0-submit",
+      "hash": "15CA1F4455B5582DF7EABC4A7EE34C10B3FF3F22B07A59A866E21E8F1C4A0691",
+      "height": "18029784",
+      "code": 0
+    },
+    {
+      "operation": "v1.1.0-vote",
+      "hash": "D949E955C31819052BCD829D9122BC30CF1024D10E3A9CB0C228A0AE2D3CC76B",
+      "height": "18029785",
+      "code": 0
+    },
+    {
+      "operation": "pqc-transfer",
+      "hash": "EF34D56D6BE093BBDF434642E18BE6DD6F737E6EB4235B3B3994E9CE2DD80155",
+      "height": "18029853",
+      "code": 0
+    },
+    {
+      "operation": "restart-transfer",
+      "hash": "E0EF335AB44203199C661F39709DDFE16E43B5A4244F79C30DA484F56E2A060A",
+      "height": "18029858",
+      "code": 0
+    }
+  ],
+  "scope": "retained 2026-11-01 real snapshot, synthetic validator keys/faucet/governance checkpoint; offline container; no public IBC transactions",
+  "source_app_hash": "7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93",
+  "v1.0.1_height": 18029778,
+  "v101_start_to_all_progress_seconds": 9.114159785211086,
+  "v1.1.0_height": 18029848,
+  "interruption_0": {
+    "trigger": "applying upgrade",
+    "last_committed_height": 18029847,
+    "upgrade_height": 18029848,
+    "interrupted_before_upgrade_commit": true
+  },
+  "interruption_1": {
+    "trigger": "finalized block",
+    "last_committed_height": 18029847,
+    "upgrade_height": 18029848,
+    "interrupted_before_upgrade_commit": true
+  },
+  "pqc_restart_to_all_progress_seconds": 10.446829810738564,
+  "preserved_roots": [
+    "wasm",
+    "ibc",
+    "feegrant",
+    "authz"
+  ],
+  "single_node_offline": {
+    "node": 3,
+    "from_height": 18029859,
+    "to_height": 18029864
+  },
+  "final_height": 18029866
+}

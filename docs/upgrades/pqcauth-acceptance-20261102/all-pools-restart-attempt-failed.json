@@ -1,0 +1,27 @@
+{
+  "kind": "classic",
+  "requested_txs": 20,
+  "signers_per_tx": 7,
+  "declared_gas_per_tx": 3000000,
+  "prefill_mode": "all-validator-pools",
+  "admission_rpc_requests": 80,
+  "admission_p95_scope": "node0 broadcast_tx_sync requests only",
+  "limitations": [
+    "single shared host, not minimum hardware certification",
+    "synthetic funded accounts, no fee economics conclusion",
+    "homogeneous valid load, not exhaustive malicious admission testing"
+  ],
+  "fixture_sha256": "9d0f9c9c5cf668ecda1e647b9e3d536e2821dbf2346bd1b63590b83039e437f5",
+  "block_settings": {
+    "max_gas": 600000000,
+    "max_bytes": 22020096,
+    "timeout_commit_seconds": 5
+  },
+  "baseline_intervals_seconds": [
+    5.150144100189209,
+    5.1715168952941895,
+    5.2082130908966064
+  ],
+  "functional_pass": false,
+  "failure": "Traceback (most recent call last):\n  File \"/work/harness/rehearse-pqcauth-capacity.py\", line 302, in main\n    assert \"result\" in data and int(data[\"result\"][\"code\"]) == 0, record\n                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: {'index': 0, 'seconds': 0.019611481577157974, 'bytes': 2009, 'response': {'jsonrpc': '2.0', 'id': 0, 'result': {'code': 4, 'data': '', 'log': 'signature verification failed; please verify account number (0) and chain-id (pqc-isolated-smoke): (unable to verify single signer signature): unauthorized', 'codespace': 'sdk', 'hash': '7AE179F8D886C6FF31FD72F37490C4D6CB0B9EF4DC020757074EA626FC578A1C'}}}\n"
+}

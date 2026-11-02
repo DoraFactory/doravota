@@ -1,0 +1,42 @@
+{
+  "kind": "hybrid",
+  "requested_txs": 5000,
+  "signers_per_tx": 7,
+  "declared_gas_per_tx": 3000000,
+  "limitations": [
+    "single shared host, not minimum hardware certification",
+    "synthetic funded accounts, no fee economics conclusion",
+    "homogeneous valid load, not exhaustive malicious admission testing"
+  ],
+  "fixture_sha256": "9d0f9c9c5cf668ecda1e647b9e3d536e2821dbf2346bd1b63590b83039e437f5",
+  "block_settings": {
+    "max_gas": 600000000,
+    "max_bytes": 22020096,
+    "timeout_commit_seconds": 5
+  },
+  "baseline_intervals_seconds": [
+    11.808175802230835,
+    5.1156229972839355,
+    5.313063144683838,
+    5.239660024642944,
+    5.188436031341553,
+    5.136346817016602,
+    5.182995080947876,
+    5.22188401222229,
+    5.204381942749023,
+    5.109230041503906,
+    5.1928510665893555,
+    5.137380838394165
+  ],
+  "admission_seconds": 21.51238974183798,
+  "admission_p95_seconds": 0.011367276310920715,
+  "drain_seconds": 542.732119102031,
+  "committed": 5000,
+  "peak_four_process_rss_bytes": 1742139392,
+  "loaded_intervals_seconds": [],
+  "baseline_p95_seconds": 11.808175802230835,
+  "loaded_p95_seconds": null,
+  "max_verifications_in_block": 1400,
+  "functional_pass": true,
+  "p95_within_15_percent_baseline": false
+}

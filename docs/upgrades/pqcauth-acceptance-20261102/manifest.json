@@ -1,0 +1,40 @@
+{
+  "application_commit": "91fc4592f8ff0038cc0af43969036ba96b78b4ca",
+  "version": "v1.1.0-dev",
+  "build_toolchain": "go1.26.10",
+  "candidate_sha256": "b10e90aa1db0824a98ca3e59b3b09fad23b8a6ef3ec400fb0383fa334bec9878",
+  "fixture_sha256": "9d0f9c9c5cf668ecda1e647b9e3d536e2821dbf2346bd1b63590b83039e437f5",
+  "capacity_script_sha256": "1412528d6f14164aabac2bc3e63f87db41c9ecae94b9752ab4307777323c92fb",
+  "lifecycle_script_sha256": "c87e250c8f787fb2d8a50575706f85949d8f2c871a95db033ba0d2995a7713b0",
+  "capacity_limits": {
+    "cpu_equivalents_shared_by_four_validators_and_controller": 3,
+    "memory_bytes": 7516192768,
+    "extra_swap_bytes": 0,
+    "network": "none",
+    "gomaxprocs_per_process": 2,
+    "block_max_gas": 600000000,
+    "block_max_bytes": 22020096,
+    "timeout_commit_seconds": 5,
+    "declared_gas_per_transaction": 3000000,
+    "signers_per_transaction": 7,
+    "transactions_per_case": 5000,
+    "all_pool_admission_rpc_requests_per_case": 20000,
+    "all_pool_warmup_blocks": 3,
+    "all_pool_baseline_intervals": 30
+  },
+  "evidence_roots": {
+    "single_pool_and_sequential": "/tmp/pqcauth-acceptance91.nGLhyw",
+    "snapshot": "/tmp/pqcauth-snapshot91.fpNgz3",
+    "all_pools": "/tmp/pqcauth-allpools91c.GJtlhg"
+  },
+  "application_ci_run": "https://github.com/DoraFactory/doravota/actions/runs/41468902452",
+  "application_ci_conclusion": "success",
+  "ci_amd64_job_log_sha256": "45fe1633a41bba7762a706fd02336d80c6d6aca826d9d4ff6071fb244c2486f5",
+  "limitations": [
+    "shared host and CPU quotas, not minimum physical hardware certification",
+    "all-pool baseline and load both traverse test-only loopback TCP forwarding",
+    "declared gas fills proposal gas allowance before actual gas is exhausted",
+    "not isolated recheck CPU timing, adversarial admission, public IBC or production release approval",
+    "runtime image golang:1.26.5-bookworm did not compile the candidate"
+  ]
+}
