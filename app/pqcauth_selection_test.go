@@ -32,10 +32,15 @@ func selectionSend(from, to cryptotypes.PrivKey) sdk.Msg {
 // classic/native keys and any protected factors. Keys are in SDK signer order.
 func selectionTx(t *testing.T, c *pqcChain, keys []cryptotypes.PrivKey, factors []pqcclient.PQCSigner, offsets []uint64, payer sdk.AccAddress, msgs ...sdk.Msg) []byte {
 	t.Helper()
+	return selectionTxWithGas(t, c, 5_000_000, keys, factors, offsets, payer, msgs...)
+}
+
+func selectionTxWithGas(t *testing.T, c *pqcChain, gas uint64, keys []cryptotypes.PrivKey, factors []pqcclient.PQCSigner, offsets []uint64, payer sdk.AccAddress, msgs ...sdk.Msg) []byte {
+	t.Helper()
 	ctx := c.app.NewContext(true).WithBlockHeight(c.height + 1)
 	b := c.app.TxConfig().NewTxBuilder()
 	require.NoError(t, b.SetMsgs(msgs...))
-	b.SetGasLimit(5_000_000)
+	b.SetGasLimit(gas)
 	b.SetFeeAmount(sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 10)))
 	if payer != nil {
 		b.SetFeePayer(payer)

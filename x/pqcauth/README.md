@@ -246,9 +246,15 @@ original cutoff, restrictions and activation height. This does not revoke a queu
 cutoff or activate REQUIRED/budget reductions early. The queued emergency component
 is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
 pause. Governance cannot supply the internal schedule or expiration directly.
-Until that H+1 activation, another request that also changes non-emergency fields
-is rejected; submit the emergency update separately, then re-query before an
-unrelated parameter replacement.
+Until that H+1 activation, any full parameter update is rejected; submit the
+emergency update separately, then re-query before a full parameter replacement.
+This guard applies to the overlapping `pending_emergency` representation. With no
+ordinary plan, the emergency-only update uses an H+1 `pending` bundle instead:
+a later authorized full update in the same block can cancel that bundle. Message
+order therefore matters. Within one governance proposal, a later failed message
+rolls back earlier message writes; across proposals it does not roll back an
+already successful proposal. These existing semantics are covered by the
+[governance execution tests](../../docs/PQCAUTH-GOVERNANCE-LOAD-TESTS-20261102.md).
 
 Full updates retaining the active emergency mode retain its existing expiry; if
 an ordinary replacement activates after that expiry, its emergency component is
