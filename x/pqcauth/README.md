@@ -19,9 +19,12 @@ and revoke unwanted delegations separately. A protected grantee still needs its
 own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
 See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
-Phase-one enrollment supports OPEN and CLOSED only. FRESH_ACCOUNTS_ONLY keeps
-its protobuf enum number but is rejected in genesis, active/pending parameters,
-and governance requests. The execution path also fails closed for that value.
+Phase-one enrollment supports OPEN only. CLOSED and FRESH_ACCOUNTS_ONLY keep
+their protobuf enum numbers but are rejected in genesis, active/pending parameters,
+and governance requests, as is every nonzero registration cutoff. The execution
+path fails closed for these unsupported states; none is silently mapped to OPEN.
+The historical UNSPECIFIED wire value still means OPEN. Emergency PAUSE_NEW_KEYS
+remains available and can temporarily block enrollment independently of this gate.
 There is no enrollment commitment or safe fresh-only retry protocol in this
 release. Under OPEN, a message-stage out-of-gas registration can be retried with
 the new SDK sequence and sufficient gas while enrollment remains open.
@@ -59,6 +62,10 @@ mode, not a broadcast transaction flag or an API for authenticating new bytes.
 This application disables SDK unordered transactions. Review the recovery
 document's state-derived policy-version binding before enabling that feature;
 the regression gate intentionally rejects such an unreviewed configuration.
+Recovery proof reuse also depends on policy-version changes having a pending
+window of at least one block, and `mempool.recheck = true` after every commit.
+The stale-recovery regression checks eviction during that window and rejection
+at FinalizeBlock. Reassess before introducing immediate policy activation.
 See the [recheck fixes and executed tests](../../docs/PQCAUTH-RECHECK-FIXES-20261102.md)
 and [remaining parameter decisions](../../docs/PQCAUTH-PARAMETER-DECISIONS-20261102.md).
 
@@ -218,10 +225,21 @@ claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
 | Maximum PQC signers / extension bytes | 8 / 65,536 |
 | Maximum verifications per transaction / block | 16 / 400 |
 | Retained key records per role | 16 |
-| Governance safety / recovery delay | 17,280 blocks each |
-| Maximum emergency duration | 17,280 blocks |
+| Governance safety delay | 17,280 blocks (about 27 hours) |
+| Recovery delay | 107,520 blocks (about 7 days) |
+| Maximum emergency duration | 46,080 blocks (about 72 hours per activation/renewal) |
 
 These are candidate defaults, not a statement of live chain parameters.
+Time estimates assume roughly 5.62–5.63 seconds per block, not wall-clock timers.
+Recovery keeps the old signing key valid until the scheduled activation; it is
+not an account freeze or a cure for stolen signing keys. Recovery still requires
+the classical account signature. Notify users of recovery requests, cancellation
+instructions and activation height. Pauses automatically expire even if a bug
+is unfixed: operators must plan a patch or authorized renewal before expiry.
+Explicit stored delay values are not rewritten by changing defaults; the legacy
+zero recovery-delay fallback now uses 107,520. Unsupported experimental state
+with CLOSED/cutoff/REQUIRED needs a separately reviewed migration, not hot-swap.
+See [approved launch settings](../../docs/PQCAUTH-LAUNCH-SETTINGS-20261102.md).
 Phase one rejects global `REQUIRED` in active/pending/genesis/governance
 parameters. Its enum number is reserved, never silently mapped to OPTIONAL.
 `REQUIRED_FOR_REGISTERED` remains available after the governance safety delay.
@@ -249,7 +267,7 @@ safety delay; emergency pauses have their separately bounded fast path.
 - Omitted/false: a full parameter update. Restoring the active ordinary parameters
   while retaining the active emergency mode cancels a cancellable pending bundle;
   it does not renew the pause. A different ordinary replacement follows the existing
-  safety delay and cutoff rules.
+  safety delay rules.
 - True: change/renew only emergency mode at H+1. Non-emergency fields must match
   either the complete active or complete queued bundle. The server never infers
   this intent merely because the requested mode is a pause.
@@ -257,8 +275,8 @@ safety delay; emergency pauses have their separately bounded fast path.
 When a non-emergency parameter bundle is already queued, an explicit emergency-only
 request may copy either the active or queued non-emergency fields. The server
 schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
-original cutoff, restrictions and activation height. This does not revoke a queued
-cutoff or activate REQUIRED_FOR_REGISTERED/budget reductions early. The queued emergency component
+original restrictions and activation height. This does not activate
+REQUIRED_FOR_REGISTERED/budget reductions early. The queued emergency component
 is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
 pause. Governance cannot supply the internal schedule or expiration directly.
 Until that H+1 activation, any full parameter update is rejected; submit the
@@ -279,8 +297,8 @@ its ordinary schedule. See the [same-block guard fix and execution regressions](
 
 Full updates retaining the active emergency mode retain its existing expiry; if
 an ordinary replacement activates after that expiry, its emergency component is
-NORMAL. Renewal requires `emergency_only: true`. Numeric cutoffs remain irreversible;
-neither operation cancels them. A full update with a new emergency mode still has
+NORMAL. Renewal requires `emergency_only: true`. Numeric cutoffs are disabled
+in phase one. A full update with a new emergency mode still has
 full-bundle semantics, including its applicable safety delay; use explicit
 emergency-only scope for a fast pause that must preserve an ordinary plan.
 

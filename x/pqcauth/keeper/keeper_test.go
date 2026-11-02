@@ -965,7 +965,7 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	requested.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	requested.MaxPqcSigners = 4
-	requested.RegistrationCutoffHeight = 100
+	requested.MaxPqcVerificationsPerBlock = 100
 
 	response, err := NewMsgServer(moduleKeeper).UpdateParams(
 		sdk.WrapSDKContext(ctx),
@@ -989,7 +989,7 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	require.Equal(t, requested.EnforcementMode, after.EnforcementMode)
 	require.Equal(t, requested.EmergencyMode, after.EmergencyMode)
 	require.Equal(t, requested.MaxPqcSigners, after.MaxPqcSigners)
-	require.Equal(t, requested.RegistrationCutoffHeight, after.RegistrationCutoffHeight)
+	require.Equal(t, requested.MaxPqcVerificationsPerBlock, after.MaxPqcVerificationsPerBlock)
 	require.Nil(t, after.Pending)
 	require.Equal(
 		t,
@@ -1002,7 +1002,7 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 		stored.Effective(42).EmergencyMode,
 	)
 
-	requested.RegistrationCutoffHeight = 0
+	requested.RegistrationCutoffHeight = 100
 	_, err = NewMsgServer(moduleKeeper).UpdateParams(
 		sdk.WrapSDKContext(ctx),
 		&types.MsgUpdateParams{
@@ -1013,88 +1013,27 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRegistrationModeTransitionIsDelayedAndIrreversibleAfterActivation(t *testing.T) {
-	moduleKeeper, ctx := setupKeeper(t, 30)
-	current := types.DefaultParams()
-	current.GovernanceSafetyDelayBlocks = 5
-	require.NoError(t, moduleKeeper.SetParams(ctx, current))
-	server := NewMsgServer(moduleKeeper)
-
-	restricted := current
-	restricted.RegistrationMode =
-		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	_, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: restricted})
-	require.ErrorIs(t, err, types.ErrInvalidParams)
-	require.Nil(t, moduleKeeper.GetParams(ctx).Pending)
-	restricted.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
-	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
-		Authority: moduleKeeper.Authority(),
-		Params:    restricted,
-	})
-	require.NoError(t, err)
-	require.Equal(t, uint64(35), response.ActivationHeight)
-	require.Equal(
-		t,
-		types.RegistrationMode_REGISTRATION_MODE_OPEN,
-		moduleKeeper.GetParams(ctx).EffectiveRegistrationMode(34),
-	)
-	require.Equal(
-		t,
-		types.RegistrationMode_REGISTRATION_MODE_CLOSED,
-		moduleKeeper.GetParams(ctx).EffectiveRegistrationMode(35),
-	)
-
-	activationCtx := ctx.WithBlockHeight(35)
-	_, err = moduleKeeper.NormalizeParams(activationCtx)
-	require.NoError(t, err)
-	_, err = server.UpdateParams(
-		sdk.WrapSDKContext(activationCtx),
-		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: current},
-	)
-	require.ErrorIs(t, err, types.ErrInvalidParams)
-}
-
-func TestRegistrationCutoffMustFollowItsActivationHeight(t *testing.T) {
-	moduleKeeper, ctx := setupKeeper(t, 30)
-	current := types.DefaultParams()
-	current.GovernanceSafetyDelayBlocks = 5
-	require.NoError(t, moduleKeeper.SetParams(ctx, current))
-	server := NewMsgServer(moduleKeeper)
-
-	for _, cutoff := range []uint64{30, 34, 35} {
-		requested := current
-		requested.RegistrationCutoffHeight = cutoff
-		_, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
-			Authority: moduleKeeper.Authority(),
-			Params:    requested,
-		})
-		require.ErrorIs(t, err, types.ErrInvalidParams)
+// Phase one rejects all registration-closing configuration rather than queuing it.
+func TestPhaseOneRegistrationGovernanceRejected(t *testing.T) {
+	k, ctx := setupKeeper(t, 30)
+	base := types.DefaultParams()
+	require.NoError(t, k.SetParams(ctx, base))
+	for _, emergencyOnly := range []bool{false, true} {
+		for _, mode := range []types.RegistrationMode{types.RegistrationMode_REGISTRATION_MODE_CLOSED, types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY} {
+			requested := base
+			requested.RegistrationMode = mode
+			_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: requested, EmergencyOnly: emergencyOnly})
+			require.ErrorIs(t, err, types.ErrInvalidParams)
+			require.Equal(t, base, k.GetParams(ctx))
+		}
+		for _, cutoff := range []uint64{1, 30, 35, 36, 1000000} {
+			requested := base
+			requested.RegistrationCutoffHeight = cutoff
+			_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: requested, EmergencyOnly: emergencyOnly})
+			require.ErrorIs(t, err, types.ErrInvalidParams)
+			require.Equal(t, base, k.GetParams(ctx))
+		}
 	}
-
-	requested := current
-	requested.RegistrationCutoffHeight = 36
-	response, err := server.UpdateParams(sdk.WrapSDKContext(ctx), &types.MsgUpdateParams{
-		Authority: moduleKeeper.Authority(),
-		Params:    requested,
-	})
-	require.NoError(t, err)
-	require.Equal(t, uint64(35), response.ActivationHeight)
-
-	activationCtx := ctx.WithBlockHeight(36)
-	active, err := moduleKeeper.NormalizeParams(activationCtx)
-	require.NoError(t, err)
-	require.Equal(t, uint64(36), active.RegistrationCutoffHeight)
-	active.EnforcementMode =
-		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
-	response, err = server.UpdateParams(
-		sdk.WrapSDKContext(activationCtx),
-		&types.MsgUpdateParams{
-			Authority: moduleKeeper.Authority(),
-			Params:    active,
-		},
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(41), response.ActivationHeight)
 }
 
 func TestEmergencyOnlyUpdateActivatesAtHPlusOneAndCanBeCancelled(t *testing.T) {
@@ -1261,33 +1200,18 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.Nil(t, moduleKeeper.GetParams(activationCtx).Pending)
 }
 
-func TestParamsQueryReportsCutoffAsEffectiveClosedRegistration(t *testing.T) {
-	moduleKeeper, ctx := setupKeeper(t, 30)
+func TestParamsQueryRemainsOpenAfterRejectedCutoff(t *testing.T) {
+	k, ctx := setupKeeper(t, 30)
 	params := types.DefaultParams()
+	require.NoError(t, k.SetParams(ctx, params))
 	params.RegistrationCutoffHeight = 31
-	require.NoError(t, moduleKeeper.SetParams(ctx, params))
-
-	before, err := NewQueryServer(moduleKeeper).Params(
-		sdk.WrapSDKContext(ctx),
-		&types.QueryParamsRequest{},
-	)
-	require.NoError(t, err)
-	require.Equal(
-		t,
-		types.RegistrationMode_REGISTRATION_MODE_OPEN,
-		before.EffectiveRegistrationMode,
-	)
-
-	after, err := NewQueryServer(moduleKeeper).Params(
-		sdk.WrapSDKContext(ctx.WithBlockHeight(31)),
-		&types.QueryParamsRequest{},
-	)
-	require.NoError(t, err)
-	require.Equal(
-		t,
-		types.RegistrationMode_REGISTRATION_MODE_CLOSED,
-		after.EffectiveRegistrationMode,
-	)
+	require.ErrorIs(t, k.SetParams(ctx, params), types.ErrInvalidParams)
+	for _, height := range []int64{30, 31, 32} {
+		response, err := NewQueryServer(k).Params(ctx.WithBlockHeight(height), &types.QueryParamsRequest{})
+		require.NoError(t, err)
+		require.Equal(t, types.RegistrationMode_REGISTRATION_MODE_OPEN, response.EffectiveRegistrationMode)
+		require.Zero(t, response.Params.RegistrationCutoffHeight)
+	}
 }
 
 func TestReserveKeyIDsRemainMonotonicWithoutLifetimeQuota(t *testing.T) {

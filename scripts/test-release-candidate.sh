@@ -22,6 +22,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthRecheckRejectsChangedPolicy \
  TestPQCAuthRecheckRejectsPauseAndSequence \
  TestPQCAuthRecheckRequiresOrderedLifecycle \
+ TestPQCAuthRecheckEvictsStaleRecoveryDuringPendingPolicy \
  TestPQCAuthRecheckBoundedSevenSigners \
  TestPQCAuthRegistrationRequiresDirect \
  TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure \
@@ -89,15 +90,16 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
+ TestPhaseOneRegistrationGovernanceRejected TestLaunchDefaultsEmergencyExpiryAndImmutableDelays \
  TestPhaseOneRequiredGovernanceCannotWriteState TestRecheckKeyProofRetainsGas \
  TestEmergencyOnlyRejectsSameBlockFullUpdate \
  TestEmergencyOnlySameBlockExplicitReplacement \
  TestReviewCancelOrdinaryRestrictionWhileKeepingPause \
  TestExplicitEmergencyRenewalPreservesOrdinaryIntent \
- TestEmergencyOnlyRejectsSmuggledChangesAndPreservesCutoff \
+ TestEmergencyOnlyRejectsSmuggledChangesAndPreservesOrdinaryPlan \
  TestOrdinaryReplacementDoesNotRenewOrResurrectPause \
- TestEmergencyUpdatePreservesPendingCutoffAndRestrictions \
- TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges \
+ TestEmergencyUpdatePreservesPendingRestrictions \
+ TestEmergencyUpdateCannotInjectOtherChanges \
  TestEmergencyExpiryDoesNotResurrectAtPendingActivation \
  TestAuditStateRejectsInactiveCurrentKeys \
  TestLifecycleMessagesRequireExactAnteAuthorization \
@@ -108,6 +110,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
+ TestPhaseOneOpenRegistrationParameters TestPhaseOneLaunchDelayDefaults \
  TestPhaseOneRejectsGlobalRequired \
  TestEmergencyIntentWireJSONAndSignBytes \
  TestIndependentEmergencyValidationAndCodec \

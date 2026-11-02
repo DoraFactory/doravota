@@ -29,6 +29,10 @@ func TestZeroHeightExportRequiresHeightIndependentPQCState(t *testing.T) {
 			require.NoError(t, k.ValidateZeroHeightExport(ctx))
 			p := k.GetParams(ctx)
 			tc.change(&p)
+			if p.RegistrationCutoffHeight != 0 {
+				require.ErrorIs(t, k.SetParams(ctx, p), types.ErrInvalidParams)
+				return // Unsupported state is rejected before export is possible.
+			}
 			require.NoError(t, k.SetParams(ctx, p))
 			require.ErrorContains(t, k.ValidateZeroHeightExport(ctx), "export without --for-zero-height")
 		})

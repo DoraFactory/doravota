@@ -377,7 +377,8 @@ func TestRegisteredRequirementKeepsDirectClassicRegistrationBootstrapOpen(t *tes
 	require.NoError(t, err)
 	require.True(t, called)
 
-	params.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
+	params.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
+	params.EmergencyExpiresHeight = uint64(ctx.BlockHeight()) + 10
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 	_, err = NewVerifyPQCDecorator(moduleKeeper, accountKeeper).AnteHandle(
 		ctx,
@@ -387,7 +388,7 @@ func TestRegisteredRequirementKeepsDirectClassicRegistrationBootstrapOpen(t *tes
 			return nextCtx, nil
 		},
 	)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
+	require.ErrorIs(t, err, types.ErrEmergencyPause)
 }
 
 func TestNativeMLDSAAccountCannotUsePQCAuthExtension(t *testing.T) {

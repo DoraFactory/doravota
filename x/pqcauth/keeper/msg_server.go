@@ -873,6 +873,10 @@ func VerifyKeyProof(
 	// Ordered owner sequences and the lifecycle checks protect the current
 	// policy/key binding. Review this assumption before enabling unordered
 	// account transactions: recovery proofs derive policy version from state.
+	// They also rely on policy changes remaining pending for at least one block
+	// and recheck running after every commit, so stale recovery is evicted during
+	// that pending window. Reassess before allowing immediate policy changes or
+	// changing the admission lifecycle. FinalizeBlock always verifies the proof.
 	if ctx.IsReCheckTx() {
 		return nil
 	}

@@ -17,8 +17,8 @@ func TestReviewCancelOrdinaryRestrictionWhileKeepingPause(t *testing.T) {
 		types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS,
 		types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS,
 	} {
-		for _, closed := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/closed=%t", mode, closed), func(t *testing.T) {
+		for _, tightBudget := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/tightBudget=%t", mode, tightBudget), func(t *testing.T) {
 				k, ctx := setupKeeper(t, 90)
 				p := types.DefaultParams()
 				p.GovernanceSafetyDelayBlocks = 10
@@ -42,8 +42,8 @@ func TestReviewCancelOrdinaryRestrictionWhileKeepingPause(t *testing.T) {
 				queued.PendingActivationHeight = 0
 				queued.PendingEmergency = nil
 				queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
-				if closed {
-					queued.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
+				if tightBudget {
+					queued.MaxPqcVerificationsPerBlock = 111
 				}
 				response, err := server.UpdateParams(ctx.WithBlockHeight(100), &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 				require.NoError(t, err)
@@ -66,6 +66,7 @@ func TestReviewCancelOrdinaryRestrictionWhileKeepingPause(t *testing.T) {
 				require.NoError(t, err)
 				t.Logf("H=110 enforcement=%s registration=%s emergency=%s", final.EnforcementMode, final.RegistrationMode, final.EmergencyMode)
 				require.Equal(t, mode, final.EmergencyMode)
+				require.Equal(t, p.MaxPqcVerificationsPerBlock, final.MaxPqcVerificationsPerBlock, "cancellation must also remove a queued budget restriction")
 				if final.EnforcementMode != types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL {
 					t.Errorf("cancellation intent violated: expected OPTIONAL, got %s", final.EnforcementMode)
 				}
@@ -97,7 +98,7 @@ func TestExplicitEmergencyRenewalPreservesOrdinaryIntent(t *testing.T) {
 			require.Equal(t, uint64(121), active.EmergencyExpiresHeight)
 			queued := pause
 			queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
-			queued.RegistrationMode = types.RegistrationMode_REGISTRATION_MODE_CLOSED
+			queued.MaxPqcVerificationsPerBlock = 111
 			_, err = s.UpdateParams(ctx.WithBlockHeight(100), &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 			require.NoError(t, err)
 			r, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause, EmergencyOnly: true})
@@ -108,7 +109,7 @@ func TestExplicitEmergencyRenewalPreservesOrdinaryIntent(t *testing.T) {
 			require.Equal(t, uint64(110), stored.PendingActivationHeight)
 			require.Equal(t, uint64(132), stored.PendingEmergency.ExpiresHeight)
 			require.Equal(t, types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, stored.Effective(110).EnforcementMode)
-			require.Equal(t, types.RegistrationMode_REGISTRATION_MODE_CLOSED, stored.Effective(110).RegistrationMode)
+			require.Equal(t, uint32(111), stored.Effective(110).MaxPqcVerificationsPerBlock)
 			// Once the explicit renewal activates, an ordinary full cancellation
 			// remains possible and preserves that exact expiry, without renewal.
 			_, err = k.NormalizeParams(ctx.WithBlockHeight(102))
@@ -123,14 +124,14 @@ func TestExplicitEmergencyRenewalPreservesOrdinaryIntent(t *testing.T) {
 	}
 }
 
-func TestEmergencyOnlyRejectsSmuggledChangesAndPreservesCutoff(t *testing.T) {
+func TestEmergencyOnlyRejectsSmuggledChangesAndPreservesOrdinaryPlan(t *testing.T) {
 	k, ctx := setupKeeper(t, 100)
 	base := types.DefaultParams()
 	base.GovernanceSafetyDelayBlocks = 10
 	require.NoError(t, k.SetParams(ctx, base))
 	s := NewMsgServer(k)
 	queued := base
-	queued.RegistrationCutoffHeight = 111
+	queued.MaxPqcVerificationsPerBlock = 111
 	_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 	require.NoError(t, err)
 	before := k.GetParams(ctx)
@@ -151,23 +152,20 @@ func TestEmergencyOnlyRejectsSmuggledChangesAndPreservesCutoff(t *testing.T) {
 		require.Error(t, err)
 		require.Equal(t, before, k.GetParams(ctx))
 	}
-	// No flag: a full request cannot silently remove the locked cutoff.
+	// Explicit emergency scope preserves the ordinary budget schedule.
 	pause := base
 	pause.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
-	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause})
-	require.ErrorContains(t, err, "irreversible")
-	require.Equal(t, before, k.GetParams(ctx))
-	// Explicit scope: the active cutoff=0 is only a comparison baseline.
 	r, err := s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause, EmergencyOnly: true})
 	require.NoError(t, err)
-	require.Equal(t, uint64(111), r.ResultingParams.Pending.RegistrationCutoffHeight)
+	require.Equal(t, uint32(111), r.ResultingParams.Pending.MaxPqcVerificationsPerBlock)
 	require.Equal(t, uint64(110), r.ResultingParams.PendingActivationHeight)
 	_, err = k.NormalizeParams(ctx.WithBlockHeight(102))
 	require.NoError(t, err)
-	before = k.GetParams(ctx)
-	_, err = s.UpdateParams(ctx.WithBlockHeight(102), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause})
-	require.ErrorContains(t, err, "irreversible")
-	require.Equal(t, before, k.GetParams(ctx))
+	// After emergency activation, explicit full cancellation remains allowed.
+	r, err = s.UpdateParams(ctx.WithBlockHeight(102), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause})
+	require.NoError(t, err)
+	require.Nil(t, r.ResultingParams.Pending)
+	require.Equal(t, types.DefaultMaxPQCVerificationsPerBlock, r.ResultingParams.MaxPqcVerificationsPerBlock)
 }
 
 func TestOrdinaryReplacementDoesNotRenewOrResurrectPause(t *testing.T) {

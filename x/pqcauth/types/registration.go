@@ -4,6 +4,11 @@ package types
 // gate. The captured fresh marker is retained for interface compatibility but
 // cannot enable FRESH_ACCOUNTS_ONLY in phase one.
 func CheckRegistrationAllowed(params Params, height int64, fresh bool) error {
+	// Defense in depth for unsupported imported/injected experimental state.
+	// Even a future cutoff must not silently enable an unsupported phase-one gate.
+	if params.Effective(height).RegistrationCutoffHeight != 0 {
+		return ErrRegistrationClosed.Wrap("registration cutoff is disabled in phase one")
+	}
 	switch params.EffectiveRegistrationMode(height) {
 	case RegistrationMode_REGISTRATION_MODE_OPEN:
 		return nil

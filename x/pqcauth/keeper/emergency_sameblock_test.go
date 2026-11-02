@@ -96,7 +96,7 @@ func TestEmergencyOnlySameBlockExplicitReplacement(t *testing.T) {
 				s := NewMsgServer(k)
 				if ordinary {
 					queued := base
-					queued.RegistrationCutoffHeight = 111
+					queued.MaxPqcVerificationsPerBlock = 111
 					_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 					require.NoError(t, err)
 				}
@@ -111,7 +111,7 @@ func TestEmergencyOnlySameBlockExplicitReplacement(t *testing.T) {
 				require.Equal(t, uint64(101), r.ActivationHeight)
 				if ordinary {
 					require.Equal(t, uint64(110), r.ResultingParams.PendingActivationHeight)
-					require.Equal(t, uint64(111), r.ResultingParams.Pending.RegistrationCutoffHeight)
+					require.Equal(t, uint32(111), r.ResultingParams.Pending.MaxPqcVerificationsPerBlock)
 				}
 				active, err := k.NormalizeParams(ctx.WithBlockHeight(101))
 				require.NoError(t, err)
@@ -119,7 +119,8 @@ func TestEmergencyOnlySameBlockExplicitReplacement(t *testing.T) {
 				require.Nil(t, active.PendingEmergency)
 				if ordinary {
 					_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: pause})
-					require.ErrorContains(t, err, "irreversible")
+					require.NoError(t, err)
+					require.Nil(t, k.GetParams(ctx).Pending)
 				}
 			})
 		}

@@ -19,8 +19,8 @@ const (
 	DefaultMaxPQCAuthBytes              uint32 = 64 * 1024
 	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
 	DefaultGovernanceSafetyDelayBlocks  uint64 = 17_280
-	DefaultMaxEmergencyDurationBlocks   uint64 = 17_280
-	DefaultRecoveryDelayBlocks          uint64 = 17_280
+	DefaultMaxEmergencyDurationBlocks   uint64 = 46_080
+	DefaultRecoveryDelayBlocks          uint64 = 107_520
 	DefaultMaxPQCVerificationsPerTx     uint32 = 16
 	DefaultMaxPQCVerificationsPerBlock  uint32 = 400
 
@@ -257,6 +257,9 @@ func validateScheduledParams(p ScheduledParams) error {
 	if !validRegistrationMode(normalizeRegistrationMode(p.RegistrationMode)) {
 		return fmt.Errorf("%w: invalid registration mode %d", ErrInvalidParams, p.RegistrationMode)
 	}
+	if p.RegistrationCutoffHeight != 0 {
+		return fmt.Errorf("%w: registration cutoff is disabled in phase one", ErrInvalidParams)
+	}
 	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS {
@@ -457,10 +460,9 @@ func normalizeRegistrationMode(mode RegistrationMode) RegistrationMode {
 }
 
 func validRegistrationMode(mode RegistrationMode) bool {
-	// Phase one deliberately excludes fresh-only registration: a successful
-	// Ante followed by a failed message consumes freshness without enrolling.
-	return mode == RegistrationMode_REGISTRATION_MODE_OPEN ||
-		mode == RegistrationMode_REGISTRATION_MODE_CLOSED
+	// Phase one keeps enrollment open. Reserved modes retain their wire values;
+	// emergency PAUSE_NEW_KEYS remains available independently of this gate.
+	return mode == RegistrationMode_REGISTRATION_MODE_OPEN
 }
 
 func CryptoAlgorithm(algorithm Algorithm) (pqccrypto.Algorithm, error) {

@@ -20,7 +20,7 @@ PQCAuth 验证受保护账户直接签署交易时的经典签名和 PQC 授权�
 4. 保留规范编码、重放防护、独立因子提示、经典签名、PQC 验签、每笔和每块预算、gas 下限、间接生命周期限制、恢复延迟和有界历史记录。
 5. 保留已有密钥撤销状态修复和零高度导出保护。参数调整和 REQUIRED 模式不随首版上线自动开启。
 6. CLI 注册帮助和操作文档明确授权仍有效，不将提示设计成额外强制迁移。
-7. 注册门槛首版仅支持 OPEN/CLOSED，禁止 active/pending/genesis/governance 配置 FRESH_ACCOUNTS_ONLY。用户已于 2026-11-01 确认此取舍：不为首版增加持久化注册承诺和重试签名协议。枚举编号保留，不静默改成 OPEN；受支持入口仍是尚未部署 PQCAuth 的 v1.0.1。
+7. 用户于 2026-11-02 确认首版仅支持 OPEN：禁止 active/pending/genesis/governance 配置 CLOSED、FRESH_ACCOUNTS_ONLY 和非零 registration_cutoff_height。枚举编号保留，不静默改成 OPEN；历史 UNSPECIFIED 零值继续兼容为 OPEN。PAUSE_NEW_KEYS 应急暂停独立保留；受支持入口仍是尚未部署 PQCAuth 的 v1.0.1。
 8. 注册交易本身要求所有签名者使用 DIRECT；CLI 拒绝当前 SDK 的 Amino-only Ledger 后端。注册后仍仅支持 DIRECT PQC 保护，不通过删除签名模式检查来兼容 Amino。
 
 简化版使用新的内部模块版本，以拒绝把旧实验性 PQC 数据库直接当作本版运行。支持的生产升级入口仍是尚未初始化 PQCAuth 的 v1.0.1 状态；旧开发链转换需要单独方案，不在首版自动执行。
@@ -40,7 +40,7 @@ PQCAuth 验证受保护账户直接签署交易时的经典签名和 PQC 授权�
 
 2026-11-02 已补真实治理 EndBlock 顺序/回滚、签名提交/押金/投票，以及 750 gas、400 次预算下的六块混合流量和无效签名入池回归，见 [治理与有界负载记录](PQCAUTH-GOVERNANCE-LOAD-TESTS-20261102.md)。普通独立交易未被 PQC 预算饱和连带阻塞，但恢复和取消恢复仍竞争共享额度；本机固定排序中的延迟不是公网等待上限。该轮测试未改协议，也不替代下面的最终产物与最低硬件验收。
 
-GOV-02 后，治理请求必须明确意图：完整更新保持原取消/替换语义，仅紧急更新使用顶层 `emergency_only=true`；取消普通计划不再自动续期暂停。上线前同步治理 JSON 构造器，检查回执 `resulting_params` 与查询的两个调度状态。验收保留 numeric cutoff 不可逆、暂停到期不复活及 GOV-01 组合，见 [GOV-02 修复记录](PQCAUTH-GOV02-FIXES-20261101.md)。
+GOV-02 后，治理请求必须明确意图：完整更新保持原取消/替换语义，仅紧急更新使用顶层 `emergency_only=true`；取消普通计划不再自动续期暂停。上线前同步治理 JSON 构造器，检查回执 `resulting_params` 与查询的两个调度状态。首版现已禁止 numeric cutoff；保留普通限制与应急重叠、暂停到期不复活及同块顺序回归。历史问题见 [GOV-02 修复记录](PQCAUTH-GOV02-FIXES-20261101.md)，当前参数选择见 [启动设置](PQCAUTH-LAUNCH-SETTINGS-20261102.md)。
 
 紧急调度与普通待生效计划已经解耦，暂停期间单条顶层恢复可使用受保护的独立付款人，全部签名和预算检查保留。新增持久化 `pending_emergency` 状态，必须把同高度激活、暂停到期、导出导入和重启纳入最终产物验收。详细语义及本轮应用内回归见 [紧急治理与恢复修复记录](PQCAUTH-EMERGENCY-FIXES-20261101.md)。这不是在线网络已升级的声明。
 

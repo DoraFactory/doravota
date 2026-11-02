@@ -27,7 +27,7 @@ func testEmergencyExportImport(t *testing.T, ordinary bool) {
 	p.MaxEmergencyDurationBlocks = 20
 	require.NoError(t, k.SetParams(ctx, p))
 	queued := p
-	queued.RegistrationCutoffHeight = 111
+	queued.MaxPqcVerificationsPerBlock = 111
 	queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	s := keeper.NewMsgServer(k)
 	if ordinary {

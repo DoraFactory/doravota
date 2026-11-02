@@ -8,19 +8,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEmergencyUpdatePreservesPendingCutoffAndRestrictions(t *testing.T) {
+func TestEmergencyUpdatePreservesPendingRestrictions(t *testing.T) {
 	for _, mode := range []types.EmergencyMode{types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS, types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS} {
-		for _, cutoff := range []uint64{111, 1000} {
+		for _, budget := range []uint32{111, 200} {
 			for _, usePending := range []bool{false, true} {
 				for height := int64(101); height < 110; height++ {
-					t.Run(fmt.Sprintf("%s/cutoff%d/pending%t/H%d", mode, cutoff, usePending, height), func(t *testing.T) {
+					t.Run(fmt.Sprintf("%s/budget%d/pending%t/H%d", mode, budget, usePending, height), func(t *testing.T) {
 						k, ctx := setupKeeper(t, 100)
 						base := types.DefaultParams()
 						base.GovernanceSafetyDelayBlocks = 10
 						require.NoError(t, k.SetParams(ctx, base))
 						s := NewMsgServer(k)
 						queued := base
-						queued.RegistrationCutoffHeight = cutoff
+						queued.MaxPqcVerificationsPerBlock = budget
 						queued.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 						queued.MaxPqcSigners = 2
 						queued.MaxPqcVerificationsPerTx = 3
@@ -58,20 +58,19 @@ func TestEmergencyUpdatePreservesPendingCutoffAndRestrictions(t *testing.T) {
 	}
 }
 
-func TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges(t *testing.T) {
+func TestEmergencyUpdateCannotInjectOtherChanges(t *testing.T) {
 	k, ctx := setupKeeper(t, 100)
 	base := types.DefaultParams()
 	base.GovernanceSafetyDelayBlocks = 10
 	require.NoError(t, k.SetParams(ctx, base))
 	s := NewMsgServer(k)
 	queued := base
-	queued.RegistrationCutoffHeight = 111
+	queued.MaxPqcVerificationsPerBlock = 111
 	_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 	require.NoError(t, err)
 	before := k.GetParams(ctx)
-	// The pure-emergency exception never removes the queued cutoff. Ordinary
-	// cancellation or a different cutoff remains forbidden.
-	for _, cutoff := range []uint64{0, 112, 1000} {
+	// Unsupported cutoff requests must not change the pending ordinary plan.
+	for _, cutoff := range []uint64{1, 112, 1000} {
 		bad := base
 		bad.RegistrationCutoffHeight = cutoff
 		_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: bad})
@@ -90,14 +89,14 @@ func TestEmergencyUpdateCannotCancelCutoffOrInjectOtherChanges(t *testing.T) {
 	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: mixed})
 	require.ErrorContains(t, err, "H+1 emergency activation")
 	require.Equal(t, before, k.GetParams(ctx))
-	// Explicitly cancel only the emergency, retaining the original cutoff.
+	// Explicitly cancel only the emergency, retaining the original budget.
 	_, err = s.UpdateParams(ctx.WithBlockHeight(101), &types.MsgUpdateParams{Authority: k.Authority(), Params: base, EmergencyOnly: true})
 	require.NoError(t, err)
 	active, err := k.NormalizeParams(ctx.WithBlockHeight(102))
 	require.NoError(t, err)
 	require.Equal(t, types.EmergencyMode_EMERGENCY_MODE_NORMAL, active.EmergencyMode)
 	require.Equal(t, uint64(110), active.PendingActivationHeight)
-	require.Equal(t, uint64(111), active.Pending.RegistrationCutoffHeight)
+	require.Equal(t, uint32(111), active.Pending.MaxPqcVerificationsPerBlock)
 }
 
 func TestEmergencyExpiryDoesNotResurrectAtPendingActivation(t *testing.T) {
@@ -109,7 +108,7 @@ func TestEmergencyExpiryDoesNotResurrectAtPendingActivation(t *testing.T) {
 			base.MaxEmergencyDurationBlocks = duration
 			require.NoError(t, k.SetParams(ctx, base))
 			queued := base
-			queued.RegistrationCutoffHeight = 111
+			queued.MaxPqcVerificationsPerBlock = 111
 			s := NewMsgServer(k)
 			_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 			require.NoError(t, err)
