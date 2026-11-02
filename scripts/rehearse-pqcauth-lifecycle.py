@@ -36,6 +36,16 @@ def rehearsal_ports(base, ephemeral_range=None):
     return ports
 
 
+def check_listener_ports(ports):
+    for port in ports:
+        with socket.socket() as sock:
+            # Match Go's listener behaviour: permit reuse of a closed socket's
+            # TIME_WAIT port, but never share an active listener (no REUSEPORT).
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", port))
+            sock.listen(1)
+
+
 class Rehearsal:
     def __init__(self, args):
         self.binary = Path(args.binary).resolve(strict=True)
@@ -152,9 +162,7 @@ class Rehearsal:
         ephemeral = tuple(map(int, ephemeral_path.read_text().split())) if ephemeral_path.exists() else None
         ports = rehearsal_ports(self.base, ephemeral)
         self.save("listener-ports", {"ports": ports, "kernel_ephemeral_range": ephemeral})
-        for port in ports:
-            with socket.socket() as sock:
-                sock.bind(("127.0.0.1", port))
+        check_listener_ports(ports)
         for i in range(4):
             self.cli("init", f"validator{i}", "--chain-id", self.chain, "--default-denom", "peaka", node=i)
             self.key(f"val{i}", node=i)

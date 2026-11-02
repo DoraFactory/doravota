@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 
 def load(name):
@@ -22,6 +23,17 @@ lifecycle = load("rehearse-pqcauth-lifecycle")
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_listener_preflight_matches_reusable_listener_and_propagates_conflicts(self):
+        with mock.patch.object(lifecycle.socket, "socket") as factory:
+            sock = factory.return_value.__enter__.return_value
+            lifecycle.check_listener_ports([28656])
+            self.assertEqual(sock.method_calls, [
+                mock.call.setsockopt(lifecycle.socket.SOL_SOCKET, lifecycle.socket.SO_REUSEADDR, 1),
+                mock.call.bind(("127.0.0.1", 28656)), mock.call.listen(1)])
+            sock.bind.side_effect = OSError("active listener")
+            with self.assertRaisesRegex(OSError, "active listener"):
+                lifecycle.check_listener_ports([28656])
+
     def test_rehearsal_listener_ports_avoid_ephemeral_range(self):
         ports = lifecycle.rehearsal_ports(lifecycle.DEFAULT_RPC_PORT, (32768, 60999))
         self.assertEqual(ports, [28656, 28657, 28756, 28757, 28856, 28857, 28956, 28957])

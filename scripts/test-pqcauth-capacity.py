@@ -60,6 +60,37 @@ class Node:
 
 
 class CapacityObserverTests(unittest.TestCase):
+    def test_hybrid_genesis_installs_only_fixture_owner_keys(self):
+        owners = [f"owner{i}" for i in range(7)]
+        keys = {owner: {"@type": "/cosmos.crypto.secp256k1.PubKey", "key": owner} for owner in owners}
+        generated = {"addresses": owners, "account_public_keys": keys}
+        accounts = [{"@type": "/cosmos.auth.v1beta1.BaseAccount", "address": owner,
+                     "pub_key": None, "sequence": "0"} for owner in owners + ["untouched"]]
+        genesis = {"app_state": {"auth": {"accounts": accounts}}}
+        capacity.install_hybrid_public_keys(genesis, generated)
+        for account in accounts[:7]:
+            self.assertEqual(account["pub_key"], keys[account["address"]])
+            self.assertEqual(account["sequence"], "0")
+        self.assertIsNone(accounts[-1]["pub_key"])
+        with self.assertRaises(ValueError):
+            capacity.install_hybrid_public_keys(genesis, generated)
+
+    def test_hybrid_genesis_rejects_missing_or_wrong_fixture_keys(self):
+        owners = [f"owner{i}" for i in range(7)]
+        keys = {owner: {"@type": "/cosmos.crypto.secp256k1.PubKey", "key": owner} for owner in owners}
+        generated = {"addresses": owners, "account_public_keys": keys}
+        empty = {"app_state": {"auth": {"accounts": []}}}
+        with self.assertRaises(ValueError):
+            capacity.install_hybrid_public_keys(empty, generated)
+        missing = copy.deepcopy(generated)
+        missing["account_public_keys"].pop(owners[0])
+        with self.assertRaises(ValueError):
+            capacity.install_hybrid_public_keys(empty, missing)
+        wrong = {"app_state": {"auth": {"accounts": [
+            {"@type": "/unsupported.Account", "address": owners[0], "pub_key": None}]}}}
+        with self.assertRaises(ValueError):
+            capacity.install_hybrid_public_keys(wrong, generated)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

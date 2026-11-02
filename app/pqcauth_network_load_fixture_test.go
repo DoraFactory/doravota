@@ -37,6 +37,12 @@ func TestPQCAuthGenerateNetworkLoad(t *testing.T) {
 	if dir == "" {
 		t.Skip("opt-in isolated network fixture generator")
 	}
+	sdk.GetConfig().SetBech32PrefixForAccount("dora", "dorapub")
+	generatePQCNetworkLoad(t, dir)
+}
+
+func generatePQCNetworkLoad(t *testing.T, dir string) {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(dir, "load-config.json"))
 	require.NoError(t, err)
 	var cfg struct {
@@ -52,7 +58,6 @@ func TestPQCAuthGenerateNetworkLoad(t *testing.T) {
 	require.Contains(t, []string{"hybrid", "classic", "native"}, cfg.Kind)
 	require.Greater(t, cfg.Count, 0)
 	require.LessOrEqual(t, cfg.Count, 5000)
-	sdk.GetConfig().SetBech32PrefixForAccount("dora", "dorapub")
 	a := policyTestApp(t)
 	p := pqctypes.DefaultParams()
 	require.NoError(t, a.AppCodec().UnmarshalJSON(cfg.Params, &p))
@@ -87,10 +92,17 @@ func TestPQCAuthGenerateNetworkLoad(t *testing.T) {
 	}
 	require.NoError(t, pqctypes.ValidateGenesis(genesis))
 	if cfg.Phase == "prepare" {
+		publicKeys := make(map[string]json.RawMessage, len(keys))
+		for i, key := range keys {
+			encoded, e := a.AppCodec().MarshalInterfaceJSON(key.PubKey())
+			require.NoError(t, e)
+			publicKeys[addresses[i]] = encoded
+		}
 		out, e := json.Marshal(struct {
-			Addresses []string        `json:"addresses"`
-			PQC       json.RawMessage `json:"pqcauth"`
-		}{addresses, a.AppCodec().MustMarshalJSON(&genesis)})
+			Addresses  []string                   `json:"addresses"`
+			PQC        json.RawMessage            `json:"pqcauth"`
+			PublicKeys map[string]json.RawMessage `json:"account_public_keys"`
+		}{addresses, a.AppCodec().MustMarshalJSON(&genesis), publicKeys})
 		require.NoError(t, e)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "load-genesis.json"), out, 0600))
 		return

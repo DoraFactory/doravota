@@ -84,6 +84,7 @@ jobs:
           docker build --platform "linux/${ARCH}" --build-arg GIT_VERSION="$(cat VERSION)" --build-arg COMMIT_SHA="$GITHUB_SHA" --build-arg ALLOW_PRERELEASE="$ALLOW_PRERELEASE" -t bridge-ci .
           test "$(docker run --rm --platform "linux/${ARCH}" bridge-ci version)" = "$(cat VERSION)"
       - name: Rehearse PQC lifecycle with the packaged binary
+        id: pqc_lifecycle
         if: ${{ hashFiles('scripts/rehearse-pqcauth-lifecycle.py') != '' }}
         env:
           ARCH: ${{ matrix.arch }}
@@ -100,19 +101,26 @@ jobs:
           go-version-file: go.mod
       - name: Four-validator capacity observations (not minimum-hardware certification)
         if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-capacity.py') != '' }}
-        timeout-minutes: 35
+        timeout-minutes: 55
         env:
           GOMAXPROCS: 2
           GOFLAGS: -p=2
         run: |
           set -euo pipefail
           go test -c -o build/pqcauth-load.test ./app
+          capacity_failed=0
+          rpc_port=29657
           for kind in classic hybrid native; do
-            python3 scripts/rehearse-pqcauth-capacity.py \
+            if ! python3 scripts/rehearse-pqcauth-capacity.py \
               --binary "build/rehearsal-bin/dorad-$(cat VERSION)-linux-amd64" \
               --fixture-binary build/pqcauth-load.test \
-              --work-dir "build/pqcauth-capacity-${kind}" --kind "$kind" --count 5000
+              --work-dir "build/pqcauth-capacity-${kind}" --kind "$kind" --count 5000 \
+              --rpc-port "$rpc_port"; then
+              capacity_failed=1
+            fi
+            rpc_port=$((rpc_port + 1000))
           done
+          exit "$capacity_failed"
       - name: Preserve capacity observations (synthetic data, no keyrings)
         if: ${{ always() && matrix.arch == 'amd64' }}
         uses: actions/upload-artifact@v4
@@ -121,7 +129,7 @@ jobs:
           path: build/pqcauth-capacity-*/evidence/
           if-no-files-found: ignore
       - name: Rehearse sequential v1.0.0 to v1.0.1 to PQCAuth upgrades
-        if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-from-v101.py') != '' }}
+        if: ${{ !cancelled() && steps.pqc_lifecycle.outcome == 'success' && matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-from-v101.py') != '' }}
         run: |
           set -euo pipefail
           mkdir -p build/upgrade-binaries

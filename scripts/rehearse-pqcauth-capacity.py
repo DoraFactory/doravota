@@ -43,6 +43,28 @@ def block_time(block):
     return datetime.datetime.fromisoformat(block["header"]["time"].replace("Z", "+00:00")).timestamp()
 
 
+def install_hybrid_public_keys(genesis, generated):
+    """A pre-enrolled synthetic owner must already have its classic SDK key."""
+    owners = set(generated["addresses"])
+    keys = generated["account_public_keys"]
+    if len(owners) != 7 or set(keys) != owners:
+        raise ValueError("hybrid fixture must contain exactly seven owner public keys")
+    matched = set()
+    for account in genesis["app_state"]["auth"]["accounts"]:
+        owner = account.get("address")
+        if owner not in owners:
+            continue
+        key = keys[owner]
+        if (owner in matched or account.get("@type") != "/cosmos.auth.v1beta1.BaseAccount"
+                or account.get("pub_key") is not None
+                or key.get("@type") != "/cosmos.crypto.secp256k1.PubKey" or not key.get("key")):
+            raise ValueError(f"unexpected hybrid fixture account/key: {owner}")
+        account["pub_key"] = dict(key)
+        matched.add(owner)
+    if matched != owners:
+        raise ValueError("hybrid fixture owner missing from auth genesis")
+
+
 def results_not_saved_yet(status, body, height):
     """Only retry CometBFT v0.40's exact missing-result response for THIS height.
 
@@ -162,6 +184,8 @@ def main():
         for address in generated["addresses"]:
             r.cli("genesis", "add-genesis-account", address, "100000000000000000000000000peaka")
         genesis = json.loads(gp.read_text())
+        if args.kind == "hybrid":
+            install_hybrid_public_keys(genesis, generated)
         genesis["app_state"]["pqcauth"] = generated["pqcauth"]
         genesis["consensus"]["params"]["block"].update(max_gas="600000000", max_bytes="22020096")
         # These are declared experiment settings, not a query of mainnet.
