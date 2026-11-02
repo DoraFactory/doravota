@@ -16,6 +16,7 @@ from pathlib import Path
 import subprocess
 import time
 import traceback
+import urllib.error
 import urllib.request
 
 spec = importlib.util.spec_from_file_location("lifecycle", Path(__file__).with_name("rehearse-pqcauth-lifecycle.py"))
@@ -42,6 +43,87 @@ def block_time(block):
     return datetime.datetime.fromisoformat(block["header"]["time"].replace("Z", "+00:00")).timestamp()
 
 
+def results_not_saved_yet(status, body, height):
+    """Only retry CometBFT v0.40's exact missing-result response for THIS height.
+
+    Do not retry arbitrary 500s, pruned/corrupt data or disabled result storage.
+    Even a matching error is only presumed transient until the deadline.
+    """
+    if status != 500:
+        return False
+    try:
+        error = json.loads(body)["error"]
+        return (error["code"] == -32603 and
+                error["data"] == f"could not find results for height #{height}")
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
+def record_results_error(r, height, error, body, truncated, retryable, deadline, now):
+    record = {"height": height, "path": f"block_results?height={height}",
+              "http_status": error.code, "body": body.decode("utf-8", errors="replace"),
+              "body_truncated": truncated, "retryable": retryable,
+              "remaining_seconds": max(0, deadline - now()),
+              "process_exit_codes": {str(i): p.poll() for i, p in r.processes.items()}}
+    # A diagnostic failure must not convert a permanent query error into a retry.
+    remaining = deadline - now()
+    if remaining > 0:
+        try:
+            record["node0_status"] = r.rpc("status", timeout=min(.5, remaining))
+        except Exception as diagnostic_error:
+            record["status_error"] = repr(diagnostic_error)
+    with (r.evidence / "block-results-errors.jsonl").open("a") as log:
+        log.write(json.dumps(record) + "\n")
+
+
+def read_finalized_block(r, height, deadline, *, now=time.monotonic, sleep=time.sleep):
+    """Read one complete height, or fail without advancing the caller's cursor."""
+    remaining = deadline - now()
+    if remaining <= 0:
+        raise TimeoutError(f"deadline before block {height}")
+    block = r.rpc(f"block?height={height}", timeout=min(5, remaining))["block"]
+    if int(block["header"]["height"]) != height:
+        raise ValueError(f"block height mismatch at {height}")
+    transactions = block["data"]["txs"]
+    if transactions is not None and not isinstance(transactions, list):
+        raise ValueError(f"invalid block transaction list at {height}")
+    expected = len(transactions or [])
+    while True:
+        remaining = deadline - now()
+        if remaining <= 0:
+            raise TimeoutError(f"deadline waiting for execution results at height {height}")
+        try:
+            receipt = r.rpc(f"block_results?height={height}", timeout=min(5, remaining))
+        except urllib.error.HTTPError as error:
+            body = error.read(65537)
+            error.close()
+            truncated = len(body) > 65536
+            body = body[:65536]
+            retryable = not truncated and results_not_saved_yet(error.code, body, height)
+            record_results_error(r, height, error, body, truncated, retryable, deadline, now)
+            if not retryable:
+                raise
+            remaining = deadline - now()
+            if remaining <= 0:
+                raise TimeoutError(f"deadline waiting for execution results at height {height}") from error
+            sleep(min(.25, remaining))
+            continue
+        if now() >= deadline:
+            raise TimeoutError(f"execution results arrived after deadline at height {height}")
+        if int(receipt["height"]) != height:
+            raise ValueError(f"execution result height mismatch at {height}")
+        outcomes = receipt["txs_results"]
+        if outcomes is None:
+            outcomes = []
+        if not isinstance(outcomes, list) or len(outcomes) != expected:
+            r.save(f"invalid-results-{height}", {"block": block, "receipt": receipt})
+            raise ValueError(f"execution result count mismatch at height {height}: expected {expected}")
+        if any(int(x["code"]) != 0 for x in outcomes):
+            r.save(f"failed-transactions-{height}", receipt)
+            raise ValueError(f"failed transaction at height {height}")
+        return block, receipt
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
@@ -53,8 +135,8 @@ def main():
     parser.add_argument("--baseline-blocks", type=int, default=12)
     parser.add_argument("--timeout", type=int, default=900)
     args = parser.parse_args()
-    if not 1 <= args.count <= 5000 or args.baseline_blocks < 3:
-        parser.error("count must be 1..5000; baseline-blocks >= 3")
+    if not 1 <= args.count <= 5000 or args.baseline_blocks < 3 or args.timeout <= 0:
+        parser.error("count must be 1..5000; baseline-blocks >= 3; timeout > 0")
     args.rounds = 1
     fixture = Path(args.fixture_binary).resolve(strict=True)
     r = lifecycle.Rehearsal(args)
@@ -139,16 +221,16 @@ def main():
                 raise TimeoutError(f"committed {committed}/{args.count}")
             current = r.height()
             while scanned < current:
-                scanned += 1
-                block = r.rpc(f"block?height={scanned}")["block"]
-                receipt = r.rpc(f"block_results?height={scanned}")
+                next_height = scanned + 1
+                block, receipt = read_finalized_block(r, next_height, deadline)
                 outcomes = receipt.get("txs_results") or []
-                assert all(int(x["code"]) == 0 for x in outcomes), receipt
                 committed += len(outcomes)
-                blocks.append({"height": scanned, "time": block["header"]["time"], "timestamp": block_time(block),
+                blocks.append({"height": next_height, "time": block["header"]["time"], "timestamp": block_time(block),
                                "transactions": len(outcomes), "signature_verifications": len(outcomes) * 7,
                                "gas_used": sum(int(x["gas_used"]) for x in outcomes)})
                 r.save("loaded-blocks", blocks)
+                # Advance only after the matching complete results are validated.
+                scanned = next_height
                 print("block", scanned, "committed", committed, "pool", r.rpc("num_unconfirmed_txs")["n_txs"], flush=True)
             total_rss = 0
             for process in r.processes.values():

@@ -54,8 +54,8 @@ class Rehearsal:
             raise RuntimeError(f"{args[:3]}: {result.stderr[:2000]}")
         return result.stdout
 
-    def rpc(self, path, node=0):
-        with urllib.request.urlopen(f"http://127.0.0.1:{self.base + node * 100}/{path}", timeout=5) as r:
+    def rpc(self, path, node=0, timeout=5):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.base + node * 100}/{path}", timeout=timeout) as r:
             return json.load(r)["result"]
 
     def query(self, *args):

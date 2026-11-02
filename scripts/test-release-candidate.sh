@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 results=${RESULTS_DIR:-build/test-results}
 mkdir -p "$results"
 python3 scripts/test-release-tools.py
+python3 scripts/test-pqcauth-capacity.py
 python3 scripts/verify-ibc-amino-snapshot.py
 # Go dependency downloads and compiler diagnostics go to stderr, not JSON.
 # Keep the JSON gate strict and retain diagnostics separately for cold-cache CI.
