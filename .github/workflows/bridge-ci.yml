@@ -94,6 +94,32 @@ jobs:
           python3 scripts/rehearse-pqcauth-lifecycle.py \
             --binary "build/rehearsal-bin/dorad-$(cat VERSION)-linux-${ARCH}" \
             --work-dir build/pqcauth-rehearsal --rounds 4
+      - uses: actions/setup-go@v5
+        if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-capacity.py') != '' }}
+        with:
+          go-version-file: go.mod
+      - name: Four-validator capacity observations (not minimum-hardware certification)
+        if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-capacity.py') != '' }}
+        timeout-minutes: 35
+        env:
+          GOMAXPROCS: 2
+          GOFLAGS: -p=2
+        run: |
+          set -euo pipefail
+          go test -c -o build/pqcauth-load.test ./app
+          for kind in classic hybrid native; do
+            python3 scripts/rehearse-pqcauth-capacity.py \
+              --binary "build/rehearsal-bin/dorad-$(cat VERSION)-linux-amd64" \
+              --fixture-binary build/pqcauth-load.test \
+              --work-dir "build/pqcauth-capacity-${kind}" --kind "$kind" --count 5000
+          done
+      - name: Preserve capacity observations (synthetic data, no keyrings)
+        if: ${{ always() && matrix.arch == 'amd64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pqcauth-capacity-amd64
+          path: build/pqcauth-capacity-*/evidence/
+          if-no-files-found: ignore
       - name: Rehearse sequential v1.0.0 to v1.0.1 to PQCAuth upgrades
         if: ${{ matrix.arch == 'amd64' && hashFiles('scripts/rehearse-pqcauth-from-v101.py') != '' }}
         run: |

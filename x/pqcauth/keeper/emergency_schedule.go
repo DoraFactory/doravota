@@ -44,7 +44,7 @@ func (m msgServer) scheduleEmergencyOnly(ctx sdk.Context, current types.Params, 
 		current.PendingActivationHeight = activation
 	} else {
 		// Copy before editing; Params.Effective and keeper callers may share the
-		// pointer. The original cutoff, budget, enforcement and activation stay put.
+		// pointer. The original gas price, enforcement and activation stay put.
 		pending := *current.Pending
 		pending.EmergencyMode, pending.EmergencyExpiresHeight = mode, expiry
 		if expiry != 0 && expiry <= current.PendingActivationHeight {

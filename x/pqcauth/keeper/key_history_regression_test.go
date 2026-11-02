@@ -13,7 +13,6 @@ func TestKeyHistoryRetentionBeyondDefaultPage(t *testing.T) {
 	k, ctx := setupKeeper(t, 1000)
 	owner := sdk.AccAddress(bytes.Repeat([]byte{0x73}, 20))
 	params := types.DefaultParams()
-	params.MaxRetainedKeyRecordsPerRole = 64
 	require.NoError(t, k.SetParams(ctx, params))
 	pub, _ := keyPair(99)
 	for i := uint64(1); i <= 132; i++ {
@@ -23,19 +22,8 @@ func TestKeyHistoryRetentionBeyondDefaultPage(t *testing.T) {
 		}
 		require.NoError(t, k.SetKey(ctx, owner, types.PQCKeyRecord{Owner: owner.String(), KeyId: i, Algorithm: types.Algorithm_ALGORITHM_ML_DSA_65, PublicKey: pub, Role: role, Status: types.KeyStatus_KEY_STATUS_LIVE, CreatedHeight: i, EffectiveHeight: i, InactiveFromHeight: i + 1}))
 	}
-	require.NoError(t, k.CompactTerminalKeyHistory(ctx, owner, types.AccountPolicy{Owner: owner.String()}, 64))
+	require.NoError(t, k.CompactTerminalKeyHistory(ctx, owner, types.AccountPolicy{Owner: owner.String()}, types.MaxRetainedKeyRecordsPerRole))
 	counts := map[types.KeyRole]int{}
-	k.IterateAllKeys(ctx, func(key types.PQCKeyRecord) bool { counts[key.Role]++; return false })
-	require.Equal(t, 64, counts[types.KeyRole_KEY_ROLE_SIGNING], "all pages must be compacted")
-	require.Equal(t, 64, counts[types.KeyRole_KEY_ROLE_RECOVERY])
-	for _, role := range []types.KeyRole{types.KeyRole_KEY_ROLE_SIGNING, types.KeyRole_KEY_ROLE_RECOVERY} {
-		history, found := k.GetKeyHistory(ctx, owner, role)
-		require.True(t, found)
-		require.Equal(t, uint64(2), history.CompactedCount)
-	}
-	// Lowering retention must also scan past the old first page.
-	require.NoError(t, k.CompactTerminalKeyHistory(ctx, owner, types.AccountPolicy{Owner: owner.String()}, 16))
-	counts = map[types.KeyRole]int{}
 	k.IterateAllKeys(ctx, func(key types.PQCKeyRecord) bool { counts[key.Role]++; return false })
 	for _, role := range []types.KeyRole{types.KeyRole_KEY_ROLE_SIGNING, types.KeyRole_KEY_ROLE_RECOVERY} {
 		require.Equal(t, 16, counts[role])
@@ -128,7 +116,7 @@ func TestCancelledRecoveryHistoryDoesNotBlockLaterRotation(t *testing.T) {
 	require.False(t, found)
 	policy, found := k.GetAccountPolicy(ctx, owner)
 	require.True(t, found)
-	require.NoError(t, k.CompactTerminalKeyHistory(ctx, owner, policy, params.MaxRetainedKeyRecordsPerRole))
+	require.NoError(t, k.CompactTerminalKeyHistory(ctx, owner, policy, types.MaxRetainedKeyRecordsPerRole))
 	after, _ := k.GetKeyHistory(ctx, owner, types.KeyRole_KEY_ROLE_SIGNING)
 	require.Equal(t, history, after, "repeated compaction must not append history twice")
 	require.Empty(t, k.AuditState(ctx, 100).Issues)

@@ -19,15 +19,11 @@ and revoke unwanted delegations separately. A protected grantee still needs its
 own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
 See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
 
-Phase-one enrollment supports OPEN only. CLOSED and FRESH_ACCOUNTS_ONLY keep
-their protobuf enum numbers but are rejected in genesis, active/pending parameters,
-and governance requests, as is every nonzero registration cutoff. The execution
-path fails closed for these unsupported states; none is silently mapped to OPEN.
-The historical UNSPECIFIED wire value still means OPEN. Emergency PAUSE_NEW_KEYS
-remains available and can temporarily block enrollment independently of this gate.
-There is no enrollment commitment or safe fresh-only retry protocol in this
-release. Under OPEN, a message-stage out-of-gas registration can be retried with
-the new SDK sequence and sufficient gas while enrollment remains open.
+Phase-one enrollment is always open, except during an authorized emergency
+pause. There is no registration-mode/cutoff parameter or fresh-account retry
+protocol. A failed message-stage registration can be retried with the current
+SDK sequence and sufficient gas. Removed protobuf fields are reserved; old
+experimental databases require a separate migration, not silent reinterpretation.
 
 Enrollment itself now requires SIGN_MODE_DIRECT for every signer. The CLI
 rejects explicit non-direct modes and the current SDK's Amino-only Ledger
@@ -37,21 +33,19 @@ do not change ordinary, unprotected SDK Amino transfers or the v1.0.1 IBC fix.
 
 PQC extension decoding enforces absolute 256 KiB / 32-entry bounds before
 generated protobuf allocation, including noncritical options that Ante later
-rejects. Governed byte/count bounds are also checked before Ante decoding.
-When a candidate exceeds a PQC proposal budget, selection skips its signers'
-dependent suffix rather than stopping the whole block. Dependencies propagate
-through co-signers and independent fee payers, while unrelated transactions
-remain eligible. Candidates exceeding newly active byte/signer limits receive
-the same treatment only after a bounded structural/key check at absolute
-ceilings. Candidates failing that absolute structural/key inspection do not
-populate the dependency/key caches.
-This is sequence-dependency filtering, not full Ante replay or generic message
-dependency analysis; normal SDK gas/byte limits still apply.
+rejects. Fixed operational bounds of 64 KiB / 8 entries apply before extension
+decoding. These are memory/structure defenses, not governable throughput quotas.
+SDK tx_sig_limit independently bounds native account signatures.
 
-See the [round four fixes](../../docs/PQCAUTH-ROUND4-FIXES-20261101.md)
-for the current tests, dependency patches and residual scan findings. The
-[earlier shared-audit fixes](../../docs/PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)
-record the superseded prefix-selection policy.
+There is no PQC-specific transaction/block verification quota or dependency
+filter. The app uses the SDK default proposal handlers, finite configured block
+gas/byte limits, and an enabled block gas meter. With the SDK NoOp mempool,
+ProcessProposal does not authenticate transactions: FinalizeBlock Ante still
+verifies every signature and rejects invalid transactions. Removing a parallel
+quota is not proof of worst-case capacity or fair inclusion; network admission,
+recheck and target-hardware load tests remain necessary.
+See the [simplification record](../../docs/PQCAUTH-SIMPLIFICATION-20261102.md).
+Earlier audit records describe superseded selection algorithms.
 
 Recheck reuses the cryptographic validity established for the same transaction
 bytes by CheckTx(New). It still performs state/structure/key/policy and SDK
@@ -76,44 +70,36 @@ automatically: review all pages on the intended chain. A compromised classical
 grantee can still use the assets/fees authorized by its grants, including after
 PQC recovery. Offline generation must not be mistaken for a delegation audit.
 
-## Parameter capacity boundaries
+## Parameter and resource boundaries
 
-Defaults remain 8 PQC signers, 64 KiB auth bytes, 16 verifications per transaction
-and 400 per block. Governance/genesis (including pending policies) must allow at
-least 2 PQC signers and 3 verifications per transaction. The transaction budget
-must cover the configured PQC signer count; the block budget must cover the
-transaction budget. Zero verification-budget fields retain their documented
-legacy default mapping (16/400), not zero-cost verification.
+Only enforcement mode, one verification gas price, and emergency mode are
+mutable governance policy. Active/pending schedules are server-managed state,
+not extra freely settable knobs. ML-DSA-65, extension bounds and key-history
+retention are code constants. Network ID and the three delays are immutable.
 
-The auth-byte floor is calculated from the configured signer count and the
-largest supported protobuf entries: full ML-DSA-65 signatures, 1023-byte SDK
-bech32 input bound, maximum-width indices/key IDs/policy versions and envelope
-length prefixes. This is a conservative capacity bound, not a new address format.
+The single verification price defaults to 750 and is charged before each
+extension authorization, recovery authorization, or new-key proof. SDK-native
+account signatures retain the SDK price path (with the native 750 floor).
+Signature bytes, state access, classic signatures and message execution incur
+additional gas. No per-transaction/per-block verification-count parameter exists.
 
-Three verifications support registration/recovery with a protected fee payer,
-or rotation with protected owner and payer. Native ML-DSA multisig leaves also
-consume this budget: a minimum-budget network supports 2-of-2 and 3-of-3, not
-arbitrarily large multisigs. Default-budget testing includes 7-of-7. Before
-reducing budgets, inventory supported multisigs and multi-signer workflows.
+A governance change of verification price must leave room below current finite
+block max_gas for three verifications (two proofs plus a protected payer).
+This minimal sanity check is not a total-gas prediction or a count quota.
+Emergency/cancellation requests do not run it. Independent SDK consensus/auth
+parameter changes still need capacity checks; never interpret a successful
+parameter update as capacity acceptance.
 
-When governance changes PQC verification gas or the per-transaction budget,
-the conservative crypto envelope `max(signature_gas, proof_gas) * tx_budget`
-must be strictly below the **current** finite block gas cap. Unlimited block gas
-(`-1`) skips this comparison. This does not estimate total transaction gas or
-reserve a measured execution margin. Independent consensus/auth changes and
-custom genesis still require capacity review; no new block-time failure check
-is introduced. Cancellation and emergency-only policy changes remain available
-even if consensus gas was subsequently reduced.
+Fixed extension caps remain 8 entries and 64 KiB; independent raw-wire ceilings
+are 32 entries and 256 KiB. Raising SDK tx_sig_limit does not automatically raise
+the extension caps. Native ML-DSA multisigs have no additional PQCAuth quota;
+the SDK signature limit, gas and byte rules continue to apply. Tests exercise
+17 native leaves with an explicitly raised SDK signature limit.
 
-Before lowering consensus `max_gas` or changing auth signature limits, follow
-the [governance operations checklist](../../docs/PQCAUTH-ROLLOUT-PLAN.md#治理参数变更运维检查).
-It covers active and pending PQC policies, real transaction gas margins, and
-native multisig compatibility; a successful governance transaction alone is
-not a capacity acceptance test.
-
-These stricter bounds target the unactivated v1.1.0 candidate. Do not hot-swap
-this binary into an experimental PQC chain with now-invalid active/pending
-parameters; reset the isolated test chain or plan a separately reviewed migration.
+This is module state version 4. Reserved protobuf fields prevent number reuse,
+not migration. Do not hot-swap this binary into a version 1/2/3 PQC experiment.
+Use a fresh isolated chain or a separately reviewed migration. Production's
+supported source remains v1.0.1 before PQCAuth activation.
 
 ## Key management
 
@@ -221,9 +207,9 @@ claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
 | Enforcement | OPTIONAL (enrolled self-protected accounts still require PQC) |
 | Registration | OPEN |
 | Emergency mode | NORMAL |
-| Signature / proof verification gas | 750 each (SDK ML-DSA-65 baseline) |
-| Maximum PQC signers / extension bytes | 8 / 65,536 |
-| Maximum verifications per transaction / block | 16 / 400 |
+| Verification gas (one field) | 750 per crypto operation (SDK baseline) |
+| Fixed maximum PQC signers / extension bytes | 8 / 65,536 |
+| PQC verification-count quotas | None; SDK gas/byte/signature limits apply |
 | Retained key records per role | 16 |
 | Governance safety delay | 17,280 blocks (about 27 hours) |
 | Recovery delay | 107,520 blocks (about 7 days) |
@@ -243,10 +229,10 @@ See [approved launch settings](../../docs/PQCAUTH-LAUNCH-SETTINGS-20261102.md).
 Phase one rejects global `REQUIRED` in active/pending/genesis/governance
 parameters. Its enum number is reserved, never silently mapped to OPTIONAL.
 `REQUIRED_FOR_REGISTERED` remains available after the governance safety delay.
-Both verification prices have a 750 floor. They reference the pinned SDK
-constant, not the live x/auth parameter: changing x/auth governance prices does
-not automatically change PQCAuth prices. Explicit stored prices, including the
-former 250,000 values, remain unchanged until an authorized parameter update.
+The single verification price has a 750 floor and references the pinned SDK
+constant, not the live x/auth parameter. Changing x/auth prices does not
+automatically change PQCAuth's price. Old two-price state is not migrated by this
+candidate; explicit new-schema prices can be changed through governance.
 An ordinary protected send adds one 750-gas PQC authorization verification to
 the SDK account-signature, transaction-byte, store and message-execution costs;
 750 is not its total gas. Registration with signing and recovery keys has two
@@ -254,13 +240,10 @@ proof verifications (1,500 crypto gas before other costs).
 The CLI signs the PQC document, attaches its extension, then signs the complete
 transaction with the account key in DIRECT mode; offline bundles preserve the
 same ordering and binding. No signature check or domain changes with this price.
-The shared 400-verification block budget remains unchanged and can still be
-contended by valid native ML-DSA and PQCAuth traffic. Repricing is not an
-anti-spam or fair-inclusion guarantee. See the
-[gas alignment record](../../docs/PQCAUTH-GAS-ALIGNMENT-20261101.md) for tests,
-measurement boundaries and deployment requirements.
-Restrictive changes to verification limits and history retention wait for the
-safety delay; emergency pauses have their separately bounded fast path.
+There is no separate 400-verification block quota. Gas/byte limits constrain
+included work but do not guarantee fairness or bound all incoming RPC/P2P work.
+Price increases and stronger enforcement wait for the safety delay; emergency
+pauses retain the independently bounded fast path.
 
 `MsgUpdateParams.emergency_only` explicitly selects the operation:
 
@@ -276,7 +259,7 @@ When a non-emergency parameter bundle is already queued, an explicit emergency-o
 request may copy either the active or queued non-emergency fields. The server
 schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
 original restrictions and activation height. This does not activate
-REQUIRED_FOR_REGISTERED/budget reductions early. The queued emergency component
+REQUIRED_FOR_REGISTERED/gas increases early. The queued emergency component
 is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
 pause. Governance cannot supply the internal schedule or expiration directly.
 Until that H+1 activation, any full parameter update is rejected; submit the
@@ -297,8 +280,7 @@ its ordinary schedule. See the [same-block guard fix and execution regressions](
 
 Full updates retaining the active emergency mode retain its existing expiry; if
 an ordinary replacement activates after that expiry, its emergency component is
-NORMAL. Renewal requires `emergency_only: true`. Numeric cutoffs are disabled
-in phase one. A full update with a new emergency mode still has
+NORMAL. Renewal requires `emergency_only: true`. Numeric cutoff fields have been removed. A full update with a new emergency mode still has
 full-bundle semantics, including its applicable safety delay; use explicit
 emergency-only scope for a fast pause that must preserve an ordinary plan.
 
@@ -313,7 +295,7 @@ compatibility and regression coverage.
 During `PAUSE_PQC_TRANSACTIONS`, exactly one top-level `MsgRecoverKey` or
 `MsgCancelRecovery` may carry an authorization extension. This permits a protected
 independent payer to fund recovery without bypassing the owner's account signature,
-recovery signature, new-key proof, payer authentication or verification budgets.
+recovery signature, new-key proof, payer authentication or gas charging.
 It does not permit ordinary protected sends, message batches or nested lifecycle
 execution. This chain-level support does not add multi-signer CLI orchestration.
 See the [emergency fixes record](../../docs/PQCAUTH-EMERGENCY-FIXES-20261101.md).
@@ -329,13 +311,13 @@ Export/import preserves this ordering and permits retained keys below that maxim
 ## Application requirements and tests
 
 The app registers the module, store, services, canonical decoder, ordered Ante
-checks and proposal verification budgets, using the native SDK Feegrant module. Existing
+checks and default SDK proposal selection, using the native SDK Feegrant module. Existing
 SDK proposal gas/byte policy is preserved. The candidate upgrade requires the
 completed v1.0.0 archive state and activated v1.0.1 signing rules. It initializes
 OPTIONAL parameters and assigns an upgrade-specific network domain without
 scanning accounts, Authz grants or Feegrant allowances. No PQC delegation index
-is built or maintained. Internal module version 3 deliberately rejects older
-experimental PQC databases; it does not provide a migration from versions 1/2.
+is built or maintained. Internal module version 4 deliberately rejects older
+experimental PQC databases; it does not provide a migration from versions 1/2/3.
 Completed v1.0.0 and v1.0.1 remain recognized but must not be executed with this
 binary. Existing chains must complete v1.0.1 using its released binary first.
 
@@ -349,7 +331,7 @@ GOMAXPROCS=2 go test -mod=readonly -p 2 ./x/pqcauth/... ./app ./cmd/dorad/cmd
 ```
 
 App tests cover failed-message rollback with fees retained, nested authz
-routing, SDK-keyring enrollment and hybrid transfer/replay, proposal budgets,
+routing, SDK-keyring enrollment and hybrid transfer/replay, SDK gas/byte limits,
 and no-scan upgrade initialization. The earlier merged runtime passed remote repository
 tests, enabled simulations, a four-validator v1.0.0 -> v1.0.1 -> v1.1.0 upgrade,
 restarts, and the synthetic keyring lifecycle/outage rehearsal. See
@@ -365,8 +347,7 @@ security review and release approval remain outstanding.
 PQCAuth enrollment supports classical **single-key** accounts only. All
 composite public keys, including threshold accounts whose members are all
 ML-DSA, are currently classified as unsupported by PQCAuth. Ordinary SDK
-multisig transactions can use OPTIONAL mode, subject to SDK verification and
-PQC verification budgets. They cannot register an additional PQCAuth factor.
+multisig transactions can use OPTIONAL mode, subject to SDK signature-count, gas, byte and verification rules. They cannot register an additional PQCAuth factor.
 Global REQUIRED is disabled in phase one. Its reserved runtime semantics would
 reject these accounts, including all-ML-DSA multisigs. Re-enabling it requires a
 separately reviewed multisig/wallet/relayer migration policy, not a governance

@@ -19,7 +19,7 @@ func (k Keeper) CompactTerminalKeyHistory(
 	policy types.AccountPolicy,
 	retainPerRole uint32,
 ) error {
-	if retainPerRole == 0 || retainPerRole > types.AbsoluteMaxRetainedKeyRecordsPerRole {
+	if retainPerRole == 0 || retainPerRole > types.MaxRetainedKeyRecordsPerRole {
 		return fmt.Errorf("%w: terminal key retention is outside its supported bounds", types.ErrInvalidParams)
 	}
 	pinned := map[uint64]struct{}{}

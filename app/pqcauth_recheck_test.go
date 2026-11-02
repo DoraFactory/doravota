@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -248,8 +250,8 @@ func TestPQCAuthRecheckRequiresOrderedLifecycle(t *testing.T) {
 	}
 }
 
-// Bounded application benchmark: 200 sequential real CheckTx admissions and
-// three rechecks after empty commits. This is NOT a 5,000-entry CometBFT or
+// Bounded application benchmark: 200 (opt-in up to 5,000) real CheckTx admissions and
+// three rechecks after empty commits. This is NOT a CometBFT mempool or
 // multi-node workload, and has no hardware-specific timing pass threshold.
 func TestPQCAuthRecheckBoundedSevenSigners(t *testing.T) {
 	c := newPQCChain(t)
@@ -271,7 +273,14 @@ func TestPQCAuthRecheckBoundedSevenSigners(t *testing.T) {
 	for i, key := range keys {
 		msgs[i] = selectionSend(key, c.other)
 	}
-	const n = 200
+	n := 200
+	if value := os.Getenv("PQC_RECHECK_COUNT"); value != "" {
+		var err error
+		n, err = strconv.Atoi(value)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, n, 200)
+		require.LessOrEqual(t, n, 5000)
+	}
 	txs := make([][]byte, n)
 	for i := range txs {
 		offsets := make([]uint64, len(keys))
@@ -298,7 +307,7 @@ func TestPQCAuthRecheckBoundedSevenSigners(t *testing.T) {
 				}
 			}
 		}
-		t.Logf("mode=%s round=%d count=%d bytes=%d first_gas=%d elapsed=%s us_per_tx=%.1f", kind, round, n, len(txs[0]), baselineGas, time.Since(start), float64(time.Since(start).Microseconds())/n)
+		t.Logf("mode=%s round=%d count=%d bytes=%d first_gas=%d elapsed=%s us_per_tx=%.1f", kind, round, n, len(txs[0]), baselineGas, time.Since(start), float64(time.Since(start).Microseconds())/float64(n))
 		c.block(t, nil)
 	}
 	// Delivery still independently verifies all seven factors.

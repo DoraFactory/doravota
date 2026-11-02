@@ -10,26 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtensionAtCapacityByteFloor(t *testing.T) {
-	for _, count := range []uint32{2, 8, 32} {
-		p := types.DefaultParams()
-		p.MaxPqcSigners = count
-		p.MaxPqcAuthBytes = types.MinimumPQCAuthBytes(count)
-		p.MaxPqcVerificationsPerTx = max(count, types.MinimumMaxPQCVerificationsPerTx)
-		require.NoError(t, p.Validate())
+func TestFixedExtensionCaps(t *testing.T) {
+	p := types.DefaultParams()
+	for _, count := range []uint32{2, types.MaxPQCSigners, types.MaxPQCSigners + 1} {
 		ext := types.ExtensionPQCAuth{FormatVersion: types.FormatVersionV1}
 		for i := uint32(0); i < count; i++ {
 			e := validExtensionEntry()
-			e.Signer = strings.Repeat("x", types.MaxPQCSignerAddressBytes)
+			e.Signer = strings.Repeat("x", 1023)
 			e.SignerIndex, e.KeyId, e.PolicyVersion = math.MaxUint32-count+1+i, math.MaxUint64, math.MaxUint64
 			ext.Signatures = append(ext.Signatures, e)
 		}
 		tx := extensionOptionsTxStub{critical: []*codectypes.Any{encodedExtension(t, ext)}}
 		_, found, err := ExtractExtension(tx, p)
-		require.NoError(t, err, "maximum-width structure must fit the configured floor")
-		require.True(t, found)
-		p.MaxPqcAuthBytes--
-		_, _, err = ExtractExtension(tx, p)
-		require.ErrorContains(t, err, "exceeds size limit")
+		if count <= types.MaxPQCSigners {
+			require.NoError(t, err)
+			require.True(t, found)
+		} else {
+			require.ErrorContains(t, err, "too many PQC signer")
+		}
 	}
+	tx := extensionOptionsTxStub{critical: []*codectypes.Any{{TypeUrl: types.ExtensionPQCAuthTypeURL, Value: make([]byte, types.MaxPQCAuthBytes+1)}}}
+	_, _, err := ExtractExtension(tx, p)
+	require.ErrorContains(t, err, "exceeds size limit")
 }

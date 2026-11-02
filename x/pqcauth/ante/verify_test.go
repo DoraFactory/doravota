@@ -615,7 +615,7 @@ func TestSimulationWithoutExtensionConsumesRequiredSignatureGas(t *testing.T) {
 	require.True(t, called)
 	charges := gasMeter.chargesFor("simulated pqcauth signature verification")
 	require.Equal(t, []gasCharge{{
-		amount:     moduleKeeper.GetParams(ctx).EffectiveSignatureVerificationGas(),
+		amount:     moduleKeeper.GetParams(ctx).EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth signature verification",
 	}}, charges)
 
@@ -666,7 +666,7 @@ func TestSimulationSkipsPQCSignatureCryptoButDeliveryRejectsPlaceholder(t *testi
 	require.NoError(t, err)
 	charges := gasMeter.chargesFor("simulated pqcauth signature verification")
 	require.Equal(t, []gasCharge{{
-		amount:     moduleKeeper.GetParams(ctx).EffectiveSignatureVerificationGas(),
+		amount:     moduleKeeper.GetParams(ctx).EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth signature verification",
 	}}, charges)
 
@@ -725,11 +725,11 @@ func TestLifecycleSimulationChargesProofAndRequiredSignatureGas(t *testing.T) {
 	require.NoError(t, err)
 	params := moduleKeeper.GetParams(ctx)
 	require.Equal(t, []gasCharge{{
-		amount:     params.EffectiveProofVerificationGas(),
+		amount:     params.EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth key proof verification",
 	}}, gasMeter.chargesFor("simulated pqcauth key proof verification"))
 	require.Equal(t, []gasCharge{{
-		amount:     params.EffectiveSignatureVerificationGas(),
+		amount:     params.EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth signature verification",
 	}}, gasMeter.chargesFor("simulated pqcauth signature verification"))
 
@@ -806,11 +806,11 @@ func TestRecoverySimulationChargesProofsWithoutSubstitutedTransactionSignature(t
 	require.NoError(t, err)
 	params := moduleKeeper.GetParams(ctx)
 	require.Equal(t, []gasCharge{{
-		amount:     params.EffectiveProofVerificationGas(),
+		amount:     params.EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth key proof verification",
 	}}, gasMeter.chargesFor("simulated pqcauth key proof verification"))
 	require.Equal(t, []gasCharge{{
-		amount:     params.EffectiveProofVerificationGas(),
+		amount:     params.EffectiveVerificationGas(),
 		descriptor: "simulated pqcauth recovery signature verification",
 	}}, gasMeter.chargesFor("simulated pqcauth recovery signature verification"))
 	require.Empty(t, gasMeter.chargesFor("simulated pqcauth signature verification"))
@@ -957,7 +957,7 @@ func TestValidatedExtensionCacheIsBoundToExtensionOptions(t *testing.T) {
 func TestSelfEnforcementAndLifecycleCannotBeDisabledByGlobalOptionalMode(t *testing.T) {
 	selfPolicy := types.AccountPolicy{SelfEnforced: true}
 	require.True(t, pqcRequiredForClassicAccount(
-		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
+		types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
 		selfPolicy,
 		true,
 	))
@@ -992,11 +992,11 @@ func TestSelfEnforcementAndLifecycleCannotBeDisabledByGlobalOptionalMode(t *test
 	require.ErrorIs(t, err, types.ErrPQCRequired)
 }
 
-func TestRecoveryKeyRotationRequiresActivePQCWhenGlobalModeIsDisabled(t *testing.T) {
+func TestRecoveryKeyRotationRequiresActivePQCWhenGlobalModeIsOptional(t *testing.T) {
 	ctx, moduleKeeper, accountKeeper, txConfig, _ := setupAnteTest(t)
 	address := accountKeeper.account.GetAddress()
 	params := moduleKeeper.GetParams(ctx)
-	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_DISABLED
+	params.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
 
 	recoveryPublicKey, _, err := pqccrypto.GenerateMLDSA65Key(nil)
@@ -1115,7 +1115,6 @@ func TestAuthzNestedLifecycleMessageCannotInheritAnteAuthorization(t *testing.T)
 
 func TestRegisteredPolicyWithUnavailableSigningKeyFailsClosed(t *testing.T) {
 	for _, mode := range []types.EnforcementMode{
-		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
 		types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED,
 	} {

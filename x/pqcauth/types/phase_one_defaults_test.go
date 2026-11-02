@@ -6,46 +6,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPhaseOneOpenRegistrationParameters(t *testing.T) {
-	for _, mode := range []RegistrationMode{RegistrationMode_REGISTRATION_MODE_OPEN, RegistrationMode_REGISTRATION_MODE_UNSPECIFIED, RegistrationMode_REGISTRATION_MODE_CLOSED, RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY} {
-		for _, cutoff := range []uint64{0, 1, 1000} {
-			p := DefaultParams()
-			p.RegistrationMode, p.RegistrationCutoffHeight = mode, cutoff
-			valid := cutoff == 0 && (mode == RegistrationMode_REGISTRATION_MODE_OPEN || mode == RegistrationMode_REGISTRATION_MODE_UNSPECIFIED)
-			base := DefaultParams()
-			scheduled := p.AsScheduled()
-			base.Pending, base.PendingActivationHeight = &scheduled, 100
-			for _, err := range []error{p.Validate(), p.ValidateGovernanceUpdate(), ValidateGenesis(GenesisState{Params: p}), base.Validate(), ValidateGenesis(GenesisState{Params: base})} {
-				if valid {
-					require.NoError(t, err)
-				} else {
-					require.ErrorIs(t, err, ErrInvalidParams)
-				}
-			}
-			for _, h := range []int64{0, 99, 1000} {
-				for _, fresh := range []bool{false, true} {
-					err := CheckRegistrationAllowed(p, h, fresh)
-					if valid {
-						require.NoError(t, err)
-					} else {
-						require.ErrorIs(t, err, ErrRegistrationClosed)
-					}
-				}
-			}
-		}
-	}
-}
-
 func TestPhaseOneLaunchDelayDefaults(t *testing.T) {
 	p := DefaultParams()
 	require.NoError(t, p.Validate())
 	require.EqualValues(t, 107520, p.RecoveryDelayBlocks)
 	require.EqualValues(t, 46080, p.MaxEmergencyDurationBlocks)
 	require.EqualValues(t, 17280, p.GovernanceSafetyDelayBlocks)
-	require.EqualValues(t, 750, p.SignatureVerificationGas)
-	require.EqualValues(t, 750, p.ProofVerificationGas)
-	require.EqualValues(t, 400, p.MaxPqcVerificationsPerBlock)
-	require.EqualValues(t, 16, p.MaxPqcVerificationsPerTx)
+	require.EqualValues(t, 750, p.VerificationGas)
 	// Explicit experimental genesis values are not silently rewritten. Zero
 	// recovery delay retains the existing fallback-to-current-default rule.
 	p.RecoveryDelayBlocks, p.MaxEmergencyDurationBlocks = 17280, 17280

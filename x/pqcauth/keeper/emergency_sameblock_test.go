@@ -96,7 +96,7 @@ func TestEmergencyOnlySameBlockExplicitReplacement(t *testing.T) {
 				s := NewMsgServer(k)
 				if ordinary {
 					queued := base
-					queued.MaxPqcVerificationsPerBlock = 111
+					queued.VerificationGas = 1000
 					_, err := s.UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: queued})
 					require.NoError(t, err)
 				}
@@ -111,7 +111,7 @@ func TestEmergencyOnlySameBlockExplicitReplacement(t *testing.T) {
 				require.Equal(t, uint64(101), r.ActivationHeight)
 				if ordinary {
 					require.Equal(t, uint64(110), r.ResultingParams.PendingActivationHeight)
-					require.Equal(t, uint32(111), r.ResultingParams.Pending.MaxPqcVerificationsPerBlock)
+					require.Equal(t, uint64(1000), r.ResultingParams.Pending.VerificationGas)
 				}
 				active, err := k.NormalizeParams(ctx.WithBlockHeight(101))
 				require.NoError(t, err)

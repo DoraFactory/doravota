@@ -155,20 +155,20 @@ func TestPQCAuthProposalPreservesSequenceDependencies(t *testing.T) {
 	}
 	prepared, err := c.app.PrepareProposal(&abci.RequestPrepareProposal{Height: c.height + 1, Time: c.stamp.Add(time.Duration(c.height+1) * time.Second), MaxTxBytes: 1000000, Txs: txs})
 	require.NoError(t, err)
-	require.Equal(t, [][]byte{braw}, prepared.Txs)
+	require.Equal(t, txs, prepared.Txs)
 	accepted, err := c.app.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: prepared.Txs})
 	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, accepted.Status)
 	c.height++
 	res, err := c.app.FinalizeBlock(&abci.RequestFinalizeBlock{Height: c.height, Time: c.stamp.Add(time.Duration(c.height) * time.Second), Txs: prepared.Txs})
 	require.NoError(t, err)
-	require.Len(t, res.TxResults, 1)
-	require.Zero(t, res.TxResults[0].Code, res.TxResults[0].Log)
+	require.Len(t, res.TxResults, 3)
+	for _, r := range res.TxResults {
+		require.Zero(t, r.Code, r.Log)
+	}
 	_, err = c.app.Commit()
 	require.NoError(t, err)
 	c.block(t, nil)
-	// The omitted account's sequence remains zero; its registration can retry.
-	r := c.block(t, araw)
-	require.Zero(t, r.Code, r.Log)
-	t.Log("all 3 passed sequential CheckTx; omitted A and its dependent sequence, preserving prerequisites")
+	require.EqualValues(t, 2, c.app.AccountKeeper.GetAccount(c.app.NewContext(true), sdk.AccAddress(akey.PubKey().Address())).GetSequence())
+	t.Log("all three sequential transactions selected and executed without a PQC quota")
 }

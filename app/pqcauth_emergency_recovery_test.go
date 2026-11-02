@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	pqcante "github.com/DoraFactory/doravota/x/pqcauth/ante"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -104,16 +103,13 @@ func TestPQCAuthFullPauseProtectedRecoveryPayer(t *testing.T) {
 				require.NoError(t, err)
 			}
 			if !tc.omitFactor && tc.invalid == "" {
-				decoded, err := c.app.TxConfig().TxDecoder()(raw)
-				require.NoError(t, err)
-				ctx := c.app.NewContext(true).WithBlockHeight(c.height + 1)
-				inspection, err := pqcante.NewPQCVerificationBudgetTracker(c.app.AccountKeeper).Inspect(ctx, decoded, c.app.PQCAuthKeeper.GetParams(ctx).Effective(c.height+1))
+				gas, _, err := c.app.Simulate(raw)
 				require.NoError(t, err)
 				want := uint64(2)
 				if tc.protectedPayer {
 					want++
 				}
-				require.Equal(t, want, inspection.Cost.Total(), "recovery escape must retain payer and proof budget charges")
+				require.GreaterOrEqual(t, gas.GasUsed, want*pqctypes.DefaultVerificationGas, "recovery escape retains per-proof and payer verification gas")
 			}
 			check, err := c.app.CheckTx(&abci.RequestCheckTx{Tx: raw})
 			require.NoError(t, err)

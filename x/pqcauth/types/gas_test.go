@@ -19,12 +19,11 @@ func TestEstimateVerificationGas(t *testing.T) {
 
 func TestEstimateVerificationGasUsesSafeEffectiveDefaults(t *testing.T) {
 	params := DefaultParams()
-	params.SignatureVerificationGas = 1
-	params.ProofVerificationGas = math.MaxUint64
+	params.VerificationGas = math.MaxUint64
 	estimate, err := EstimateVerificationGas(params, 1, 1)
 	require.NoError(t, err)
-	require.Equal(t, DefaultSignatureVerificationGas, estimate.SignatureGas)
-	require.Equal(t, DefaultProofVerificationGas, estimate.ProofGas)
+	require.Equal(t, DefaultVerificationGas, estimate.SignatureGas)
+	require.Equal(t, DefaultVerificationGas, estimate.ProofGas)
 }
 
 func TestEstimateVerificationGasRejectsOverflow(t *testing.T) {
@@ -32,8 +31,7 @@ func TestEstimateVerificationGasRejectsOverflow(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidParams)
 
 	params := DefaultParams()
-	params.SignatureVerificationGas = AbsoluteMaxVerificationGas
-	params.ProofVerificationGas = AbsoluteMaxVerificationGas
+	params.VerificationGas = AbsoluteMaxVerificationGas
 	count := math.MaxUint64 / AbsoluteMaxVerificationGas
 	_, err = EstimateVerificationGas(params, count, count)
 	require.ErrorIs(t, err, ErrInvalidParams)

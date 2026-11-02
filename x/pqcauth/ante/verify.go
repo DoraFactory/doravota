@@ -252,7 +252,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 		verificationCount := len(preparedVerifications) + missingRequiredCount
 		for i := 0; i < verificationCount; i++ {
 			ctx.GasMeter().ConsumeGas(
-				params.EffectiveSignatureVerificationGas(),
+				params.EffectiveVerificationGas(),
 				"simulated pqcauth signature verification",
 			)
 		}
@@ -298,7 +298,7 @@ func (d VerifyPQCDecorator) AnteHandle(
 			return ctx, err
 		}
 		ctx.GasMeter().ConsumeGas(
-			params.EffectiveSignatureVerificationGas(),
+			params.EffectiveVerificationGas(),
 			"pqcauth transaction signature verification",
 		)
 		// CometBFT rechecks the same bytes already admitted by CheckTx(New).
@@ -354,8 +354,6 @@ func pqcRequiredForClassicAccount(
 		return true
 	}
 	switch mode {
-	case types.EnforcementMode_ENFORCEMENT_MODE_DISABLED:
-		return false
 	case types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL:
 		return false
 	case types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED:

@@ -15,7 +15,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthGovernanceEndBlockOrderingAndRollback \
  TestPQCAuthGovernanceEmergencyGuardAndResubmission \
  TestPQCAuthSignedGovernanceSubmissionVoteAndRollback \
- TestPQCAuthBoundedMixedBudgetAndRecovery \
+ TestPQCAuthMixedTrafficAndRecoveryWithoutQuota \
  TestPQCAuthBoundedInvalidAdmission \
  TestPQCAuthRecheckPreservesGasAndDelivery \
  TestPQCAuthRecheckDoesNotAuthenticateNewBytes \
@@ -27,17 +27,14 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthRegistrationRequiresDirect \
  TestPQCAuthOpenRegistrationCanRetryAfterMessageFailure \
  TestPQCAuthProposalPreservesSequenceDependencies \
- TestPQCAuthProposalBudgetKeepsIndependentTransactions \
- TestPQCAuthProposalParameterActivationDependencies \
- TestPQCAuthProposalParameterLimitDoesNotPoisonKeys \
  TestPQCAuthFreshClassicSDKDryRun \
  TestPQCAuthProtectedSimulationVersusDeliveryGas \
  TestPQCAuthVerificationPriceAppliedToSimulationAndDelivery \
  TestPQCAuthProofPriceAppliedToSimulationAndDelivery \
  TestPQCAuthFullPauseProtectedRecoveryPayer \
- TestPQCAuthGovernanceRejectsUnusableCapacity \
- TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer \
- TestPQCAuthNativeMultisigAtMinimumBudget \
+ TestPQCAuthLifecycleWithProtectedPayer \
+ TestPQCAuthNativeMultisigUsesSDKLimits \
+ TestSDKProposalPolicyWithoutBridgeOverrides \
  TestPQCAuthPhaseOnePreservesDelegationSemantics \
  TestPQCAuthPhaseOneDelegationCannotManageKeys \
  TestPQCAuthPhaseOneRecoveryPreservesDelegations \
@@ -48,9 +45,7 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthEmptyStateZeroHeightExport \
  TestPQCAuthRealFailedMessagesKeepSDKFeegrantSemantics \
  TestPQCAuthSDKKeyringRegistrationAndHybridTransfer \
- TestPQCAuthProposalBudgetsPreserveSDKGasPolicy \
- TestPQCAuthProposalRejectsFreshKeyBudgetPoisoning \
- TestPQCAuthFourApplicationProposalActivationBoundary \
+ TestPQCAuthProposalPreservesSDKGasPolicy \
  TestPQCAuthCandidateUpgradePreservesExistingFeegrants \
  TestVersionedUpgradeHandlerRegistration \
  TestUpgradeIdentityMatchesReleaseVersion \
@@ -80,17 +75,15 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestRecoveryEscapeRequiresSingleTopLevelMessage \
  TestFullPauseAllowsOnlyProtectedRecoveryEscapeExtension \
  TestPQCWireRejectsAmplificationBeforeDecode TestPQCWirePreflightBoundaries \
- TestBudgetSimulationPlaceholderIsolation \
- TestExtensionAtCapacityByteFloor \
+ TestFixedExtensionCaps \
  TestIndirectExecutionContainersRejectPQCAuthLifecycleMessages \
  TestIndirectExecutionInspectionRecursesAndPreservesOrdinaryMessages \
  TestIndirectExecutionInspectionFailsClosedOnMalformedContainer \
  TestAuthzNestedLifecycleMessageCannotInheritAnteAuthorization \
- TestBudgetRejectsFreshKeyPoisoning TestBudgetRejectsMalformedFreshKeyWithoutPanic \
  TestMultisigNativeGasFloor TestNestedMultisigNativeGasFloorAndHigherCost
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/keeper \
- TestPhaseOneRegistrationGovernanceRejected TestLaunchDefaultsEmergencyExpiryAndImmutableDelays \
+  TestLaunchDefaultsEmergencyExpiryAndImmutableDelays \
  TestPhaseOneRequiredGovernanceCannotWriteState TestRecheckKeyProofRetainsGas \
  TestEmergencyOnlyRejectsSameBlockFullUpdate \
  TestEmergencyOnlySameBlockExplicitReplacement \
@@ -110,13 +103,12 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestKeyHistoryRetentionBeyondDefaultPage TestCancelledRecoveryHistoryDoesNotBlockLaterRotation
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/types \
- TestPhaseOneOpenRegistrationParameters TestPhaseOneLaunchDelayDefaults \
+  TestPhaseOneLaunchDelayDefaults \
  TestPhaseOneRejectsGlobalRequired \
  TestEmergencyIntentWireJSONAndSignBytes \
  TestIndependentEmergencyValidationAndCodec \
  TestVerificationGasUsesSDKBaseline TestVerificationGasPreservesStoredPricesAndActivation \
- TestPhaseOneRejectsFreshRegistrationParameters \
- TestPQCParameterCapacityBounds TestPQCAuthByteFloorCoversMaximumEncoding TestPQCBlockGasCapacity
+   TestPQCVerificationPriceCapacity TestSimplifiedParamsReserveRemovedFields TestLegacyPricesCannotSilentlyInitializeNewSchema
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth \
  TestKeyHistoryOutOfOrderRetirementGenesisRoundTrip TestIndependentEmergencyExportImport

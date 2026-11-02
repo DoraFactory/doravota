@@ -45,13 +45,6 @@ func (m msgServer) RegisterKey(
 	if err := m.RequireClassicAccount(ctx, owner); err != nil {
 		return nil, err
 	}
-	if err := types.CheckRegistrationAllowed(
-		params,
-		ctx.BlockHeight(),
-		execution.IsFreshRegistrationCandidate(ctx, msg),
-	); err != nil {
-		return nil, err
-	}
 	if _, found := m.GetAccountPolicy(ctx, owner); found {
 		return nil, types.ErrAlreadyRegistered
 	}
@@ -214,7 +207,7 @@ func (m msgServer) RotateKey(
 		ctx,
 		owner,
 		policy,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+		types.MaxRetainedKeyRecordsPerRole,
 	); err != nil {
 		return nil, err
 	}
@@ -323,7 +316,7 @@ func (m msgServer) RotateRecoveryKey(
 		ctx,
 		owner,
 		policy,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+		types.MaxRetainedKeyRecordsPerRole,
 	); err != nil {
 		return nil, err
 	}
@@ -441,7 +434,7 @@ func (m msgServer) RevokeKey(
 		ctx,
 		owner,
 		policy,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+		types.MaxRetainedKeyRecordsPerRole,
 	); err != nil {
 		return nil, err
 	}
@@ -558,7 +551,7 @@ func (m msgServer) RecoverKey(
 		ctx,
 		owner,
 		policy,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+		types.MaxRetainedKeyRecordsPerRole,
 	); err != nil {
 		return nil, err
 	}
@@ -632,7 +625,7 @@ func (m msgServer) CancelRecovery(
 		ctx,
 		owner,
 		policy,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
+		types.MaxRetainedKeyRecordsPerRole,
 	); err != nil {
 		return nil, err
 	}
@@ -692,13 +685,6 @@ func (m msgServer) UpdateParams(
 	if current.PendingEmergency != nil {
 		return nil, types.ErrInvalidParams.Wrap("wait for the H+1 emergency activation before replacing other parameters")
 	}
-	lockedCutoff := current.RegistrationCutoffHeight
-	if lockedCutoff == 0 && current.Pending != nil {
-		lockedCutoff = current.Pending.RegistrationCutoffHeight
-	}
-	if lockedCutoff != 0 && requested.RegistrationCutoffHeight != lockedCutoff {
-		return nil, types.ErrInvalidParams.Wrap("registration cutoff is irreversible once scheduled or active")
-	}
 	var effectiveHeight uint64
 	currentScheduled := current.AsScheduled()
 	requestedScheduled := requested.AsScheduled()
@@ -707,11 +693,6 @@ func (m msgServer) UpdateParams(
 	if requestedScheduled.EmergencyMode == currentScheduled.EmergencyMode {
 		requestedScheduled.EmergencyExpiresHeight = currentScheduled.EmergencyExpiresHeight
 	}
-	if requestedScheduled.RegistrationMode < currentScheduled.RegistrationMode {
-		return nil, types.ErrInvalidParams.Wrap(
-			"registration mode cannot be relaxed after activation",
-		)
-	}
 	if currentScheduled.Equal(requestedScheduled) {
 		// A proposal equal to the active state is an explicit cancellation of a
 		// future schedule. This lets governance defuse a queued restrictive
@@ -719,14 +700,11 @@ func (m msgServer) UpdateParams(
 		current.Pending = nil
 		current.PendingActivationHeight = 0
 	} else {
-		// Check changed verification capacity against CURRENT block gas, never
-		// by failing BeginBlock. Do not block cancellation or emergency-only
-		// policy changes after an independent consensus gas reduction.
-		if requested.EffectiveSignatureVerificationGas() != current.EffectiveSignatureVerificationGas() ||
-			requested.EffectiveProofVerificationGas() != current.EffectiveProofVerificationGas() ||
-			requested.EffectiveMaxPQCVerificationsPerTx() != current.EffectiveMaxPQCVerificationsPerTx() {
+		// A price update must leave room for registration/recovery proofs.
+		// Emergency and cancellation remain available after an independent gas cut.
+		if requested.VerificationGas != current.VerificationGas {
 			if block := ctx.ConsensusParams().Block; block != nil {
-				if err := requested.ValidateBlockGasCapacity(block.MaxGas); err != nil {
+				if err := requested.ValidateVerificationGasCapacity(block.MaxGas); err != nil {
 					return nil, err
 				}
 			}
@@ -739,15 +717,6 @@ func (m msgServer) UpdateParams(
 			return nil, types.ErrInvalidParams.Wrap("parameter activation height overflow")
 		}
 		effectiveHeight = uint64(ctx.BlockHeight()) + delay
-		if current.RegistrationCutoffHeight == 0 &&
-			requestedScheduled.RegistrationCutoffHeight != 0 &&
-			requestedScheduled.RegistrationCutoffHeight <= effectiveHeight {
-			return nil, types.ErrInvalidParams.Wrapf(
-				"registration cutoff height %d must be after parameter activation height %d",
-				requestedScheduled.RegistrationCutoffHeight,
-				effectiveHeight,
-			)
-		}
 		if requestedScheduled.EmergencyMode != types.EmergencyMode_EMERGENCY_MODE_NORMAL &&
 			requestedScheduled.EmergencyMode != currentScheduled.EmergencyMode {
 			if effectiveHeight > math.MaxUint64-current.MaxEmergencyDurationBlocks {
@@ -776,29 +745,8 @@ func (m msgServer) UpdateParams(
 }
 
 func requiresGovernanceSafetyDelay(current, requested types.ScheduledParams) bool {
-	if requested.EnforcementMode > current.EnforcementMode ||
-		requested.RegistrationMode > current.RegistrationMode ||
-		(current.RegistrationCutoffHeight == 0 && requested.RegistrationCutoffHeight != 0) ||
-		requested.SignatureVerificationGas > current.SignatureVerificationGas ||
-		requested.ProofVerificationGas > current.ProofVerificationGas ||
-		requested.MaxPqcSigners < current.MaxPqcSigners ||
-		requested.MaxPqcAuthBytes < current.MaxPqcAuthBytes ||
-		requested.MaxRetainedKeyRecordsPerRole < current.MaxRetainedKeyRecordsPerRole ||
-		requested.MaxPqcVerificationsPerTx < current.MaxPqcVerificationsPerTx ||
-		requested.MaxPqcVerificationsPerBlock < current.MaxPqcVerificationsPerBlock {
-		return true
-	}
-
-	allowed := make(map[types.Algorithm]struct{}, len(requested.AllowedAlgorithms))
-	for _, algorithm := range requested.AllowedAlgorithms {
-		allowed[algorithm] = struct{}{}
-	}
-	for _, algorithm := range current.AllowedAlgorithms {
-		if _, found := allowed[algorithm]; !found {
-			return true
-		}
-	}
-	return false
+	return requested.EnforcementMode > current.EnforcementMode ||
+		requested.VerificationGas > current.VerificationGas
 }
 
 func ensureKeyChangeAllowed(params types.Params) error {
@@ -868,7 +816,7 @@ func VerifyKeyProof(
 	if err != nil {
 		return err
 	}
-	ctx.GasMeter().ConsumeGas(params.EffectiveProofVerificationGas(), "pqcauth key proof verification")
+	ctx.GasMeter().ConsumeGas(params.EffectiveVerificationGas(), "pqcauth key proof verification")
 	// Recheck is a trusted local admission mode, not a transaction flag.
 	// Ordered owner sequences and the lifecycle checks protect the current
 	// policy/key binding. Review this assumption before enabling unordered

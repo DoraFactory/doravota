@@ -64,7 +64,7 @@ func TestAppModuleBasicWiringAndGenesisValidation(t *testing.T) {
 func TestAppModuleLifecycleAndSimulationNoops(t *testing.T) {
 	ctx, moduleKeeper := setupGenesisTest(t, 10)
 	appModule := NewAppModule(moduleKeeper)
-	require.Equal(t, uint64(3), appModule.ConsensusVersion())
+	require.Equal(t, uint64(4), appModule.ConsensusVersion())
 
 	cdc := moduleKeeper.Codec().(*codec.ProtoCodec)
 	genesis := types.DefaultGenesisState()

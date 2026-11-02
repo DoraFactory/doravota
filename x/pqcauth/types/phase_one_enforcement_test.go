@@ -8,6 +8,11 @@ import (
 
 func TestPhaseOneRejectsGlobalRequired(t *testing.T) {
 	p := DefaultParams()
+	p.EnforcementMode = EnforcementMode_ENFORCEMENT_MODE_DISABLED
+	require.ErrorIs(t, p.Validate(), ErrInvalidParams)
+	require.ErrorIs(t, p.ValidateGovernanceUpdate(), ErrInvalidParams)
+	require.ErrorIs(t, ValidateGenesis(GenesisState{Params: p}), ErrInvalidParams)
+
 	p.EnforcementMode = EnforcementMode_ENFORCEMENT_MODE_REQUIRED
 	require.ErrorIs(t, p.Validate(), ErrInvalidParams)
 	require.ErrorIs(t, p.ValidateGovernanceUpdate(), ErrInvalidParams)
@@ -19,7 +24,7 @@ func TestPhaseOneRejectsGlobalRequired(t *testing.T) {
 	require.ErrorIs(t, ValidateGenesis(GenesisState{Params: base}), ErrInvalidParams)
 	// The reserved enum must not silently normalize into an allowed mode.
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_REQUIRED, base.Effective(100).EnforcementMode)
-	for _, mode := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_DISABLED, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED} {
+	for _, mode := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED} {
 		p.EnforcementMode = mode
 		require.NoError(t, p.Validate())
 	}

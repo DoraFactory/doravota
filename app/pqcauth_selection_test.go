@@ -6,15 +6,11 @@ import (
 	"time"
 
 	pqcclient "github.com/DoraFactory/doravota/x/pqcauth/client"
-	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	sdktx "github.com/cosmos/cosmos-sdk/client/tx"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
@@ -117,114 +113,4 @@ func selectionExecute(t *testing.T, c *pqcChain, candidates, want [][]byte) {
 	c.height = h
 	c.block(t, nil)
 	require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
-}
-
-func TestPQCAuthProposalBudgetKeepsIndependentTransactions(t *testing.T) {
-	for _, separatePayer := range []bool{false, true} {
-		name := "multi-signer"
-		if separatePayer {
-			name = "independent-fee-payer"
-		}
-		t.Run(name, func(t *testing.T) {
-			c := newPQCChain(t, minimumCapacityParams())
-			native, err := mldsa65.GenPrivKey()
-			require.NoError(t, err)
-			fund := banktypes.NewMsgSend(sdk.AccAddress(c.key.PubKey().Address()), sdk.AccAddress(native.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 100000)))
-			r := c.block(t, c.tx(t, c.key, nil, fund))
-			require.Zero(t, r.Code, r.Log)
-			var txs [][]byte
-			for seq := uint64(0); seq < 4; seq++ {
-				txs = append(txs, selectionTx(t, c, []cryptotypes.PrivKey{&native}, nil, []uint64{seq}, nil, selectionSend(&native, c.other)))
-			}
-			// Fourth native tx exceeds budget 3. Its dependent co-signed tx
-			// propagates the omission to the other account, without blocking D.
-			msgs := []sdk.Msg{selectionSend(&native, c.other)}
-			var payer sdk.AccAddress
-			if separatePayer {
-				payer = sdk.AccAddress(c.key.PubKey().Address())
-			} else {
-				msgs = append(msgs, selectionSend(c.key, c.other))
-			}
-			txs = append(txs, selectionTx(t, c, []cryptotypes.PrivKey{&native, c.key}, nil, []uint64{4, 0}, payer, msgs...))
-			txs = append(txs, selectionTx(t, c, []cryptotypes.PrivKey{c.key}, nil, []uint64{1}, nil, selectionSend(c.key, c.other)))
-			plain := selectionTx(t, c, []cryptotypes.PrivKey{c.other}, nil, []uint64{0}, nil, selectionSend(c.other, c.key))
-			txs = append(txs, plain)
-			selectionCheck(t, c, txs)
-			want := append(append([][]byte{}, txs[:3]...), plain)
-			selectionExecute(t, c, txs, want)
-			t.Log("all candidates passed sequential CheckTx; independent work executed after exhausted PQC budget")
-		})
-	}
-}
-
-func TestPQCAuthProposalParameterActivationDependencies(t *testing.T) {
-	for _, lowerBytes := range []bool{false, true} {
-		for _, separatePayer := range []bool{false, true} {
-			name := "signer-limit"
-			if lowerBytes {
-				name = "byte-and-signer-limit"
-			}
-			if separatePayer {
-				name += "/fee-payer"
-			} else {
-				name += "/multi-signer"
-			}
-			t.Run(name, func(t *testing.T) {
-				p := pqctypes.DefaultParams()
-				p.GovernanceSafetyDelayBlocks = 2
-				c := newPQCChain(t, p)
-				first, second, third, independent := c.key, c.other, secp256k1.GenPrivKey(), secp256k1.GenPrivKey()
-				for _, key := range []*secp256k1.PrivKey{third, independent} {
-					fund := banktypes.NewMsgSend(sdk.AccAddress(first.PubKey().Address()), sdk.AccAddress(key.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 100000)))
-					r := c.block(t, c.tx(t, first, nil, fund))
-					require.Zero(t, r.Code, r.Log)
-				}
-				keys := []cryptotypes.PrivKey{first, second, third}
-				var factors []pqcclient.PQCSigner
-				for _, key := range []*secp256k1.PrivKey{first, second, third} {
-					c.key = key
-					factor, _ := reviewEnroll(t, c)
-					factors = append(factors, factor)
-				}
-				c.key = first
-				ctx := c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
-				requested := c.app.PQCAuthKeeper.GetParams(ctx)
-				requested.MaxPqcSigners = 2
-				if lowerBytes {
-					requested.MaxPqcAuthBytes = pqctypes.MinimumPQCAuthBytes(2)
-				}
-				scheduled, err := pqckeeper.NewMsgServer(c.app.PQCAuthKeeper).UpdateParams(ctx, &pqctypes.MsgUpdateParams{Authority: c.app.PQCAuthKeeper.Authority(), Params: requested})
-				require.NoError(t, err)
-				c.app.SimWriteState()
-				for uint64(c.height) < scheduled.ActivationHeight-1 {
-					c.block(t, nil)
-				}
-				msgs := []sdk.Msg{selectionSend(first, independent), selectionSend(second, independent)}
-				var payer sdk.AccAddress
-				if separatePayer {
-					payer = sdk.AccAddress(third.PubKey().Address())
-				} else {
-					msgs = append(msgs, selectionSend(third, independent))
-				}
-				head := selectionTx(t, c, keys, factors, []uint64{0, 0, 0}, payer, msgs...)
-				dependent := selectionTx(t, c, []cryptotypes.PrivKey{first}, factors[:1], []uint64{1}, nil, selectionSend(first, independent))
-				payerTail := selectionTx(t, c, []cryptotypes.PrivKey{third}, factors[2:], []uint64{1}, nil, selectionSend(third, independent))
-				plain := selectionTx(t, c, []cryptotypes.PrivKey{independent}, nil, []uint64{0}, nil, selectionSend(independent, first))
-				txs := [][]byte{head, dependent, payerTail, plain}
-				selectionCheck(t, c, txs)
-				old, err := c.app.PrepareProposal(&abci.RequestPrepareProposal{Height: c.height, MaxTxBytes: 1_000_000, Txs: txs})
-				require.NoError(t, err)
-				require.Equal(t, txs, old.Txs)
-				strict, err := c.app.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: txs})
-				require.NoError(t, err)
-				require.Equal(t, abci.ResponseProcessProposal_REJECT, strict.Status)
-				selectionExecute(t, c, txs, [][]byte{plain})
-				// The omitted accounts can re-sign at their still-current sequence.
-				retry := selectionTx(t, c, []cryptotypes.PrivKey{first}, factors[:1], []uint64{0}, nil, selectionSend(first, independent))
-				r := c.block(t, retry)
-				require.Zero(t, r.Code, r.Log)
-				t.Log("real old-height CheckTx passed; new-height selection removed head and all sequence dependants, kept independent transfer")
-			})
-		}
-	}
 }

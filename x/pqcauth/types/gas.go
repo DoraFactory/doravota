@@ -26,7 +26,7 @@ func EstimateVerificationGas(
 ) (VerificationGasEstimate, error) {
 	signatureHigh, signatureGas := bits.Mul64(
 		signatureVerifications,
-		params.EffectiveSignatureVerificationGas(),
+		params.EffectiveVerificationGas(),
 	)
 	if signatureHigh != 0 {
 		return VerificationGasEstimate{}, fmt.Errorf(
@@ -37,7 +37,7 @@ func EstimateVerificationGas(
 
 	proofHigh, proofGas := bits.Mul64(
 		proofVerifications,
-		params.EffectiveProofVerificationGas(),
+		params.EffectiveVerificationGas(),
 	)
 	if proofHigh != 0 {
 		return VerificationGasEstimate{}, fmt.Errorf(

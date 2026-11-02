@@ -215,21 +215,18 @@ func TestPQCAuthSDKKeyringRegistrationAndHybridTransfer(t *testing.T) {
 	require.EqualValues(t, 1000007, a.BankKeeper.GetBalance(a.NewContext(true), recipient, sdk.DefaultBondDenom).Amount.Int64())
 }
 
-func TestPQCAuthProposalBudgetsPreserveSDKGasPolicy(t *testing.T) {
+func TestPQCAuthProposalPreservesSDKGasPolicy(t *testing.T) {
 	c := newPQCChain(t)
 	a := c.app
 	ctx := a.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
 	params := a.PQCAuthKeeper.GetParams(ctx)
-	params.MaxPqcSigners = pqctypes.MinimumMaxPQCSigners
-	params.MaxPqcVerificationsPerBlock = pqctypes.MinimumMaxPQCVerificationsPerTx
-	params.MaxPqcVerificationsPerTx = pqctypes.MinimumMaxPQCVerificationsPerTx
 	require.NoError(t, a.PQCAuthKeeper.SetParams(ctx, params))
 	a.SimWriteState()
 	// Structurally valid native ML-DSA signatures cost one verification each.
 	// Existing SDK NoOp mempool policy does not execute Ante in proposal checks.
 	key, err := mldsa65.GenPrivKey()
 	require.NoError(t, err)
-	txs := make([][]byte, params.MaxPqcVerificationsPerBlock+1)
+	txs := make([][]byte, 401)
 	for i := range txs {
 		b := a.TxConfig().NewTxBuilder()
 		require.NoError(t, b.SetMsgs(banktypes.NewMsgSend(sdk.AccAddress(key.PubKey().Address()), sdk.AccAddress(c.key.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1)))))
@@ -238,12 +235,12 @@ func TestPQCAuthProposalBudgetsPreserveSDKGasPolicy(t *testing.T) {
 		txs[i], err = a.TxConfig().TxEncoder()(b.GetTx())
 		require.NoError(t, err)
 	}
-	prepared, err := a.PrepareProposal(&abci.RequestPrepareProposal{Height: c.height + 1, MaxTxBytes: 1000000, Txs: txs})
+	prepared, err := a.PrepareProposal(&abci.RequestPrepareProposal{Height: c.height + 1, MaxTxBytes: 10_000_000, Txs: txs})
 	require.NoError(t, err)
-	require.Len(t, prepared.Txs, int(params.MaxPqcVerificationsPerBlock))
+	require.Len(t, prepared.Txs, 401)
 	rejected, err := a.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: txs})
 	require.NoError(t, err)
-	require.Equal(t, abci.ResponseProcessProposal_REJECT, rejected.Status)
+	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, rejected.Status)
 	accepted, err := a.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: prepared.Txs})
 	require.NoError(t, err)
 	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, accepted.Status)
@@ -269,8 +266,6 @@ func TestPQCAuthCandidateUpgradePreservesExistingFeegrants(t *testing.T) {
 	require.NoError(t, err)
 	params := a.PQCAuthKeeper.GetParams(ctx)
 	require.Equal(t, pqctypes.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EnforcementMode)
-	require.Equal(t, pqctypes.RegistrationMode_REGISTRATION_MODE_OPEN, params.RegistrationMode)
-	require.Zero(t, params.RegistrationCutoffHeight)
 	require.EqualValues(t, 107520, params.RecoveryDelayBlocks)
 	require.EqualValues(t, 46080, params.MaxEmergencyDurationBlocks)
 	require.EqualValues(t, 17280, params.GovernanceSafetyDelayBlocks)

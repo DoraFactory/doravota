@@ -107,10 +107,11 @@ func (am AppModule) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) json.Raw
 	return cdc.MustMarshalJSON(ExportGenesis(ctx, am.keeper))
 }
 
-// Version 3 is the signature-only candidate. Earlier experimental versions
+// Version 4 removes experimental budgets and retires their parameter fields.
+// Earlier experimental versions
 // included delegated-capability indexes and must not be silently reused.
 // Production activation initializes a new module from the v1.0.1 baseline.
-func (AppModule) ConsensusVersion() uint64 { return 3 }
+func (AppModule) ConsensusVersion() uint64 { return 4 }
 func (am AppModule) BeginBlock(ctx context.Context) error {
 	_, err := am.keeper.NormalizeParams(sdk.UnwrapSDKContext(ctx))
 	return err

@@ -10,7 +10,7 @@ func emergencyScheduleFixture() Params {
 	p := DefaultParams()
 	p.MaxEmergencyDurationBlocks = 20
 	pending := p.AsScheduled()
-	pending.MaxPqcVerificationsPerBlock = 111
+	pending.VerificationGas = 1000
 	pending.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	pending.EmergencyExpiresHeight = 122
 	p.Pending = &pending

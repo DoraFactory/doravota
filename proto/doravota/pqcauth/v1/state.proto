@@ -30,16 +30,6 @@ enum EmergencyMode {
   EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS = 3;
 }
 
-// RegistrationMode controls which classic accounts may bootstrap pqcauth.
-// Phase one supports OPEN -> CLOSED. FRESH_ACCOUNTS_ONLY retains its wire
-// number for compatibility but is rejected until safe enrollment retry exists.
-enum RegistrationMode {
-  REGISTRATION_MODE_UNSPECIFIED = 0;
-  REGISTRATION_MODE_OPEN = 1;
-  REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY = 2;
-  REGISTRATION_MODE_CLOSED = 3;
-}
-
 // KeyRole separates transaction-signing keys from recovery keys.
 enum KeyRole {
   KEY_ROLE_UNSPECIFIED = 0;
@@ -69,51 +59,25 @@ enum PolicyChangeKind {
 
 // Params are bounded consensus parameters for the pqcauth module.
 message Params {
+  reserved 3, 4, 5, 6, 7, 8, 9, 16, 18, 19;
+  reserved "allowed_algorithms", "signature_verification_gas", "proof_verification_gas",
+      "max_pqc_signers", "max_pqc_auth_bytes", "max_retained_key_records_per_role",
+      "registration_cutoff_height", "registration_mode",
+      "max_pqc_verifications_per_tx", "max_pqc_verifications_per_block";
   EnforcementMode enforcement_mode = 1;
   bytes network_id = 2;
-  repeated Algorithm allowed_algorithms = 3;
-  uint64 signature_verification_gas = 4;
-  uint64 proof_verification_gas = 5;
-  uint32 max_pqc_signers = 6;
-  uint32 max_pqc_auth_bytes = 7;
-  // Maximum number of complete terminal key records retained per role and
-  // account. Current and pending policy keys are pinned and never count toward
-  // this limit. Older terminal records are committed into AccountKeyHistory.
-  uint32 max_retained_key_records_per_role = 8;
-  // Legacy compatibility gate. Once reached it behaves as registration_mode
-  // CLOSED. New deployments should keep this zero and use registration_mode.
-  uint64 registration_cutoff_height = 9;
   EmergencyMode emergency_mode = 10;
   ScheduledParams pending = 11;
   uint64 pending_activation_height = 12;
-  // Minimum notice period for governance changes that can make existing
-  // transactions invalid. This launch parameter is immutable after genesis.
+  // Immutable launch settings, measured in blocks.
   uint64 governance_safety_delay_blocks = 13;
-  // Maximum lifetime of either emergency pause. This launch parameter is
-  // immutable after genesis and prevents an indefinite governance freeze.
   uint64 max_emergency_duration_blocks = 14;
-  // Exclusive height at which the active emergency mode automatically returns
-  // to NORMAL. Zero is required while emergency_mode is NORMAL.
+  // Exclusive expiration height; assigned by the module, not governance.
   uint64 emergency_expires_height = 15;
-  // Controls classic-account self-registration. Native ML-DSA accounts never
-  // register pqcauth because their SDK signature already provides PQ safety.
-  RegistrationMode registration_mode = 16;
-  // Immutable delay between accepting a recovery request and activating its
-  // replacement signing key. It must leave at least one complete block in
-  // which the current signing key can cancel an unauthorized request.
   uint64 recovery_delay_blocks = 17;
-  // Maximum number of expensive post-quantum signature/proof verifications a
-  // single transaction may request. Zero in legacy state maps to the protocol
-  // default.
-  uint32 max_pqc_verifications_per_tx = 18;
-  // Maximum aggregate number of expensive post-quantum signature/proof
-  // verifications admitted into one proposal. It includes native SDK ML-DSA
-  // signatures, pqcauth signatures, lifecycle proofs, and recovery signatures.
-  // Zero in legacy state maps to the protocol default.
-  uint32 max_pqc_verifications_per_block = 19;
-  // H+1 emergency-only update while a different parameter bundle is pending.
-  // Other pending parameters retain their original activation height.
   EmergencySchedule pending_emergency = 20;
+  // Gas charged for EACH ML-DSA authorization, key proof or recovery signature.
+  uint64 verification_gas = 21;
 }
 
 message EmergencySchedule {
@@ -125,23 +89,15 @@ message EmergencySchedule {
 // ScheduledParams contains every mutable, consensus-sensitive parameter. The
 // complete bundle activates atomically at pending_activation_height.
 message ScheduledParams {
+  reserved 2, 3, 4, 5, 6, 7, 8, 11, 12, 13;
+  reserved "allowed_algorithms", "signature_verification_gas", "proof_verification_gas",
+      "max_pqc_signers", "max_pqc_auth_bytes", "max_retained_key_records_per_role",
+      "registration_cutoff_height", "registration_mode",
+      "max_pqc_verifications_per_tx", "max_pqc_verifications_per_block";
   EnforcementMode enforcement_mode = 1;
-  repeated Algorithm allowed_algorithms = 2;
-  uint64 signature_verification_gas = 3;
-  uint64 proof_verification_gas = 4;
-  uint32 max_pqc_signers = 5;
-  uint32 max_pqc_auth_bytes = 6;
-  // Scheduled replacement for terminal key-record retention per role.
-  uint32 max_retained_key_records_per_role = 7;
-  // Scheduled legacy cutoff; see Params.registration_cutoff_height.
-  uint64 registration_cutoff_height = 8;
   EmergencyMode emergency_mode = 9;
-  // Computed by the module when an emergency is scheduled. Governance callers
-  // cannot choose or extend this value directly.
   uint64 emergency_expires_height = 10;
-  RegistrationMode registration_mode = 11;
-  uint32 max_pqc_verifications_per_tx = 12;
-  uint32 max_pqc_verifications_per_block = 13;
+  uint64 verification_gas = 14;
 }
 
 // PQCKeyRecord is an append-only key record. inactive_from_height is exclusive;

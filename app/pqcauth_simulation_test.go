@@ -47,7 +47,8 @@ func TestPQCAuthFreshClassicSDKDryRun(t *testing.T) {
 	require.NotZero(t, check.Code, "the simulation placeholder must not be accepted as a real signature")
 	decision, err := c.app.ProcessProposal(&abci.RequestProcessProposal{Height: c.height + 1, Txs: [][]byte{raw}})
 	require.NoError(t, err)
-	require.Equal(t, abci.ResponseProcessProposal_REJECT, decision.Status)
+	// SDK NoOp ProcessProposal does not authenticate; FinalizeBlock below must reject.
+	require.Equal(t, abci.ResponseProcessProposal_ACCEPT, decision.Status)
 	result := c.block(t, raw)
 	require.NotZero(t, result.Code)
 	require.Nil(t, c.app.AccountKeeper.GetAccount(c.app.NewContext(true), owner).GetPubKey())
@@ -82,7 +83,7 @@ func TestPQCAuthVerificationPriceAppliedToSimulationAndDelivery(t *testing.T) {
 	for _, price := range []uint64{750, 751, 250_000} {
 		t.Run(fmt.Sprint(price), func(t *testing.T) {
 			p := pqctypes.DefaultParams()
-			p.SignatureVerificationGas, p.ProofVerificationGas = price, price
+			p.VerificationGas = price
 			c := newPQCChain(t, p)
 			factor, _ := reviewEnroll(t, c)
 			msg := selectionSend(c.key, c.other)
@@ -116,7 +117,7 @@ func TestPQCAuthProofPriceAppliedToSimulationAndDelivery(t *testing.T) {
 	for _, price := range []uint64{750, 751, 250_000} {
 		t.Run(fmt.Sprint(price), func(t *testing.T) {
 			p := pqctypes.DefaultParams()
-			p.ProofVerificationGas = price
+			p.VerificationGas = price
 			c := newPQCChain(t, p)
 			msg, _ := auditRegister(t, c)
 			raw := c.tx(t, c.key, nil, msg)

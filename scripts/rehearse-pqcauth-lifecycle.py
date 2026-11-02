@@ -3,7 +3,7 @@
 
 Requires a NEW work directory and a locally executable candidate binary.
 Preserves logs/receipts on failure and stops only processes this script started.
-Shortened recovery delay and reduced PQC budgets are test-only genesis settings.
+The shortened recovery delay is a test-only genesis setting. No PQC quotas.
 """
 import argparse
 import concurrent.futures
@@ -144,8 +144,7 @@ class Rehearsal:
         genesis_path = self.root / "node0/config/genesis.json"
         genesis = json.loads(genesis_path.read_text())
         params = genesis["app_state"]["pqcauth"]["params"]
-        params.update(recovery_delay_blocks="12", max_pqc_signers=4, max_pqc_verifications_per_tx=4,
-                      max_pqc_verifications_per_block=4)
+        params.update(recovery_delay_blocks="12")
         genesis_path.write_text(json.dumps(genesis))
         self.save("test-only-params", params)
         for address in self.addresses.values():
@@ -320,8 +319,7 @@ class Rehearsal:
             if record["operation"].startswith("load-") and "-native-" in record["operation"]:
                 height = record["height"]
                 native_per_height[height] = native_per_height.get(height, 0) + 1
-        assert all(count <= 4 for count in native_per_height.values()), native_per_height
-        self.save("native-budget-counts", native_per_height)
+        self.save("native-inclusion-counts", native_per_height)
 
     def history_churn(self):
         # Keep key 6 active while newer cancelled recovery keys exceed the

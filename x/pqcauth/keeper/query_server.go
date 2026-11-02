@@ -34,9 +34,6 @@ func (q QueryServer) Params(
 		Params:                   params,
 		EffectiveEnforcementMode: params.EnforcementMode,
 		EffectiveEmergencyMode:   params.EmergencyMode,
-		EffectiveRegistrationMode: params.EffectiveRegistrationMode(
-			ctx.BlockHeight(),
-		),
 	}, nil
 }
 

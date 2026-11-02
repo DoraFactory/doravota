@@ -123,7 +123,7 @@ func TestPQCAuthGovernanceEndBlockOrderingAndRollback(t *testing.T) {
 					pause := &pqctypes.MsgUpdateParams{Authority: authority, Params: paused, EmergencyOnly: true}
 					cancel := &pqctypes.MsgUpdateParams{Authority: authority, Params: base}
 					invalid := base
-					invalid.MaxPqcSigners = 1
+					invalid.VerificationGas = 1
 					bad := &pqctypes.MsgUpdateParams{Authority: authority, Params: invalid}
 					want := map[uint64]gov.ProposalStatus{10: gov.StatusPassed}
 					switch scenario {

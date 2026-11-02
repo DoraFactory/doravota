@@ -9,16 +9,15 @@ import (
 )
 
 func TestGovernanceCapacityUsesCurrentConsensusGas(t *testing.T) {
-	for _, limit := range []int64{600_000_000, 640_000_001, -1, 0} {
+	for _, limit := range []int64{30_000_000, 30_000_001, -1, 0} {
 		k, ctx := setupKeeper(t, 10)
 		ctx = ctx.WithConsensusParams(tmproto.ConsensusParams{Block: &tmproto.BlockParams{MaxGas: limit}})
 		p := types.DefaultParams()
 		require.NoError(t, k.SetParams(ctx, p))
 		requested := p
-		requested.MaxPqcVerificationsPerTx = types.AbsoluteMaxPQCVerificationsPerTx
-		requested.SignatureVerificationGas, requested.ProofVerificationGas = types.AbsoluteMaxVerificationGas, types.AbsoluteMaxVerificationGas
+		requested.VerificationGas = types.AbsoluteMaxVerificationGas
 		_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: requested})
-		if limit == 600_000_000 || limit == 0 {
+		if limit == 30_000_000 || limit == 0 {
 			require.ErrorContains(t, err, "block max_gas")
 			require.Equal(t, p, k.GetParams(ctx))
 		} else {
@@ -53,7 +52,7 @@ func TestCapacityPreflightPreservesEmergencyGovernance(t *testing.T) {
 	active := types.DefaultParams()
 	require.NoError(t, k2.SetParams(ctx2, active))
 	restrictive := active
-	restrictive.MaxPqcSigners = 4
+	restrictive.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	_, err = NewMsgServer(k2).UpdateParams(ctx2, &types.MsgUpdateParams{Authority: k2.Authority(), Params: restrictive})
 	require.NoError(t, err)
 	require.NotNil(t, k2.GetParams(ctx2).Pending)

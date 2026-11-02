@@ -2,10 +2,10 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	pqcclient "github.com/DoraFactory/doravota/x/pqcauth/client"
-	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	pqctypes "github.com/DoraFactory/doravota/x/pqcauth/types"
 	abci "github.com/cometbft/cometbft/abci/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -28,52 +28,8 @@ import (
 
 func minimumCapacityParams() pqctypes.Params {
 	p := pqctypes.DefaultParams()
-	p.MaxPqcSigners = pqctypes.MinimumMaxPQCSigners
-	p.MaxPqcAuthBytes = pqctypes.MinimumPQCAuthBytes(p.MaxPqcSigners)
-	p.MaxPqcVerificationsPerTx = pqctypes.MinimumMaxPQCVerificationsPerTx
-	p.MaxPqcVerificationsPerBlock = p.MaxPqcVerificationsPerTx
 	p.GovernanceSafetyDelayBlocks, p.RecoveryDelayBlocks = 2, 2
 	return p
-}
-
-func TestPQCAuthGovernanceRejectsUnusableCapacity(t *testing.T) {
-	p := pqctypes.DefaultParams()
-	p.GovernanceSafetyDelayBlocks, p.RecoveryDelayBlocks = 2, 2
-	c := newPQCChain(t, p)
-	factor, _ := reviewEnroll(t, c)
-	ctx := c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
-	before := c.app.PQCAuthKeeper.GetParams(ctx)
-	for _, mutate := range []func(*pqctypes.Params){
-		func(p *pqctypes.Params) { p.MaxPqcAuthBytes = 1 },
-		func(p *pqctypes.Params) { p.MaxPqcVerificationsPerTx = 1 },
-		func(p *pqctypes.Params) { p.MaxPqcVerificationsPerTx = 2 },
-		func(p *pqctypes.Params) { p.MaxPqcVerificationsPerBlock = 1 },
-		func(p *pqctypes.Params) { p.MaxPqcSigners = 1 },
-	} {
-		requested := before
-		mutate(&requested)
-		_, err := pqckeeper.NewMsgServer(c.app.PQCAuthKeeper).UpdateParams(ctx, &pqctypes.MsgUpdateParams{Authority: c.app.PQCAuthKeeper.Authority(), Params: requested})
-		require.Error(t, err)
-		require.Equal(t, before, c.app.PQCAuthKeeper.GetParams(ctx), "rejection must not write a pending policy")
-	}
-	requested := minimumCapacityParams()
-	requested.NetworkId = before.NetworkId
-	response, err := pqckeeper.NewMsgServer(c.app.PQCAuthKeeper).UpdateParams(ctx, &pqctypes.MsgUpdateParams{Authority: c.app.PQCAuthKeeper.Authority(), Params: requested})
-	require.NoError(t, err)
-	c.app.SimWriteState()
-	for uint64(c.height) <= response.ActivationHeight {
-		c.block(t, nil)
-	}
-	owner := sdk.AccAddress(c.key.PubKey().Address())
-	send := banktypes.NewMsgSend(owner, sdk.AccAddress(c.other.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1)))
-	r := c.block(t, c.tx(t, c.key, factor, send))
-	require.Zero(t, r.Code, r.Log)
-	for _, enabled := range []bool{false, true} {
-		r = c.block(t, c.tx(t, c.key, factor, &pqctypes.MsgSetProtection{Owner: owner.String(), Enabled: enabled}))
-		require.Zero(t, r.Code, r.Log)
-		c.block(t, nil)
-	}
-	require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 20).Consistent)
 }
 
 func capacityFactor(t *testing.T, c *pqcChain) pqcclient.PQCSigner {
@@ -154,7 +110,7 @@ func capacityPayerTx(t *testing.T, c *pqcChain, msg sdk.Msg, ownerFactor, payerF
 	return raw
 }
 
-func TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer(t *testing.T) {
+func TestPQCAuthLifecycleWithProtectedPayer(t *testing.T) {
 	c := newPQCChain(t, minimumCapacityParams())
 	ownerKey := c.key
 	c.key = c.other
@@ -191,14 +147,19 @@ func TestPQCAuthMinimumCapacityLifecycleWithProtectedPayer(t *testing.T) {
 	require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 20).Consistent)
 }
 
-func TestPQCAuthNativeMultisigAtMinimumBudget(t *testing.T) {
-	for _, leaves := range []int{2, 3, 4, 7} {
-		t.Run(string(rune('0'+leaves))+" leaves", func(t *testing.T) {
+func TestPQCAuthNativeMultisigUsesSDKLimits(t *testing.T) {
+	for _, leaves := range []int{2, 3, 4, 7, 17} {
+		t.Run(fmt.Sprintf("%d leaves", leaves), func(t *testing.T) {
 			params := minimumCapacityParams()
-			if leaves == 7 {
-				params.MaxPqcVerificationsPerTx, params.MaxPqcVerificationsPerBlock = 16, 400
-			}
 			c := newPQCChain(t, params)
+			if leaves == 17 {
+				ctx := c.app.NewNextBlockContext(tmproto.Header{ChainID: "policy-test", Height: c.height + 1})
+				authParams := c.app.AccountKeeper.GetParams(ctx)
+				authParams.TxSigLimit = 20
+				require.NoError(t, c.app.AccountKeeper.Params.Set(ctx, authParams))
+				c.app.SimWriteState()
+				c.block(t, nil)
+			}
 			keys := make([]cryptotypes.PrivKey, leaves)
 			pubs := make([]cryptotypes.PubKey, leaves)
 			for i := range keys {
@@ -214,7 +175,7 @@ func TestPQCAuthNativeMultisigAtMinimumBudget(t *testing.T) {
 			acc := c.app.AccountKeeper.GetAccount(c.app.NewContext(true), owner)
 			b := c.app.TxConfig().NewTxBuilder()
 			require.NoError(t, b.SetMsgs(banktypes.NewMsgSend(owner, sdk.AccAddress(c.key.PubKey().Address()), sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1)))))
-			b.SetGasLimit(3_000_000)
+			b.SetGasLimit(6_000_000)
 			b.SetFeeAmount(sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, 10)))
 			multi := multisig.NewMultisig(leaves)
 			require.NoError(t, b.SetSignatures(signing.SignatureV2{PubKey: pub, Sequence: acc.GetSequence(), Data: multi}))
@@ -229,15 +190,10 @@ func TestPQCAuthNativeMultisigAtMinimumBudget(t *testing.T) {
 			raw, err := c.app.TxConfig().TxEncoder()(b.GetTx())
 			require.NoError(t, err)
 			r = c.block(t, raw)
-			if leaves > int(params.MaxPqcVerificationsPerTx) {
-				require.NotZero(t, r.Code)
-				require.Contains(t, r.Log, "PQC verifications")
-			} else {
-				require.Zero(t, r.Code, r.Log)
-			}
+			require.Zero(t, r.Code, r.Log)
 			_, enrolled := c.app.PQCAuthKeeper.GetAccountPolicy(c.app.NewContext(true), owner)
 			require.False(t, enrolled)
-			// A rejected over-budget native multisig never blocks ordinary work.
+			// Native multisigs coexist with ordinary work without a PQC quota.
 			r = c.block(t, c.tx(t, c.key, nil, fund))
 			require.Zero(t, r.Code, r.Log)
 			c.block(t, nil)

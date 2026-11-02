@@ -12,8 +12,6 @@ func TestZeroHeightExportRequiresHeightIndependentPQCState(t *testing.T) {
 		name   string
 		change func(*types.Params)
 	}{
-		{"registration cutoff", func(p *types.Params) { p.RegistrationCutoffHeight = 20 }},
-		{"past registration cutoff", func(p *types.Params) { p.RegistrationCutoffHeight = 5 }},
 		{"emergency expiry", func(p *types.Params) {
 			p.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_PQC_TRANSACTIONS
 			p.EmergencyExpiresHeight = 20
@@ -29,10 +27,6 @@ func TestZeroHeightExportRequiresHeightIndependentPQCState(t *testing.T) {
 			require.NoError(t, k.ValidateZeroHeightExport(ctx))
 			p := k.GetParams(ctx)
 			tc.change(&p)
-			if p.RegistrationCutoffHeight != 0 {
-				require.ErrorIs(t, k.SetParams(ctx, p), types.ErrInvalidParams)
-				return // Unsupported state is rejected before export is possible.
-			}
 			require.NoError(t, k.SetParams(ctx, p))
 			require.ErrorContains(t, k.ValidateZeroHeightExport(ctx), "export without --for-zero-height")
 		})

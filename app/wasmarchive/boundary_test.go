@@ -1,13 +1,14 @@
 package wasmarchive
 
 import (
-	"cosmossdk.io/log/v2"
 	"encoding/binary"
+	"testing"
+
+	"cosmossdk.io/log/v2"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/store/v2/rootmulti"
 	storetypes "github.com/cosmos/cosmos-sdk/store/v2/types"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestPostArchiveModuleBoundary(t *testing.T) {
@@ -17,13 +18,14 @@ func TestPostArchiveModuleBoundary(t *testing.T) {
 		liveWasm, valid  bool
 	}{
 		{name: "existing archive", valid: true},
-		{name: "initialized pqcauth", extraStore: "pqcauth", version: 3, valid: true},
+		{name: "initialized pqcauth", extraStore: "pqcauth", version: 4, valid: true},
 		{name: "uninitialized store", extraStore: "pqcauth"},
-		{name: "missing store", version: 3},
+		{name: "missing store", version: 4},
 		{name: "wrong module version", extraStore: "pqcauth", version: 1},
+		{name: "old budget/state schema", extraStore: "pqcauth", version: 3},
 		{name: "old experimental delegation index version", extraStore: "pqcauth", version: 2},
 		{name: "unknown store", extraStore: "unexpected"},
-		{name: "live wasm conflict", extraStore: "pqcauth", version: 3, liveWasm: true},
+		{name: "live wasm conflict", extraStore: "pqcauth", version: 4, liveWasm: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := dbm.NewMemDB()
@@ -58,7 +60,7 @@ func TestPostArchiveModuleBoundary(t *testing.T) {
 			}
 			cache.Write()
 			multi.Commit()
-			err := ValidateBoundaryWithModules(log.NewNopLogger(), db, t.TempDir(), nil, map[string]uint64{"pqcauth": 3})
+			err := ValidateBoundaryWithModules(log.NewNopLogger(), db, t.TempDir(), nil, map[string]uint64{"pqcauth": 4})
 			if tc.valid {
 				require.NoError(t, err)
 			} else {

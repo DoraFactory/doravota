@@ -8,7 +8,6 @@ import (
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
-	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	pqckeeper "github.com/DoraFactory/doravota/x/pqcauth/keeper"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
@@ -33,13 +32,6 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 			}
 			owner := sdk.MustAccAddressFromBech32(message.Owner)
 			if err := d.keeper.RequireClassicAccount(ctx, owner); err != nil {
-				return err
-			}
-			if err := types.CheckRegistrationAllowed(
-				params,
-				ctx.BlockHeight(),
-				execution.IsFreshRegistrationCandidate(ctx, message),
-			); err != nil {
 				return err
 			}
 			if _, found := d.keeper.GetAccountPolicy(ctx, owner); found {
@@ -290,7 +282,7 @@ func (d VerifyPQCDecorator) validateLifecycleProofs(
 				return err
 			}
 			ctx.GasMeter().ConsumeGas(
-				params.EffectiveProofVerificationGas(),
+				params.EffectiveVerificationGas(),
 				lifecycleProofGasDescriptor(simulate, "recovery signature"),
 			)
 			if !simulate && !ctx.IsReCheckTx() {
@@ -460,7 +452,7 @@ func verifyLifecycleKeyProof(
 		return errorsmod.Wrapf(types.ErrUnsupportedAlgorithm, "%d", algorithm)
 	}
 	ctx.GasMeter().ConsumeGas(
-		params.EffectiveProofVerificationGas(),
+		params.EffectiveVerificationGas(),
 		lifecycleProofGasDescriptor(true, "key proof"),
 	)
 	return nil

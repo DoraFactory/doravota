@@ -10,43 +10,24 @@ import (
 )
 
 const (
-	// Both authorization signatures and key proofs use the SDK ML-DSA-65
-	// verifier. Price the primitive at the same pinned SDK baseline (750),
-	// independently of transaction-byte, store and business-execution gas.
-	DefaultSignatureVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
-	DefaultProofVerificationGas         uint64 = authtypes.DefaultSigVerifyCostMlDsa65
-	DefaultMaxPQCSigners                uint32 = 8
-	DefaultMaxPQCAuthBytes              uint32 = 64 * 1024
-	DefaultMaxRetainedKeyRecordsPerRole uint32 = 16
-	DefaultGovernanceSafetyDelayBlocks  uint64 = 17_280
-	DefaultMaxEmergencyDurationBlocks   uint64 = 46_080
-	DefaultRecoveryDelayBlocks          uint64 = 107_520
-	DefaultMaxPQCVerificationsPerTx     uint32 = 16
-	DefaultMaxPQCVerificationsPerBlock  uint32 = 400
-
+	DefaultVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
+	MinimumVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
+	AbsoluteMaxVerificationGas uint64 = 10_000_000
+	// Fixed operational caps; the raw-wire preflight retains independent ceilings.
+	MaxPQCSigners                          uint32 = 8
+	MaxPQCAuthBytes                        uint32 = 64 * 1024
+	MaxRetainedKeyRecordsPerRole           uint32 = 16
 	AbsoluteMaxPQCSigners                  uint32 = 32
 	AbsoluteMaxPQCAuthBytes                uint32 = 256 * 1024
-	AbsoluteMaxRetainedKeyRecordsPerRole   uint32 = 64
-	AbsoluteMaxVerificationGas             uint64 = 10_000_000
+	DefaultGovernanceSafetyDelayBlocks     uint64 = 17_280
+	DefaultMaxEmergencyDurationBlocks      uint64 = 46_080
+	DefaultRecoveryDelayBlocks             uint64 = 107_520
 	AbsoluteMaxGovernanceSafetyDelayBlocks uint64 = 2_000_000
 	AbsoluteMaxEmergencyDurationBlocks     uint64 = 172_800
 	AbsoluteMaxRecoveryDelayBlocks         uint64 = 2_000_000
-	AbsoluteMaxPQCVerificationsPerTx       uint32 = 64
-	AbsoluteMaxPQCVerificationsPerBlock    uint32 = 4_096
 	MinimumGovernanceSafetyDelayBlocks     uint64 = 2
 	MinimumEmergencyDurationBlocks         uint64 = 2
 	MinimumRecoveryDelayBlocks             uint64 = 2
-	// Preserve a protected sender plus a separate protected fee payer, and
-	// two lifecycle proofs plus that payer's authorization. Larger multisigs
-	// remain subject to the explicitly configured verification budget.
-	MinimumMaxPQCSigners            uint32 = 2
-	MinimumMaxPQCVerificationsPerTx uint32 = 3
-
-	// Keep the same primitive floor as native SDK ML-DSA. These are consensus
-	// constants, not a live link to x/auth governance parameters. Existing
-	// explicitly stored higher PQCAuth prices remain in effect.
-	MinimumSignatureVerificationGas uint64 = authtypes.DefaultSigVerifyCostMlDsa65
-	MinimumProofVerificationGas     uint64 = authtypes.DefaultSigVerifyCostMlDsa65
 )
 
 var defaultNetworkID = sha256.Sum256([]byte("doravota/pqcauth/network/v1"))
@@ -65,21 +46,13 @@ func UsesLegacyDefaultNetworkID(networkID []byte) bool {
 
 func DefaultParams() Params {
 	return Params{
-		EnforcementMode:              EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
-		NetworkId:                    append([]byte(nil), defaultNetworkID[:]...),
-		AllowedAlgorithms:            []Algorithm{Algorithm_ALGORITHM_ML_DSA_65},
-		SignatureVerificationGas:     DefaultSignatureVerificationGas,
-		ProofVerificationGas:         DefaultProofVerificationGas,
-		MaxPqcSigners:                DefaultMaxPQCSigners,
-		MaxPqcAuthBytes:              DefaultMaxPQCAuthBytes,
-		MaxRetainedKeyRecordsPerRole: DefaultMaxRetainedKeyRecordsPerRole,
-		RegistrationMode:             RegistrationMode_REGISTRATION_MODE_OPEN,
-		EmergencyMode:                EmergencyMode_EMERGENCY_MODE_NORMAL,
-		GovernanceSafetyDelayBlocks:  DefaultGovernanceSafetyDelayBlocks,
-		MaxEmergencyDurationBlocks:   DefaultMaxEmergencyDurationBlocks,
-		RecoveryDelayBlocks:          DefaultRecoveryDelayBlocks,
-		MaxPqcVerificationsPerTx:     DefaultMaxPQCVerificationsPerTx,
-		MaxPqcVerificationsPerBlock:  DefaultMaxPQCVerificationsPerBlock,
+		EnforcementMode:             EnforcementMode_ENFORCEMENT_MODE_OPTIONAL,
+		VerificationGas:             DefaultVerificationGas,
+		NetworkId:                   append([]byte(nil), defaultNetworkID[:]...),
+		EmergencyMode:               EmergencyMode_EMERGENCY_MODE_NORMAL,
+		GovernanceSafetyDelayBlocks: DefaultGovernanceSafetyDelayBlocks,
+		MaxEmergencyDurationBlocks:  DefaultMaxEmergencyDurationBlocks,
+		RecoveryDelayBlocks:         DefaultRecoveryDelayBlocks,
 	}
 }
 
@@ -182,83 +155,8 @@ func validateScheduledParams(p ScheduledParams) error {
 	if !validEnforcementMode(p.EnforcementMode) {
 		return fmt.Errorf("%w: invalid enforcement mode %d", ErrInvalidParams, p.EnforcementMode)
 	}
-	if len(p.AllowedAlgorithms) == 0 {
-		return fmt.Errorf("%w: at least one algorithm must be allowed", ErrInvalidParams)
-	}
-	seen := make(map[Algorithm]struct{}, len(p.AllowedAlgorithms))
-	for _, algorithm := range p.AllowedAlgorithms {
-		if !SupportedAlgorithm(algorithm) {
-			return fmt.Errorf("%w: algorithm %d", ErrUnsupportedAlgorithm, algorithm)
-		}
-		if _, exists := seen[algorithm]; exists {
-			return fmt.Errorf("%w: duplicate algorithm %d", ErrInvalidParams, algorithm)
-		}
-		seen[algorithm] = struct{}{}
-	}
-	if p.SignatureVerificationGas < MinimumSignatureVerificationGas ||
-		p.SignatureVerificationGas > AbsoluteMaxVerificationGas {
-		return fmt.Errorf(
-			"%w: signature verification gas must be in [%d,%d]",
-			ErrInvalidParams,
-			MinimumSignatureVerificationGas,
-			AbsoluteMaxVerificationGas,
-		)
-	}
-	if p.ProofVerificationGas < MinimumProofVerificationGas ||
-		p.ProofVerificationGas > AbsoluteMaxVerificationGas {
-		return fmt.Errorf(
-			"%w: proof verification gas must be in [%d,%d]",
-			ErrInvalidParams,
-			MinimumProofVerificationGas,
-			AbsoluteMaxVerificationGas,
-		)
-	}
-	if p.MaxPqcSigners < MinimumMaxPQCSigners || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
-		return fmt.Errorf("%w: max PQC signers must be in [%d,%d]", ErrInvalidParams, MinimumMaxPQCSigners, AbsoluteMaxPQCSigners)
-	}
-	minimumAuthBytes := MinimumPQCAuthBytes(p.MaxPqcSigners)
-	if p.MaxPqcAuthBytes < minimumAuthBytes || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
-		return fmt.Errorf("%w: max PQC auth bytes must be in [%d,%d] for %d signers", ErrInvalidParams, minimumAuthBytes, AbsoluteMaxPQCAuthBytes, p.MaxPqcSigners)
-	}
-	if p.MaxRetainedKeyRecordsPerRole == 0 ||
-		p.MaxRetainedKeyRecordsPerRole > AbsoluteMaxRetainedKeyRecordsPerRole {
-		return fmt.Errorf(
-			"%w: max retained key records per role must be in [1,%d]",
-			ErrInvalidParams,
-			AbsoluteMaxRetainedKeyRecordsPerRole,
-		)
-	}
-	maxPerTx := effectiveMaxPQCVerificationsPerTx(p.MaxPqcVerificationsPerTx)
-	maxPerBlock := effectiveMaxPQCVerificationsPerBlock(p.MaxPqcVerificationsPerBlock)
-	if maxPerTx < MinimumMaxPQCVerificationsPerTx || maxPerTx > AbsoluteMaxPQCVerificationsPerTx {
-		return fmt.Errorf(
-			"%w: max PQC verifications per transaction must be in [%d,%d]",
-			ErrInvalidParams,
-			MinimumMaxPQCVerificationsPerTx,
-			AbsoluteMaxPQCVerificationsPerTx,
-		)
-	}
-	if maxPerTx < p.MaxPqcSigners {
-		return fmt.Errorf("%w: transaction verification budget must cover max PQC signers", ErrInvalidParams)
-	}
-	if maxPerBlock > AbsoluteMaxPQCVerificationsPerBlock {
-		return fmt.Errorf(
-			"%w: max PQC verifications per block must be in [1,%d]",
-			ErrInvalidParams,
-			AbsoluteMaxPQCVerificationsPerBlock,
-		)
-	}
-	if maxPerTx > maxPerBlock {
-		return fmt.Errorf(
-			"%w: max PQC verifications per transaction cannot exceed the block budget",
-			ErrInvalidParams,
-		)
-	}
-	if !validRegistrationMode(normalizeRegistrationMode(p.RegistrationMode)) {
-		return fmt.Errorf("%w: invalid registration mode %d", ErrInvalidParams, p.RegistrationMode)
-	}
-	if p.RegistrationCutoffHeight != 0 {
-		return fmt.Errorf("%w: registration cutoff is disabled in phase one", ErrInvalidParams)
+	if p.VerificationGas < MinimumVerificationGas || p.VerificationGas > AbsoluteMaxVerificationGas {
+		return fmt.Errorf("%w: verification gas must be in [%d,%d]", ErrInvalidParams, MinimumVerificationGas, AbsoluteMaxVerificationGas)
 	}
 	if p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_NORMAL &&
 		p.EmergencyMode != EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS &&
@@ -279,12 +177,7 @@ func SupportedAlgorithm(algorithm Algorithm) bool {
 }
 
 func (p Params) IsAlgorithmAllowed(algorithm Algorithm) bool {
-	for _, allowed := range p.AllowedAlgorithms {
-		if allowed == algorithm {
-			return true
-		}
-	}
-	return false
+	return SupportedAlgorithm(algorithm)
 }
 
 func (p Params) EffectiveEnforcementMode(height int64) EnforcementMode {
@@ -295,24 +188,10 @@ func (p Params) EffectiveEmergencyMode(height int64) EmergencyMode {
 	return p.Effective(height).EmergencyMode
 }
 
-// EffectiveRegistrationMode returns the active registration gate. A legacy
-// registration cutoff remains authoritative and maps to CLOSED once reached.
-func (p Params) EffectiveRegistrationMode(height int64) RegistrationMode {
-	effective := p.Effective(height)
-	if height >= 0 &&
-		effective.RegistrationCutoffHeight != 0 &&
-		uint64(height) >= effective.RegistrationCutoffHeight {
-		return RegistrationMode_REGISTRATION_MODE_CLOSED
-	}
-	return normalizeRegistrationMode(effective.RegistrationMode)
-}
-
 // Effective applies the pending parameter bundle and its independent emergency
 // override at their own heights. The returned copy contains no activated schedule.
 func (p Params) Effective(height int64) Params {
 	p.RecoveryDelayBlocks = p.EffectiveRecoveryDelayBlocks()
-	p.MaxPqcVerificationsPerTx = p.EffectiveMaxPQCVerificationsPerTx()
-	p.MaxPqcVerificationsPerBlock = p.EffectiveMaxPQCVerificationsPerBlock()
 	if height < 0 {
 		return p
 	}
@@ -333,102 +212,30 @@ func (p Params) Effective(height int64) Params {
 		p.EmergencyMode = EmergencyMode_EMERGENCY_MODE_NORMAL
 		p.EmergencyExpiresHeight = 0
 	}
-	p.RegistrationMode = normalizeRegistrationMode(p.RegistrationMode)
 	return p
 }
 
 func (p Params) AsScheduled() ScheduledParams {
 	return ScheduledParams{
-		EnforcementMode:              p.EnforcementMode,
-		AllowedAlgorithms:            append([]Algorithm(nil), p.AllowedAlgorithms...),
-		SignatureVerificationGas:     p.SignatureVerificationGas,
-		ProofVerificationGas:         p.ProofVerificationGas,
-		MaxPqcSigners:                p.MaxPqcSigners,
-		MaxPqcAuthBytes:              p.MaxPqcAuthBytes,
-		MaxRetainedKeyRecordsPerRole: p.MaxRetainedKeyRecordsPerRole,
-		RegistrationCutoffHeight:     p.RegistrationCutoffHeight,
-		RegistrationMode:             normalizeRegistrationMode(p.RegistrationMode),
-		EmergencyMode:                p.EmergencyMode,
-		EmergencyExpiresHeight:       p.EmergencyExpiresHeight,
-		MaxPqcVerificationsPerTx:     p.EffectiveMaxPQCVerificationsPerTx(),
-		MaxPqcVerificationsPerBlock:  p.EffectiveMaxPQCVerificationsPerBlock(),
+		EnforcementMode:        p.EnforcementMode,
+		VerificationGas:        p.VerificationGas,
+		EmergencyMode:          p.EmergencyMode,
+		EmergencyExpiresHeight: p.EmergencyExpiresHeight,
 	}
 }
 
 func (p *Params) ApplyScheduled(scheduled ScheduledParams) {
 	p.EnforcementMode = scheduled.EnforcementMode
-	p.AllowedAlgorithms = append([]Algorithm(nil), scheduled.AllowedAlgorithms...)
-	p.SignatureVerificationGas = scheduled.SignatureVerificationGas
-	p.ProofVerificationGas = scheduled.ProofVerificationGas
-	p.MaxPqcSigners = scheduled.MaxPqcSigners
-	p.MaxPqcAuthBytes = scheduled.MaxPqcAuthBytes
-	p.MaxRetainedKeyRecordsPerRole = scheduled.MaxRetainedKeyRecordsPerRole
-	p.RegistrationCutoffHeight = scheduled.RegistrationCutoffHeight
-	p.RegistrationMode = normalizeRegistrationMode(scheduled.RegistrationMode)
+	p.VerificationGas = scheduled.VerificationGas
 	p.EmergencyMode = scheduled.EmergencyMode
 	p.EmergencyExpiresHeight = scheduled.EmergencyExpiresHeight
-	p.MaxPqcVerificationsPerTx = scheduled.MaxPqcVerificationsPerTx
-	p.MaxPqcVerificationsPerBlock = scheduled.MaxPqcVerificationsPerBlock
 }
 
-func (p Params) EffectiveMaxPQCSigners() uint32 {
-	if p.MaxPqcSigners == 0 || p.MaxPqcSigners > AbsoluteMaxPQCSigners {
-		return DefaultMaxPQCSigners
+func (p Params) EffectiveVerificationGas() uint64 {
+	if p.VerificationGas < MinimumVerificationGas || p.VerificationGas > AbsoluteMaxVerificationGas {
+		return DefaultVerificationGas
 	}
-	return p.MaxPqcSigners
-}
-
-func (p Params) EffectiveMaxPQCAuthBytes() uint32 {
-	if p.MaxPqcAuthBytes == 0 || p.MaxPqcAuthBytes > AbsoluteMaxPQCAuthBytes {
-		return DefaultMaxPQCAuthBytes
-	}
-	return p.MaxPqcAuthBytes
-}
-
-func (p Params) EffectiveMaxRetainedKeyRecordsPerRole() uint32 {
-	if p.MaxRetainedKeyRecordsPerRole == 0 ||
-		p.MaxRetainedKeyRecordsPerRole > AbsoluteMaxRetainedKeyRecordsPerRole {
-		return DefaultMaxRetainedKeyRecordsPerRole
-	}
-	return p.MaxRetainedKeyRecordsPerRole
-}
-
-func (p Params) EffectiveSignatureVerificationGas() uint64 {
-	if p.SignatureVerificationGas < MinimumSignatureVerificationGas ||
-		p.SignatureVerificationGas > AbsoluteMaxVerificationGas {
-		return DefaultSignatureVerificationGas
-	}
-	return p.SignatureVerificationGas
-}
-
-func (p Params) EffectiveProofVerificationGas() uint64 {
-	if p.ProofVerificationGas < MinimumProofVerificationGas ||
-		p.ProofVerificationGas > AbsoluteMaxVerificationGas {
-		return DefaultProofVerificationGas
-	}
-	return p.ProofVerificationGas
-}
-
-func (p Params) EffectiveMaxPQCVerificationsPerTx() uint32 {
-	return effectiveMaxPQCVerificationsPerTx(p.MaxPqcVerificationsPerTx)
-}
-
-func (p Params) EffectiveMaxPQCVerificationsPerBlock() uint32 {
-	return effectiveMaxPQCVerificationsPerBlock(p.MaxPqcVerificationsPerBlock)
-}
-
-func effectiveMaxPQCVerificationsPerTx(value uint32) uint32 {
-	if value == 0 {
-		return DefaultMaxPQCVerificationsPerTx
-	}
-	return value
-}
-
-func effectiveMaxPQCVerificationsPerBlock(value uint32) uint32 {
-	if value == 0 {
-		return DefaultMaxPQCVerificationsPerBlock
-	}
-	return value
+	return p.VerificationGas
 }
 
 // EffectiveRecoveryDelayBlocks maps the zero value written by pre-v2 state to
@@ -446,23 +253,7 @@ func validEnforcementMode(mode EnforcementMode) bool {
 	// Phase one is opt-in: global REQUIRED is reserved until composite
 	// accounts, wallets and relayers have a reviewed migration path. Keep the
 	// wire enum and fail-closed runtime handling; never map it to OPTIONAL.
-	return mode >= EnforcementMode_ENFORCEMENT_MODE_DISABLED &&
-		mode <= EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
-}
-
-func normalizeRegistrationMode(mode RegistrationMode) RegistrationMode {
-	// Zero was the wire value written before registration modes existed. Treat
-	// it as OPEN so upgrades preserve the historical registration behavior.
-	if mode == RegistrationMode_REGISTRATION_MODE_UNSPECIFIED {
-		return RegistrationMode_REGISTRATION_MODE_OPEN
-	}
-	return mode
-}
-
-func validRegistrationMode(mode RegistrationMode) bool {
-	// Phase one keeps enrollment open. Reserved modes retain their wire values;
-	// emergency PAUSE_NEW_KEYS remains available independently of this gate.
-	return mode == RegistrationMode_REGISTRATION_MODE_OPEN
+	return mode == EnforcementMode_ENFORCEMENT_MODE_OPTIONAL || mode == EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 }
 
 func CryptoAlgorithm(algorithm Algorithm) (pqccrypto.Algorithm, error) {

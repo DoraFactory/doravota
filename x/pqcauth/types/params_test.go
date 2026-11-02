@@ -5,20 +5,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 )
 
 func TestVerificationGasUsesSDKBaseline(t *testing.T) {
 	// An SDK dependency update must not silently reprice this consensus rule.
 	require.Equal(t, uint64(750), authtypes.DefaultSigVerifyCostMlDsa65)
-	require.Equal(t, authtypes.DefaultSigVerifyCostMlDsa65, DefaultSignatureVerificationGas)
-	require.Equal(t, DefaultSignatureVerificationGas, DefaultProofVerificationGas)
-	require.Equal(t, DefaultSignatureVerificationGas, MinimumSignatureVerificationGas)
-	require.Equal(t, DefaultProofVerificationGas, MinimumProofVerificationGas)
+	require.Equal(t, authtypes.DefaultSigVerifyCostMlDsa65, DefaultVerificationGas)
+	require.Equal(t, DefaultVerificationGas, MinimumVerificationGas)
 	for _, price := range []uint64{0, 749, 750, 751, 250_000} {
 		p := DefaultParams()
-		p.SignatureVerificationGas, p.ProofVerificationGas = price, price
+		p.VerificationGas = price
 		genesis := DefaultGenesisState()
 		genesis.Params = p
 		current := DefaultParams()
@@ -36,9 +33,9 @@ func TestVerificationGasUsesSDKBaseline(t *testing.T) {
 
 func TestVerificationGasPreservesStoredPricesAndActivation(t *testing.T) {
 	p := DefaultParams()
-	p.SignatureVerificationGas, p.ProofVerificationGas = 250_000, 250_000
+	p.VerificationGas = 250_000
 	pending := p.AsScheduled()
-	pending.SignatureVerificationGas, pending.ProofVerificationGas = 750, 750
+	pending.VerificationGas = 750
 	p.Pending, p.PendingActivationHeight = &pending, 100
 	require.NoError(t, p.Validate())
 	for _, height := range []int64{99, 100, 101} {
@@ -47,13 +44,12 @@ func TestVerificationGasPreservesStoredPricesAndActivation(t *testing.T) {
 		if height < 100 {
 			want = 250_000
 		}
-		require.Equal(t, want, effective.EffectiveSignatureVerificationGas())
-		require.Equal(t, want, effective.EffectiveProofVerificationGas())
+		require.Equal(t, want, effective.EffectiveVerificationGas())
 		estimate, err := EstimateVerificationGas(effective, 1, 2)
 		require.NoError(t, err)
 		require.Equal(t, 3*want, estimate.Total)
 	}
-	require.Equal(t, uint64(250_000), p.SignatureVerificationGas, "reading effective params must not rewrite stored prices")
+	require.Equal(t, uint64(250_000), p.VerificationGas, "reading effective params must not rewrite stored prices")
 }
 
 func TestDefaultParamsValidate(t *testing.T) {
@@ -62,62 +58,8 @@ func TestDefaultParamsValidate(t *testing.T) {
 	require.Equal(t, DefaultGovernanceSafetyDelayBlocks, params.GovernanceSafetyDelayBlocks)
 	require.Equal(t, DefaultMaxEmergencyDurationBlocks, params.MaxEmergencyDurationBlocks)
 	require.Equal(t, DefaultRecoveryDelayBlocks, params.RecoveryDelayBlocks)
-	require.Equal(t, DefaultMaxPQCVerificationsPerTx, params.MaxPqcVerificationsPerTx)
-	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, params.MaxPqcVerificationsPerBlock)
 	require.True(t, params.IsAlgorithmAllowed(Algorithm_ALGORITHM_ML_DSA_65))
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, params.EffectiveEnforcementMode(10))
-	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(10))
-}
-
-func TestRegistrationModesAndLegacyCutoff(t *testing.T) {
-	params := DefaultParams()
-	require.NoError(t, CheckRegistrationAllowed(params, 10, false))
-
-	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	require.ErrorIs(t, params.Validate(), ErrInvalidParams)
-	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, false), ErrRegistrationClosed)
-	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, true), ErrRegistrationClosed)
-
-	params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_CLOSED
-	require.ErrorIs(t, CheckRegistrationAllowed(params, 10, true), ErrRegistrationClosed)
-
-	legacy := DefaultParams()
-	legacy.RegistrationMode = RegistrationMode_REGISTRATION_MODE_UNSPECIFIED
-	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, legacy.EffectiveRegistrationMode(9))
-	legacy.RegistrationCutoffHeight = 10
-	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, legacy.EffectiveRegistrationMode(9))
-	require.Equal(t, RegistrationMode_REGISTRATION_MODE_CLOSED, legacy.EffectiveRegistrationMode(10))
-}
-
-func TestRegistrationModeActivatesAtomically(t *testing.T) {
-	params := DefaultParams()
-	pending := params.AsScheduled()
-	pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_CLOSED
-	params.Pending = &pending
-	params.PendingActivationHeight = 101
-
-	require.Equal(t, RegistrationMode_REGISTRATION_MODE_OPEN, params.EffectiveRegistrationMode(100))
-	require.Equal(
-		t,
-		RegistrationMode_REGISTRATION_MODE_CLOSED,
-		params.EffectiveRegistrationMode(101),
-	)
-}
-
-func TestPhaseOneRejectsFreshRegistrationParameters(t *testing.T) {
-	for _, enforcement := range []EnforcementMode{EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED} {
-		params := DefaultParams()
-		params.EnforcementMode = enforcement
-		params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-		require.ErrorIs(t, params.Validate(), ErrInvalidParams)
-		require.ErrorIs(t, ValidateGenesis(GenesisState{Params: params}), ErrInvalidParams)
-		params.RegistrationMode = RegistrationMode_REGISTRATION_MODE_OPEN
-		pending := params.AsScheduled()
-		pending.RegistrationMode = RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-		params.Pending = &pending
-		params.PendingActivationHeight = 100
-		require.ErrorIs(t, params.Validate(), ErrInvalidParams)
-	}
 }
 
 func TestEmergencyModeAutoExpiresAtExactHeight(t *testing.T) {
@@ -146,54 +88,16 @@ func TestParamsEnforcementActivatesAtExactHeight(t *testing.T) {
 	require.Equal(t, EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED, params.EffectiveEnforcementMode(101))
 }
 
-func TestPQCVerificationBudgetsActivateAtomically(t *testing.T) {
-	params := DefaultParams()
-	pending := params.AsScheduled()
-	pending.MaxPqcVerificationsPerTx = 8
-	pending.MaxPqcVerificationsPerBlock = 200
-	params.Pending = &pending
-	params.PendingActivationHeight = 101
-
-	before := params.Effective(100)
-	require.Equal(t, DefaultMaxPQCVerificationsPerTx, before.EffectiveMaxPQCVerificationsPerTx())
-	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, before.EffectiveMaxPQCVerificationsPerBlock())
-
-	after := params.Effective(101)
-	require.Equal(t, uint32(8), after.EffectiveMaxPQCVerificationsPerTx())
-	require.Equal(t, uint32(200), after.EffectiveMaxPQCVerificationsPerBlock())
-}
-
 func TestParamsRejectUnsafeResourceLimits(t *testing.T) {
 	tests := []struct {
 		name   string
 		mutate func(*Params)
 	}{
-		{"zero signers", func(p *Params) { p.MaxPqcSigners = 0 }},
-		{"too many signers", func(p *Params) { p.MaxPqcSigners = AbsoluteMaxPQCSigners + 1 }},
-		{"oversized auth", func(p *Params) { p.MaxPqcAuthBytes = AbsoluteMaxPQCAuthBytes + 1 }},
-		{"too much key history", func(p *Params) {
-			p.MaxRetainedKeyRecordsPerRole = AbsoluteMaxRetainedKeyRecordsPerRole + 1
-		}},
-		{"too many PQC verifications per transaction", func(p *Params) {
-			p.MaxPqcVerificationsPerTx = AbsoluteMaxPQCVerificationsPerTx + 1
-		}},
-		{"too many PQC verifications per block", func(p *Params) {
-			p.MaxPqcVerificationsPerBlock = AbsoluteMaxPQCVerificationsPerBlock + 1
-		}},
-		{"transaction PQC budget exceeds block budget", func(p *Params) {
-			p.MaxPqcVerificationsPerTx = 17
-			p.MaxPqcVerificationsPerBlock = 16
-		}},
-		{"zero verification gas", func(p *Params) { p.SignatureVerificationGas = 0 }},
-		{"signature gas below floor", func(p *Params) {
-			p.SignatureVerificationGas = MinimumSignatureVerificationGas - 1
-		}},
-		{"proof gas below floor", func(p *Params) {
-			p.ProofVerificationGas = MinimumProofVerificationGas - 1
+		{"zero verification gas", func(p *Params) { p.VerificationGas = 0 }},
+		{"verification gas below floor", func(p *Params) {
+			p.VerificationGas = MinimumVerificationGas - 1
 		}},
 		{"short network id", func(p *Params) { p.NetworkId = []byte("short") }},
-		{"unknown algorithm", func(p *Params) { p.AllowedAlgorithms = []Algorithm{99} }},
-		{"unknown registration mode", func(p *Params) { p.RegistrationMode = RegistrationMode(99) }},
 		{"zero governance safety delay", func(p *Params) { p.GovernanceSafetyDelayBlocks = 0 }},
 		{"excessive governance safety delay", func(p *Params) {
 			p.GovernanceSafetyDelayBlocks = AbsoluteMaxGovernanceSafetyDelayBlocks + 1
@@ -244,63 +148,12 @@ func TestAccountPolicyHPlusOne(t *testing.T) {
 	require.Zero(t, atHeight.PendingCreatedHeight)
 }
 
-func TestEffectiveResourceDefaultsAndAlgorithmConversion(t *testing.T) {
-	params := Params{}
-	require.Equal(t, DefaultMaxPQCSigners, params.EffectiveMaxPQCSigners())
-	require.Equal(t, DefaultMaxPQCAuthBytes, params.EffectiveMaxPQCAuthBytes())
-	require.Equal(t, DefaultMaxRetainedKeyRecordsPerRole, params.EffectiveMaxRetainedKeyRecordsPerRole())
-	require.Equal(t, DefaultSignatureVerificationGas, params.EffectiveSignatureVerificationGas())
-	require.Equal(t, DefaultProofVerificationGas, params.EffectiveProofVerificationGas())
-	require.Equal(t, DefaultMaxPQCVerificationsPerTx, params.EffectiveMaxPQCVerificationsPerTx())
-	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, params.EffectiveMaxPQCVerificationsPerBlock())
-	require.Equal(t, DefaultRecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
-	normalized := params.Effective(1)
-	require.Equal(t, DefaultMaxPQCVerificationsPerTx, normalized.MaxPqcVerificationsPerTx)
-	require.Equal(t, DefaultMaxPQCVerificationsPerBlock, normalized.MaxPqcVerificationsPerBlock)
-
-	params = DefaultParams()
-	require.Equal(t, params.MaxPqcSigners, params.EffectiveMaxPQCSigners())
-	require.Equal(t, params.MaxPqcAuthBytes, params.EffectiveMaxPQCAuthBytes())
-	require.Equal(
-		t,
-		params.MaxRetainedKeyRecordsPerRole,
-		params.EffectiveMaxRetainedKeyRecordsPerRole(),
-	)
-	require.Equal(t, params.SignatureVerificationGas, params.EffectiveSignatureVerificationGas())
-	require.Equal(t, params.ProofVerificationGas, params.EffectiveProofVerificationGas())
-	require.Equal(t, params.MaxPqcVerificationsPerTx, params.EffectiveMaxPQCVerificationsPerTx())
-	require.Equal(t, params.MaxPqcVerificationsPerBlock, params.EffectiveMaxPQCVerificationsPerBlock())
-	require.Equal(t, params.RecoveryDelayBlocks, params.EffectiveRecoveryDelayBlocks())
-	require.Equal(
-		t,
-		EmergencyMode_EMERGENCY_MODE_NORMAL,
-		params.EffectiveEmergencyMode(1),
-	)
-	require.False(t, params.IsAlgorithmAllowed(Algorithm(99)))
-
-	algorithm, err := CryptoAlgorithm(Algorithm_ALGORITHM_ML_DSA_65)
-	require.NoError(t, err)
-	require.Equal(t, pqccrypto.AlgorithmMLDSA65, algorithm)
-	_, err = CryptoAlgorithm(Algorithm(99))
-	require.ErrorIs(t, err, ErrUnsupportedAlgorithm)
-}
-
 func TestParamsRejectRemainingInvalidBoundsAndSchedules(t *testing.T) {
 	testCases := []func(*Params){
 		func(params *Params) { params.NetworkId = make([]byte, 65) },
 		func(params *Params) { params.EnforcementMode = EnforcementMode(99) },
-		func(params *Params) { params.AllowedAlgorithms = nil },
-		func(params *Params) {
-			params.AllowedAlgorithms = []Algorithm{
-				Algorithm_ALGORITHM_ML_DSA_65,
-				Algorithm_ALGORITHM_ML_DSA_65,
-			}
-		},
-		func(params *Params) { params.SignatureVerificationGas = AbsoluteMaxVerificationGas + 1 },
-		func(params *Params) { params.ProofVerificationGas = 0 },
-		func(params *Params) { params.ProofVerificationGas = AbsoluteMaxVerificationGas + 1 },
-		func(params *Params) { params.MaxPqcAuthBytes = 0 },
-		func(params *Params) { params.MaxRetainedKeyRecordsPerRole = 0 },
+		func(params *Params) { params.VerificationGas = AbsoluteMaxVerificationGas + 1 },
+		func(params *Params) { params.VerificationGas = 0 },
 		func(params *Params) { params.EmergencyMode = EmergencyMode(99) },
 		func(params *Params) {
 			params.EmergencyMode = EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
@@ -310,7 +163,7 @@ func TestParamsRejectRemainingInvalidBoundsAndSchedules(t *testing.T) {
 		func(params *Params) { params.PendingActivationHeight = 2 },
 		func(params *Params) {
 			pending := params.AsScheduled()
-			pending.MaxPqcSigners = 0
+			pending.VerificationGas = 0
 			params.Pending = &pending
 			params.PendingActivationHeight = 2
 		},

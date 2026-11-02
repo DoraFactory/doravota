@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
-	"github.com/DoraFactory/doravota/x/pqcauth/internal/execution"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
@@ -155,17 +154,6 @@ func TestExtractExtensionStructureMatrix(t *testing.T) {
 			params: params,
 		},
 		{
-			name: "too-large",
-			tx: extensionOptionsTxStub{
-				critical: []*codectypes.Any{validAny},
-			},
-			params: func() types.Params {
-				limited := params
-				limited.MaxPqcAuthBytes = 1
-				return limited
-			}(),
-		},
-		{
 			name: "cannot-decode",
 			tx: extensionOptionsTxStub{
 				critical: []*codectypes.Any{{
@@ -184,27 +172,6 @@ func TestExtractExtensionStructureMatrix(t *testing.T) {
 				})},
 			},
 			params: params,
-		},
-		{
-			name: "too-many-signers",
-			tx: extensionOptionsTxStub{
-				critical: []*codectypes.Any{encodedExtension(t, types.ExtensionPQCAuth{
-					FormatVersion: types.FormatVersionV1,
-					Signatures: []types.SignerPQCSignature{
-						entry,
-						func() types.SignerPQCSignature {
-							second := entry
-							second.SignerIndex = 1
-							return second
-						}(),
-					},
-				})},
-			},
-			params: func() types.Params {
-				limited := params
-				limited.MaxPqcSigners = 1
-				return limited
-			}(),
 		},
 		{
 			name: "unordered-signers",
@@ -347,7 +314,7 @@ func TestPQCStateContextUsesLatestCommittedHeightOnlyForSimulation(t *testing.T)
 }
 
 func TestPQCRequirementDecisionMatrix(t *testing.T) {
-	require.False(t, pqcRequiredForClassicAccount(
+	require.True(t, pqcRequiredForClassicAccount(
 		types.EnforcementMode_ENFORCEMENT_MODE_DISABLED,
 		types.AccountPolicy{},
 		false,
@@ -567,36 +534,6 @@ func TestValidateLifecycleRegistrationMatrix(t *testing.T) {
 	)
 	require.ErrorIs(t, err, types.ErrUnexpectedKeyID)
 
-	closed := params
-	closed.RegistrationCutoffHeight = uint64(ctx.BlockHeight())
-	err = decorator.validateLifecycleProofs(
-		ctx,
-		extensionOptionsTxStub{messages: []sdk.Msg{register}},
-		closed,
-		true,
-	)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
-
-	freshOnly := params
-	freshOnly.RegistrationMode =
-		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	err = decorator.validateLifecycleProofs(
-		ctx,
-		extensionOptionsTxStub{messages: []sdk.Msg{register}},
-		freshOnly,
-		true,
-	)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
-	freshCtx, err := execution.CaptureRegistrationCandidate(ctx, register, true)
-	require.NoError(t, err)
-	err = decorator.validateLifecycleProofs(
-		freshCtx,
-		extensionOptionsTxStub{messages: []sdk.Msg{register}},
-		freshOnly,
-		true,
-	)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
-
 	unexpectedID := *register
 	unexpectedID.ExpectedSigningKeyId = 2
 	err = decorator.validateLifecycleProofs(
@@ -756,9 +693,6 @@ func TestLifecycleHelpersCoverFailClosedModes(t *testing.T) {
 	require.NoError(t, recoveryChangeAllowed(params))
 
 	params = moduleKeeper.GetParams(ctx)
-	params.AllowedAlgorithms = []types.Algorithm{
-		types.Algorithm_ALGORITHM_ML_DSA_65,
-	}
 	err := verifyLifecycleKeyProof(
 		ctx,
 		params,

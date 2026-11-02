@@ -452,57 +452,6 @@ func TestMsgServerRejectsNativeMLDSARegistration(t *testing.T) {
 	require.False(t, found)
 }
 
-func TestMsgServerEnforcesFreshAccountRegistrationMode(t *testing.T) {
-	moduleKeeper, ctx := setupKeeper(t, 10)
-	params := types.DefaultParams()
-	params.RegistrationMode =
-		types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-	require.ErrorIs(t, moduleKeeper.SetParams(ctx, params), types.ErrInvalidParams)
-	// Invalid experimental state must still fail closed if injected below the
-	// validated setter; a fresh marker cannot re-enable unsupported enrollment.
-	ctx.KVStore(moduleKeeper.storeKey).Set(types.ParamsKey, moduleKeeper.cdc.MustMarshal(&params))
-
-	owner := sdk.AccAddress(bytes.Repeat([]byte{0x19}, 20)).String()
-	signingPublicKey, signingPrivateKey := keyPair(33)
-	recoveryPublicKey, recoveryPrivateKey := keyPair(34)
-	message := &types.MsgRegisterKey{
-		Owner:                owner,
-		ExpectedSigningKeyId: 1,
-		SigningAlgorithm:     types.Algorithm_ALGORITHM_ML_DSA_65,
-		SigningPublicKey:     signingPublicKey,
-		SigningKeyProof: keyProof(
-			t, ctx, params, owner, 1,
-			types.Algorithm_ALGORITHM_ML_DSA_65,
-			signingPublicKey, signingPrivateKey,
-			types.KeyRole_KEY_ROLE_SIGNING,
-			types.PurposeRegisterSigning, 0,
-			[]byte(types.RegisterProofContext),
-		),
-		RecoveryAlgorithm: types.Algorithm_ALGORITHM_ML_DSA_65,
-		RecoveryPublicKey: recoveryPublicKey,
-		RecoveryKeyProof: keyProof(
-			t, ctx, params, owner, 2,
-			types.Algorithm_ALGORITHM_ML_DSA_65,
-			recoveryPublicKey, recoveryPrivateKey,
-			types.KeyRole_KEY_ROLE_RECOVERY,
-			types.PurposeRegisterRecovery, 0,
-			[]byte(types.RegisterProofContext),
-		),
-		SelfEnforce: true,
-	}
-
-	base := authorizedLifecycleContext(t, ctx, message)
-	notFresh, err := execution.CaptureRegistrationCandidate(base, message, false)
-	require.NoError(t, err)
-	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(notFresh), message)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
-
-	fresh, err := execution.CaptureRegistrationCandidate(base, message, true)
-	require.NoError(t, err)
-	_, err = NewMsgServer(moduleKeeper).RegisterKey(sdk.WrapSDKContext(fresh), message)
-	require.ErrorIs(t, err, types.ErrRegistrationClosed)
-}
-
 func TestStateInvariantRejectsNativeMLDSAOwner(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 10)
 	require.NoError(t, moduleKeeper.SetParams(ctx, types.DefaultParams()))
@@ -964,8 +913,7 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	requested := current
 	requested.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	requested.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
-	requested.MaxPqcSigners = 4
-	requested.MaxPqcVerificationsPerBlock = 100
+	requested.VerificationGas = 1000
 
 	response, err := NewMsgServer(moduleKeeper).UpdateParams(
 		sdk.WrapSDKContext(ctx),
@@ -983,13 +931,12 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 	before := stored.Effective(34)
 	require.Equal(t, types.EnforcementMode_ENFORCEMENT_MODE_OPTIONAL, before.EnforcementMode)
 	require.Equal(t, types.EmergencyMode_EMERGENCY_MODE_NORMAL, before.EmergencyMode)
-	require.Equal(t, types.DefaultMaxPQCSigners, before.MaxPqcSigners)
+	require.Equal(t, types.DefaultVerificationGas, before.VerificationGas)
 
 	after := stored.Effective(35)
 	require.Equal(t, requested.EnforcementMode, after.EnforcementMode)
 	require.Equal(t, requested.EmergencyMode, after.EmergencyMode)
-	require.Equal(t, requested.MaxPqcSigners, after.MaxPqcSigners)
-	require.Equal(t, requested.MaxPqcVerificationsPerBlock, after.MaxPqcVerificationsPerBlock)
+	require.Equal(t, requested.VerificationGas, after.VerificationGas)
 	require.Nil(t, after.Pending)
 	require.Equal(
 		t,
@@ -1002,7 +949,7 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 		stored.Effective(42).EmergencyMode,
 	)
 
-	requested.RegistrationCutoffHeight = 100
+	requested.VerificationGas = 0
 	_, err = NewMsgServer(moduleKeeper).UpdateParams(
 		sdk.WrapSDKContext(ctx),
 		&types.MsgUpdateParams{
@@ -1014,27 +961,6 @@ func TestUpdateParamsDelaysRestrictiveBundleAndBoundsEmergency(t *testing.T) {
 }
 
 // Phase one rejects all registration-closing configuration rather than queuing it.
-func TestPhaseOneRegistrationGovernanceRejected(t *testing.T) {
-	k, ctx := setupKeeper(t, 30)
-	base := types.DefaultParams()
-	require.NoError(t, k.SetParams(ctx, base))
-	for _, emergencyOnly := range []bool{false, true} {
-		for _, mode := range []types.RegistrationMode{types.RegistrationMode_REGISTRATION_MODE_CLOSED, types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY} {
-			requested := base
-			requested.RegistrationMode = mode
-			_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: requested, EmergencyOnly: emergencyOnly})
-			require.ErrorIs(t, err, types.ErrInvalidParams)
-			require.Equal(t, base, k.GetParams(ctx))
-		}
-		for _, cutoff := range []uint64{1, 30, 35, 36, 1000000} {
-			requested := base
-			requested.RegistrationCutoffHeight = cutoff
-			_, err := NewMsgServer(k).UpdateParams(ctx, &types.MsgUpdateParams{Authority: k.Authority(), Params: requested, EmergencyOnly: emergencyOnly})
-			require.ErrorIs(t, err, types.ErrInvalidParams)
-			require.Equal(t, base, k.GetParams(ctx))
-		}
-	}
-}
 
 func TestEmergencyOnlyUpdateActivatesAtHPlusOneAndCanBeCancelled(t *testing.T) {
 	moduleKeeper, ctx := setupKeeper(t, 30)
@@ -1080,47 +1006,17 @@ func TestGovernanceSafetyDelayClassification(t *testing.T) {
 			restrictive: true,
 		},
 		{
-			name: "registration cutoff",
-			mutate: func(requested *types.ScheduledParams) {
-				requested.RegistrationCutoffHeight = 100
-			},
-			restrictive: true,
-		},
-		{
-			name: "registration mode restriction",
-			mutate: func(requested *types.ScheduledParams) {
-				requested.RegistrationMode =
-					types.RegistrationMode_REGISTRATION_MODE_FRESH_ACCOUNTS_ONLY
-			},
-			restrictive: true,
-		},
-		{
 			name: "signature gas increase",
 			mutate: func(requested *types.ScheduledParams) {
-				requested.SignatureVerificationGas++
+				requested.VerificationGas++
 			},
 			restrictive: true,
 		},
 		{
 			name: "proof gas increase",
 			mutate: func(requested *types.ScheduledParams) {
-				requested.ProofVerificationGas++
+				requested.VerificationGas++
 			},
-			restrictive: true,
-		},
-		{
-			name:        "signer limit reduction",
-			mutate:      func(requested *types.ScheduledParams) { requested.MaxPqcSigners-- },
-			restrictive: true,
-		},
-		{
-			name:        "byte limit reduction",
-			mutate:      func(requested *types.ScheduledParams) { requested.MaxPqcAuthBytes-- },
-			restrictive: true,
-		},
-		{
-			name:        "algorithm removal",
-			mutate:      func(requested *types.ScheduledParams) { requested.AllowedAlgorithms = nil },
 			restrictive: true,
 		},
 		{
@@ -1149,10 +1045,6 @@ func TestGovernanceSafetyDelayClassification(t *testing.T) {
 				current = base
 			}
 			requested := current
-			requested.AllowedAlgorithms = append(
-				[]types.Algorithm(nil),
-				current.AllowedAlgorithms...,
-			)
 			testCase.mutate(&requested)
 			require.Equal(
 				t,
@@ -1170,7 +1062,7 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	scheduled.EnforcementMode = types.EnforcementMode_ENFORCEMENT_MODE_REQUIRED_FOR_REGISTERED
 	scheduled.EmergencyMode = types.EmergencyMode_EMERGENCY_MODE_PAUSE_NEW_KEYS
 	scheduled.EmergencyExpiresHeight = 40
-	scheduled.MaxPqcSigners = 4
+	scheduled.VerificationGas = 1000
 	params.Pending = &scheduled
 	params.PendingActivationHeight = 31
 	require.NoError(t, moduleKeeper.SetParams(ctx, params))
@@ -1183,12 +1075,7 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, scheduled.EnforcementMode, response.Params.EnforcementMode)
 	require.Equal(t, scheduled.EmergencyMode, response.Params.EmergencyMode)
-	require.Equal(t, scheduled.MaxPqcSigners, response.Params.MaxPqcSigners)
-	require.Equal(
-		t,
-		types.RegistrationMode_REGISTRATION_MODE_OPEN,
-		response.EffectiveRegistrationMode,
-	)
+	require.Equal(t, scheduled.VerificationGas, response.Params.VerificationGas)
 	require.Nil(t, response.Params.Pending)
 	require.Zero(t, response.Params.PendingActivationHeight)
 
@@ -1198,20 +1085,6 @@ func TestActivatedParamsAreNormalizedForQueriesAndStore(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, normalized.Pending)
 	require.Nil(t, moduleKeeper.GetParams(activationCtx).Pending)
-}
-
-func TestParamsQueryRemainsOpenAfterRejectedCutoff(t *testing.T) {
-	k, ctx := setupKeeper(t, 30)
-	params := types.DefaultParams()
-	require.NoError(t, k.SetParams(ctx, params))
-	params.RegistrationCutoffHeight = 31
-	require.ErrorIs(t, k.SetParams(ctx, params), types.ErrInvalidParams)
-	for _, height := range []int64{30, 31, 32} {
-		response, err := NewQueryServer(k).Params(ctx.WithBlockHeight(height), &types.QueryParamsRequest{})
-		require.NoError(t, err)
-		require.Equal(t, types.RegistrationMode_REGISTRATION_MODE_OPEN, response.EffectiveRegistrationMode)
-		require.Zero(t, response.Params.RegistrationCutoffHeight)
-	}
 }
 
 func TestReserveKeyIDsRemainMonotonicWithoutLifetimeQuota(t *testing.T) {
@@ -1394,35 +1267,12 @@ func TestUpdateParamsRejectsAuthorityNetworkAndNestedSchedule(t *testing.T) {
 	require.Zero(t, response.ActivationHeight)
 }
 
-func TestUpdateParamsCanLowerHistoryRetentionIndependentlyOfKeySequence(t *testing.T) {
-	moduleKeeper, ctx := setupKeeper(t, 10)
-	current := types.DefaultParams()
-	require.NoError(t, moduleKeeper.SetParams(ctx, current))
-	owner := sdk.AccAddress(bytes.Repeat([]byte{0x42}, 20))
-	require.NoError(t, moduleKeeper.SetKeySequence(ctx, owner, types.AccountKeySequence{
-		Owner:     owner.String(),
-		NextKeyId: 7,
-	}))
-
-	requested := current
-	requested.MaxRetainedKeyRecordsPerRole = 5
-	response, err := NewMsgServer(moduleKeeper).UpdateParams(
-		sdk.WrapSDKContext(ctx),
-		&types.MsgUpdateParams{Authority: moduleKeeper.Authority(), Params: requested},
-	)
-	require.NoError(t, err)
-	require.Equal(t, uint64(10)+current.GovernanceSafetyDelayBlocks, response.ActivationHeight)
-	require.Equal(t, uint64(7), moduleKeeper.GetKeySequence(ctx, owner).NextKeyId)
-}
-
-func TestRestrictiveVerificationAndRetentionLimitsRespectSafetyDelay(t *testing.T) {
+func TestRestrictiveVerificationPriceRespectsSafetyDelay(t *testing.T) {
 	cases := []struct {
 		name   string
 		change func(*types.Params)
 	}{
-		{"per transaction verification limit", func(p *types.Params) { p.MaxPqcVerificationsPerTx-- }},
-		{"per block verification limit", func(p *types.Params) { p.MaxPqcVerificationsPerBlock-- }},
-		{"retained key records", func(p *types.Params) { p.MaxRetainedKeyRecordsPerRole-- }},
+		{"verification price", func(p *types.Params) { p.VerificationGas++ }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

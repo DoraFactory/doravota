@@ -81,7 +81,7 @@ func isRecoveryEscape(tx sdk.Tx) bool {
 	switch message := tx.GetMsgs()[0].(type) {
 	case *types.MsgRecoverKey:
 		// Only the structural pause gate is bypassed. All SDK signatures,
-		// recovery proofs, payer factors and verification budgets still apply.
+		// recovery proofs, payer factors and per-operation gas charges still apply.
 		return message != nil
 	case *types.MsgCancelRecovery:
 		return message != nil
@@ -204,7 +204,7 @@ func ExtractExtension(
 	if encoded == nil {
 		return nil, false, nil
 	}
-	if err := preflightPQCExtension(encoded, params.EffectiveMaxPQCAuthBytes(), params.EffectiveMaxPQCSigners()); err != nil {
+	if err := preflightPQCExtension(encoded, types.MaxPQCAuthBytes, types.MaxPQCSigners); err != nil {
 		return nil, false, err
 	}
 
@@ -223,7 +223,7 @@ func ExtractExtension(
 			extension.FormatVersion,
 		)
 	}
-	if uint32(len(extension.Signatures)) > params.EffectiveMaxPQCSigners() {
+	if uint32(len(extension.Signatures)) > types.MaxPQCSigners {
 		return nil, false, errorsmod.Wrap(types.ErrInvalidExtension, "too many PQC signer entries")
 	}
 

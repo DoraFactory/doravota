@@ -19,8 +19,8 @@ import (
 )
 
 // A bounded, deterministic application workload, not a network fairness or
-// minimum-hardware benchmark. Keep the default 750 price and 400/block budget.
-func TestPQCAuthBoundedMixedBudgetAndRecovery(t *testing.T) {
+// minimum-hardware benchmark. The old 400-verification quota is absent.
+func TestPQCAuthMixedTrafficAndRecoveryWithoutQuota(t *testing.T) {
 	p := pqctypes.DefaultParams()
 	p.RecoveryDelayBlocks = 4 // Shorten only the recovery window in this fixture.
 	c := newPQCChain(t, p)
@@ -59,9 +59,8 @@ func TestPQCAuthBoundedMixedBudgetAndRecovery(t *testing.T) {
 	msg.RecoverySignature, err = recovery.Sign(context.Background(), bz, []byte(pqctypes.RecoverySignatureContext))
 	require.NoError(t, err)
 	escape := c.tx(t, c.key, nil, msg)
-	// Three saturated blocks postpone recovery. Prioritize it in the fourth;
-	// then postpone cancellation once and prioritize it before its deadline.
-	for round := 0; round < 6; round++ {
+	// More than 400 verifications must not delay recovery/cancellation when gas and bytes fit.
+	for round := 0; round < 2; round++ {
 		var noise [][]byte
 		for i := uint64(0); i < 200; i++ {
 			noise = append(noise,
@@ -69,20 +68,8 @@ func TestPQCAuthBoundedMixedBudgetAndRecovery(t *testing.T) {
 				selectionTxWithGas(t, c, 500000, []cryptotypes.PrivKey{c.other}, []pqcclient.PQCSigner{hybrid}, []uint64{i}, nil, selectionSend(c.other, ownerKey)))
 		}
 		ordinary := selectionTxWithGas(t, c, 500000, []cryptotypes.PrivKey{plain}, nil, []uint64{0}, nil, selectionSend(plain, ownerKey))
-		prioritized := round == 3 || round == 5
-		var candidates, want [][]byte
-		if prioritized {
-			cost := 2
-			if round == 5 {
-				cost = 1
-			}
-			candidates = append([][]byte{escape}, noise...)
-			want = append([][]byte{escape}, noise[:400-cost]...)
-		} else {
-			candidates = append(append([][]byte{}, noise...), escape)
-			want = append([][]byte{}, noise...)
-		}
-		candidates, want = append(candidates, ordinary), append(want, ordinary)
+		candidates := append(append([][]byte{}, noise...), escape, ordinary)
+		want := candidates
 		start := time.Now()
 		selectionCheck(t, c, candidates)
 		checkTime := time.Since(start)
@@ -108,15 +95,15 @@ func TestPQCAuthBoundedMixedBudgetAndRecovery(t *testing.T) {
 		_, err = c.app.Commit()
 		require.NoError(t, err)
 		c.height = h
-		t.Logf("round=%d candidates=%d included=%d prioritized_escape=%t gas=%d check=%s prepare=%s finalize_commit=%s", round, len(candidates), len(want), prioritized, gas, checkTime, prepareTime, time.Since(start))
+		t.Logf("round=%d candidates=%d included=%d gas=%d check=%s prepare=%s finalize_commit=%s", round, len(candidates), len(want), gas, checkTime, prepareTime, time.Since(start))
 		state, found := c.app.PQCAuthKeeper.GetEffectiveAccountPolicy(c.app.NewContext(true).WithBlockHeight(c.height), owner)
 		require.True(t, found)
-		if round < 3 || round == 5 {
+		if round == 1 {
 			require.Zero(t, state.PendingSigningKeyId)
 		} else {
 			require.Equal(t, uint64(3), state.PendingSigningKeyId)
 		}
-		if round == 3 {
+		if round == 0 {
 			escape = c.tx(t, c.key, ownerFactor, &pqctypes.MsgCancelRecovery{Owner: owner.String(), ExpectedPendingSigningKeyId: 3, ExpectedPendingPolicyVersion: state.PendingPolicyVersion})
 		}
 		require.True(t, c.app.PQCAuthKeeper.AuditState(c.app.NewContext(true).WithBlockHeight(c.height), 100).Consistent)
