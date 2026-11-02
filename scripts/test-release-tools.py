@@ -18,9 +18,30 @@ def load(name):
 gate = load("check-test-results")
 notes = load("prepare-release-notes")
 candidate = load("candidate-prerelease")
+lifecycle = load("rehearse-pqcauth-lifecycle")
 
 
 class ReleaseToolsTest(unittest.TestCase):
+    def test_rehearsal_listener_ports_avoid_ephemeral_range(self):
+        ports = lifecycle.rehearsal_ports(lifecycle.DEFAULT_RPC_PORT, (32768, 60999))
+        self.assertEqual(ports, [28656, 28657, 28756, 28757, 28856, 28857, 28956, 28957])
+        # Old default and a base whose later validators enter the range fail.
+        for base in (47757, 32600):
+            with self.subTest(base=base), self.assertRaisesRegex(ValueError, "ephemeral"):
+                lifecycle.rehearsal_ports(base, (32768, 60999))
+        # Honour the actual host range rather than assuming Linux defaults.
+        with self.assertRaisesRegex(ValueError, "ephemeral"):
+            lifecycle.rehearsal_ports(lifecycle.DEFAULT_RPC_PORT, (20000, 50000))
+
+    def test_rehearsal_listener_port_boundaries(self):
+        self.assertEqual(len(lifecycle.rehearsal_ports(1025, None)), 8)
+        self.assertEqual(lifecycle.rehearsal_ports(65235, (32768, 60999))[-1], 65535)
+        for base in (1024, 65236):
+            with self.subTest(base=base), self.assertRaises(ValueError):
+                lifecycle.rehearsal_ports(base)
+        with self.assertRaises(ValueError):
+            lifecycle.rehearsal_ports(28657, (60999, 32768))
+
     def test_candidate_policy_uses_pr_target_not_source_branch(self):
         branch = "feature/pqcauth-sdk-keyring"
         for event, ref, base, expected in [

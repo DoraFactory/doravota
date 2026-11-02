@@ -19,6 +19,23 @@ import traceback
 import urllib.request
 
 
+DEFAULT_RPC_PORT = 28657
+
+
+def rehearsal_ports(base, ephemeral_range=None):
+    """Keep restart listeners out of the kernel's outgoing-port allocation pool."""
+    ports = [base + 100 * i + offset for i in range(4) for offset in (-1, 0)]
+    if any(not 1024 <= port <= 65535 for port in ports):
+        raise ValueError("all four validators' RPC/P2P ports must be within 1024..65535")
+    if ephemeral_range is not None:
+        low, high = ephemeral_range
+        if not 1 <= low <= high <= 65535:
+            raise ValueError("invalid kernel ephemeral port range")
+        if any(low <= port <= high for port in ports):
+            raise ValueError("RPC/P2P ports overlap kernel ephemeral range; select another --rpc-port")
+    return ports
+
+
 class Rehearsal:
     def __init__(self, args):
         self.binary = Path(args.binary).resolve(strict=True)
@@ -131,10 +148,14 @@ class Rehearsal:
         self.addresses[name] = result["address"]
 
     def setup(self):
+        ephemeral_path = Path("/proc/sys/net/ipv4/ip_local_port_range")
+        ephemeral = tuple(map(int, ephemeral_path.read_text().split())) if ephemeral_path.exists() else None
+        ports = rehearsal_ports(self.base, ephemeral)
+        self.save("listener-ports", {"ports": ports, "kernel_ephemeral_range": ephemeral})
+        for port in ports:
+            with socket.socket() as sock:
+                sock.bind(("127.0.0.1", port))
         for i in range(4):
-            for port in (self.base + 100 * i - 1, self.base + 100 * i):
-                with socket.socket() as sock:
-                    sock.bind(("127.0.0.1", port))
             self.cli("init", f"validator{i}", "--chain-id", self.chain, "--default-denom", "peaka", node=i)
             self.key(f"val{i}", node=i)
         self.key("owner")
@@ -410,7 +431,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--work-dir", required=True, help="new directory; existing runs are never overwritten")
-    parser.add_argument("--rpc-port", type=int, default=47757)
+    parser.add_argument("--rpc-port", type=int, default=DEFAULT_RPC_PORT)
     parser.add_argument("--rounds", type=int, default=8)
     args = parser.parse_args()
     if not 1025 <= args.rpc_port <= 65000 or not 4 <= args.rounds <= 100:
