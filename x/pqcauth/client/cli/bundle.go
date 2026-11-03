@@ -21,20 +21,24 @@ import (
 	pqcauthclient "github.com/DoraFactory/doravota/x/pqcauth/client"
 )
 
+const flagExpectNewKey = "expect-new-key"
+const flagExpectNewKeySHA256 = "expect-new-key-sha256"
+
 type bundleCommandResult struct {
-	Status        string `json:"status"`
-	File          string `json:"file"`
-	ChainID       string `json:"chain_id"`
-	NetworkID     string `json:"network_id_base64"`
-	Signer        string `json:"signer"`
-	AccountNumber uint64 `json:"account_number"`
-	Sequence      uint64 `json:"sequence"`
-	KeyID         uint64 `json:"key_id"`
-	Algorithm     string `json:"algorithm"`
-	PolicyVersion uint64 `json:"policy_version"`
-	TxSHA256      string `json:"tx_sha256"`
-	SignDocSHA256 string `json:"sign_doc_sha256"`
-	Signed        bool   `json:"signed"`
+	Status        string                         `json:"status"`
+	File          string                         `json:"file"`
+	ChainID       string                         `json:"chain_id"`
+	NetworkID     string                         `json:"network_id_base64"`
+	Signer        string                         `json:"signer"`
+	AccountNumber uint64                         `json:"account_number"`
+	Sequence      uint64                         `json:"sequence"`
+	KeyID         uint64                         `json:"key_id"`
+	Algorithm     string                         `json:"algorithm"`
+	PolicyVersion uint64                         `json:"policy_version"`
+	TxSHA256      string                         `json:"tx_sha256"`
+	SignDocSHA256 string                         `json:"sign_doc_sha256"`
+	Signed        bool                           `json:"signed"`
+	KeyChange     *pqcauthclient.BundleKeyChange `json:"key_change,omitempty"`
 }
 
 func prepareBundleCommand() *cobra.Command {
@@ -127,6 +131,18 @@ func signBundleCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			expected := ""
+			if summary.KeyChange != nil {
+				expected, err = expectedPublicKeyTarget(command, flagExpectNewKey, flagExpectNewKeySHA256)
+				if err != nil {
+					return err
+				}
+			} else if command.Flags().Changed(flagExpectNewKey) || command.Flags().Changed(flagExpectNewKeySHA256) {
+				return fmt.Errorf("expected new key supplied but transaction is not a key rotation")
+			}
+			if err := pqcauthclient.ValidatePQCSigningTarget(summary, expected); err != nil {
+				return err
+			}
 			skipConfirm, _ := command.Flags().GetBool(flags.FlagSkipConfirmation)
 			if !skipConfirm {
 				decodedTx, err := clientCtx.TxConfig.TxDecoder()(bundle.UnsignedTx)
@@ -139,7 +155,7 @@ func signBundleCommand() *cobra.Command {
 				}
 				printBundleReview(command.ErrOrStderr(), summary, transactionJSON)
 				ok, err := input.GetConfirmation(
-					"confirm exact transaction hashes before offline ML-DSA signing",
+					"confirm transaction intent and any new key fingerprint before offline ML-DSA signing",
 					bufio.NewReader(command.InOrStdin()),
 					command.ErrOrStderr(),
 				)
@@ -155,11 +171,12 @@ func signBundleCommand() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			signed, signedSummary, err := pqcauthclient.SignPQCSignBundle(
+			signed, signedSummary, err := pqcauthclient.SignPQCSignBundleForTarget(
 				command.Context(),
 				clientCtx.TxConfig,
 				bundle,
 				signer,
+				expected,
 			)
 			if err != nil {
 				return err
@@ -178,7 +195,9 @@ func signBundleCommand() *cobra.Command {
 			return printBundleResult(command.OutOrStdout(), "signed", args[2], signedSummary)
 		},
 	}
-	command.Flags().BoolP(flags.FlagSkipConfirmation, "y", false, "Skip offline signing confirmation")
+	command.Flags().BoolP(flags.FlagSkipConfirmation, "y", false, "Skip interactive confirmation (rotation target check is still required)")
+	command.Flags().String(flagExpectNewKey, "", "Trusted local ML-DSA public-key record for the new signing/recovery key; required for rotations unless --"+flagExpectNewKeySHA256+" is supplied")
+	command.Flags().String(flagExpectNewKeySHA256, "", "Full SHA-256 hex fingerprint of the new signing/recovery public key from an independent trusted device")
 	addOfflineKeyFlags(command)
 	return command
 }
@@ -380,6 +399,10 @@ func printBundleReview(
 	summary pqcauthclient.PQCSignBundleSummary,
 	transactionJSON []byte,
 ) {
+	if change := summary.KeyChange; change != nil {
+		_, _ = fmt.Fprintf(writer, "key_change_operation: %s\nnew_key_role: %s\nnew_key_id: %d\nnew_key_algorithm: %s\nnew_public_key_sha256: %s\n",
+			change.Operation, change.Role, change.NewKeyID, change.Algorithm.String(), change.PublicKeySHA256)
+	}
 	_, _ = fmt.Fprintf(
 		writer,
 		"chain_id: %s\nnetwork_id_base64: %s\nsigner: %s\naccount_number: %d\nsequence: %d\nkey_id: %d\npolicy_version: %d\ntx_sha256: %s\nsign_doc_sha256: %s\ntransaction_json:\n%s\n",
@@ -416,5 +439,6 @@ func printBundleResult(
 		TxSHA256:      hex.EncodeToString(summary.TxSHA256),
 		SignDocSHA256: hex.EncodeToString(summary.SignDocSHA256),
 		Signed:        summary.Signed,
+		KeyChange:     summary.KeyChange,
 	})
 }

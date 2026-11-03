@@ -308,10 +308,14 @@ func signRecoveryBundleCommand() *cobra.Command {
 }
 
 func expectedRecoverySigningTarget(command *cobra.Command) (string, error) {
-	name, _ := command.Flags().GetString(flagExpectNewSigningKey)
-	fingerprint, _ := command.Flags().GetString(flagExpectNewSigningKeySHA256)
+	return expectedPublicKeyTarget(command, flagExpectNewSigningKey, flagExpectNewSigningKeySHA256)
+}
+
+func expectedPublicKeyTarget(command *cobra.Command, keyFlag, fingerprintFlag string) (string, error) {
+	name, _ := command.Flags().GetString(keyFlag)
+	fingerprint, _ := command.Flags().GetString(fingerprintFlag)
 	if (name == "") == (fingerprint == "") {
-		return "", fmt.Errorf("provide exactly one of --%s or --%s from a trusted source", flagExpectNewSigningKey, flagExpectNewSigningKeySHA256)
+		return "", fmt.Errorf("provide exactly one of --%s or --%s from a trusted source", keyFlag, fingerprintFlag)
 	}
 	if name == "" {
 		return fingerprint, nil
@@ -324,7 +328,7 @@ func expectedRecoverySigningTarget(command *cobra.Command) (string, error) {
 	// Do not call Sign or export the target key's private material.
 	target, err := pqcauthclient.NewKeyringSigner(ctx.Keyring, name)
 	if err != nil {
-		return "", fmt.Errorf("load expected new signing public key: %w", err)
+		return "", fmt.Errorf("load expected new public key: %w", err)
 	}
 	publicKey, err := target.PublicKey(command.Context())
 	if err != nil {

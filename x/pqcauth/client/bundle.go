@@ -35,8 +35,8 @@ const (
 // single-signer transaction across an offline ML-DSA signing boundary.
 //
 // []byte fields use standard base64 when encoded as JSON. The two hashes are
-// redundant by design: they make accidental or malicious substitution visible
-// before a signature is produced.
+// redundant by design: they check internal consistency, not the user's intent.
+// An untrusted host can recompute both; rotations need an independent target.
 type PQCSignBundleV1 struct {
 	Format           string `json:"format"`
 	UnsignedTx       []byte `json:"unsigned_tx_base64"`
@@ -60,6 +60,7 @@ type PQCSignBundleSummary struct {
 	TxSHA256      []byte
 	SignDocSHA256 []byte
 	Signed        bool
+	KeyChange     *BundleKeyChange
 }
 
 // DecodeUnsignedTxJSONForPQCBundle accepts the standard Cosmos SDK
@@ -206,6 +207,8 @@ func PreparePQCSignBundle(
 // SignPQCSignBundle validates every offline-verifiable field, confirms that the
 // signer owns the on-chain public key carried by the bundle, and returns a
 // signed copy. The input bundle is never mutated.
+// SignPQCSignBundle is a low-level primitive for already trusted transactions.
+// Offline/untrusted-bundle callers must use SignPQCSignBundleForTarget instead.
 func SignPQCSignBundle(
 	ctx context.Context,
 	txConfig sdkclient.TxConfig,
@@ -470,6 +473,10 @@ func ValidatePQCSignBundle(
 		}
 	}
 
+	keyChange, err := bundleKeyChange(decodedTx)
+	if err != nil {
+		return PQCSignBundleSummary{}, err
+	}
 	return PQCSignBundleSummary{
 		ChainID:       signDoc.ChainId,
 		NetworkID:     append([]byte(nil), signDoc.NetworkId...),
@@ -482,6 +489,7 @@ func ValidatePQCSignBundle(
 		TxSHA256:      append([]byte(nil), txHash[:]...),
 		SignDocSHA256: append([]byte(nil), signDocHash[:]...),
 		Signed:        len(bundle.Signature) != 0,
+		KeyChange:     keyChange,
 	}, nil
 }
 

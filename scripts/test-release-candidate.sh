@@ -71,11 +71,13 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestRegistrationRejectsIncompatibleBackend \
  TestNewFactorAcknowledgementForExternalOwners \
  TestOfflineProofRejectsNonCanonicalOwnerBeforeKeyAccess \
+ TestSignBundleRotationTargetGuard TestSignBundleCommandOfflineRoundTrip \
  TestRecoveryBundleCommandsPrepareAndSignRoundTrip \
  TestDelegationWarningDoesNotPolluteTransactionOutput
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/client \
- TestRecoverySigningTargetRejectsInternallyConsistentSubstitution
+ TestRecoverySigningTargetRejectsInternallyConsistentSubstitution \
+ TestRotationSigningTargetRejectsConsistentSubstitution
 python3 scripts/check-test-results.py "$results/unit.jsonl" \
  --package github.com/DoraFactory/doravota/x/pqcauth/ante \
  TestRecheckKeepsAuthorizationGasAndKeyChecks \

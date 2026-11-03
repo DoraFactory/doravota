@@ -905,6 +905,20 @@ func TestSignBundleCommandOfflineRoundTrip(t *testing.T) {
 	require.NoError(t, os.WriteFile(preparedPath, encoded, 0o600))
 	require.NoError(t, os.WriteFile(privateKeyPath, privateKey, 0o600))
 
+	// A target flag must not be silently ignored if an untrusted host replaces
+	// the intended rotation with an ordinary transfer, even with --yes.
+	for _, target := range []string{"", pqcauthclient.PublicKeySHA256(publicKey)} {
+		guard := signBundleCommand()
+		guard.SetContext(attachClientContext(context.Background(), &clientCtx))
+		guard.SetOut(&bytes.Buffer{})
+		guard.SetErr(&bytes.Buffer{})
+		out := filepath.Join(t.TempDir(), "must-not-exist.json")
+		guard.SetArgs([]string{preparedPath, "missing-private-key", out, "--legacy-key-file", "--yes", "--expect-new-key-sha256", target})
+		require.ErrorContains(t, guard.Execute(), "not a key rotation")
+		_, err := os.Stat(out)
+		require.True(t, os.IsNotExist(err))
+	}
+
 	command := signBundleCommand()
 	command.SetContext(attachClientContext(context.Background(), &clientCtx))
 	command.SetOut(&output)

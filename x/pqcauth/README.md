@@ -179,6 +179,45 @@ dorad tx pqcauth sign-bundle prepared.json pqc-signing signed.json --keyring-bac
 dorad tx pqcauth broadcast-bundle signed.json --help
 ```
 
+### Trusted rotation target (required for offline key changes)
+
+Both `rotate-key` and `rotate-recovery-key` can prepare an offline bundle with
+`--pqc-sign-bundle-output rotation.prepared.json`. For these transactions,
+`sign-bundle` requires exactly one independently trusted target:
+
+```sh
+# The current signing factor authorizes the change. The expected key is the
+# NEW signing OR recovery key, depending on the operation in the bundle.
+dorad tx pqcauth sign-bundle rotation.prepared.json pqc-signing rotation.signed.json \
+  --expect-new-key pqc-new-factor --keyring-backend file
+
+# Alternatively, use the FULL fingerprint recorded on the trusted device that
+# generated the replacement key (create-key-proof outputs public_key_sha256).
+dorad tx pqcauth sign-bundle rotation.prepared.json pqc-signing rotation.signed.json \
+  --expect-new-key-sha256 "$TRUSTED_NEW_KEY_SHA256" --keyring-backend file
+```
+
+Only the target public key is read from the local record; watch-only records
+work. The confirmation screen shows the operation, new key role, new ID,
+algorithm and full SHA-256 fingerprint. Prepared/signed result JSON exposes the
+same information in `key_change`, derived from validated transaction bytes.
+Missing, malformed or mismatched targets fail before loading the current factor;
+`--yes` cannot bypass the check. Do not obtain the expected fingerprint from the
+incoming bundle or the untrusted online host. Check the operation and role, not
+just the fingerprint. Rotations activate at H+1, not after the recovery delay.
+
+Ordinary transfers keep the existing no-target-flag flow. Supplying either
+expected-key flag for a non-rotation transaction is rejected, not silently
+ignored. A rotation combined with other top-level messages is rejected by the
+client, matching the existing chain-side lifecycle constraint. This change does
+not add support for indirectly executed lifecycle messages.
+
+Offline integrations should use `SignPQCSignBundleForTarget`; it validates the
+bundle, derives the key change and checks the independent target before signing.
+The existing `SignPQCSignBundle` and private-key convenience wrapper are low-level
+primitives for already trusted transactions, not an intent-validation boundary.
+These client checks do not change transaction encoding or consensus verification.
+
 ### Trusted recovery target (required for offline signing)
 
 Generate the replacement signing key on a trusted device, independently of the

@@ -156,18 +156,7 @@ func PublicKeySHA256(publicKey []byte) string {
 // ValidateRecoverySigningTarget compares a validated summary with a target
 // obtained independently on a trusted device, never from the incoming bundle.
 func ValidateRecoverySigningTarget(summary RecoverySignBundleSummary, expectedSHA256 string) error {
-	expected, err := hex.DecodeString(expectedSHA256)
-	if err != nil || len(expected) != sha256.Size {
-		return fmt.Errorf("expected new signing key fingerprint must be a full 64-character SHA-256 hex value")
-	}
-	if summary.ProposedAlgorithm != types.Algorithm_ALGORITHM_ML_DSA_65 {
-		return fmt.Errorf("expected new signing key must use ML-DSA-65")
-	}
-	actual, err := hex.DecodeString(summary.ProposedPublicKeySHA256)
-	if err != nil || len(actual) != sha256.Size || !constantTimeBytesEqual(actual, expected) {
-		return fmt.Errorf("new signing key fingerprint does not match trusted expected key")
-	}
-	return nil
+	return validateExpectedPublicKey(summary.ProposedAlgorithm, summary.ProposedPublicKeySHA256, expectedSHA256)
 }
 
 // SignRecoverySignBundleForTarget is the signing entry point for bundles from

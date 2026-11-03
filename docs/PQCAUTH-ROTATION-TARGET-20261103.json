@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-03",
+  "baseline_commit": "428f5c988cc803e7670497c56ee55d2919ff46c0",
+  "scope": "Client-only offline rotation target confirmation; no consensus, protobuf, gas, delay or on-chain state changes",
+  "finding": "Generic sign-bundle could authorize an internally consistent rotation to a substituted key without an independent target check; affects MsgRotateKey and MsgRotateRecoveryKey",
+  "changes": [
+    "sign-bundle requires exactly one of --expect-new-key (trusted local ML-DSA public record) or --expect-new-key-sha256 (full fingerprint) for either rotation",
+    "Target operation, role, key ID, algorithm and SHA-256 are derived from decoded validated transaction bytes, not incoming metadata",
+    "Interactive confirmation and result JSON expose the new key information",
+    "Missing, malformed or mismatched targets reject before loading the current signing factor; --yes cannot bypass the check",
+    "Explicit target flags on a non-rotation transaction reject instead of being silently ignored; ordinary no-target transfers remain supported",
+    "SignPQCSignBundleForTarget provides the target-aware library entry point; existing low-level signing helpers require caller-established intent",
+    "Recovery and rotation target validation share the same full-fingerprint checks",
+    "Documented trusted target sourcing, watch-only key support and H+1 rotation activation; added mandatory release regression gates"
+  ],
+  "validation": {
+    "toolchain": "go1.26.10",
+    "gomaxprocs": 2,
+    "go_parallel_packages": 2,
+    "release_script": "scripts/test-release-candidate.sh",
+    "release_script_exit_code": 0,
+    "unit_test_and_subtest_pass_events": 816,
+    "unit_package_pass_events": 14,
+    "unit_fail_events": 0,
+    "explicit_simulations": [
+      "TestAppStateDeterminism",
+      "TestAppImportExport",
+      "TestAppSimulationAfterImport"
+    ],
+    "go_vet": "go vet ./...: exit 0",
+    "client_race": "go test -race ./x/pqcauth/client/... -count=3: exit 0",
+    "substitution_regression": "Both rotation types rebuilt with attacker-generated public keys, genuine independently verified PoPs and recomputed transaction/document hashes; target-aware signing rejects before the signer is called",
+    "cli_regressions": "Both rotations: missing/short/nonhex targets, unknown/wrong-algorithm local keys, conflicting flags and substituted targets reject with and without --yes; trusted watch-only key and uppercase full-hash positive paths pass; ordinary transfer with a target flag rejects",
+    "local_logs": "/tmp/pqcauth-rotation-target.xZhoTn/"
+  },
+  "limits": [
+    "816 counts test and subtest pass events, not independent security properties",
+    "Substitution regressions exercise real client signing and cryptography, not an end-to-end chain takeover experiment",
+    "The expected target must come from an independent trusted source, not the incoming bundle or compromised preparation host",
+    "Key matching does not replace reviewing operation, role, owner, network, fee and other transaction intent",
+    "Low-level SignPQCSignBundle and its private-key wrapper remain available for already trusted callers",
+    "No new network capacity, four-validator, mainnet snapshot or public-chain run for this client-only change",
+    "Local validation is not a GitHub CI result"
+  ]
+}
