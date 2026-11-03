@@ -1,476 +1,369 @@
-# PQC Auth — candidate integration
+# PQCAuth
 
-This module adds an ML-DSA-65 authorization factor to an existing classical
-account. Its address, assets and classical public key stay unchanged. Protected
-transactions require both the normal SDK signature and the PQC extension.
-Native SDK ML-DSA accounts already use PQC signatures and do not enroll here.
+PQCAuth adds an ML-DSA-65 signing factor to an existing classical account without
+changing its address, assets or account public key. A protected transaction needs
+both the account signature and a PQC signature in a critical transaction extension.
+The PQC factor is a registered public key, not a second spending account or a new
+multisig address. A separate recovery key can replace the PQC signing factor;
+it cannot recover the classical private key.
 
-Status: development on `feature/pqcauth-sdk-keyring`, based on the released v1.0.1
-IBC Amino compatibility runtime and the ML-DSA mnemonic-warning CLI. This is not a published
-release or a mainnet activation. The candidate upgrade plan is `v1.1.0`;
-the default development binary reports `v1.1.0-dev`.
+This README describes the current v1.1.0 candidate, not live-chain configuration
+or release approval. The development version is `v1.1.0-dev`.
 
-Phase one protects direct transaction signing and key management. Existing and
-new Authz/Feegrant capabilities keep standard SDK semantics: a grantee can still
-execute authorized ordinary operations or spend the allowance on fees without
-the owner's PQC factor. Enrollment does not revoke these capabilities or require
-grantees to enroll. This is **not** an all-asset-movements PQC guarantee. Review
-and revoke unwanted delegations separately. A protected grantee still needs its
-own PQC factor when signing. Indirect PQC lifecycle execution remains forbidden.
-See the [two-phase rollout plan](../../docs/PQCAUTH-ROLLOUT-PLAN.md).
+## Scope and restrictions
 
-Phase-one enrollment is always open, except during an authorized emergency
-pause. There is no registration-mode/cutoff parameter or fresh-account retry
-protocol. A failed message-stage registration can be retried with the current
-SDK sequence and sufficient gas. Removed protobuf fields are reserved; old
-experimental databases require a separate migration, not silent reinterpretation.
+- Enrollment supports single-key classical accounts (`secp256k1`, `ed25519`,
+  `secp256r1`, subject to SDK support). Native ML-DSA accounts use SDK signatures
+  directly and cannot enroll. Composite/multisig accounts cannot enroll either;
+  their ordinary SDK transactions remain supported under phase-one modes.
+- Registration enables self-protection; `--self-enforce=false` is rejected.
+  Registration, rotation and protection changes normally activate at H+1, where
+  H is the successful execution height. Recovery uses its separate delay.
+- Registration and transactions requiring a PQC extension require DIRECT mode
+  for every signer. The SDK's Amino-only Ledger backend cannot register.
+  Ordinary unprotected Amino transactions are unaffected.
+- Each lifecycle operation must be the only top-level message. Authz, governance,
+  group, contracts and ICA cannot execute these operations indirectly.
+- Authz/Feegrant permissions are **not revoked or additionally protected** by
+  enrollment or recovery. A grantee can still exercise its grants without the
+  owner's PQC factor; a protected grantee needs its own factor. Review unwanted
+  grants separately. Consensus keys and IBC light-client algorithms are out of scope.
+- The bundled CLI handles single-signer transactions. Chain-level multi-signer
+  and independent fee-payer support does not imply CLI orchestration support.
 
-Enrollment itself now requires SIGN_MODE_DIRECT for every signer. The CLI
-rejects explicit non-direct modes and the current SDK's Amino-only Ledger
-backend. Offline/watch-only workflows still need a compatible external signer;
-the CLI cannot certify an unknown wallet's PQC-extension support. These rules
-do not change ordinary, unprotected SDK Amino transfers or the v1.0.1 IBC fix.
+## Parameters
 
-PQC extension decoding enforces absolute 256 KiB / 32-entry bounds before
-generated protobuf allocation, including noncritical options that Ante later
-rejects. Fixed operational bounds of 64 KiB / 8 entries apply before extension
-decoding. These are memory/structure defenses, not governable throughput quotas.
-SDK tx_sig_limit independently bounds native account signatures.
+### Governable settings
 
-There is no PQC-specific transaction/block verification quota or dependency
-filter. The app uses the SDK default proposal handlers, finite configured block
-gas/byte limits, and an enabled block gas meter. With the SDK NoOp mempool,
-ProcessProposal does not authenticate transactions: FinalizeBlock Ante still
-verifies every signature and rejects invalid transactions. Removing a parallel
-quota is not proof of worst-case capacity or fair inclusion; network admission,
-recheck and target-hardware load tests remain necessary.
-See the [simplification record](../../docs/PQCAUTH-SIMPLIFICATION-20261102.md).
-Earlier audit records describe superseded selection algorithms.
+These are the only three mutable policy fields. Names below omit enum prefixes.
 
-Recheck reuses the cryptographic validity established for the same transaction
-bytes by CheckTx(New). It still performs state/structure/key/policy and SDK
-sequence checks and charges the configured verification gas; only the three
-ML-DSA calls (authorization, recovery authorization, key proof) are skipped.
-FinalizeBlock always verifies independently. Recheck is a trusted local ABCI
-mode, not a broadcast transaction flag or an API for authenticating new bytes.
-This application disables SDK unordered transactions. Review the recovery
-document's state-derived policy-version binding before enabling that feature;
-the regression gate intentionally rejects such an unreviewed configuration.
-Recovery proof reuse also depends on policy-version changes having a pending
-window of at least one block, and `mempool.recheck = true` after every commit.
-The stale-recovery regression checks eviction during that window and rejection
-at FinalizeBlock. Reassess before introducing immediate policy activation.
-See the [recheck fixes and executed tests](../../docs/PQCAUTH-RECHECK-FIXES-20261102.md)
-and [remaining parameter decisions](../../docs/PQCAUTH-PARAMETER-DECISIONS-20261102.md).
+| Field | Default | Meaning / allowed values |
+| --- | --- | --- |
+| `enforcement_mode` | `OPTIONAL` | `OPTIONAL`: enrolled accounts require PQC when self-protection is on. `REQUIRED_FOR_REGISTERED`: all enrolled accounts require it, even if self-protection is off. Unregistered accounts remain usable. `DISABLED`, global `REQUIRED` and `UNSPECIFIED` are rejected. |
+| `verification_gas` | `750` | Gas charged before each PQC authorization, recovery signature or new-key proof; range 750–10,000,000, with the block-gas sanity check below. |
+| `emergency_mode` | `NORMAL` | `NORMAL`, `PAUSE_NEW_KEYS`, or `PAUSE_PQC_TRANSACTIONS`; see governance rules below. |
 
-Registration, `set-protection true`, and `recover-key` print a delegation warning to stderr,
-including the SDK `query authz grants-by-granter` and
-`query feegrant grants-by-granter` commands. They do not query or revoke grants
-automatically: review all pages on the intended chain. A compromised classical
-grantee can still use the assets/fees authorized by its grants, including after
-PQC recovery. Offline generation must not be mistaken for a delegation audit.
+750 is **not the total transaction gas**. Account-signature verification, bytes,
+storage and message execution cost additional gas. A protected send adds one
+PQC verification; registration has two key proofs. SDK-native ML-DSA signatures
+use the separate x/auth price path, with a 750 floor. PQCAuth's price references
+the pinned SDK baseline, not the live x/auth parameter.
+Lifecycle authorization remains required even when self-protection is off.
 
-## Parameter and resource boundaries
+### Immutable launch settings
 
-Only enforcement mode, one verification gas price, and emergency mode are
-mutable governance policy. Active/pending schedules are server-managed state,
-not extra freely settable knobs. ML-DSA-65, extension bounds and key-history
-retention are code constants. Network ID and the three delays are immutable.
+These fields cannot be changed by `MsgUpdateParams` after initialization.
 
-The single verification price defaults to 750 and is charged before each
-extension authorization, recovery authorization, or new-key proof. SDK-native
-account signatures retain the SDK price path (with the native 750 floor).
-Signature bytes, state access, classic signatures and message execution incur
-additional gas. No per-transaction/per-block verification-count parameter exists.
+| Field | Default | Purpose / validation |
+| --- | --- | --- |
+| `network_id` | Launch-specific domain | Separates signatures across networks; 16–64 bytes, displayed as base64. Query the chain; do not hardcode the development default. |
+| `governance_safety_delay_blocks` | `17,280` | Delay for stronger enforcement or a price increase; range 2–2,000,000 blocks. |
+| `recovery_delay_blocks` | `107,520` | Waiting period before a recovered signing key activates; effective range 2–2,000,000 blocks. Zero uses the default fallback. |
+| `max_emergency_duration_blocks` | `46,080` | Duration of each pause activation/renewal; range 2–172,800 blocks. |
 
-A governance change of verification price must leave room below current finite
-block max_gas for three verifications (two proofs plus a protected payer).
-This minimal sanity check is not a total-gas prediction or a count quota.
-Emergency/cancellation requests do not run it. Independent SDK consensus/auth
-parameter changes still need capacity checks; never interpret a successful
-parameter update as capacity acceptance.
+At an assumed 5.625 seconds per block, these defaults are approximately 27 hours,
+7 days and 72 hours respectively. They are block counts, not wall-clock timers.
 
-Fixed extension caps remain 8 entries and 64 KiB; independent raw-wire ceilings
-are 32 entries and 256 KiB. Raising SDK tx_sig_limit does not automatically raise
-the extension caps. Native ML-DSA multisigs have no additional PQCAuth quota;
-the SDK signature limit, gas and byte rules continue to apply. Tests exercise
-17 native leaves with an explicitly raised SDK signature limit.
+### Code constants and runtime state
 
-This is module state version 4. Reserved protobuf fields prevent number reuse,
-not migration. Do not hot-swap this binary into a version 1/2/3 PQC experiment.
-Use a fresh isolated chain or a separately reviewed migration. Production's
-supported source remains v1.0.1 before PQCAuth activation.
+| Item | Value / behavior |
+| --- | --- |
+| Algorithm | ML-DSA-65 only |
+| Operational extension caps | 8 signer entries / 65,536 bytes |
+| Raw-wire pre-decode ceilings | 32 entries / 262,144 bytes, before generated protobuf allocation |
+| Terminal key history | Up to 16 records per role; current/pending keys are pinned separately. Older terminal records are compacted into a hash accumulator. Key IDs are never reused. |
+| PQC-specific verification-count quotas | None: the former 16/transaction and 400/block limits were removed. SDK signature-count, gas and byte limits still apply. |
+| Server-managed parameter state | `pending`, `pending_activation_height`, `pending_emergency`, `emergency_expires_height`; callers cannot set these directly. |
+| Module state version | 4; no automatic migration from experimental PQC state versions 1–3 |
 
-## Key management
+Registration is always open unless paused; there is no CLOSED/FRESH mode or
+registration-cutoff setting. Raising SDK `tx_sig_limit` does not raise the fixed
+PQC extension caps. `last_compacted_key_id` is a maximum compacted ID, not proof
+that every lower ID was deleted.
 
-Use the SDK keyring, not a separate PQC key generator:
+## CLI setup and keys
+
+Examples use Bash, `jq`, an existing funded classical key and the `file` keyring.
+Set these variables for your chain before running commands:
+
+| Variable | Value |
+| --- | --- |
+| `RPC`, `CHAIN_ID` | Node RPC URL and chain ID |
+| `OWNER_KEY`, `OWNER` | Classical keyring name and its account address |
+| `GAS_PRICE` | Gas price including denomination, chosen for the target chain |
+| `TO`, `AMOUNT` | Transfer recipient and amount including denomination |
+| `GAS_LIMIT`, `FEES` | Explicit total gas limit and fee including denomination for a frozen transfer |
+
+Use the intended `--home` / keyring directory on each machine. Do not copy private
+keys between machines merely to run these examples. Query public state online:
 
 ```sh
-dorad keys add pqc-signing --key-type ml_dsa_65 --keyring-backend file
+OWNER=$(dorad keys show "$OWNER_KEY" --address --keyring-backend file)
+dorad query pqcauth params --node "$RPC" --output json > params.json
+NETWORK_ID=$(jq -er '.params.network_id' params.json)
+dorad query pqcauth account "$OWNER" --node "$RPC" --output json
+dorad query pqcauth keys "$OWNER" --node "$RPC" --output json
 ```
 
-Create a **separate** recovery key on the offline recovery machine:
+`account` returns policy-not-found before first enrollment. After enrollment it
+shows effective/pending policy and the active signing key, **not** the next unused
+key ID. Immediately after first enrollment the next ID is 3. For later operations,
+track allocated IDs across both roles, including cancelled recoveries; do not
+assume `current_signing_key_id + 1` or infer the counter from compacted history.
+`dorad query pqcauth key OWNER KEY_ID --node "$RPC"` reads one retained record. For only the PQC
+cryptographic gas component (not total gas), use
+`dorad query pqcauth estimate-verification-gas --signatures 1 --proofs 0 --node "$RPC"`.
+
+Create the signing factor on its trusted signing device and the recovery factor
+on a separate offline recovery device:
 
 ```sh
+# Signing device
+dorad keys add pqc-signing --key-type ml_dsa_65 --keyring-backend file
+
+# Offline recovery device
 dorad keys add pqc-recovery --key-type ml_dsa_65 --keyring-backend file
 ```
 
-Back up each mnemonic separately. Never reuse the owner's classical mnemonic,
-and never import these dedicated mnemonics into a non-PQC wallet. SDK v0.55
-uses the matching BIP32-derived secp256k1 private key as the ML-DSA seed. The
-CLI warning remains in place; this integration does not change derivation.
-Restoration with `keys add ... --recover --key-type ml_dsa_65` remains supported.
-A restored backup is not inherently unsafe.
+Use separate, dedicated mnemonics, distinct from the classical owner and each
+other. The SDK derivation uses the matching BIP32-derived secp256k1 private key as
+the ML-DSA seed; reusing that mnemonic in a classical wallet undermines independence.
+Back up each mnemonic separately. Restore with
+`dorad keys add NAME --recover --key-type ml_dsa_65 --keyring-backend file` when needed.
 
-Registration checks a locally available secp256k1 owner private key against
-both proposed factors. Known coupling is rejected. Watch-only/hardware owner
-keys cannot undergo this check and produce an explicit warning. A successful
-local check does not prove independence from every other wallet, path or key.
-Never export hardware-wallet private keys to enable this check.
+The CLI rejects detected coupling with a locally available secp256k1 owner key.
+If it cannot perform that check, introducing a new factor requires
+`--acknowledge-independent-factors`. This acknowledges responsibility, does not
+prove independence and cannot override detected coupling or the Ledger restriction.
 
-Signing and recovery public keys must be distinct. Key generation does not
-automatically register a factor or transfer assets. The recovery key replaces
-a lost/compromised **PQC signing factor**; the original classical signature is
-still required. It cannot recover a lost classical private key.
+## Register
 
-## Registration and signing
-
-Read the candidate chain's parameters and next key ID first:
-
-```sh
-dorad query pqcauth params --node "$RPC"
-dorad query pqcauth account "$OWNER" --node "$RPC"
-```
-
-`NETWORK_ID` is the base64 network ID from the parameter query. Use the actual
-next ID and current policy version; the examples show first enrollment IDs 1/2.
-Create proofs on the machines holding the respective keys:
+For a new enrollment, signing/recovery IDs are 1/2 and the proof policy version
+is 0. Run each proof command on the device holding that key; transfer only its
+public JSON output to the preparation machine:
 
 ```sh
 dorad tx pqcauth create-key-proof pqc-signing "$OWNER" 1 signing register-signing \
-  --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" --keyring-backend file
+  --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" \
+  --policy-version 0 --keyring-backend file > signing-proof.json
 
 dorad tx pqcauth create-key-proof pqc-recovery "$OWNER" 2 recovery register-recovery \
-  --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" --keyring-backend file
-```
+  --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" \
+  --policy-version 0 --keyring-backend file > recovery-proof.json
 
-The output contains public key and proof in base64, plus `public_key_sha256`
-(the full SHA-256 hex digest of the raw public key), never private key material.
-Pass those outputs to registration, signed by the existing owner:
-
-```sh
-dorad tx pqcauth register-key 1 "$SIGNING_PUB" "$SIGNING_PROOF" \
-  --recovery-public-key-base64 "$RECOVERY_PUB" --recovery-proof-base64 "$RECOVERY_PROOF" \
+# Owner's online machine, after receiving both public proof files
+dorad tx pqcauth register-key 1 \
+  "$(jq -er '.public_key_base64' signing-proof.json)" \
+  "$(jq -er '.proof_base64' signing-proof.json)" \
+  --recovery-public-key-base64 "$(jq -er '.public_key_base64' recovery-proof.json)" \
+  --recovery-proof-base64 "$(jq -er '.proof_base64' recovery-proof.json)" \
   --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" \
   --keyring-backend file --gas auto --gas-adjustment 1.5 --gas-prices "$GAS_PRICE"
 ```
 
-Review outgoing Authz/Feegrant capabilities before enrollment; revocation is
-not a registration precondition. Registration must be the only message.
-Enrollment and normal rotations activate at H+1.
+Wait for successful execution and H+1 before using protection. A successful
+broadcast/CheckTx response alone is not execution success. If registration fails
+at message execution, re-query the SDK sequence before retrying.
 
-Protected lifecycle commands accept `--pqc-key pqc-signing`. Recovery accepts
-`--recovery-key pqc-recovery`. Generic bank/staking/etc. messages use the bundle
-flow, which also supports offline factor signing:
+## Send from a protected account
 
-```sh
-dorad tx pqcauth prepare-bundle --help
-dorad tx pqcauth sign-bundle prepared.json pqc-signing signed.json --keyring-backend file
-dorad tx pqcauth broadcast-bundle signed.json --help
-```
-
-### Trusted rotation target (required for offline key changes)
-
-Both `rotate-key` and `rotate-recovery-key` can prepare an offline bundle with
-`--pqc-sign-bundle-output rotation.prepared.json`. For these transactions,
-`sign-bundle` requires exactly one independently trusted target:
+Create the transaction online, sign its PQC authorization on the signing device,
+then return the bundle for classical signing and broadcast:
 
 ```sh
-# The current signing factor authorizes the change. The expected key is the
-# NEW signing OR recovery key, depending on the operation in the bundle.
-dorad tx pqcauth sign-bundle rotation.prepared.json pqc-signing rotation.signed.json \
-  --expect-new-key pqc-new-factor --keyring-backend file
+# 1. Online: freeze the amount, fee and total gas limit in unsigned JSON
+dorad tx bank send "$OWNER_KEY" "$TO" "$AMOUNT" \
+  --chain-id "$CHAIN_ID" --node "$RPC" --keyring-backend file \
+  --generate-only --gas "$GAS_LIMIT" --fees "$FEES" > send.json
 
-# Alternatively, use the FULL fingerprint recorded on the trusted device that
-# generated the replacement key (create-key-proof outputs public_key_sha256).
-dorad tx pqcauth sign-bundle rotation.prepared.json pqc-signing rotation.signed.json \
-  --expect-new-key-sha256 "$TRUSTED_NEW_KEY_SHA256" --keyring-backend file
-```
+# 2. Online: fetch current account sequence, policy and signing key
+dorad tx pqcauth prepare-bundle send.json send.prepared.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" --keyring-backend file
 
-Only the target public key is read from the local record; watch-only records
-work. The confirmation screen shows the operation, new key role, new ID,
-algorithm and full SHA-256 fingerprint. Prepared/signed result JSON exposes the
-same information in `key_change`, derived from validated transaction bytes.
-Missing, malformed or mismatched targets fail before loading the current factor;
-`--yes` cannot bypass the check. Do not obtain the expected fingerprint from the
-incoming bundle or the untrusted online host. Check the operation and role, not
-just the fingerprint. Rotations activate at H+1, not after the recovery delay.
-
-Ordinary transfers keep the existing no-target-flag flow. Supplying either
-expected-key flag for a non-rotation transaction is rejected, not silently
-ignored. A rotation combined with other top-level messages is rejected by the
-client, matching the existing chain-side lifecycle constraint. This change does
-not add support for indirectly executed lifecycle messages.
-
-Offline integrations should use `SignPQCSignBundleForTarget`; it validates the
-bundle, derives the key change and checks the independent target before signing.
-The existing `SignPQCSignBundle` and private-key convenience wrapper are low-level
-primitives for already trusted transactions, not an intent-validation boundary.
-These client checks do not change transaction encoding or consensus verification.
-
-### Trusted recovery target (required for offline signing)
-
-Generate the replacement signing key on a trusted device, independently of the
-online preparation host. Save its public-key fingerprint from that device's
-`create-key-proof` output, or keep a trusted local ML-DSA keyring record on the
-recovery-signing device. A public/watch-only record is sufficient; the new
-signing private key does not need to be copied to the recovery device.
-
-Offline recovery signing requires exactly one trusted target source:
-
-```sh
-# Trusted local record of the NEW signing public key, not the recovery key:
-dorad tx pqcauth sign-recovery-bundle prepared.json pqc-recovery signed.json \
-  --expect-new-signing-key pqc-new-signing --keyring-backend file
-
-# Or a full 64-character SHA-256 hex fingerprint saved on a trusted device:
-dorad tx pqcauth sign-recovery-bundle prepared.json pqc-recovery signed.json \
-  --expect-new-signing-key-sha256 "$TRUSTED_NEW_SIGNING_KEY_SHA256" \
+# 3. Signing device: review and sign; no RPC needed
+dorad tx pqcauth sign-bundle send.prepared.json pqc-signing send.signed.json \
   --keyring-backend file
+
+# 4. Online: revalidate state, attach PQC signature, then sign with OWNER_KEY
+dorad tx pqcauth broadcast-bundle send.signed.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" --keyring-backend file
 ```
 
-The fingerprint hashes the **raw public-key bytes**, not their base64 or JSON
-encoding. The algorithm and full fingerprint appear in the confirmation screen
-and result JSON (`proposed_public_key_sha256`). The fingerprint is derived
-locally from the decoded, validated transaction, not accepted as a bundle label.
-Missing, malformed or mismatched targets fail before the recovery signer is
-loaded. `--yes` skips only interaction, never the target check. Existing offline
-scripts must now provide one of these flags, including legacy-file workflows.
+Choose `GAS_LIMIT` for the **complete protected transaction**, including the PQC
+extension bytes. `prepare-bundle` does not simulate or add a gas allowance.
+Preparation/broadcast reject overrides such as `--gas`, `--fees`, `--sequence`,
+`--sign-mode` and `--offline`; these fields are frozen. If the transaction or
+bound account state changes, prepare and sign a new bundle. Output bundle files
+must not already exist. The same flow supports other single-signer SDK messages.
 
-Do not copy the expected fingerprint from the incoming bundle, its preparation
-output, or an untrusted online host: that would compare the attacker-controlled
-key against itself. Transaction hashes prove internal consistency, not that the
-replacement key belongs to you. Check the owner, network, fee and other intent
-fields as well; a matching target alone does not make every transaction safe.
+## Rotate and recover keys
 
-Library integrations handling untrusted bundles should call
-`SignRecoverySignBundleForTarget` with an independently trusted fingerprint.
-`SignRecoverySignBundle` and its private-key convenience wrapper remain low-level
-primitives for already trusted transactions; they do not establish user intent.
+Create a fresh target key with `keys add`, then generate its proof with:
 
-Review the exact transaction before signing. Bundle preparation and
-broadcast perform online state checks; offline signing does not require an RPC.
-Changing a message, fee, sequence, signer, policy version or domain invalidates
-the bound authorization. Protocol envelopes remain byte-compatible with the
-ported module; SDK keyring is only the signing backend.
+```sh
+dorad tx pqcauth create-key-proof "$NEW_KEY" "$OWNER" "$NEW_ID" "$ROLE" "$PURPOSE" \
+  --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" \
+  --policy-version "$POLICY_VERSION" --keyring-backend file > new-key-proof.json
+```
 
-### Recovery response and key reuse
+Use the current effective policy version and next unused ID. Keep a trusted copy
+of `public_key_sha256` on the key-generation device. `NEW_KEY` is the local target
+key name; set `ROLE` and `PURPOSE` from this table. Read `POLICY_VERSION` from
+`.policy.policy_version` in the account query. The proof choices are:
 
-Use fresh signing/recovery key material for rotations. The protocol assigns a
-new key ID but does not prohibit reusing a historical public key; a new ID does
-not make a previously compromised or revoked key safe again.
+| Operation | Role | Purpose | Authorization |
+| --- | --- | --- | --- |
+| `rotate-key` | `signing` | `rotate-signing` | Current PQC signing key + classical key |
+| `rotate-recovery-key` | `recovery` | `rotate-recovery` | Current PQC signing key + classical key |
+| `recover-key` | `signing` | `recover-signing` | Current recovery key + classical key |
 
-If both the classical key and recovery key have leaked, cancelling one pending
-recovery does not revoke the compromised recovery key. While you still control
-the current signing factor, prepare a cancellation followed promptly by a
-recovery-key rotation, with consecutive account sequences and the correct
-current policy/key IDs. They must be **two separate transactions**, each with
-one lifecycle message, not a multi-message transaction. They can execute in
-order in the same block, but broadcasting together does not guarantee inclusion,
-atomicity or protection against competing transactions. Rotation is subject to
-the emergency mode and activates at H+1. Check both execution results and the
-effective recovery key on chain. If the current signing key is lost, do not
-assume cancellation is available. Keep the trusted recovery target check even
-though recovery has a waiting period.
+### Offline rotation
 
-## Legacy keys
+On the online machine, prepare a signing-key rotation. For a recovery-key
+rotation, use `rotate-recovery-key` and the corresponding proof from the table.
 
-The old `tx pqcauth keygen` command is removed. Existing raw private-key files
-are supported only for recovery compatibility:
+```sh
+dorad tx pqcauth rotate-key "$NEW_ID" \
+  "$(jq -er '.public_key_base64' new-key-proof.json)" \
+  "$(jq -er '.proof_base64' new-key-proof.json)" \
+  --pqc-sign-bundle-output rotation.prepared.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" \
+  --keyring-backend file --gas auto --gas-adjustment 1.5 --gas-prices "$GAS_PRICE"
 
-- `create-key-proof` / `sign-bundle` / `sign-recovery-bundle`: pass the file as
-  the key argument and explicitly add `--legacy-key-file`.
-- Protected online commands retain `--pqc-private-key-file` and
-  `--recovery-private-key-file`, labeled legacy. They cannot be mixed with the
-  corresponding keyring flag.
+# Signing device: trusted local record of the NEW key; public/watch-only is enough
+dorad tx pqcauth sign-bundle rotation.prepared.json pqc-signing rotation.signed.json \
+  --expect-new-key "$NEW_KEY" --keyring-backend file
 
-The raw files contain expanded private-key bytes, **not** a 32-byte seed. Do
-not pass them to `keys import-hex`. No raw-file-to-keyring import utility is
-claimed here. Use the legacy signer to rotate to fresh SDK-managed factors.
+# Online
+dorad tx pqcauth broadcast-bundle rotation.signed.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" --keyring-backend file
+```
 
-## Defaults and boundaries
+Instead of `--expect-new-key`, use
+`--expect-new-key-sha256 "$TRUSTED_NEW_KEY_SHA256"`. Supply exactly one. Both
+rotations activate at H+1, **not** after the recovery delay. For a fully trusted
+online signer, replace `--pqc-sign-bundle-output ...` with `--pqc-key pqc-signing`
+to sign and broadcast directly; that path is not an offline security boundary.
 
-| Parameter | Initial value |
-|---|---:|
-| Enforcement | OPTIONAL (enrolled self-protected accounts still require PQC) |
-| Registration | OPEN |
-| Emergency mode | NORMAL |
-| Verification gas (one field) | 750 per crypto operation (SDK baseline) |
-| Fixed maximum PQC signers / extension bytes | 8 / 65,536 |
-| PQC verification-count quotas | None; SDK gas/byte/signature limits apply |
-| Retained key records per role | 16 |
-| Governance safety delay | 17,280 blocks (about 27 hours) |
-| Recovery delay | 107,520 blocks (about 7 days) |
-| Maximum emergency duration | 46,080 blocks (about 72 hours per activation/renewal) |
+### Offline recovery
 
-These are candidate defaults, not a statement of live chain parameters.
-Time estimates assume roughly 5.62–5.63 seconds per block, not wall-clock timers.
-Recovery keeps the old signing key valid until the scheduled activation; it is
-not an account freeze or a cure for stolen signing keys. Recovery still requires
-the classical account signature. Notify users of recovery requests, cancellation
-instructions and activation height. Pauses automatically expire even if a bug
-is unfixed: operators must plan a patch or authorized renewal before expiry.
-Explicit stored delay values are not rewritten by changing defaults; the legacy
-zero recovery-delay fallback now uses 107,520. Unsupported experimental state
-with CLOSED/cutoff/REQUIRED needs a separately reviewed migration, not hot-swap.
-See [approved launch settings](../../docs/PQCAUTH-LAUNCH-SETTINGS-20261102.md).
-Phase one rejects global `REQUIRED` in active/pending/genesis/governance
-parameters. Its enum number is reserved, never silently mapped to OPTIONAL.
-`REQUIRED_FOR_REGISTERED` remains available after the governance safety delay.
-The single verification price has a 750 floor and references the pinned SDK
-constant, not the live x/auth parameter. Changing x/auth prices does not
-automatically change PQCAuth's price. Old two-price state is not migrated by this
-candidate; explicit new-schema prices can be changed through governance.
-An ordinary protected send adds one 750-gas PQC authorization verification to
-the SDK account-signature, transaction-byte, store and message-execution costs;
-750 is not its total gas. Registration with signing and recovery keys has two
-proof verifications (1,500 crypto gas before other costs).
-The CLI signs the PQC document, attaches its extension, then signs the complete
-transaction with the account key in DIRECT mode; offline bundles preserve the
-same ordering and binding. No signature check or domain changes with this price.
-There is no separate 400-verification block quota. Gas/byte limits constrain
-included work but do not guarantee fairness or bound all incoming RPC/P2P work.
-Price increases and stronger enforcement wait for the safety delay; emergency
-pauses retain the independently bounded fast path.
+Use a new signing-key proof with purpose `recover-signing`, and obtain
+`RECOVERY_ID` from the effective account policy:
 
-`MsgUpdateParams.emergency_only` explicitly selects the operation:
+```sh
+# Online: no recovery private key is needed here
+dorad tx pqcauth recover-key "$RECOVERY_ID" "$NEW_ID" \
+  "$(jq -er '.public_key_base64' new-key-proof.json)" \
+  "$(jq -er '.proof_base64' new-key-proof.json)" \
+  --recovery-sign-bundle-output recovery.prepared.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" \
+  --keyring-backend file --gas auto --gas-adjustment 1.5 --gas-prices "$GAS_PRICE"
 
-- Omitted/false: a full parameter update. Restoring the active ordinary parameters
-  while retaining the active emergency mode cancels a cancellable pending bundle;
-  it does not renew the pause. A different ordinary replacement follows the existing
-  safety delay rules.
-- True: change/renew only emergency mode at H+1. Non-emergency fields must match
-  either the complete active or complete queued bundle. The server never infers
-  this intent merely because the requested mode is a pause.
+# Offline recovery device: expected key is the NEW signing key, not recovery key
+dorad tx pqcauth sign-recovery-bundle recovery.prepared.json pqc-recovery recovery.signed.json \
+  --expect-new-signing-key "$NEW_KEY" --keyring-backend file
 
-When a non-emergency parameter bundle is already queued, an explicit emergency-only
-request may copy either the active or queued non-emergency fields. The server
-schedules only its emergency mode for H+1 in `pending_emergency`, retaining the
-original restrictions and activation height. This does not activate
-REQUIRED_FOR_REGISTERED/gas increases early. The queued emergency component
-is synchronized to the new mode and bounded expiry so it cannot resurrect an expired
-pause. Governance cannot supply the internal schedule or expiration directly.
-Until that H+1 activation, any full parameter update is rejected; submit the
-emergency update separately, then re-query before a full parameter replacement.
-Every explicit emergency-only update sets `pending_emergency`, even with no
-pre-existing ordinary plan. A later full update in the same block must fail, not
-silently cancel or replace the emergency schedule. Explicit emergency-only
-replacement, renewal or release remains authorized and follows message order.
+# Online
+dorad tx pqcauth broadcast-recovery-bundle recovery.signed.json \
+  --from "$OWNER_KEY" --chain-id "$CHAIN_ID" --node "$RPC" --keyring-backend file
+```
 
-Submit emergency pauses as separate governance proposals, without batching full
-parameter updates into the same proposal. A later failed message rolls back all
-earlier messages in that proposal, including the pause. Across proposals, a failed
-full update does not roll back the already successful emergency proposal. The
-failed proposal remains FAILED and is not automatically retried at H+1: after the
-pause activates, re-query parameters and submit a new proposal if still needed.
-If the full update executes first, a subsequent emergency-only update preserves
-its ordinary schedule. See the [same-block guard fix and execution regressions](../../docs/PQCAUTH-SAMEBLOCK-EMERGENCY-FIX-20261102.md).
+Alternatively use `--expect-new-signing-key-sha256 "$TRUSTED_NEW_KEY_SHA256"`.
+Recovery activates after `recovery_delay_blocks`; the old signing key remains
+valid until then. Recovery is not an account freeze or a remedy for a stolen
+classical key. If both classical and signing keys are compromised, do not assume
+the recovery key can prevent takeover.
 
-Full updates retaining the active emergency mode retain its existing expiry; if
-an ordinary replacement activates after that expiry, its emergency component is
-NORMAL. Renewal requires `emergency_only: true`. Numeric cutoff fields have been removed. A full update with a new emergency mode still has
-full-bundle semantics, including its applicable safety delay; use explicit
-emergency-only scope for a fast pause that must preserve an ordinary plan.
+For both offline flows, the expected fingerprint must come from an independent
+trusted device, **not the incoming bundle or compromised online host**. It is the
+full 64-character SHA-256 of raw public-key bytes. Missing/mismatched targets
+reject before signer access; `--yes` cannot bypass the check. Review the operation,
+key role, owner, chain and fees as well. The confirmation and result JSON display
+the new key's fingerprint, derived from validated transaction bytes.
+Transaction hashes alone establish consistency, not intent. A target flag on an
+ordinary transfer is rejected.
 
-The response's `resulting_params` is the actual stored state, showing both pending
-schedules and expiry. For governance JSON, `emergency_only` is a top-level message
-field, not a Params field. A request must still clear `pending`,
-`pending_activation_height`, `pending_emergency` and `emergency_expires_height`
-from queried state; runtime schedules/expiry cannot be supplied by callers.
-The [GOV-02 fix record](../../docs/PQCAUTH-GOV02-FIXES-20261101.md) describes
-compatibility and regression coverage.
+### Other lifecycle operations
 
-During `PAUSE_PQC_TRANSACTIONS`, exactly one top-level `MsgRecoverKey` or
-`MsgCancelRecovery` may carry an authorization extension. This permits a protected
-independent payer to fund recovery without bypassing the owner's account signature,
-recovery signature, new-key proof, payer authentication or gas charging.
-It does not permit ordinary protected sends, message batches or nested lifecycle
-execution. This chain-level support does not add multi-signer CLI orchestration.
-See the [emergency fixes record](../../docs/PQCAUTH-EMERGENCY-FIXES-20261101.md).
+Run these as `dorad tx pqcauth COMMAND`, with the standard `--from`, `--chain-id`,
+`--node`, keyring and fee/gas options shown above. Use `--help` for details.
 
-Key history is compacted over the complete owner's key prefix, separately for
-signing and recovery roles. Current and pending policy keys are pinned.
-`last_compacted_key_id` is the maximum compacted ID, **not** a boundary below
-which all records were deleted: an older active key can outlive newer cancelled
-recovery keys. The accumulator follows compaction-batch order, with ascending
-IDs inside each batch; a later-retired older key is appended once when deleted.
-Export/import preserves this ordering and permits retained keys below that maximum.
+| Command | Purpose |
+| --- | --- |
+| `set-protection true` / `set-protection false` | Change self-protection at H+1; needs `--pqc-key`. Turning it off does not override `REQUIRED_FOR_REGISTERED`. |
+| `revoke-key KEY_ID` | Revoke a non-current, non-pending key; needs `--pqc-key`. |
+| `cancel-recovery PENDING_SIGNING_KEY_ID PENDING_POLICY_VERSION` | Cancel a pending recovery using the current signing factor (`--pqc-key`); read both values from `query pqcauth account`. |
 
-## Application requirements and tests
+These commands also accept `--pqc-sign-bundle-output` instead of `--pqc-key`.
+If the recovery key is compromised, cancelling a recovery does not revoke it:
+follow cancellation with a recovery-key rotation, as **two separate transactions**
+with consecutive sequences. Inclusion/order is not guaranteed or atomic. If the
+current signing key is lost, cancellation is not available through the recovery key.
+Use fresh keys: the protocol does not prohibit reusing historical public keys.
 
-The app registers the module, store, services, canonical decoder, ordered Ante
-checks and default SDK proposal selection, using the native SDK Feegrant module. Existing
-SDK proposal gas/byte policy is preserved. The candidate upgrade requires the
-completed v1.0.0 archive state and activated v1.0.1 signing rules. It initializes
-OPTIONAL parameters and assigns an upgrade-specific network domain without
-scanning accounts, Authz grants or Feegrant allowances. No PQC delegation index
-is built or maintained. Internal module version 4 deliberately rejects older
-experimental PQC databases; it does not provide a migration from versions 1/2/3.
-Completed v1.0.0 and v1.0.1 remain recognized but must not be executed with this
-binary. Existing chains must complete v1.0.1 using its released binary first.
+## Governance and emergency behavior
 
-Feegrant state changes, rollback, expiry and fee charging use the SDK's own
-implementation. Admission checks and the exact
-message authorization marker prevent indirect lifecycle execution. Consensus
-keys and IBC light-client algorithms are outside this module's scope.
+Use governance message `/doravota.pqcauth.v1.MsgUpdateParams`; there is no dedicated
+`tx pqcauth update-params` command. Its fields are `authority`, `params`, and
+`emergency_only`. Use the chain's configured authority, preserve immutable fields,
+and remove server-managed schedules/expiry from queried parameters before submitting.
+
+- Full update (`emergency_only: false`, the default): stronger enforcement or
+  a gas-price increase waits the safety delay; other changes normally use H+1.
+  Submitting the active values cancels a pending ordinary plan. Retaining the
+  current pause retains its expiry, not a renewed duration.
+- Emergency-only update (`true`): change, renew or release the pause at H+1,
+  preserving the ordinary plan and its original activation. Non-emergency values
+  must match either the complete active or complete pending bundle.
+- Until that H+1 activation, full updates are rejected; explicit emergency-only
+  replacements remain allowed. Submit pauses in separate proposals: a failed
+  later message rolls back the entire proposal. A failed separate proposal is
+  not automatically retried. Re-query before resubmitting.
+- A price change must satisfy `3 × verification_gas < block.max_gas` when the
+  block gas limit is finite. This is a sanity check, not total gas estimation.
+  Emergency-only updates and cancellation remain available without this check.
+
+| Emergency mode | Effect |
+| --- | --- |
+| `PAUSE_NEW_KEYS` | Blocks registration and both rotations. Existing protected transfers, protection changes and revocation remain available. |
+| `PAUSE_PQC_TRANSACTIONS` | Also blocks ordinary PQCAuth-protected transactions and other lifecycle operations. It is not a global pause of native ML-DSA or unprotected SDK transfers. |
+| Both pause modes | Permit a single top-level recovery or cancellation, including a protected independent payer, with all required signatures/proofs and gas charges. |
+
+Pauses expire automatically. Plan a patch or authorized renewal before expiry;
+do not assume the pause remains until an incident is resolved. Recovery exceptions
+still use ML-DSA and are not an escape from a broken cryptographic algorithm.
+Check `resulting_params` and query active/pending parameters after execution.
+
+## Integration, legacy keys and verification
+
+- Keep `mempool.recheck = true`. Recheck skips only PQC cryptographic calls for
+  previously admitted bytes; state, structure, key, policy, sequence and gas
+  checks remain. CheckTx(New) and FinalizeBlock verify signatures. Reuse assumes
+  ordered transactions and at least one pending block for policy changes;
+  unordered transactions are disabled in this app.
+- The app uses SDK proposal handlers and an enabled block gas meter. NoOp
+  ProcessProposal is not full transaction authentication. Gas/byte limits do not
+  guarantee fairness or bound all RPC/P2P work; capacity needs target-network tests.
+- Supported production upgrade input is v1.0.1 after the required v1.0.0 archive
+  transition. Initialization does not scan/revoke accounts or delegations. Reserved
+  protobuf fields do not migrate old experimental PQC databases. Final-artifact
+  snapshot, testnet/IBC and release acceptance are separate from unit tests.
+- Raw-key compatibility: offline commands accept a file argument with
+  `--legacy-key-file`; online commands use `--pqc-private-key-file` or
+  `--recovery-private-key-file` instead of keyring flags. Files contain expanded
+  private keys, not seeds for `keys import-hex`. `tx pqcauth keygen` is removed.
+- Library callers handling untrusted bundles must use
+  `SignPQCSignBundleForTarget` or `SignRecoverySignBundleForTarget`. The older
+  signing helpers require caller-established intent.
+
+Run from the repository root:
 
 ```sh
 GOMAXPROCS=2 go test -mod=readonly -p 2 ./x/pqcauth/... ./app ./cmd/dorad/cmd
+GOMAXPROCS=2 GOFLAGS=-p=2 bash scripts/test-release-candidate.sh
 ```
 
-App tests cover failed-message rollback with fees retained, nested authz
-routing, SDK-keyring enrollment and hybrid transfer/replay, SDK gas/byte limits,
-and no-scan upgrade initialization. The earlier merged runtime passed remote repository
-tests, enabled simulations, a four-validator v1.0.0 -> v1.0.1 -> v1.1.0 upgrade,
-restarts, and the synthetic keyring lifecycle/outage rehearsal. See
-[the v1.0.1 integration record](../../docs/PQCAUTH-V101-INTEGRATION-20261030.md).
-Earlier snapshot evidence in the [integration record](../../docs/PQCAUTH-INTEGRATION.md)
-and [2026-10-27 follow-up](../../docs/PQCAUTH-FOLLOWUP-20261027.md) predates this
-merge and does not establish final merged-candidate snapshot acceptance.
-Those results predate phase-one simplification. Final-candidate snapshot rehearsal, public-testnet/IBC acceptance, independent
-security review and release approval remain outstanding.
-
-## Multisig support boundary (v1.1.0)
-
-PQCAuth enrollment supports classical **single-key** accounts only. All
-composite public keys, including threshold accounts whose members are all
-ML-DSA, are currently classified as unsupported by PQCAuth. Ordinary SDK
-multisig transactions can use OPTIONAL mode, subject to SDK signature-count, gas, byte and verification rules. They cannot register an additional PQCAuth factor.
-Global REQUIRED is disabled in phase one. Its reserved runtime semantics would
-reject these accounts, including all-ML-DSA multisigs. Re-enabling it requires a
-separately reviewed multisig/wallet/relayer migration policy, not a governance
-parameter change. Experimental state already using/queuing REQUIRED is not a
-supported drop-in upgrade source; do not silently downgrade it to OPTIONAL.
-An OPTIONAL-mode signature test is not wallet support or migration approval.
-
-## Ledger, watch-only and offline owners
-
-At registration, signing-key rotation, recovery-key rotation and introduction
-of a replacement factor during recovery, the CLI checks local secp256k1 key
-material against each new ML-DSA public key. Detected coupling is rejected;
-`--acknowledge-independent-factors` cannot override it.
-
-When the owner's private key is unavailable (Ledger, watch-only or offline),
-the command now stops unless `--acknowledge-independent-factors` is supplied.
-This flag only acknowledges the operator's independent-mnemonic responsibility;
-it is NOT proof of independence. Generate separate, fresh, dedicated mnemonics
-for the signing and recovery factors. Never export/import a Ledger seed to
-create either factor. The check cannot detect reuse at another derivation path
-or with another account, even for local owners. These are CLI protections,
-not consensus-enforced knowledge of mnemonic history.
-
-Existing keys remain recoverable and usable to authorize rotation away from
-unsafe factors. Do not prevent restoration of an existing key because it was
-previously reused; restore in a trusted environment and transfer/rotate safely.
-
-Module review fixes and regression evidence: [2026-10-27 module fixes](../../docs/PQCAUTH-MODULE-FIXES-20261027.md).
+Implementation references: [parameters](types/params.go), [lifecycle/governance](keeper/msg_server.go),
+[CLI](client/cli/tx.go), [offline target checks](client/key_target.go).
+Historical audit and rehearsal records are under [docs](../../docs/); they describe
+their fixed commits, not necessarily the current candidate.

@@ -1,14 +1,16 @@
-# 本轮升级证据索引
+# SDK 0.53 rehearsal evidence index
 
-仅包含候选源码哈希、公开交易、状态摘要和测试日志，不包含私钥或助记词。
+Historical public source identities, transaction responses, state summaries and test logs. No private keys or mnemonics are included. These files identify the recorded candidate, not a current release.
 
-- `final-binary.sha256`、`final-version.txt`：实际运行包。
-- `candidate-source-manifest.json`、`source-match-verified.json`：未提交源码身份，已核对远端文件。
-- `final-four-node-consistency.json`：最终四节点同高度一致性。
-- `boundary-stores.summary.json`、`semantic-checks.json`：H−1/H 原始存储与语义核对。
-- `final-migration-replay.json`、`migration-crash-recovery.json`：最终包升级重放与中断恢复。
-- `missing-plan-cold-cache-restart.json`、`all-four-restarted.json`、`recovery-archive.sha256`：恢复验证。
-- `bridge-*-result.json`、`ica-*.json`、`ibc-*.json`：真实交易及跨链断言。
-- `final-unit-tests.log`、`final-simulation-results.json`、`review5-final-build.log`：最终源码测试/构建。
+| Files | Contents |
+| --- | --- |
+| final-binary.sha256, final-version.txt | Executed artifact identity |
+| candidate-source-manifest.json, source-match-verified.json | Then-uncommitted source identity and remote comparison |
+| final-four-node-consistency.json | Final same-height node agreement |
+| boundary-stores.summary.json, semantic-checks.json | H−1/H raw-store and semantic comparisons |
+| final-migration-replay.json, migration-crash-recovery.json | Upgrade replay and interruption recovery |
+| missing-plan-cold-cache-restart.json, all-four-restarted.json, recovery-archive.sha256 | Restart and backup recovery |
+| bridge-*-result.json, ica-*.json, ibc-*.json | Transactions and cross-chain assertions |
+| final-unit-tests.log, final-simulation-results.json, review5-final-build.log | Candidate tests and build |
 
-完整逐 key 差异、冷备份和节点日志保留在测试服务器工作根，不在 Git 中放置大数据库副本。
+Full per-key differences, cold backups and node logs were retained in the original test-server working directory; large databases are not stored in Git. See the [rehearsal report](../sdk-053-snapshot-upgrade-2026-09-11.md) for scope and limitations.

@@ -1,105 +1,122 @@
-# PQCAuth 分阶段实施计划
+# PQCAuth rollout plan
 
-首版聚焦账户直接签名和密钥管理安全，保持链升级简单、普通交易兼容。全面授权管理独立进入第二阶段，不作为第一阶段的上线依赖。适用分支为 `feature/pqcauth-sdk-keyring`；候选升级为已完成 v1.0.1 后的 v1.1.0，不修改已发布的 v1.0.1。
+Scope: the v1.1.0 candidate on `feature/pqcauth-sdk-keyring`, upgrading from
+pre-PQCAuth v1.0.1. This plan is not release or deployment approval. The
+[module README](../x/pqcauth/README.md) is the source for current parameters,
+commands and supported behavior.
 
-## 第一阶段 核心签名安全
+## Phase one: direct account authentication
 
-### 安全承诺
+PQCAuth adds a registered ML-DSA-65 factor to an existing classical account.
+Protected transactions require both factors. Registration, key rotation,
+revocation, protection changes and delayed recovery have dedicated authorization.
+Signatures bind the network, chain, account, sequence, transaction intent, fees,
+keys and policy version.
 
-PQCAuth 验证受保护账户直接签署交易时的经典签名和 PQC 授权，并保护密钥注册、轮换、撤销、保护设置、延迟恢复和恢复取消。交易授权绑定网络、链、账户、序号、消息、费用和策略版本。PQC 因子应与经典密钥、恢复因子独立。
+Phase-one boundaries:
 
-既有和新增 Authz、Feegrant 保持 SDK 授权语义。账户可在保留委托的情况下注册 PQCAuth；被授权人不必因授权方注册而注册 PQC。用户仍负责审查、限制和撤销自己的委托。Feegrant 可以继续支付授权范围内的手续费，Authz 可以继续执行授权范围内的普通操作。这不是“所有资产支出都必须由授权方重新进行 PQC 签名”的保证。
+- Registration is open unless paused; no CLOSED/FRESH mode or numeric cutoff.
+- Enforcement supports OPTIONAL and REQUIRED_FOR_REGISTERED, not global REQUIRED.
+- Registration and PQC-protected transactions require DIRECT for all signers.
+  Composite accounts and the SDK's Amino-only Ledger backend cannot enroll.
+- Existing Authz/Feegrant retain SDK semantics. Enrollment/recovery does not revoke
+  them or require the owner's fresh PQC signature for every delegated action.
+  Lifecycle messages cannot execute through delegated/nested routes.
+- No delegation index or full account/grant scan runs during module initialization.
+- Verification costs 750 gas by default, in addition to SDK signature, byte,
+  storage and execution costs. There is no separate 16/transaction or 400/block
+  verification quota. SDK limits and fixed extension/wire caps remain.
+- Consensus keys and IBC light-client algorithms do not change.
+- Module version 4 does not automatically migrate experimental PQC states 1–3.
 
-被授权人自己的直接交易仍服从其账户的签名策略。任何委托、治理或其他间接执行路径都不能绕过 PQC 密钥管理的专用认证；间接生命周期消息继续拒绝。
+## Candidate and acceptance sequence
 
-### 实施范围
+1. Review and freeze exact source, version, toolchain and dependency identity.
+   Build a candidate without prematurely publishing a release tag; record its
+   SHA-256 and embedded build information.
+2. Run mandatory regressions and explicit simulations, then the four-validator
+   lifecycle and supported source-snapshot upgrade/restart/interruption tests
+   using the final artifact. Changed source or artifacts require corresponding
+   revalidation; old reports identify only their own revisions.
+3. Complete public-testnet registration, protected transactions, both rotations,
+   recovery/cancellation, restart and IBC round-trip acceptance.
+4. Run representative sustained and adversarial capacity benchmarks on the
+   intended testnet hardware. Per the agreed scope, this work is deferred from
+   the small local environment to that testnet; it is **not marked passed**.
+   Measure admission/recheck, block execution, CPU/RSS, large messages/signers
+   and recovery latency under load.
+5. Review the evidence and obtain separate release/network-change approval.
+   Coordinate the exact plan, height, prerequisites, artifact hashes and validator
+   voting power before activation.
 
-1. 移除注册前清空 Authz 和 Feegrant 的门槛，以及要求被授权人启用 PQC 的额外规则。
-2. 移除 PQC Feegrant 反向索引、历史回填、消息包装、到期清理和代付索引同步；恢复原生 SDK Feegrant 模块。保留原授权、额度、到期、撤销和费用扣除语义。
-3. 新模块升级只添加 PQC store、初始化 OPTIONAL 参数和签名域，不扫描账户或授权集合。
-4. 保留规范编码、重放防护、独立因子提示、经典签名、PQC 验签、SDK gas/字节/签名数边界、验签 gas 下限、间接生命周期限制、恢复延迟和有界历史记录。
-5. 保留已有密钥撤销状态修复和零高度导出保护。参数调整和 REQUIRED 模式不随首版上线自动开启。
-6. CLI 注册帮助和操作文档明确授权仍有效，不将提示设计成额外强制迁移。
-7. 首版注册始终开放（应急暂停除外），移除 registration_mode / registration_cutoff_height 字段并 reserved；不提供 fresh-only 重试协议。PAUSE_NEW_KEYS 保留。生产入口仍是未部署 PQCAuth 的 v1.0.1。
-8. 注册交易本身要求所有签名者使用 DIRECT；CLI 拒绝当前 SDK 的 Amino-only Ledger 后端。注册后仍仅支持 DIRECT PQC 保护，不通过删除签名模式检查来兼容 Amino。
+Unit tests and finite smoke tests do not certify absence of vulnerabilities,
+production capacity, fair transaction ordering or a maximum recovery inclusion
+delay. Hardware capacity cannot replace authentication/state-machine tests.
 
-简化版使用新的内部模块版本，以拒绝把旧实验性 PQC 数据库直接当作本版运行。支持的生产升级入口仍是尚未初始化 PQCAuth 的 v1.0.1 状态；旧开发链转换需要单独方案，不在首版自动执行。
+## Governance operations
 
-### 实现和本地验收
+There are three mutable settings: enforcement, verification gas and emergency
+mode. Network ID and the three launch delays are immutable. Defaults are
+17,280 governance-delay blocks, 107,520 recovery-delay blocks and 46,080 maximum
+pause blocks. Their approximate durations depend on block time.
 
-- 核心账户生命周期、修改消息或费用后签名拒绝、错误因子、旧策略签名、重放和经典单签绕过测试通过。
-- 旧授权不阻止注册；注册前后及恢复后普通 Authz 和 Feegrant 按 SDK 语义工作；没有授权、授权撤销或额度不足时仍拒绝。
-- Authz 及其他嵌套容器不能执行 PQC 生命周期操作；消息服务器本身也检查专用认证，不能只依赖入口过滤。
-- 新升级不读取或改写 Feegrant/Authz 记录，不产生反向索引；普通 IBC、银行、质押、治理、SDK 多签兼容性回归通过。
-- 畸形交易和 gas/字节超限输入不导致节点崩溃；空块和后续有效交易能继续推进。
-- 全仓测试、显式启用的链模拟、静态检查和发布门禁通过。SDK 默认随机模拟没有 PQC 加权操作，不能替代专门生命周期测试。
+Use explicit `emergency_only` intent:
 
-### 正式上线验收
+- Full updates cancel/replace ordinary plans as documented; retaining the active
+  pause preserves its expiry rather than renewing it.
+- Emergency-only updates activate at H+1 and preserve the ordinary plan and its
+  original activation height.
+- Before that emergency activation, complete updates are rejected, including
+  when no ordinary plan existed beforehand. Explicit emergency replacements
+  remain possible.
+- Submit pauses separately from complete updates. A failing later message rolls
+  back the whole governance proposal; a failed separate proposal does not retry
+  automatically.
 
-同块紧急保护已统一：所有 `emergency_only=true` 更新均设置保护标记，在 H+1 生效之前拒绝后续完整参数更新。紧急暂停必须独立提案，不与完整更新放在同一提案中，否则后续消息失败会使暂停一并回滚。其他提案因该保护失败后不会自动重试，须待生效后重新查询并另行提交。该历史修复当时未改变显式紧急更新、750 gas 与预算，见 [同块紧急保护修复](PQCAUTH-SAMEBLOCK-EMERGENCY-FIX-20261102.md)。
+Recovery/cancellation exceptions still require all signatures/proofs, including a
+protected independent payer's authentication. They are not an escape from a broken
+ML-DSA algorithm. Check actual active/pending state, expiry and `resulting_params`;
+do not rely solely on a successful transaction receipt.
 
-历史基线（本轮精简前）已补真实治理 EndBlock 顺序/回滚、签名提交/押金/投票，以及 750 gas、400 次预算下的六块混合流量和无效签名入池回归，见 [治理与有界负载记录](PQCAUTH-GOVERNANCE-LOAD-TESTS-20261102.md)。普通独立交易未被 PQC 预算饱和连带阻塞，但恢复和取消恢复仍竞争共享额度；本机固定排序中的延迟不是公网等待上限。该轮测试未改协议，也不替代下面的最终产物与最低硬件验收。
+Before changing block gas, SDK signature limits or PQCAuth price:
 
-GOV-02 后，治理请求必须明确意图：完整更新保持原取消/替换语义，仅紧急更新使用顶层 `emergency_only=true`；取消普通计划不再自动续期暂停。上线前同步治理 JSON 构造器，检查回执 `resulting_params` 与查询的两个调度状态。首版现已禁止 numeric cutoff；保留普通限制与应急重叠、暂停到期不复活及同块顺序回归。历史问题见 [GOV-02 修复记录](PQCAUTH-GOV02-FIXES-20261101.md)，当前参数选择见 [启动设置](PQCAUTH-LAUNCH-SETTINGS-20261102.md)。
+1. Snapshot the effective and pending consensus/auth/PQCAuth settings at one
+   confirmed height; check every activation stage.
+2. For finite block gas, check `3 × verification_gas < block.max_gas`, with measured
+   allowance for all other gas. This is a minimum sanity check, not total cost or
+   a per-transaction count limit; unlimited block gas gives no capacity guarantee.
+3. Test supported signer combinations, native multisig leaves, independent payers
+   and lifecycle operations with the proposed settings.
+4. Keep results and ordering in the proposal record; re-query and exercise the
+   affected paths after activation. Changing consensus gas does not itself invoke
+   PQCAuth's governance price check.
 
-紧急调度与普通待生效计划已经解耦，暂停期间单条顶层恢复可使用受保护的独立付款人，全部签名和预算检查保留。新增持久化 `pending_emergency` 状态，必须把同高度激活、暂停到期、导出导入和重启纳入最终产物验收。详细语义及本轮应用内回归见 [紧急治理与恢复修复记录](PQCAUTH-EMERGENCY-FIXES-20261101.md)。这不是在线网络已升级的声明。
+Raising SDK signature limits does not increase the fixed eight-entry / 64 KiB
+PQC extension caps.
 
-验签定价已按用户确认收敛：PQCAuth 授权签名和密钥证明的默认价及最低值均为 750 gas，与固定 SDK 版本的 ML-DSA-65 基准一致；不自动跟随 x/auth 治理参数，也不重写已有 PQCAuth 参数。说明及回归见 [验签 gas 对齐说明](PQCAUTH-GAS-ALIGNMENT-20261101.md)。本轮合并为 verification_gas 一个字段，移除单笔/区块次数预算和自定义选块过滤，恢复 SDK 默认 proposal。新的四节点压力、快照和公共网验收不能沿用此前证据。
+## Client and recovery preparation
 
-历史第四轮（现已由 SDK 默认选择器取代）的选块规则为按实际签名者及独立手续费付款人传递阻塞，不再因为一笔 PQC 超预算交易截断全部后续交易；参数激活造成的 byte/signer 限额拒绝也覆盖。它不模拟跨账户消息状态依赖。工具链和依赖补丁、真实签名回归及剩余依赖风险见 [第四轮修复记录](PQCAUTH-ROUND4-FIXES-20261101.md)。原生 ML-DSA gas 定价未随这次修复改变，后续调整须先做容量及经济成本评估。
+Use separate classical, signing and recovery secrets. Generate replacement keys
+on a trusted device. Offline recovery and both offline rotations must compare the
+new key against an independently trusted local key or full SHA-256 fingerprint;
+a hash supplied by the untrusted preparation host is not an intent check.
+The module README contains the current commands and required flags.
 
-冻结最终源码和二进制后，用最新真实快照、最低支持配置进行多验证人演练，记录升级块及首次提交耗时、峰值内存和磁盘需求；在迁移和提交期间中断并恢复节点，验证继续出块和 AppHash 一致。升级前约定可接受停顿时间并以实测验收，不能仅以单元测试或内存耗时承诺。
+Keep recheck enabled. Its crypto reuse assumes previously admitted bytes, ordered
+transactions and a pending block before policy changes. New admission and final
+execution still verify signatures; changing those assumptions requires review.
 
-公共测试网完成核心生命周期、普通与混合签名 IBC 往返及重启验收。协调足够投票权的验证人使用同一审核产物，核对前置升级、计划名称、高度和启动配置。首次保持 OPTIONAL，不更换共识签名或 IBC 轻客户端算法。
+## Phase two: separately scoped work
 
-本计划不授权发布、推送标签、提交治理提案、替换线上程序或操作已有钱包。上线仍需单独批准。
+Potential future work includes permission visibility/revocation tools,
+account-specific delegation policies, multisig and hardware-wallet support,
+additional algorithms and stronger enforcement. Any delegation index needs
+bounded initialization, maintenance and interruption recovery.
 
-### 治理参数变更运维检查
+Reintroducing fresh-only enrollment would require a designed persistent key
+commitment and transaction-bound retry protocol, including OOG, replay, sequence,
+fee, export/import and restart tests. Static PoP reuse or relaxed freshness checks
+are not a substitute.
 
-下调共识 `block.max_gas`、调整 auth 的 `tx_sig_limit`，或调整 PQC 验签价格前，提案审查必须完成以下检查。不能把“治理交易成功”视为组合参数可用性的证明。
-
-1. 在同一链、同一已确认高度保存共识、auth、PQC 当前及待生效参数，并记录各项生效高度。按每个生效阶段分别检查组合，避免延迟策略生效后失配。
-2. 对有限区块 gas 上限，至少确认 `verification_gas × 3 < block.max_gas`，再为 SDK 签名、字节、存储和业务执行保留实测余量；这是三次生命周期验签的最低合理性检查，不是每笔次数限制。`-1` 无限 gas 不提供容量保证。
-3. 审查原生 ML-DSA 多签叶子、独立付款人和生命周期总成本，结合 SDK `tx_sig_limit` 检查。PQCAuth 不再给原生账户加次数额度；extension 固定 8 条、64 KiB 是独立结构界限，SDK 上限提高不会自动扩大它们。
-4. 在隔离环境应用拟议组合，测试普通转账、最大支持多签、受保护付款人的注册/轮换/恢复以及保护关闭；记录实际 gas、交易结果、继续出块和节点状态一致性。超预算或 gas 不足时先调整提案和生效顺序，不提交已知不可用的组合。
-5. 在提案附件保留参数快照、测试证据、执行顺序及治理修正方案；生效后再次核对参数和交易结果。降低共识 gas 不会自动触发 PQC 参数预检，因此这一步必须人工执行，不向 BeginBlock 增加失败检查。
-
-若改变 auth 上限或使用自定义 genesis，也必须重新验收，不将三次验签价格检查解释为对任意多签的兼容保证。
-
-## 第二阶段 更全面的授权安全
-
-根据第一阶段运行反馈另行设计，不预设上线日期。
-
-- 授权可视化、风险提示、限额、到期和批量撤销工具。
-- 可选的账户级委托策略，包括是否限制非 PQC 被授权人、如何处理已有授权及恢复后的委托。
-- 若确需反向索引，先证明查询需求，设计有界初始化、实时维护和中断恢复，避免升级块全量扫描。
-- 对多签、硬件钱包和强制模式制定独立支持与迁移策略。
-- 若未来重新引入 fresh-only 注册，先设计首次完整鉴权后持久化的密钥承诺、交易绑定的 PQC 重试授权、导入导出和清理机制；覆盖消息 OOG、重放、替换因子、费用/sequence 变化、截止期与崩溃恢复。禁止简单放宽公钥/sequence 条件，不能复制静态 PoP 充当重试授权。该协议尚未实现。
-
-第二阶段必须单独明确安全承诺、向后兼容性、迁移成本和故障恢复测试。不得通过第一阶段的隐含限制提前强制用户迁移权限。
-
-## 当前实施状态
-
-最新参数/预算精简以 [2026-11-02 处理记录](PQCAUTH-SIMPLIFICATION-20261102.md) 为准。下列旧报告中的额度、注册参数和模块版本不代表当前代码；历史测试不能替代新产物验收。
-
-2026-11-01 共享审查发现的 PQC-01 至 PQC-05 已在当前修复中处理，其中 PQC-02 按用户确认以禁用 fresh 模式收敛范围，不宣称实现了安全重试。最新复审入口及依赖补丁阻塞见 [共享审查修复记录](PQCAUTH-SHARED-AUDIT-FIXES-20261101.md)。下方历史测试及快照记录仅证明对应旧提交，不是本次产物验收。
-
-第一阶段代码精简及本地验证已完成；正式上线验收尚未完成。第二阶段未开始。本计划不是主网上线批准，也不保证不存在尚未发现的缺陷。
-
-独立审计后的参数容量修复及其验证记录见 [审计修复记录](PQCAUTH-AUDIT-FIXES-20261031.md)。修复仍限于第一阶段：客户端显示委托风险与查询方法，不自动扫描全部授权，不恢复索引或升级回填。
-
-Claude 对 `a2de29d` 的独立复审确认原五项发现均已处理，详见 [完整审计及复审报告](PQCAUTH-CLAUDE-AUDIT-20261031.md)。后续收尾仅增加恢复命令的客户端提示、回归断言和上述运维流程，不改变链上规则；该追加修改不冒充已经获得独立复审。
-
-2026-10-31 验证记录：
-
-- 全仓测试：561 个通过的测试/子测试事件，14 个测试包通过，无失败。默认跳过的三项链模拟已另行显式启用并通过；发布工具 7 项测试、906 个固定 IBC 源文件检查和 `go vet ./...` 均通过。
-- 新增首版回归覆盖保留授权注册、保护关闭/重新开启、被授权人自身签名策略、恢复后的授权兼容，以及全部七种生命周期消息的间接执行和消息服务器认证边界。错误交易后仍可提交有效交易。
-- 升级测试预置 1,000 条 Feegrant，并在账户、银行、Authz、Feegrant store 上安装访问即失败的守卫（包括缓存分支）。升级通过，原授权数量不变，PQC store 只初始化参数，没有授权索引。此项证明代码路径不扫描这些集合，不是磁盘升级耗时基准。
-- 新编译程序的四验证人隔离网演练通过：92 笔交易成功、6 次预期拒绝；覆盖注册、离线签名、两类轮换、恢复取消、恢复等待期间重启、注册及恢复后的委托执行/代付、超过保留上限的历史清理及再次重启。混合负载 40 笔交易，期间关闭一个验证人两轮；各阶段四节点 AppHash 一致。该演练使用合成余额、缩短恢复期和测试预算，不是主网快照升级、吞吐基准或长期稳定性测试。
-- ML-DSA 验证和 PQC 扩展字段解析分别进行了 20 秒短时模糊测试，通过；不能替代持续模糊测试或独立安全审计。
-
-可复现入口：`scripts/test-release-candidate.sh` 和 `scripts/rehearse-pqcauth-lifecycle.py`。全仓日志位于 `build/test-results-phase1/`；本次二进制、模糊测试及四验证人证据位于 `/tmp/doravota-phase1.yoZGn3/`，其中 `four-validator-lifecycle-retry/evidence/result.json` 为成功结果。第一次实节点尝试受 socket 权限限制，节点未启动；权限开放后的独立重试完成了上述验收。测试节点均已停止，未操作公共链或已有钱包。
-
-2026-11-01：冻结候选 `b3f289d` 已通过当天最新主网快照的同机四验证人顺序升级和中断恢复演练，见 [快照演练报告](PQCAUTH-SNAPSHOT-REHEARSAL-20261101.md)。容器限制为总计 4 核/12 GiB，不能等同于独立物理最低硬件或冷缓存验收；未操作公共链。
-
-后续顺序：保持候选源码和产物可追溯 → 补充最低物理配置/跨机器/长期负载验证 → 公共测试网及 IBC 验收 → 独立审查和单独批准发布。旧实验性 PQC 模块版本 1/2 数据库不允许直接切换至本版（内部模块版本 3）。
+These features are not implicitly enabled by phase one. See the
+[documentation index](README.md) for revision-specific audit and acceptance records.

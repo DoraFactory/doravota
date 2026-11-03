@@ -1,5 +1,9 @@
 # PQCAuth v1.1.0 development validation — 2026-10-20
 
+Historical implementation/test record, not current configuration guidance. Old quotas,
+registration rules and enforcement modes mentioned below may have been retired.
+Use the [module README](../x/pqcauth/README.md) for the current candidate.
+
 Runtime source: `d78350775f809d1a219b6be144c945b181ee897b` on
 `feature/pqcauth-sdk-keyring`. Candidate version `v1.1.0-dev`; future upgrade plan
 and Cosmovisor directory name `v1.1.0`. Historical `v1.0.0` stays unchanged.

@@ -1,5 +1,9 @@
 # PQC Auth SDK-keyring integration — 2026-10-20
 
+Historical implementation/test record, not current configuration guidance. Old quotas,
+registration rules and enforcement modes mentioned below may have been retired.
+Use the [module README](../x/pqcauth/README.md) for the current candidate.
+
 Status: development candidate for the GitHub development branch. Not deployed
 to a public network and not approved for mainnet activation.
 

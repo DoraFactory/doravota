@@ -1,69 +1,26 @@
-# PQCAuth 合入 v1.0.1：实现与验证记录
+# PQCAuth integration with v1.0.1 — 2026-10-30
 
-日期：2026-10-30。状态：开发分支集成验证完成；不是正式发布或链上激活。
+Historical English summary. Results belong to the recorded revision, not current release acceptance. Current behavior: [module README](../x/pqcauth/README.md).
 
-## 源码与合并方式
+## Revision and compatibility scope
 
-- 目标分支：`feature/pqcauth-sdk-keyring`。
-- 合并前 PQCAuth 提交：`9c68a78cfc143a80a94bc6a5e8a5d478321ccc42`。
-- 合入已发布标签 `v1.0.1` 的提交：`39759f09a438ebc0e1fdc4b6af748a1d7d03e142`。
-- 使用保留双方提交历史的 merge，不覆盖已有 PQCAuth 修复，不改写已发布标签。
-- 开发版本仍为 `v1.1.0-dev`；候选治理升级计划仍为 `v1.1.0`。
+PQCAuth revision `9c68a78cfc143a80a94bc6a5e8a5d478321ccc42` was merged with released v1.0.1 `39759f09a438ebc0e1fdc4b6af748a1d7d03e142`, producing `31766d43fe4a1663ef4c093840b4cded3aab473f`.
 
-## 实际修改及原因
+The merge preserved the two pinned IBC Amino compatibility patches and 906 source checks, DIRECT behavior, routes and stores. The supported production ordering required v1.0.1 first; the PQC candidate was not a substitute for executing the historical v1.0.1 handler. Fresh genesis chains had a separate activation marker.
 
-1. 保留 v1.0.1 的 IBC Amino 默认 false 省略修复、固定 IBC 源码和完整性检查。没有另行升级 SDK/IBC，也没有变更 `use_aliasing=true`、Direct 签名、IBC 路由或存储格式。
-2. 合并启动与 PreBlock 检查：已有网络必须先完成 v1.0.1；PQCAuth 二进制不能执行 v1.0.1 升级，即使存在匹配的本地停机文件。初始化于新签名规则的新链可使用 genesis 激活标记。
-3. 保留历史 v1.0.1 handler 名称供完成记录识别，但执行它会明确报错，要求使用已发布 v1.0.1 二进制。v1.1.0 handler 在迁移前再次检查前置状态。
-4. PQCAuth 在自己计划的准确高度初始化，拒绝跳过计划；迁移后检查模块版本。保持 OPTIONAL 初始模式、独立 network domain、既有 feegrant 索引初始化及归档检查。
-5. 解决版本、Dockerfile、CI 和升级测试冲突；开发版本许可仅作用于 PQCAuth 分支。CI 新增四验证人顺序升级检查，旧二进制按官方 SHA-256 固定。
-6. 未修改 ML-DSA 密钥派生规则、Ledger 确认机制、多签支持范围和已完成的模块安全修复。
+The feegrant index present in this round was removed later; this report is not current module behavior.
 
-## 实际远程验证
+## Recorded isolated results
 
-所有 Go 测试、格式化、构建与链演练均在 `amaci-testnet-operator` 的独立容器执行。
-检查磁盘后使用独立目录，链演练容器 `--network none`，不触碰公共验证人、relayer 或钱包。
+Tests ran in network-disabled containers on an isolated operator host, without public transactions or production-node changes.
 
-| 检查 | 结果与证据 |
-| --- | --- |
-| IBC 源码完整性 | 906 文件，只保留固定的两个补丁文件；通过 |
-| 定向升级/签名回归 | 缺失前置激活、未来完成高度、有效完成、新链标记、历史记录识别、IBC Amino/Direct 路径均通过 |
-| 完整 `go test ./...` | 14 个包通过；568 个测试/子测试 pass，3 个模拟默认 skip |
-| 显式启用模拟 | 上述 3 个模拟另行运行，全部通过（确定性、导入导出、导入后模拟） |
-| `go vet ./...` | 通过 |
-| Linux AMD64 开发构建 | 通过；演练二进制哈希见下文 |
-| 四验证人顺序升级 | v1.0.0 在 H=85 升级 v1.0.1，再在 H=197 升级 PQCAuth v1.1.0；两阶段升级、转账、重启通过 |
-| 提前安装保护 | v1.0.1 与 PQCAuth 两阶段提前启动均被拒绝；旧版本恢复运行、正常抵达计划高度后升级成功 |
-| 多节点一致性 | 升级后和移除本地 upgrade-info 后重启，四节点 AppHash 一致；PQCAuth 验证高度 199 和 204 |
-| PQCAuth 生命周期 | 86 笔成功交易，6 项预期拒绝；注册、离线签名、签名/恢复因子轮换、恢复取消/激活、过期签名拒绝通过 |
-| 混合流量与失联 | 4 轮共 40 笔转账；其中两轮停掉 1/4 验证人，恢复后状态一致 |
-| 历史记录与重启 | 连续恢复取消与轮换、历史状态导出/对比通过；重启后高度 107 四节点 AppHash 一致 |
+- 568 passing test/subtest events across 14 packages; three explicit simulations, vet and build.
+- Sequential v1.0.1/PQC upgrades, early-install rejection, transfers and restart.
+- Four-validator lifecycle: 86 successful transactions, six expected rejections, 40 mixed transfers over four rounds, and agreement after an offline node rejoined.
+- A clean build of the fixed merge was rerun through the sequential upgrade. Candidate SHA-256: `b85ef656dac4e71a5ad7bd39fad4d333c1e6e0d0bbb4654a20aed6601d3957d6`.
 
-可提交的结果摘要：[summary.json](pqcauth-v101-evidence/summary.json)。这些交易属于隔离链，没有公共浏览器链接。
-本轮未出现运行时代码测试失败；开发前的风险检查发现了合并后可能跳过 v1.0.1 的升级路径，已增加限制并实测正负路径。
+Evidence: [summary](pqcauth-v101-evidence/summary.json) and [fixed result](pqcauth-v101-evidence/fixed-result.json). Original working records: `/root/pqcauth-v101-integration-20261030/` and `/Users/bun/DoraFactory/review-records/pqcauth-v101-integration-20261030/`.
 
-## 二进制与证据
+CI run 41024158290 had passing tests but still-running builds when this report was written; it did not claim completed CI. No final snapshot, public IBC, physical-wallet or production deployment acceptance was established.
 
-- v1.0.0：`5c741ca406ee2ecb811dd62d83e9a446fee051e2947522525c2560a0a7ce968a`。
-- v1.0.1：`04bd2d0dced7ccf1f993a70fb2be6b1718e0f1852c27f1bdeef0fa49eaea1696`。
-- 初轮 PQCAuth 开发构建：`b43eed17a080c2783dc560f80c9f75fa7e692b3f0594a418c538fe8d9d92afeb`。该构建未注入正式发布提交，不是 Release 产物；远程受测运行时文件与合并源码逐文件 SHA-256 一致。
-- 远程完整记录：`/root/pqcauth-v101-integration-20261030/`。
-- 本地审查记录：`/Users/bun/DoraFactory/review-records/pqcauth-v101-integration-20261030/`。
-- `evidence/` 含定向测试、完整测试、vet、源码清单；`src/build/test-results/` 保留逐项 JSON 日志；`sequential-01/` 和 `lifecycle-01/evidence/` 保留交易、状态及重启证据。不收集 keyring。
-
-## 固定提交构建及复测
-
-- 代码合并提交：`31766d43fe4a1663ef4c093840b4cded3aab473f`，已推送到 GitHub 的 `feature/pqcauth-sdk-keyring`。
-- 合并父提交分别为上述 PQCAuth 旧 HEAD 与 v1.0.1 发布提交；`v1.0.1` 是当前分支祖先。
-- 从该提交的 `git archive` 构建，注入完整 commit、版本 `v1.1.0-dev`；运行发布构建脚本与启动/CLI smoke，均通过。未发布 GitHub Release。
-- 固定提交 AMD64 二进制 SHA-256：`b85ef656dac4e71a5ad7bd39fad4d333c1e6e0d0bbb4654a20aed6601d3957d6`。
-- 使用此二进制及最终连续升级脚本复测：v1.0.1 高度 85，PQCAuth 高度 198；提前启动拒绝、转账、重启均通过。高度 200 和 205 的四节点 AppHash 分别一致。
-- 复测摘要：[fixed-result.json](pqcauth-v101-evidence/fixed-result.json)。完整日志位于审查记录的 `evidence/fixed-build.log`、`evidence/sequential-fixed.log`。
-- [GitHub CI](https://github.com/DoraFactory/doravota/actions/runs/41024158290) 对应代码提交 `31766d4`。记录时 tests 成功，AMD64/ARM64 构建仍在运行，不能写成 CI 全部通过。后续文档补充不改变受测代码。
-- 收尾检查：远程剩余约 73 GiB；原验证人 Cosmovisor PID 3450774 未变，既有 relayer 保持运行。
-
-## 尚未完成的正式发布验收
-
-本轮隔离验证不能替代最终版本的真实主网快照升级、公共测试网生命周期/真实 IBC 双向通信、物理 Ledger、ARM64 最终产物、长期负载和独立安全审查。GitHub CI 状态需按最终推送提交单独确认。
-
-公共网络仍应先按既定计划完成 v1.0.1，之后单独评审、发布并治理升级到 PQCAuth v1.1.0。没有在本轮发布标签、替换线上验证人程序或提交升级提案。
+[Original detailed record](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/PQCAUTH-V101-INTEGRATION-20261030.md). Raw evidence was not modified.

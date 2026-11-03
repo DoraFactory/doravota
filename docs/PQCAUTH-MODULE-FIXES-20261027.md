@@ -1,5 +1,9 @@
 # PQCAuth module review fixes — 2026-10-27
 
+Historical implementation/test record, not current configuration guidance. Old quotas,
+registration rules and enforcement modes mentioned below may have been retired.
+Use the [module README](../x/pqcauth/README.md) for the current candidate.
+
 Branch: `feature/pqcauth-sdk-keyring`. Reviewed baseline:
 `f1a393d8e53946cd799d98bf0ac241cc8856a1fb`. Candidate remains `v1.1.0-dev`.
 

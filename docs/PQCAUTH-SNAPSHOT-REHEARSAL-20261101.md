@@ -1,63 +1,38 @@
-# PQCAuth 第一阶段主网快照升级演练
+# PQCAuth historical snapshot rehearsal — 2026-11-01
 
-2026-11-01 UTC，在当前远程机器上，以当天最新主网数据库快照执行四验证人隔离演练。候选提交 `b3f289d3882e495c6c1d8ad08f44ce8979a1c842` 通过 v1.0.0 → v1.0.1 → v1.1.0 顺序升级、两次升级提交前中断恢复、全节点重启和单节点离线检查。本次未发现升级引起的持续停链；这是一次受限资源、同机隔离演练，不是生产停顿时间保证或公共测试网验收。
+Historical English summary. Results belong to the recorded revision, not current release acceptance. Current behavior: [module README](../x/pqcauth/README.md).
 
-## 输入与隔离
+## Fixed inputs
 
-- 原始快照：`doravota_2026-11-01_18029707_snap.tar.lz4`，高度 `18,029,707`，压缩 4,977,990,807 字节，解包 7,070,452,244 字节。[下载及校验记录](upgrades/pqcauth-phase1-snapshot-20261101/source-manifest.json)。SHA-256 为 `680b7c73deb36aacce4ba2158064e50bef0be9d78286cc286070dd8cd2f5b59b`，是本地计算值，不是供应方签名。
-- 原始数据库 AppHash：`7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93`。与官方 RPC、ITRocket RPC 的下一高度区块头分别核对一致，证据见 [RPC 对照](upgrades/pqcauth-phase1-snapshot-20261101/source-rpc-proof.json)。没有把这一对照当作独立轻客户端验证。
-- 运行二进制 SHA-256：v1.0.0 `5c741ca406ee2ecb811dd62d83e9a446fee051e2947522525c2560a0a7ce968a`；v1.0.1 `04bd2d0dced7ccf1f993a70fb2be6b1718e0f1852c27f1bdeef0fa49eaea1696`；PQC 候选 `120968a45d6ade0da1efc78c4745197f43a5e0e2051759844cba27f8723a228f`。
-- 候选为已冻结的 Linux amd64、Go 1.26.5、`CGO_ENABLED=0` 构建，版本 `v1.1.0-dev`，VCS 标记 `modified=false`。测试没有修改或重新构建候选。
-- 容器使用 `--network none`，没有发布端口；只挂载本次临时目录及三个只读二进制，不挂载现有节点 home 或生产密钥。所有共识密钥与 faucet 均为新生成的测试密钥。
+Candidate: `b3f289d3882e495c6c1d8ad08f44ce8979a1c842`, then module version 3 and Go 1.26.5. This is not acceptance evidence for a later version-4 candidate.
 
-没有 export/import 重新生成业务状态。离线工具直接在原数据库副本上创建人工检查点 `18,029,708`，更换四个测试共识密钥、限制为四个验证人，并配置测试余额、短治理期及用于测试投票的授权。该检查点不是主网真实区块。变化仅限 `acc/authz/bank/gov/slashing/staking`，Feegrant、IBC、Wasm 等其余存储根不变，详见 [准备报告](upgrades/pqcauth-phase1-snapshot-20261101/fork-report.json)。
+Snapshot: `doravota_2026-11-01_18029707_snap.tar.lz4`, height 18,029,707; compressed size 4,977,990,807 bytes, extracted size 7,070,452,244 bytes.
 
-## 升级与稳定性结果
+```text
+Snapshot SHA-256:
+680b7c73deb36aacce4ba2158064e50bef0be9d78286cc286070dd8cd2f5b59b
+Database AppHash:
+7D3C5D5DCC4C1D0E16785B45DC93E18BDF19646DCBC312EF3D4D28F093C67B93
+Candidate binary SHA-256:
+120968a45d6ade0da1efc78c4745197f43a5e0e2051759844cba27f8723a228f
+```
 
-| 检查 | 结果 |
-| --- | --- |
-| v1.0.1 顺序升级 | 隔离治理通过，高度 `18,029,778` 执行，转账成功、四节点 AppHash 一致 |
-| v1.1.0 PQC 升级 | 高度 `18,029,848` 执行，模块版本为 3、初始 OPTIONAL，默认 8 个签名者/每笔 16 次验签未改变 |
-| 签名域初始化 | `network_id` 与升级名及隔离 chain ID 的预期 SHA-256 一致 |
-| 升级处理开始后强制中断 | node0 收到升级日志后 SIGKILL；已提交高度仍是 `18,029,847`，随后重放升级成功 |
-| FinalizeBlock 后、提交前强制中断 | node1 在 `finalized block` 日志后 SIGKILL；已提交高度仍是 `18,029,847`，随后重放升级成功 |
-| 升级前后状态 | Wasm、IBC、Feegrant、Authz 四个存储根分别完全一致，PQC store 新增 |
-| 全节点重启 | 移走本次 `upgrade-info.json` 后重新启动，继续出块且测试转账成功 |
-| 单节点离线 | 停 node3，其余三节点从 `18,029,859` 推进至 `18,029,864`；恢复 node3 后重新一致 |
-| 最终一致性 | 高度 `18,029,866` 四节点 AppHash 一致，所有本次节点随后停止 |
+The archive hash was locally computed, not a vendor signature. Header comparison with two RPC sources was not light-client verification.
 
-共 8 笔测试交易成功，包括两个升级提案、两次授权投票和四次转账。[交易与场景结果](upgrades/pqcauth-phase1-snapshot-20261101/result.json)、[最终一致性](upgrades/pqcauth-phase1-snapshot-20261101/final-agreement.json)、[原始提交前后存储根](upgrades/pqcauth-phase1-snapshot-20261101/pqc-after-upgrade-roots.json)均已归档。
+## Isolated execution
 
-两次中断的数据库提交高度均经过离线读取，不仅依赖进程退出码。未注入断电、磁盘损坏或 fsync 失败；在实际磁盘写入的每个指令位置中断也不在本次覆盖范围。
+Docker networking was disabled. Only test validator keys and copied databases were used; no production home was modified. A synthetic checkpoint at 18,029,708 changed only account/authz/bank/gov/slashing/staking state needed by the rehearsal; other store roots were preserved.
 
-## 时间与资源
+The copied network upgraded to v1.0.1 at 18,029,778 and the PQC candidate at 18,029,848. Two forced interruptions exercised replay: one after upgrade start, one after finalization but before commit. Restart without upgrade-info succeeded. With one node stopped, three advanced; the fourth rejoined with matching state at 18,029,866.
 
-| 计时口径 | v1.0.1 | PQC v1.1.0 |
-| --- | --- | --- |
-| 升级开始日志至 FinalizeBlock 完成，四节点范围 | 约 2.5–3.8 ms | 约 2.9–10.6 ms |
-| 升级开始日志至提交完成，四节点范围 | 约 0.098–0.287 秒 | 约 0.023–0.335 秒 |
-| 单节点进程启动至升级块提交 | 约 1.91–2.90 秒 | 约 0.47–3.09 秒 |
-| 启动调度至四节点均继续推进 | 9.15 秒，到升级高度 +3 | 9.61 秒，到升级高度 +4 |
+Eight transactions covered two proposals, two delegated votes and four transfers. Existing Wasm, IBC, feegrant and authz store roots were checked for preservation.
 
-以上短时计数来自控制进程收到节点日志时的单调时钟，包含日志传输和调度误差，不能解释为纯函数基准。PQC node0/1 是中断后重试，node2/3 未中断，其升级开始到提交分别约 0.237/0.335 秒。node0 的升级前一块提交日志为 `00:49:46Z`，升级块为 `00:49:51Z`，下一块为 `00:49:56Z`；这段约 10 秒包含本次故意注入中断及重启，日志时间精度为秒。
+## Resource and evidence boundaries
 
-资源边界和观测值：
+The container had four CPU cores and a 12 GiB memory limit, with per-process GOMAXPROCS=2 and GOMEMLIMIT=2 GiB. Combined process RSS peaked near 916 MiB, but cgroup usage including cache reached the 12 GiB limit and reclaimed memory; OOM count was zero. This is not evidence that production needs only 1 GiB RAM or that minimum physical hardware passed.
 
-- 总 CPU 上限 4 核，容器内存硬上限 12 GiB、无额外容器 swap；每节点 `GOMAXPROCS=2`、`GOMEMLIMIT=2GiB`。磁盘读/写限速为 100/60 MiB/s，磁盘保留线为 40 GiB。
-- 500 ms 采样中，四节点 RSS 总和峰值约 916 MiB，单节点最高约 233 MiB。**包含文件缓存的 cgroup 内存曾达到 12 GiB 上限并触发内存回收**，`oom=0`、`oom_kill=0`。不能据节点 RSS 推断“生产只需 1 GiB 内存”。
-- 全程磁盘可用空间最低约 55.8 GiB，未触发保护线。数据库准备和复制耗时不计入升级处理时间。
-- 当前主机为 20 逻辑 CPU、约 62 GiB 内存，存在其他运行中的测试节点，且缓存已被准备阶段预热。这不是独立物理最低配置或冷缓存长时基准。
+Evidence: [snapshot evidence directory](upgrades/pqcauth-phase1-snapshot-20261101/), including source manifest/RPC proof, fork report, result, final agreement, post-upgrade roots and summary. Original local evidence was under `/tmp/doravota-snapshot-20261101.hj0o2X/evidence/`.
 
-详细观测见 [时间与资源汇总](upgrades/pqcauth-phase1-snapshot-20261101/summary.json)。原有测试节点及 relayer 没有被停止或改配置；演练前后抽查的容器启动时间未变化。
+This did not test power loss, disk corruption, cross-machine behavior, public IBC or physical wallets. Later source/dependency changes require a new final-artifact rehearsal.
 
-## 证据与资源回收
-
-- 本机完整证据目录：`/tmp/doravota-snapshot-20261101.hj0o2X/evidence/`，包含逐节点日志、500 ms 资源采样和事务回执。
-- 候选二进制：`/tmp/doravota-pqcauth-closeout.HSQ4Rk/dorad`；冻结记录：同目录 `manifest.json`。
-- 原始压缩快照：`/tmp/doravota-snapshot-20261101.hj0o2X/source.tar.lz4`；保留节点：同目录 `snapshot-rehearsal/node0/`。
-- 公共证据和执行脚本归档在 `docs/upgrades/pqcauth-phase1-snapshot-20261101/`。脚本保留实际执行路径与断言，不应直接在原目录重跑；复现需新建隔离目录、调整路径并维持资源和无外网约束。Go 工具源码以 `.go.txt` 保存，避免被全仓构建误纳入，复现时复制到独立目录并恢复扩展名。离线准备工具基于 v1.0.0 源码，不应用候选程序代替前置版本做数据库准备。
-- 测试配置和签名状态另以权限 0600 保存在本机 `test-node-configs-private.tar.gz`，不提交 Git。原始快照及 node0 保留；已删除本次的 `pristine` 解包副本和 node1–node3 临时 home，释放约 26 GiB，磁盘恢复至约 83 GiB 可用。可从保留的压缩快照重新演练，不承诺恢复已删除副本的逐字节状态。
-
-## 后续验收边界
-
-本次完成真实快照升级和进程中断恢复检查，不替代公共测试网的 PQC 核心生命周期、Keplr/CLI 使用场景及 IBC 往返，也不替代跨机器故障、长期负载、最低物理硬件和磁盘故障测试。既有合成网的生命周期结果应与本次升级结果分别引用。后续不得无记录地更换候选提交或二进制；任何发布、公共链提案或部署均需单独批准。
+[Original detailed record](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/PQCAUTH-SNAPSHOT-REHEARSAL-20261101.md). Raw evidence was not modified.

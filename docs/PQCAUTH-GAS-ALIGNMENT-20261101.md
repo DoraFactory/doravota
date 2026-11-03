@@ -1,111 +1,48 @@
-# PQCAuth 验签 gas 对齐说明
+# PQCAuth verification gas alignment — 2026-11-01
 
-日期：2026-11-01。基线：`8a8b6892a7458f4cfe752332a2b5fe3835fe54ae`，分支 `feature/pqcauth-sdk-keyring`。本次将授权签名及密钥证明的单次默认验签价格和最低值从 250,000 调整为 750 gas，保持签名安全规则和共享验签次数预算不变。同批治理调度和恢复路径修复见 [紧急治理与恢复修复记录](PQCAUTH-EMERGENCY-FIXES-20261101.md)。未部署到公共网络。
+Historical English summary. Results below belong to the recorded revision, not current release acceptance. Current behavior: [module README](../x/pqcauth/README.md).
 
-## 定价依据和变更范围
+Baseline: `8a8b6892a7458f4cfe752332a2b5fe3835fe54ae`. Authorization/proof default and minimum prices changed from 250,000 to 750. The original 250,000 was a module-selected value traceable to `71d6f06`, without a reproducible benchmark conversion supporting that exact number.
 
-旧价格是模块自行设置的固定值，当前仓库最早可追溯到 `71d6f06`；没有可复核的性能换算支持 250,000 这个具体数字。它不是钱包估算值，也不是验证整个 Extension 的总价格。
+## Meaning of the price
 
-PQCAuth 的 `crypto.verifyMLDSA65` 最终调用 SDK 的 `PubKey.VerifySignature`。授权签名和密钥证明均使用同一种 ML-DSA-65 算法。新价格引用固定依赖 Cosmos SDK v0.55.0 的 `authtypes.DefaultSigVerifyCostMlDsa65`，目前是 750；回归显式断言其数值，避免以后升级 SDK 时无意改变共识定价。SDK 的基准与交易字节另计费说明见 [官方参数定义](https://github.com/cosmos/cosmos-sdk/blob/v0.55.0/x/auth/types/params.go)。
+Both paths eventually use SDK ML-DSA-65 verification. The new value references pinned SDK v0.55.0 `DefaultSigVerifyCostMlDsa65`, with tests locking 750; it is not a dynamic read of x/auth and not the cost of the entire Ante path. Bytes, storage, classical signatures and message execution are separately charged. Native ML-DSA also carries a large signature, so the entire signature size is not the hybrid/native difference.
 
-| 项目 | 旧默认及下限 | 新默认及下限 |
-| --- | ---: | ---: |
-| Extension 中每个授权签名的验签 gas | 250,000 | 750 |
-| 每个生命周期密钥证明的验签 gas | 250,000 | 750 |
-| 单笔和每块总验签次数预算 | 16 / 400 | 不变 |
+Protected signing order remains: construct transaction/fee/sequence → PQC-sign the document excluding its self-referential authorization extension → attach extension → classical DIRECT-sign the complete transaction. Both authentications remain required. Ordinary protected send uses one PQC verification; registration and typical rotation use two. Extra payers/proofs add work.
 
-价格变更的生产代码集中在 `types/params.go`；同批治理与恢复修复另有生产文件变更。验签前扣 gas、实际密码学校验、规范编码、域隔离、sequence/策略绑定、DIRECT 要求、模拟占位边界、大小上限及选块规则均未改变。没有为未知额外成本另设一个未经测量的统一附加费。
+Stored valid higher prices were not rewritten; active/pending heights remained authoritative. Changing a signed bundle's fees requires re-preparation/signing. This historical revision retained 16/400 quotas; they were later removed and the two price fields merged. No public deployment occurred.
 
-750 是同算法验签的统一计费基准，不是对整个 PQCAuth Ante 路径恰好消耗 750 个资源单位的测量结论。交易字节、存储访问和业务执行继续分别计费；规范化、复制等额外计算并非所有都自动得到精确的独立计费，仍须在最坏交易大小和目标硬件上验收。
+## Recorded signed-transaction samples
 
-## 交易签名顺序与费用组成
-
-对于单个经典账户的普通受保护转账，PQC 密钥是这个账户登记的额外因子，不要求另有一个带余额和 sequence 的原生 PQC 账户。
-
-1. 构造交易，确定消息、费用和 sequence。
-2. 构造排除 PQC 授权扩展自引用的签名文档，用 PQC 密钥签署。
-3. 将 PQC 签名、密钥 ID、策略版本等放入 Extension。
-4. 用经典账户密钥以 DIRECT 签署包含该 Extension 的完整交易，然后广播。
-5. 节点仍须验证原有账户签名和 PQC 授权，任意一层无效都不能通过。
-
-在线 CLI 与离线签名 bundle 保持同一语义。本次没有更改签名顺序或要求重新注册密钥。
-
-原生 PQC 单签转账：一次 SDK PQC 验签，加字节、存储和转账业务费用。经典账户加 PQCAuth：一次经典验签、一次 Extension PQC 验签，加实际字节、策略/密钥读取和业务费用。原生交易也携带 PQC 签名，不能把整份 PQC 签名字节都当作两者差额。
-
-普通单因子受保护转账的 PQCAuth 固定验签部分为 750。注册 signing/recovery 两把密钥是两个证明，为 1,500；轮换通常是旧因子授权与新密钥证明，为 1,500。多签名者、独立受保护付款人或额外证明另计。CLI 模拟使用有效链上参数，不把新默认值强行套到所有网络；手续费还取决于所选 gas limit 和 gas price。
-
-## 兼容和部署
-
-- 尚未部署 PQCAuth 的受支持 v1.0.1 状态，在候选升级初始化新模块时使用新默认值。
-- 已存储的 250,000 或其他合法较高价格继续生效；`Effective` 不会将它们改写为 750。当前参数和待生效参数仍按其生效高度执行。
-- 若已有实验链要采用 750，先协调所有节点运行支持新下限的相同代码，再通过受支持的参数更新流程调整；不能让旧/新二进制混用，也不能单节点更改本地配置来改共识价格。
-- 本次没有加入自动参数迁移，没有更改 x/auth 参数。以后 x/auth 的实际 ML-DSA 收费若经治理改变，两模块价格可能再次不同，治理审查应显式核对。
-- 旧的非法或缺省值走有效默认值的兼容路径时，新代码会采用新的默认值；不把非法旧数据库作为正常生产升级入口。
-- 费用或 gas limit 若需要修改，必须重新准备并签署交易，不能直接篡改已签好的离线 bundle。
-
-## 验证记录
-
-### 功能和安全回归
-
-Go 1.26.10，`GOMAXPROCS=2`、构建并行度 `-p=2`，价格变更阶段的完整发布测试门禁通过：617 个测试/子测试通过事件、14 个测试包通过，无失败。默认跳过的 3 项链模拟已另行显式启用并通过。发布工具 7 项 Python 测试、906 个固定 IBC 源文件检查及 `go vet ./...` 通过。这是应用内执行及模拟，不是四个独立节点的网络演练；包含后续治理与恢复修复的最终门禁结果见紧急治理修复记录。
-
-新增的边界测试验证 749 被拒绝，750、751 和旧显式价格 250,000 在 active/genesis/governance/pending 路径均保持正确校验；旧价格在待生效高度前保留，新价格在 H 生效。估算的两次授权加三次证明从 1,250,000 改为 3,750。
-
-新增真实签名应用回归经过模拟、CheckTx 和 FinalizeBlock/Commit。固定单次价格从 750 改为 751 时，普通受保护转账的总 gas 精确增加 1；两证明注册的总 gas 精确增加 2。经典签名有效但缺少 PQC 授权的受保护转账仍被拒绝；后续空块和状态审计正常。
-
-| 应用内真实签名样例 | 单次价格 | 交易字节 | 模拟 gas | 实际执行 gas |
+| Operation | Price | Bytes | Simulated gas | Executed gas |
 | --- | ---: | ---: | ---: | ---: |
-| 受保护 send | 750 | 3,730 | 126,523 | 126,523 |
-| 受保护 send | 751 | 3,730 | 126,524 | 126,524 |
-| 受保护 send | 250,000 | 3,730 | 375,791 | 375,791 |
-| 注册 signing/recovery 两把密钥 | 750 | 10,803 | 320,435 | 320,132 |
-| 注册 signing/recovery 两把密钥 | 751 | 10,803 | 320,437 | 320,134 |
-| 注册 signing/recovery 两把密钥 | 250,000 | 10,803 | 818,947 | 818,644 |
+| Protected send | 750 | 3,730 | 126,523 | 126,523 |
+| Protected send | 751 | 3,730 | 126,524 | 126,524 |
+| Protected send | 250,000 | 3,730 | 375,791 | 375,791 |
+| Two-key registration | 750 | 10,803 | 320,435 | 320,132 |
+| Two-key registration | 751 | 10,803 | 320,437 | 320,134 |
+| Two-key registration | 250,000 | 10,803 | 818,947 | 818,644 |
 
-这些样例使用测试 genesis 和账户状态，不代表任意生产交易的固定总费用。旧价与新价的总差额还含参数序列化长度变化带来的存储读取 gas，因此不能只用 249,250 相减解释全部差额。750/751 的编码长度相同，可以隔离单次定价变化。
+These are test-state samples, not fixed production fees. Different encoded parameter lengths contribute to the old/new difference; 750/751 isolate price changes with identical encoding length. Missing PQC authorization still failed. The retry-OOG test switched from a hardcoded limit to simulation minus 1,000, retaining successful CheckTx and failed-message/retry assertions.
 
-首次全仓运行发现两处旧测试假设失效：CLI 仍断言旧估算数字；注册重试测试的写死 gas limit 在降价后足够执行，无法再制造 OOG。前者更新为新值，后者改为从本次模拟值减去 1,000 构造交易，并新增 CheckTx 成功断言。原有“消息失败、sequence 已推进、公钥已记录但 policy 未注册、随后重试成功”的断言全部保留且通过，没有放宽失败标准。
+## Historical microbenchmark
 
-### SDK 与包装层对比
+Intel Core Ultra 7 265, one Go worker, 300 ms per case, three repeats; medians below. Both paths verified identical final bytes. The wrapper additionally built the envelope, copied the public key and performed a then-redundant parse (removed later).
 
-基准 `BenchmarkMLDSA65GasBaseline` 在同一台 Intel Core Ultra 7 265 上用 `GOMAXPROCS=1` 运行，每种情况 300 ms，重复 3 次。两条路径使用完全相同的公钥、签名和最终被验证的字节。SDK 路径接收预构造签名 envelope；PQCAuth 路径还包括 envelope 构造、公钥复制和额外公钥检查。结果取三次中位数：
-
-| 原始消息字节 | SDK 验签 | PQCAuth 包装层验签 | 包装层与 SDK 比值 |
+| Message bytes | SDK | Wrapper | Ratio |
 | --- | ---: | ---: | ---: |
 | 256 | 65.470 µs | 107.651 µs | 1.64 |
 | 4,096 | 71.455 µs | 114.904 µs | 1.61 |
 | 65,536 | 150.472 µs | 215.592 µs | 1.43 |
 
-包装层的分配也较多：SDK 各尺寸约 41,474 B/op、6 allocs/op；包装层分别约 84,834 / 89,410 / 158,274 B/op，均为 11 allocs/op。本次保留原有校验，不为降低基准数字删除安全检查。
+SDK: about 41,474 B/op, six allocations; wrapper: 84,834/89,410/158,274 B/op, eleven allocations. These results do not support a 333-fold fee gap, but do not prove full-path equivalence, target-hardware capacity or exact nanoseconds-to-gas conversion.
 
-这些微基准显示存在额外开销，不能称两条完整路径成本相同，但不支持旧的 333 倍验签收费差距。它们不包含完整 Ante、交易规范化、状态读取、失败签名压力、网络拥堵或最低硬件；不是吞吐量承诺，也不是把实测纳秒精确换算为 750 的证明。
+## Validation and evidence
 
-### 复跑和证据路径
+The gas-only stage passed 617 test/subtest events, 14 packages, three explicit simulations, seven Python tests, 906 IBC files and vet using Go 1.26.10. Tests rejected 749, accepted 750/751/250,000 across parameter paths and verified activation boundaries. The combined emergency-fix stage had a separate result; counts must not be conflated.
 
-在仓库根目录运行：
+Logs: `/tmp/pqcauth-gas750-gate-final.log`, `/tmp/pqcauth-gas750-gate-final/{unit,simulations}.jsonl`, `/tmp/pqcauth-gas750-vet.log`, `/tmp/pqcauth-gas750-benchmark.log`. Initial stale-assertion failures remain in `/tmp/pqcauth-gas750-gate/unit.jsonl`.
 
-```sh
-export GOTOOLCHAIN=go1.26.10
-export GOMODCACHE=/tmp/doravota-go-mod
-export GOCACHE=/tmp/doravota-go-build
-export GOMAXPROCS=2
-export GOFLAGS=-p=2
-PYTHONDONTWRITEBYTECODE=1 RESULTS_DIR=/tmp/pqcauth-gas750-rerun bash scripts/test-release-candidate.sh
-go vet ./...
-GOMAXPROCS=1 go test ./x/pqcauth/crypto -run '^$' -bench '^BenchmarkMLDSA65GasBaseline$' -benchmem -benchtime=300ms -count=3
-```
+Reproduce the benchmark with `GOMAXPROCS=1 go test ./x/pqcauth/crypto -run '^$' -bench '^BenchmarkMLDSA65GasBaseline$' -benchmem -benchtime=300ms -count=3` on the appropriate revision. Network admission, recheck, worst-case payloads, fairness and final-artifact snapshot/testnet acceptance were not established by these measurements.
 
-本次实际证据：
-
-- `/tmp/pqcauth-gas750-gate-final.log`：发布门禁完整结果。
-- `/tmp/pqcauth-gas750-gate-final/unit.jsonl`：617 个通过事件及真实签名 gas 输出。
-- `/tmp/pqcauth-gas750-gate-final/simulations.jsonl`：显式启用的 3 项模拟。
-- `/tmp/pqcauth-gas750-vet.log`：空输出，命令退出码 0。
-- `/tmp/pqcauth-gas750-benchmark.log`：全部 18 组微基准输出。
-- `/tmp/pqcauth-gas750-gate/unit.jsonl`：初跑旧断言失败记录，保留用于审计。
-
-## 尚未解决的容量边界
-
-共享预算仍把原生 ML-DSA、PQCAuth 授权和生命周期证明相加，默认每块 400 次。攻击者仍可能用有效交易占用额度，拖延其他 PQC 用户；此次统一价格不提供优先级、公平排队或防垃圾交易保证。普通无关交易不再因整体截断被连带丢弃，但仍受总 gas、字节、内存池及网络拥堵影响。
-
-本次不删除原生签名计数，也不增加区块容量。降费后的最小硬件持续负载、无效交易流量、CheckTx/recheck、公共测试网生命周期与 IBC、最终二进制的快照升级及重启验收仍需完成。已有 `8a8b689` 或更早产物的验证记录不自动覆盖此次 gas 共识变更；没有对主网、测试网或已有钱包进行操作。
+[Original detailed record at the documentation-cleanup baseline](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/PQCAUTH-GAS-ALIGNMENT-20261101.md). Original evidence files were not translated or modified.

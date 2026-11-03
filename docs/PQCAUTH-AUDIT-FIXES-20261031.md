@@ -1,115 +1,37 @@
-# PQCAuth 独立审计后的修复记录
+# PQCAuth audit fixes — 2026-10-31
 
-日期：2026-10-31。基于 `feature/pqcauth-sdk-keyring` 的 `d3099314cbb14ff7c5a10e167e1c1b0e780ffe12`，对应 Claude 的 P2-A、P2-B、F1、F2、F3。原始独立报告保留不改；本记录描述后续工作区修改，不代表已经通过独立复审或正式上线验收。
+Historical English summary. Results below belong to the recorded revision, not current release acceptance. Current behavior: [module README](../x/pqcauth/README.md).
 
-## 修复内容
+Baseline: `d3099314cbb14ff7c5a10e167e1c1b0e780ffe12`. Findings: P2-A, P2-B, F1–F3. This round predates fixed extension caps and removal of verification-count quotas.
 
-### P2-A 授权扩展容量
+## Changes at that revision
 
-`x/pqcauth/types/capacity.go` 用生成的 protobuf `Size()` 计算签名条目及外层开销，再乘以 `MaxPqcSigners`。包括完整 ML-DSA-65 签名、SDK bech32 解码最大输入长度 1023、最大宽度的索引/密钥 ID/策略版本和长度前缀，不凭经验设置常数。
+- P2-A: compute the minimum extension size with generated protobuf `Size()`, maximum-width fields, 1,023-byte address input and complete ML-DSA signatures. Validate active, pending, genesis and governance values. Boundary tests cover 2/8/32 entries; these synthetic structures are not authenticated accounts.
+- P2-B/F3: require at least two PQC signers, three verifications per transaction, transaction budget at least signer limit, and block budget at least transaction budget. Defaults remained 8 signers, 64 KiB, 16/transaction and 400/block. Native multisig tests: 2/3 leaves fit minimum settings, 4 did not; 7 fit defaults.
+- F2: on governance price/budget changes, require `max(signature_price, proof_price) × transaction_budget < finite block.max_gas`, using overflow-safe comparison. No dynamic BeginBlock failure; emergency/cancellation paths stay available. This was a sanity check, not full gas estimation.
+- F1: registration, enabling protection and later recovery print Authz/Feegrant warnings and query commands to stderr. No automatic enumeration, revocation, index or enrollment prerequisite was added.
 
-`Params.Validate` 对当前和待生效参数都应用下限；治理和 genesis 同样不能接受 1 字节或低于容量的配置。结构测试验证 2、8、32 条最大宽度记录恰好放入下限，小一字节则拒绝；类型测试还包含单条编码边界。结构测试不是这些合成地址/索引能够通过真实账户验签的声明。
+Real signed application tests covered registration, rotation, recovery and protection changes with an independent protected payer. Invalid proposals did not write pending state. Existing poisoning, activation and sequence-dependency assertions remained.
 
-### P2-B 和 F3 最低功能与预算组合
+## Recorded validation
 
-- `MaxPqcSigners` 最低 2，保证受保护发送人与独立受保护付款人。
-- 每笔有效验签预算最低 3，可容纳注册/恢复的两次证明加付款人授权，或轮换的旧因子、新证明与付款人授权。
-- 每笔预算不能小于配置的 PQC 签名者上限，每块预算不能小于每笔预算。
-- 默认参数保持 8 个签名者、64 KiB、每笔 16 次、每块 400 次不变。预算字段 0 仍按已有兼容规则解释为默认值，而不是允许零次。
-- 原生 ML-DSA 多签同样受预算限制。实测最低配置下 2-of-2、3-of-3 成功，4-of-4 明确超预算拒绝；默认预算下 7-of-7 成功。最低配置不承诺支持任意数量叶子的多签。治理缩减预算前仍需审查既有多签和业务组合。
+14 packages, 582 test/subtest pass events, three separately enabled simulations, seven Python tests and 906 pinned IBC files passed. Build, vet and diff checks passed. A 500-malformed-proposal overlay passed, followed by valid transactions and state audit. Twenty-second fuzz runs completed 101,342 extension and 2,031 crypto executions.
 
-最低配置的完整 App 测试使用真实经典/PQC 签名执行注册、轮换、恢复和恢复后转账，费用均由另一个受保护账户支付，并验证保护关闭可执行、状态审计一致。治理处理器测试确认非法请求不写待生效状态，合法最低参数激活后正常转账及关闭/开启保护仍成功。
+The synthetic four-validator run recorded 92 successes and six expected rejections; final height 112 agreed across nodes. It was not a mainnet snapshot, public IBC or physical Ledger test.
 
-原来以 1 次预算构造的提案边界测试改用合法下限，仍检查超预算拒绝、恶意公钥污染、四应用激活边界，以及 Prepare/Process 一致性，没有删掉原来的拒绝检查。
+- Logs: `build/test-results-audit-fixes/`, `build/test-results-audit-closeout/`.
+- Network evidence: `/tmp/doravota-audit-fixes.RVEimp/four-validator/evidence/result.json` and `history-restart-agreement.json`.
+- Binary: `/tmp/doravota-audit-fixes.RVEimp/dorad`.
+- Binary SHA-256: `e96689e7ad06acf1239087c8a921ba29eaae2dc3b3347f90216dbeb1209476d6`.
 
-### F2 当前区块 gas 容量预检
+Claude re-reviewed `a2de29d3ede7a2aefd1551543dd7b8a5e2fd391f` and closed the five findings within that review's scope. The original report hashes were `3bf03061e45a4b03d1947d7077ed476531985ce48f7bb426484c69be22cff69f` (initial) and `f5bdc495d9ed52ec12e99cb08995e020f3ccc366454a7ec335cd88d7a2a91f9f` (with re-review). These identify the original documents, not this English summary. Later CLI/documentation closeout was locally tested, not independently re-audited.
 
-治理修改验签单价或每笔预算时，检查：
+## Subsequent fresh-account simulation fix
 
-```text
-max(signature_verification_gas, proof_verification_gas) × tx_verification_budget
-    < 当前有限的 consensus.block.max_gas
-```
+At `967cd07`, an SDK empty secp256k1 simulation placeholder was incorrectly compared with a funded account's address before its public key had been stored. Only trusted simulation with no known key was exempted; arbitrary nonempty mismatches and malformed native keys remained rejected. CheckTx and proposal/execution paths remained strict.
 
-使用除法比较避免溢出，`-1` 视为无限区块 gas。没有把报告中的主网 600,000,000 写入生产逻辑；它只作为回归测试数值。
+Regression gates included `TestBudgetSimulationPlaceholderIsolation`, `TestPQCAuthFreshClassicSDKDryRun` and `TestPQCAuthProtectedSimulationVersusDeliveryGas`. Recorded result: 585 pass events, 14 packages, three simulations, seven Python tests, 906 IBC files and vet passed. Logs: `/tmp/pqcauth-simulation-fix-gate-20261101/` and the matching `.log`. No new network rehearsal was claimed for this patch.
 
-这是保守的密码学容量预检，不是完整交易 gas 估算：未包括原生 SDK 签名、交易字节、存储和业务执行，也没有承诺仅多留 1 gas 就足以执行交易。真实交易仍受 SDK gas/字节和 PQC 次数共同约束。共识/auth 参数之后可以独立修改，自定义 genesis 也需要单独检查容量；本次未给其他模块增加治理钩子。
+Direct-only is a protocol/client support boundary, not an ML-DSA limitation. Amino support requires a separately reviewed signing and wallet design. Supported production input remained pre-PQC v1.0.1; incompatible experimental databases required a separate migration.
 
-不在 BeginBlock 根据动态 gas 上限报错，避免“其他模块降低 gas 上限 → PQC 参数归一化失败 → 整链 halt”。取消待生效策略、只改变紧急模式等不改验签容量的操作不被此预检阻塞。测试覆盖有限/无限/零 gas、拒绝后状态不变、紧急治理，以及区块 gas 随后缩小时参数归一化仍成功。
-
-### F1 委托风险提示
-
-注册和 `set-protection true` 在 stderr 输出运行时警告，不仅是 `--help`。明确说明：Authz/Feegrant 注册后、恢复后仍有效；被授权人被攻破可以使用授权范围内的资产或手续费额度，不代表整个账户所有资产都可被动用。
-
-警告提供 SDK 的 `query authz grants-by-granter` 和 `query feegrant grants-by-granter` 查询入口，要求用户检查正确链及全部分页。明确标注“未查询、未撤销”，不把离线生成、RPC 失败或部分分页当成“没有委托”。stderr 不污染 unsigned transaction / bundle 的 stdout。
-
-本次没有实现自动查询列出所有授权：它不是交易验签安全前置条件，也不能用无限分页/扫描阻塞注册。完整授权展示仍属第二阶段；不新增索引、链上扫描、强制撤销或被授权人 PQC 门槛。
-
-## 代码入口与测试
-
-- 参数：`x/pqcauth/types/{params,capacity}.go`、`types/capacity_test.go`。
-- 治理：`x/pqcauth/keeper/msg_server.go`、`keeper/capacity_test.go`。
-- 结构边界：`x/pqcauth/ante/capacity_test.go`。
-- 实际交易与多签：`app/pqcauth_capacity_test.go`。
-- CLI：`x/pqcauth/client/cli/{tx,delegation_warning}.go`、`delegation_warning_test.go`。
-- 必测门禁：`scripts/test-release-candidate.sh`。
-- 四验证人脚本：`scripts/rehearse-pqcauth-lifecycle.py` 的隔离网参数改为 4 个 PQC 签名者、每笔/每块 4 次，满足新参数关系。不是生产默认值变化。
-
-完整测试及模拟日志目录：`build/test-results-audit-fixes/`。以下结果均来自本次修复后的工作区。
-
-## 验证状态
-
-本地验证完成，结果如下：
-
-- `scripts/test-release-candidate.sh` 通过：14 个测试包、582 个测试/子测试通过，无失败；另行显式启用的 3 项链模拟全部通过。7 项 Python 工具测试通过；906 个固定版本 IBC 文件及允许补丁检查通过。
-- 当前代码构建成功；`go vet -p=2 ./x/pqcauth/... ./app/...` 和 `git diff --check` 通过。
-- 原安全审查 overlay 的 500 个畸形提案用例通过；随后合法转账、提交、空块和状态审计仍成功。日志：`/tmp/doravota-audit-fixes.RVEimp/malformed-proposals.log`。
-- 授权扩展与密码学 fuzz 各设置 20 秒，均通过，分别执行 101,342 次和 2,031 次。日志：上述临时目录下的 `fuzz-extension.log`、`fuzz-crypto.log`。短时 fuzz 不代表穷尽所有输入。
-- 四验证人隔离网演练通过：92 笔交易成功、6 项非法操作按预期拒绝；覆盖注册、离线签名、轮换、恢复等待期重启、恢复后交易、委托兼容、单节点离线期间混合交易、历史记录增长及再次重启。最终高度 112 的四节点 AppHash 一致，测试节点已停止。
-
-四验证人证据：`/tmp/doravota-audit-fixes.RVEimp/four-validator/evidence/result.json`；最终一致性：同目录 `history-restart-agreement.json`。这是合成隔离网，不是主网快照升级耗时测试，也没有测试公共 IBC 对手链或实体 Ledger。
-
-演练二进制：`/tmp/doravota-audit-fixes.RVEimp/dorad`；SHA-256：`e96689e7ad06acf1239087c8a921ba29eaae2dc3b3347f90216dbeb1209476d6`。
-
-本记录随修复代码一并提交，具体提交以 Git 历史为准。`a2de29d` 中归档的首版 Claude 报告 SHA-256 为 `3bf03061e45a4b03d1947d7077ed476531985ce48f7bb426484c69be22cff69f`；本次追加复审后的完整报告见下节，原首版内容未改写。
-
-## 独立复审与收尾
-
-Claude 对修复提交 `a2de29d3ede7a2aefd1551543dd7b8a5e2fd391f` 的独立复审确认五项发现均已处理，在其检查范围内未发现新问题。完整报告归档于 `docs/PQCAUTH-CLAUDE-AUDIT-20261031.md`，与远端 `/root/claude-pqcauth-audit-20261031/AUDIT.md` 完全一致，SHA-256 为 `f5bdc495d9ed52ec12e99cb08995e020f3ccc366454a7ec335cd88d7a2a91f9f`。
-
-按复审的非阻塞建议完成以下收尾，不改变 Ante、Keeper、参数默认值或链上状态转换：
-
-- `recover-key` 增加帮助文本及 stderr 委托警告。准备离线恢复包和直接提交均提示授权不会因恢复而撤销，并提供查询命令；不新增查询或撤销操作。
-- 恢复命令端到端 CLI 测试增加提示内容与 JSON 输出有效性断言，并纳入必测门禁。
-- [两阶段计划](PQCAUTH-ROLLOUT-PLAN.md#治理参数变更运维检查) 增加治理运维流程：检查当前及待生效参数组合、生效顺序、多签需求、总 gas 余量和隔离环境验收。最低预算 3 不保证任意多签兼容，默认预算 16 不变。
-
-收尾代码重新通过完整发布门禁：14 个包、582 个测试/子测试、3 项显式链模拟、7 项发布工具测试及 906 个固定 IBC 文件检查；`go vet -p=2 ./x/pqcauth/... ./app/...` 和 `git diff --check` 通过。新日志位于 `build/test-results-audit-closeout/`。本次未重跑四验证人演练，前节的演练二进制和哈希仅对应 `a2de29d` 修复工作区，不能标作本次最终产物。
-
-独立复审结论仅覆盖 `a2de29d`；以上客户端和文档收尾由本地回归验证，不冒充已经获得 Claude 的后续复审。候选冻结应绑定包含本节的最终提交、从干净提交构建的二进制及 SHA-256，不使用分支名称代替版本标识。
-
-## 兼容和上线边界
-
-这些修改面向尚未在公共链激活的 v1.1.0 候选，支持入口仍是没有 PQC store 的已完成 v1.0.1 升级状态。默认初始化满足新约束，没有增加账户、Authz、Feegrant 集合扫描。
-
-已经运行旧实验性 PQC 候选且使用了新下限之外参数的开发链，不能直接热替换本二进制；需重建隔离网或单独审查状态迁移。新的参数校验不是对旧实验数据库的无条件兼容承诺。
-
-2026-11-01，冻结候选 `b3f289d` 已完成真实快照的同机四验证人顺序升级、耗时测量及升级提交前中断恢复，详见 [快照演练报告](PQCAUTH-SNAPSHOT-REHEARSAL-20261101.md)。尚需最低物理硬件/跨机器/长期负载验证、公共测试网生命周期和 IBC 往返，以及单独批准发布。未发布版本、广播公共链交易、修改已有钱包或部署生产节点。
-
-## 2026-11-01：修复新账户 SDK dry-run 兼容性
-
-在 `967cd07` 上重新审计发现并实测：已充值但链上公钥尚未设置的普通账户，使用 SDK `Factory.BuildSimTx` 的空 secp256k1 占位公钥模拟时，会被 PQC 预算预检错误拒绝。该账户不必注册 PQC。提供真实公钥的模拟和真实签名交易正常。Claude 第三轮报告也独立复现了这一问题；该确认只针对修复前的问题，不代表下述补丁已获独立复审。
-
-修复仅在 Ante 的可信 `simulate=true` 参数下，且账户既没有持久化公钥、也没有已跟踪公钥时，将 SDK 的**空 secp256k1 公钥**视为未知，不加入公钥跟踪器。不是对所有不匹配公钥放行：任意非空错误公钥、畸形 ML-DSA 公钥仍拒绝。已有和已跟踪的原生 ML-DSA 公钥仍优先用于预算计数，模拟仍执行预算上限检查。公开 `Inspect` 入口始终严格检查，Prepare/ProcessProposal 无法开启模拟例外；CheckTx 和实际执行规则不变。没有修改状态格式、治理参数、升级处理器或 Direct-only 签名要求。
-
-回归测试已加入必测发布门禁：
-
-- `TestBudgetSimulationPlaceholderIsolation`：模拟例外范围、不污染公钥跟踪器、真实原生签名仍计数、模拟超预算仍拒绝。
-- `TestPQCAuthFreshClassicSDKDryRun`：新账户标准 SDK 模拟成功，真实公钥模拟成功；不持久化公钥、序号或余额；占位交易在 CheckTx、ProcessProposal 和实际执行中拒绝；随后真实转账及已公开公钥账户的模拟正常。
-- `TestPQCAuthProtectedSimulationVersusDeliveryGas`：受保护转账样例模拟 gas 不低于实际执行值，不代表穷尽所有估算路径。
-- 原有提案公钥投毒、容量、生命周期及恢复授权回归保持通过。
-
-验证：完整门禁 14 个包、585 个测试/子测试、3 项显式链模拟、7 项 Python 发布工具测试和 906 个固定 IBC 文件检查通过；`go vet -p=2 ./x/pqcauth/... ./app/...` 通过。日志绝对路径：`/tmp/pqcauth-simulation-fix-gate-20261101/`，门禁汇总：`/tmp/pqcauth-simulation-fix-gate-20261101.log`。测试限制 Go 并行度为 2、`GOMEMLIMIT=4GiB`（Go 内存软目标，不是进程硬限制），使用已有离线依赖缓存，没有启动节点或操作公共链。
-
-本次没有重跑四验证人生命周期或快照升级；之前的二进制哈希和演练证据仍只对应之前的产物。最终候选需要从包含本补丁的干净提交重新构建并绑定 SHA-256，再继续最终产物验收。
-
-Direct-only 是当前协议/模块与配套客户端的支持边界，不是 ML-DSA 算法的限制。以后可以单独设计 Amino 兼容，但不能只移除 `requireDirectSignMode`：须明确 Amino 与 PQC 签名各自承诺的字段、规范化规则、关键扩展处理及混合签名者语义，并验证消息/手续费/授权篡改、重放和真实钱包往返。本次不实现 Amino，不承诺 Keplr 自带转账或当前 SDK Ledger 路径已经支持 PQC 保护。
+[Original detailed record at the documentation-cleanup baseline](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/PQCAUTH-AUDIT-FIXES-20261031.md). Original evidence files were not translated or modified.

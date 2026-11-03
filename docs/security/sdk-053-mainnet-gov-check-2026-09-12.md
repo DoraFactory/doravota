@@ -1,51 +1,25 @@
-# 主网治理参数与在途提案复核
+# Mainnet governance and pending-proposal check — 2026-09-12
 
-目标代码：`sdk-053-bridge` / `d37fa73ef456cfd985df3679cd87704509db9a42`，基线 `0.4.4`。采集日期 2026-09-12，RPC `https://vota-rpc.dorafactory.org/`，链 `vota-ash`。本次只读查询主网；未广播交易、修改生产代码或替换节点。
+Historical English summary; not current deployment instructions or a new audit. See the [documentation index](../README.md) for current guidance.
 
-## 固定高度结果
+Target: `d37fa73ef456cfd985df3679cd87704509db9a42`, baseline 0.4.4. Read-only vota-ash RPC collection at **17,268,224**.
 
-状态高度 **17268224**；证明校验使用高度 **17268225** 区块头的 AppHash：`41E23658347BABC92F5BC84651782E24A20BDC76FDBC527B33D0FDF1D148A43E`。
+| Source setting | Observed value |
+| --- | --- |
+| Ordinary minimum deposit | 100,000 DORA |
+| Ordinary deposit/voting periods | Five days each |
+| Ordinary approval threshold | 0.5 |
+| Block max gas / bytes | 600,000,000 / 22,020,096 |
+| Evidence maximum age | 324,000 blocks / 21 days |
 
-| 项目 | 主网原始记录 | 候选升级规则 | 结果 |
-|---|---|---|---|
-| 普通提案最低押金 | 100000 DORA（100000000000000000000000 peaka） | 快速提案 110000 DORA，必须更高 | 通过 |
-| 普通投票期 | 432000 秒，5 天 | 快速投票期 86400 秒，1 天，必须更短 | 通过 |
-| 普通通过阈值 | 0.5 | 快速阈值 0.667，必须更高 | 通过 |
-| 普通押金期 | 432000 秒，5 天 | 保留 | 保留 |
-| 共识 max_gas | 600000000 | 保留原值 | 读取确认；本次不是升级后实测 |
-| 共识 max_bytes | 22020096 | 保留原值 | 读取确认 |
-| evidence 最大区块年龄 / 时长 | 324000 / 1814400 秒（21 天） | 保留原值 | 读取确认，与 genesis 不同 |
+Applying the proposed expedited settings (110,000 DORA, one day, 0.667) passed parameter validation and preserved existing governance fields. This was a migration-rule check using actual source parameters, not full RunMigrations or an executed upgrade.
 
-从 `/store/gov/key` 的 `0x30` 解码当前 Params，按锁定 SDK gov v5 迁移赋入六个新增字段的默认值，再调用当前源码的 `ApprovedGovernanceParams`。`ValidateBasic` 通过，且逐字段比较确认原有治理字段未改变。此次检验是实际参数的规则校验，不是完整 `RunMigrations` 或主网升级验收。
+ICS-23 proofs for gov/0x30 and upgrade/Consensus matched next-height AppHash `41E23658347BABC92F5BC84651782E24A20BDC76FDBC527B33D0FDF1D148A43E`. The header came from the same RPC; no independent light-client/signature verification was performed.
 
-`gov/0x30` 和 `upgrade/Consensus` 两条记录的 ICS-23 证明均通过 `rootmulti.DefaultProofRuntime().VerifyValue`，与下一高度 AppHash 一致。区块头也来自上述 RPC，未独立验证验证人签名或执行轻客户端信任校验。
+Complete pagination returned 17 retained proposals (IDs 1–16 and 18), all PASSED. No deposit/voting proposal or scheduled upgrade was reported. Missing ID 17 was not assigned an inferred status. Proposal listing was not a complete storage-proof traversal.
 
-## 提案与升级计划
+These findings did not justify adding legacy handlers or altering ordinary policy. Active proposals, source parameters and pending upgrade plans had to be checked again near the actual upgrade.
 
-- 固定高度查询未指定状态过滤，page limit 100，返回 17 条存留提案，pagination.total=17，next_key 为空/缺省，分页完整。
-- 返回 ID 为 1–16、18，全部为 `PROPOSAL_STATUS_PASSED`；没有押金期或投票期提案。没有推断缺失 ID 17 的内容或状态。
-- 历史记录中存在 legacy IBC client 和 SoftwareUpgrade 提案，但已经通过，不能将这些历史记录当成等待升级后执行的活跃提案。
-- 同高度 `query upgrade plan` 返回 `{}`，未报告当前已排定的升级计划。
-- 因此，本次没有发现需要为在途旧格式提案新增兼容 handler 的具体对象。提案查询是分页 API 结果，未对全部治理队列进行独立存储证明遍历。
+[Evidence, decoder, verifier and hashes](sdk-053-mainnet-gov-check-2026-09-12-evidence/). The .go.txt verifier can be copied to a temporary Go file and run against a **copy** of the evidence directory; it rewrites validated.json. It verifies two proofs and parameter constraints, not proposal pagination or current mainnet state.
 
-新版 CLI 直接查询旧节点的 `gov params` 出现参数类型不兼容错误，本次改读固定高度原始治理 store；不把该接口错误当成主网参数异常。
-
-## 对代码修改的决定
-
-1. 现有治理政策无冲突，保留三个已批准的新增参数值和现有预检，不改普通治理参数。
-2. 没有活跃旧格式提案，不新增 legacy handler，也不删除旧提案历史。升级前仍须再次清点，包括可能通过但尚未到执行高度的软件升级计划。
-3. ICA controller 保留已记录的接线修复；最终候选版需验证注册、握手、执行、ack、timeout 和错误签名者路径。已有路由存在测试不能替代这些验收。
-4. 不增加假设性的 WasmLimits，不回退当前 gas/default 配置。Wasm 业务兼容、gRPC-Web 代理与其他节点配置仍按各自验收项检查。
-
-## 执行门槛
-
-- 安排升级前，用新的固定高度复核同一组治理约束、活跃提案与升级计划；升级前再次检查。此次记录不代表未来 H−1 状态。
-- 如参数冲突，先决定新增快速提案政策如何调整；禁止自动修改普通治理政策来凑合法值。
-- 最终候选二进制快照演练：旧治理字段升级前后逐项一致，三个定制新字段正确，共识 gas 在升级首块及重启后保持；另验收新旧治理消息、ICA 和 Wasm 受影响路径。
-- 本次没有重新扫描 feeibc、测试远端四节点、执行完整升级或证明主网可放行。
-
-## 证据与复现
-
-原始响应、解码结果、校验程序及 SHA-256 在 [证据目录](sdk-053-mainnet-gov-check-2026-09-12-evidence/)。`validated.json` 中 Go duration 为纳秒，本报告表格已换算为秒/天。校验程序以 `.go.txt` 保存，避免进入仓库 Go 包扫描。
-
-在本仓库根目录，将 `verify.go.txt` 复制为临时 `.go` 文件，运行 `go run <临时文件> docs/security/sdk-053-mainnet-gov-check-2026-09-12-evidence`，可离线重验两个证明和治理约束；会重写证据目录中同内容的 `validated.json`。这不重新查询主网，提案分页响应亦不属于该证明校验程序的覆盖范围。
+[Original detailed record](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/security/sdk-053-mainnet-gov-check-2026-09-12.md). Raw evidence is unchanged.

@@ -1,5 +1,9 @@
 # PQCAuth recheck / parsing / phase-one enforcement fixes
 
+Historical implementation/test record, not current configuration guidance. Old quotas,
+registration rules and enforcement modes mentioned below may have been retired.
+Use the [module README](../x/pqcauth/README.md) for the current candidate.
+
 Date: 2026-11-02 UTC. Baseline: `cc301bc92ee7cd85eef471e39264b03fd1db0b7e`.
 Branch: `feature/pqcauth-sdk-keyring`. This document is delivered with the fix
 commit; it is not a release approval. No tag, public transaction, deployment,
@@ -8,7 +12,7 @@ live node restart or wallet operation is part of this work.
 Input: Claude's `AUDIT-PARAMS-SECURITY-cc301bc.md` and `bench/recheck-fix.diff`
 under `/root/claude-pqcauth-audit-20261031/`. Confirmed code/performance issues
 are handled separately from protocol/product decisions. See
-[the decisions for follow-up review](PQCAUTH-PARAMETER-DECISIONS-20261102.md).
+[the original decisions for follow-up review](https://github.com/DoraFactory/doravota/blob/eb5bbec2a88a36224bd27c5b487f3d726a6bfeda/docs/PQCAUTH-PARAMETER-DECISIONS-20261102.md).
 
 ## 1. Repeat cryptography on recheck
 

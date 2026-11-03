@@ -1,5 +1,9 @@
 # PQCAuth candidate follow-up — 2026-10-27
 
+Historical implementation/test record, not current configuration guidance. Old quotas,
+registration rules and enforcement modes mentioned below may have been retired.
+Use the [module README](../x/pqcauth/README.md) for the current candidate.
+
 Branch: `feature/pqcauth-sdk-keyring`; candidate `v1.1.0-dev`; future upgrade
 plan `v1.1.0`. No release tag, public-network upgrade, or mainnet transaction
 was made in this follow-up.
