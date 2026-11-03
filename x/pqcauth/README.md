@@ -154,7 +154,8 @@ dorad tx pqcauth create-key-proof pqc-recovery "$OWNER" 2 recovery register-reco
   --network-id-base64 "$NETWORK_ID" --chain-id "$CHAIN_ID" --keyring-backend file
 ```
 
-The output contains public key and proof in base64, never private key material.
+The output contains public key and proof in base64, plus `public_key_sha256`
+(the full SHA-256 hex digest of the raw public key), never private key material.
 Pass those outputs to registration, signed by the existing owner:
 
 ```sh
@@ -178,12 +179,70 @@ dorad tx pqcauth sign-bundle prepared.json pqc-signing signed.json --keyring-bac
 dorad tx pqcauth broadcast-bundle signed.json --help
 ```
 
-Recovery bundles use `sign-recovery-bundle prepared.json pqc-recovery signed.json`.
-Review the exact transaction and hashes before signing. Bundle preparation and
+### Trusted recovery target (required for offline signing)
+
+Generate the replacement signing key on a trusted device, independently of the
+online preparation host. Save its public-key fingerprint from that device's
+`create-key-proof` output, or keep a trusted local ML-DSA keyring record on the
+recovery-signing device. A public/watch-only record is sufficient; the new
+signing private key does not need to be copied to the recovery device.
+
+Offline recovery signing requires exactly one trusted target source:
+
+```sh
+# Trusted local record of the NEW signing public key, not the recovery key:
+dorad tx pqcauth sign-recovery-bundle prepared.json pqc-recovery signed.json \
+  --expect-new-signing-key pqc-new-signing --keyring-backend file
+
+# Or a full 64-character SHA-256 hex fingerprint saved on a trusted device:
+dorad tx pqcauth sign-recovery-bundle prepared.json pqc-recovery signed.json \
+  --expect-new-signing-key-sha256 "$TRUSTED_NEW_SIGNING_KEY_SHA256" \
+  --keyring-backend file
+```
+
+The fingerprint hashes the **raw public-key bytes**, not their base64 or JSON
+encoding. The algorithm and full fingerprint appear in the confirmation screen
+and result JSON (`proposed_public_key_sha256`). The fingerprint is derived
+locally from the decoded, validated transaction, not accepted as a bundle label.
+Missing, malformed or mismatched targets fail before the recovery signer is
+loaded. `--yes` skips only interaction, never the target check. Existing offline
+scripts must now provide one of these flags, including legacy-file workflows.
+
+Do not copy the expected fingerprint from the incoming bundle, its preparation
+output, or an untrusted online host: that would compare the attacker-controlled
+key against itself. Transaction hashes prove internal consistency, not that the
+replacement key belongs to you. Check the owner, network, fee and other intent
+fields as well; a matching target alone does not make every transaction safe.
+
+Library integrations handling untrusted bundles should call
+`SignRecoverySignBundleForTarget` with an independently trusted fingerprint.
+`SignRecoverySignBundle` and its private-key convenience wrapper remain low-level
+primitives for already trusted transactions; they do not establish user intent.
+
+Review the exact transaction before signing. Bundle preparation and
 broadcast perform online state checks; offline signing does not require an RPC.
 Changing a message, fee, sequence, signer, policy version or domain invalidates
 the bound authorization. Protocol envelopes remain byte-compatible with the
 ported module; SDK keyring is only the signing backend.
+
+### Recovery response and key reuse
+
+Use fresh signing/recovery key material for rotations. The protocol assigns a
+new key ID but does not prohibit reusing a historical public key; a new ID does
+not make a previously compromised or revoked key safe again.
+
+If both the classical key and recovery key have leaked, cancelling one pending
+recovery does not revoke the compromised recovery key. While you still control
+the current signing factor, prepare a cancellation followed promptly by a
+recovery-key rotation, with consecutive account sequences and the correct
+current policy/key IDs. They must be **two separate transactions**, each with
+one lifecycle message, not a multi-message transaction. They can execute in
+order in the same block, but broadcasting together does not guarantee inclusion,
+atomicity or protection against competing transactions. Rotation is subject to
+the emergency mode and activates at H+1. Check both execution results and the
+effective recovery key on chain. If the current signing key is lost, do not
+assume cancellation is available. Keep the trusted recovery target check even
+though recovery has a waiting period.
 
 ## Legacy keys
 

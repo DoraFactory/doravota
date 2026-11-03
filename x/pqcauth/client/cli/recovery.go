@@ -22,23 +22,27 @@ import (
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
+const flagExpectNewSigningKey = "expect-new-signing-key"
+const flagExpectNewSigningKeySHA256 = "expect-new-signing-key-sha256"
+
 type recoveryBundleCommandResult struct {
-	Status               string `json:"status"`
-	File                 string `json:"file"`
-	ChainID              string `json:"chain_id"`
-	NetworkID            string `json:"network_id_base64"`
-	Owner                string `json:"owner"`
-	AccountNumber        uint64 `json:"account_number"`
-	Sequence             uint64 `json:"sequence"`
-	RecoveryKeyID        uint64 `json:"recovery_key_id"`
-	ProposedSigningKeyID uint64 `json:"proposed_signing_key_id"`
-	RecoveryAlgorithm    string `json:"recovery_algorithm"`
-	ProposedAlgorithm    string `json:"proposed_algorithm"`
-	PolicyVersion        uint64 `json:"policy_version"`
-	RecoveryDelayBlocks  uint64 `json:"recovery_delay_blocks"`
-	TxSHA256             string `json:"tx_sha256"`
-	SignDocSHA256        string `json:"sign_doc_sha256"`
-	Signed               bool   `json:"signed"`
+	Status                  string `json:"status"`
+	File                    string `json:"file"`
+	ChainID                 string `json:"chain_id"`
+	NetworkID               string `json:"network_id_base64"`
+	Owner                   string `json:"owner"`
+	AccountNumber           uint64 `json:"account_number"`
+	Sequence                uint64 `json:"sequence"`
+	RecoveryKeyID           uint64 `json:"recovery_key_id"`
+	ProposedSigningKeyID    uint64 `json:"proposed_signing_key_id"`
+	RecoveryAlgorithm       string `json:"recovery_algorithm"`
+	ProposedAlgorithm       string `json:"proposed_algorithm"`
+	ProposedPublicKeySHA256 string `json:"proposed_public_key_sha256"`
+	PolicyVersion           uint64 `json:"policy_version"`
+	RecoveryDelayBlocks     uint64 `json:"recovery_delay_blocks"`
+	TxSHA256                string `json:"tx_sha256"`
+	SignDocSHA256           string `json:"sign_doc_sha256"`
+	Signed                  bool   `json:"signed"`
 }
 
 func generateOrBroadcastRecoveryTx(
@@ -227,6 +231,13 @@ func signRecoveryBundleCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			expected, err := expectedRecoverySigningTarget(command)
+			if err != nil {
+				return err
+			}
+			if err := pqcauthclient.ValidateRecoverySigningTarget(summary, expected); err != nil {
+				return err
+			}
 			skipConfirm, _ := command.Flags().GetBool(flags.FlagSkipConfirmation)
 			if !skipConfirm {
 				decodedTx, err := clientCtx.TxConfig.TxDecoder()(bundle.UnsignedTx)
@@ -239,7 +250,7 @@ func signRecoveryBundleCommand() *cobra.Command {
 				}
 				printRecoveryBundleReview(command.ErrOrStderr(), summary, transactionJSON)
 				ok, err := input.GetConfirmation(
-					"confirm exact recovery transaction hashes before offline ML-DSA signing",
+					"confirm recovery target key fingerprint and transaction before offline ML-DSA signing",
 					bufio.NewReader(command.InOrStdin()),
 					command.ErrOrStderr(),
 				)
@@ -255,11 +266,12 @@ func signRecoveryBundleCommand() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			signed, signedSummary, err := pqcauthclient.SignRecoverySignBundle(
+			signed, signedSummary, err := pqcauthclient.SignRecoverySignBundleForTarget(
 				command.Context(),
 				clientCtx.TxConfig,
 				bundle,
 				signer,
+				expected,
 			)
 			if err != nil {
 				return err
@@ -287,10 +299,38 @@ func signRecoveryBundleCommand() *cobra.Command {
 		flags.FlagSkipConfirmation,
 		"y",
 		false,
-		"skip offline recovery signing confirmation",
+		"skip interactive confirmation (trusted target key check is still required)",
 	)
+	command.Flags().String(flagExpectNewSigningKey, "", "Trusted local ML-DSA keyring record for the NEW signing key (public key only; choose this or --"+flagExpectNewSigningKeySHA256+")")
+	command.Flags().String(flagExpectNewSigningKeySHA256, "", "Full SHA-256 hex fingerprint of the NEW signing public key from a trusted device, not from the incoming bundle")
 	addOfflineKeyFlags(command)
 	return command
+}
+
+func expectedRecoverySigningTarget(command *cobra.Command) (string, error) {
+	name, _ := command.Flags().GetString(flagExpectNewSigningKey)
+	fingerprint, _ := command.Flags().GetString(flagExpectNewSigningKeySHA256)
+	if (name == "") == (fingerprint == "") {
+		return "", fmt.Errorf("provide exactly one of --%s or --%s from a trusted source", flagExpectNewSigningKey, flagExpectNewSigningKeySHA256)
+	}
+	if name == "" {
+		return fingerprint, nil
+	}
+	ctx, err := client.GetClientQueryContext(command)
+	if err != nil {
+		return "", err
+	}
+	// NewKeyringSigner checks the algorithm and reads only the public record.
+	// Do not call Sign or export the target key's private material.
+	target, err := pqcauthclient.NewKeyringSigner(ctx.Keyring, name)
+	if err != nil {
+		return "", fmt.Errorf("load expected new signing public key: %w", err)
+	}
+	publicKey, err := target.PublicKey(command.Context())
+	if err != nil {
+		return "", err
+	}
+	return pqcauthclient.PublicKeySHA256(publicKey), nil
 }
 
 func broadcastRecoveryBundleCommand() *cobra.Command {
@@ -413,7 +453,7 @@ func printRecoveryBundleReview(
 ) {
 	_, _ = fmt.Fprintf(
 		writer,
-		"chain_id: %s\nnetwork_id_base64: %s\nowner: %s\naccount_number: %d\nsequence: %d\nrecovery_key_id: %d\nproposed_signing_key_id: %d\npolicy_version: %d\nrecovery_delay_blocks: %d\ntx_sha256: %s\nsign_doc_sha256: %s\ntransaction_json:\n%s\n",
+		"chain_id: %s\nnetwork_id_base64: %s\nowner: %s\naccount_number: %d\nsequence: %d\nrecovery_key_id: %d\nproposed_signing_key_id: %d\nproposed_algorithm: %s\nproposed_public_key_sha256: %s\npolicy_version: %d\nrecovery_delay_blocks: %d\ntx_sha256: %s\nsign_doc_sha256: %s\ntransaction_json:\n%s\n",
 		summary.ChainID,
 		base64.StdEncoding.EncodeToString(summary.NetworkID),
 		summary.Owner,
@@ -421,6 +461,8 @@ func printRecoveryBundleReview(
 		summary.Sequence,
 		summary.RecoveryKeyID,
 		summary.ProposedSigningKeyID,
+		summary.ProposedAlgorithm.String(),
+		summary.ProposedPublicKeySHA256,
 		summary.PolicyVersion,
 		summary.RecoveryDelayBlocks,
 		hex.EncodeToString(summary.TxSHA256),
@@ -436,21 +478,22 @@ func printRecoveryBundleResult(
 	summary pqcauthclient.RecoverySignBundleSummary,
 ) error {
 	return json.NewEncoder(writer).Encode(recoveryBundleCommandResult{
-		Status:               status,
-		File:                 path,
-		ChainID:              summary.ChainID,
-		NetworkID:            base64.StdEncoding.EncodeToString(summary.NetworkID),
-		Owner:                summary.Owner,
-		AccountNumber:        summary.AccountNumber,
-		Sequence:             summary.Sequence,
-		RecoveryKeyID:        summary.RecoveryKeyID,
-		ProposedSigningKeyID: summary.ProposedSigningKeyID,
-		RecoveryAlgorithm:    summary.RecoveryAlgorithm.String(),
-		ProposedAlgorithm:    summary.ProposedAlgorithm.String(),
-		PolicyVersion:        summary.PolicyVersion,
-		RecoveryDelayBlocks:  summary.RecoveryDelayBlocks,
-		TxSHA256:             hex.EncodeToString(summary.TxSHA256),
-		SignDocSHA256:        hex.EncodeToString(summary.SignDocSHA256),
-		Signed:               summary.Signed,
+		Status:                  status,
+		File:                    path,
+		ChainID:                 summary.ChainID,
+		NetworkID:               base64.StdEncoding.EncodeToString(summary.NetworkID),
+		Owner:                   summary.Owner,
+		AccountNumber:           summary.AccountNumber,
+		Sequence:                summary.Sequence,
+		RecoveryKeyID:           summary.RecoveryKeyID,
+		ProposedSigningKeyID:    summary.ProposedSigningKeyID,
+		RecoveryAlgorithm:       summary.RecoveryAlgorithm.String(),
+		ProposedAlgorithm:       summary.ProposedAlgorithm.String(),
+		ProposedPublicKeySHA256: summary.ProposedPublicKeySHA256,
+		PolicyVersion:           summary.PolicyVersion,
+		RecoveryDelayBlocks:     summary.RecoveryDelayBlocks,
+		TxSHA256:                hex.EncodeToString(summary.TxSHA256),
+		SignDocSHA256:           hex.EncodeToString(summary.SignDocSHA256),
+		Signed:                  summary.Signed,
 	})
 }

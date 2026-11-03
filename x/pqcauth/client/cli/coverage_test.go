@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	rpcmock "github.com/cometbft/cometbft/rpc/client/mock"
@@ -21,6 +22,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/mldsa65"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -614,6 +616,61 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	require.Equal(t, uint64(2), preparedSummary.RecoveryKeyID)
 	require.Empty(t, prepared.RecoverySignature)
 
+	// The target may be a watch-only record: no new signing private key is
+	// needed on the recovery device. Do not trust the incoming bundle as the
+	// source of this record/fingerprint in a real deployment.
+	_, err = classicalKeyring.SaveOfflineKey("trusted-target", &mldsa65.PubKey{Key: newPublicKey})
+	require.NoError(t, err)
+	_, err = classicalKeyring.SaveOfflineKey("different-target", &mldsa65.PubKey{Key: signingPublicKey})
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name    string
+		options []string
+		want    string
+	}{
+		{"missing", nil, "provide exactly one"},
+		{"short hash", []string{"--" + flagExpectNewSigningKeySHA256, "abcd"}, "full 64-character"},
+		{"nonhex", []string{"--" + flagExpectNewSigningKeySHA256, strings.Repeat("z", 64)}, "full 64-character"},
+		{"wrong hash", []string{"--" + flagExpectNewSigningKeySHA256, pqcauthclient.PublicKeySHA256(signingPublicKey)}, "does not match"},
+		{"wrong key", []string{"--" + flagExpectNewSigningKey, "different-target"}, "does not match"},
+		{"missing key", []string{"--" + flagExpectNewSigningKey, "not-found"}, "load expected"},
+		{"wrong algorithm", []string{"--" + flagExpectNewSigningKey, "alice"}, "ml_dsa_65"},
+		{"both", []string{"--" + flagExpectNewSigningKey, "trusted-target", "--" + flagExpectNewSigningKeySHA256, pqcauthclient.PublicKeySHA256(newPublicKey)}, "provide exactly one"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, yes := range []bool{false, true} {
+				cmd := signRecoveryBundleCommand()
+				cmd.SetContext(attachClientContext(context.Background(), &clientCtx))
+				cmd.SetOut(&bytes.Buffer{})
+				cmd.SetErr(&bytes.Buffer{})
+				cmd.SetIn(strings.NewReader("y\n"))
+				out := filepath.Join(t.TempDir(), "must-not-exist.json")
+				args := []string{preparedPath, "missing-recovery-private-key", out, "--legacy-key-file"}
+				args = append(args, tc.options...)
+				if yes {
+					args = append(args, "--yes")
+				}
+				cmd.SetArgs(args)
+				require.ErrorContains(t, cmd.Execute(), tc.want, "reject before recovery-key access, with or without --yes")
+				_, err := os.Stat(out)
+				require.True(t, os.IsNotExist(err))
+			}
+		})
+	}
+	t.Run("trusted watch-only target with interactive review", func(t *testing.T) {
+		cmd := signRecoveryBundleCommand()
+		cmd.SetContext(attachClientContext(context.Background(), &clientCtx))
+		var review, result bytes.Buffer
+		cmd.SetErr(&review)
+		cmd.SetOut(&result)
+		cmd.SetIn(strings.NewReader("y\n"))
+		cmd.SetArgs([]string{preparedPath, privateKeyPath, filepath.Join(t.TempDir(), "signed.json"),
+			"--legacy-key-file", "--" + flagExpectNewSigningKey, "trusted-target"})
+		require.NoError(t, cmd.Execute())
+		require.Contains(t, review.String(), "proposed_public_key_sha256: "+pqcauthclient.PublicKeySHA256(newPublicKey))
+		require.Contains(t, result.String(), `"proposed_public_key_sha256":"`+pqcauthclient.PublicKeySHA256(newPublicKey)+`"`)
+	})
+
 	output.Reset()
 	sign := signRecoveryBundleCommand()
 	sign.SetContext(attachClientContext(context.Background(), &clientCtx))
@@ -622,6 +679,7 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 		preparedPath,
 		privateKeyPath,
 		signedPath,
+		"--" + flagExpectNewSigningKeySHA256, pqcauthclient.PublicKeySHA256(newPublicKey),
 		"--legacy-key-file",
 		"--" + flags.FlagSkipConfirmation,
 	})
@@ -710,6 +768,7 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	printRecoveryBundleReview(&review, signedSummary, []byte(`{"body":{}}`))
 	require.Contains(t, review.String(), "chain_id: pqc-cli-recovery-test-1")
 	require.Contains(t, review.String(), "transaction_json:")
+	require.Contains(t, review.String(), "proposed_public_key_sha256: "+pqcauthclient.PublicKeySHA256(newPublicKey))
 
 	var result bytes.Buffer
 	require.NoError(t, printRecoveryBundleResult(
@@ -722,6 +781,7 @@ func TestRecoveryBundleCommandsPrepareAndSignRoundTrip(t *testing.T) {
 	require.NoError(t, json.Unmarshal(result.Bytes(), &decoded))
 	require.Equal(t, "signed", decoded.Status)
 	require.True(t, decoded.Signed)
+	require.Equal(t, pqcauthclient.PublicKeySHA256(newPublicKey), decoded.ProposedPublicKeySHA256)
 }
 
 func TestRecoveryCommandsRejectUnsafeModesAndInputs(t *testing.T) {

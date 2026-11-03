@@ -9,11 +9,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 
+	pqcauthclient "github.com/DoraFactory/doravota/x/pqcauth/client"
 	pqccrypto "github.com/DoraFactory/doravota/x/pqcauth/crypto"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
@@ -43,6 +45,7 @@ func TestLegacyOfflineRegistrationProof(t *testing.T) {
 
 	var proofResult encodedKeyOutput
 	require.NoError(t, json.Unmarshal(proofOutput.Bytes(), &proofResult))
+	require.Equal(t, pqcauthclient.PublicKeySHA256(publicKey), proofResult.PublicKeySHA256)
 	proof, err := base64.StdEncoding.DecodeString(proofResult.Proof)
 	require.NoError(t, err)
 	signBytes, err := types.MarshalKeyProofDocV1(types.KeyProofDocV1{
@@ -64,6 +67,18 @@ func TestLegacyOfflineRegistrationProof(t *testing.T) {
 		[]byte(types.RegisterProofContext),
 		proof,
 	))
+}
+
+func TestOfflineProofRejectsNonCanonicalOwnerBeforeKeyAccess(t *testing.T) {
+	canonical := sdk.AccAddress(bytes.Repeat([]byte{0x33}, 20)).String()
+	for _, owner := range []string{"not-an-address", strings.ToUpper(canonical), " " + canonical} {
+		cmd := createKeyProofCommand()
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		cmd.SetArgs([]string{"missing-key", owner, "1", "signing", types.PurposeRegisterSigning,
+			"--network-id-base64", base64.StdEncoding.EncodeToString(types.DefaultParams().NetworkId), "--chain-id", "test"})
+		require.ErrorContains(t, cmd.Execute(), "canonical bech32")
+	}
 }
 
 func TestRotateRecoveryProofUsesDedicatedContext(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,20 +40,21 @@ type RecoverySignBundleV1 struct {
 }
 
 type RecoverySignBundleSummary struct {
-	ChainID              string
-	NetworkID            []byte
-	Owner                string
-	AccountNumber        uint64
-	Sequence             uint64
-	RecoveryKeyID        uint64
-	ProposedSigningKeyID uint64
-	RecoveryAlgorithm    types.Algorithm
-	ProposedAlgorithm    types.Algorithm
-	PolicyVersion        uint64
-	RecoveryDelayBlocks  uint64
-	TxSHA256             []byte
-	SignDocSHA256        []byte
-	Signed               bool
+	ChainID                 string
+	NetworkID               []byte
+	Owner                   string
+	AccountNumber           uint64
+	Sequence                uint64
+	RecoveryKeyID           uint64
+	ProposedSigningKeyID    uint64
+	RecoveryAlgorithm       types.Algorithm
+	ProposedAlgorithm       types.Algorithm
+	ProposedPublicKeySHA256 string
+	PolicyVersion           uint64
+	RecoveryDelayBlocks     uint64
+	TxSHA256                []byte
+	SignDocSHA256           []byte
+	Signed                  bool
 }
 
 // PrepareRecoverySignBundle freezes an unsigned, single-signer MsgRecoverKey
@@ -144,6 +146,53 @@ func PrepareRecoverySignBundle(
 	return bundle, summary, nil
 }
 
+// PublicKeySHA256 returns the full SHA-256 of the raw public key, not its
+// base64/JSON representation. Algorithm identity must be checked separately.
+func PublicKeySHA256(publicKey []byte) string {
+	digest := sha256.Sum256(publicKey)
+	return hex.EncodeToString(digest[:])
+}
+
+// ValidateRecoverySigningTarget compares a validated summary with a target
+// obtained independently on a trusted device, never from the incoming bundle.
+func ValidateRecoverySigningTarget(summary RecoverySignBundleSummary, expectedSHA256 string) error {
+	expected, err := hex.DecodeString(expectedSHA256)
+	if err != nil || len(expected) != sha256.Size {
+		return fmt.Errorf("expected new signing key fingerprint must be a full 64-character SHA-256 hex value")
+	}
+	if summary.ProposedAlgorithm != types.Algorithm_ALGORITHM_ML_DSA_65 {
+		return fmt.Errorf("expected new signing key must use ML-DSA-65")
+	}
+	actual, err := hex.DecodeString(summary.ProposedPublicKeySHA256)
+	if err != nil || len(actual) != sha256.Size || !constantTimeBytesEqual(actual, expected) {
+		return fmt.Errorf("new signing key fingerprint does not match trusted expected key")
+	}
+	return nil
+}
+
+// SignRecoverySignBundleForTarget is the signing entry point for bundles from
+// an untrusted preparation host. Check the independently trusted target before
+// invoking any recovery signer, and derive the fingerprint from decoded bytes.
+func SignRecoverySignBundleForTarget(
+	ctx context.Context,
+	txConfig sdkclient.TxConfig,
+	bundle *RecoverySignBundleV1,
+	signerBackend PQCSigner,
+	expectedSHA256 string,
+) (*RecoverySignBundleV1, RecoverySignBundleSummary, error) {
+	summary, err := ValidateRecoverySignBundle(txConfig, bundle, false)
+	if err != nil {
+		return nil, RecoverySignBundleSummary{}, err
+	}
+	if err := ValidateRecoverySigningTarget(summary, expectedSHA256); err != nil {
+		return nil, RecoverySignBundleSummary{}, err
+	}
+	return SignRecoverySignBundle(ctx, txConfig, bundle, signerBackend)
+}
+
+// SignRecoverySignBundle is a low-level primitive for callers that already
+// trust the intended transaction. Bundle consistency alone does NOT establish
+// user intent. Offline/untrusted-bundle callers must use ForTarget above.
 func SignRecoverySignBundle(
 	ctx context.Context,
 	txConfig sdkclient.TxConfig,
@@ -578,20 +627,21 @@ func ValidateRecoverySignBundle(
 	}
 
 	return RecoverySignBundleSummary{
-		ChainID:              signDoc.ChainId,
-		NetworkID:            append([]byte(nil), signDoc.NetworkId...),
-		Owner:                signDoc.Owner,
-		AccountNumber:        signDoc.AccountNumber,
-		Sequence:             signDoc.Sequence,
-		RecoveryKeyID:        signDoc.RecoveryKeyId,
-		ProposedSigningKeyID: signDoc.ProposedSigningKeyId,
-		RecoveryAlgorithm:    bundle.RecoveryAlgorithm,
-		ProposedAlgorithm:    signDoc.ProposedAlgorithm,
-		PolicyVersion:        signDoc.CurrentPolicyVersion,
-		RecoveryDelayBlocks:  message.ExpectedRecoveryDelayBlocks,
-		TxSHA256:             append([]byte(nil), txHash[:]...),
-		SignDocSHA256:        append([]byte(nil), signDocHash[:]...),
-		Signed:               len(bundle.RecoverySignature) != 0,
+		ChainID:                 signDoc.ChainId,
+		NetworkID:               append([]byte(nil), signDoc.NetworkId...),
+		Owner:                   signDoc.Owner,
+		AccountNumber:           signDoc.AccountNumber,
+		Sequence:                signDoc.Sequence,
+		RecoveryKeyID:           signDoc.RecoveryKeyId,
+		ProposedSigningKeyID:    signDoc.ProposedSigningKeyId,
+		RecoveryAlgorithm:       bundle.RecoveryAlgorithm,
+		ProposedAlgorithm:       signDoc.ProposedAlgorithm,
+		ProposedPublicKeySHA256: PublicKeySHA256(message.NewSigningPublicKey),
+		PolicyVersion:           signDoc.CurrentPolicyVersion,
+		RecoveryDelayBlocks:     message.ExpectedRecoveryDelayBlocks,
+		TxSHA256:                append([]byte(nil), txHash[:]...),
+		SignDocSHA256:           append([]byte(nil), signDocHash[:]...),
+		Signed:                  len(bundle.RecoverySignature) != 0,
 	}, nil
 }
 

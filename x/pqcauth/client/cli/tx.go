@@ -111,6 +111,7 @@ func rotateKeyCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "rotate-key [expected-new-key-id] [new-public-key-base64] [new-proof-base64]",
 		Short: "Rotate the active ML-DSA-65 signing key at H+1",
+		Long:  "Rotate the active ML-DSA-65 signing key at H+1. Use fresh key material: a new key ID does not make a previously used, revoked or compromised public key safe again. Historical public-key reuse is not prohibited by consensus.",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(command)
@@ -149,6 +150,7 @@ func rotateRecoveryKeyCommand() *cobra.Command {
 	command := &cobra.Command{
 		Use:   "rotate-recovery-key [expected-new-key-id] [new-public-key-base64] [new-proof-base64]",
 		Short: "Rotate the offline ML-DSA-65 recovery key at H+1",
+		Long:  "Rotate the offline ML-DSA-65 recovery key at H+1. Use fresh key material: a new key ID does not make a previously used, revoked or compromised public key safe again. Historical public-key reuse is not prohibited by consensus.",
 		Args:  cobra.ExactArgs(3),
 		RunE: func(command *cobra.Command, args []string) error {
 			clientCtx, err := client.GetClientTxContext(command)

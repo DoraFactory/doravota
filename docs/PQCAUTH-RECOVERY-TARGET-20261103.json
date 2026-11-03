@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-03",
+  "baseline_commit": "2d4314c5da62b46850dfe120811bce7219e9fbb2",
+  "scope": "Client-only recovery target confirmation; no consensus, protobuf, gas, delay or on-chain state changes",
+  "finding": "C-1: an internally consistent recovery bundle could substitute the new signing public key without a readable target fingerprint or independent target check",
+  "changes": [
+    "sign-recovery-bundle requires exactly one trusted local ML-DSA public-key record or full SHA-256 fingerprint",
+    "Missing, malformed or mismatched targets reject before loading the recovery signer; --yes cannot bypass the check",
+    "Confirmation and result JSON show the algorithm and full fingerprint derived from the validated transaction",
+    "create-key-proof validates canonical owner addresses and outputs the public-key fingerprint",
+    "Added SignRecoverySignBundleForTarget for untrusted-bundle integrations; existing low-level signing primitives explicitly require caller-established intent",
+    "Documented independent trusted target sourcing, key reuse and non-atomic cancellation/rotation response",
+    "Added mandatory release-test gates for target substitution and owner validation"
+  ],
+  "validation": {
+    "toolchain": "go1.26.10",
+    "gomaxprocs": 2,
+    "go_parallel_packages": 2,
+    "release_script": "scripts/test-release-candidate.sh",
+    "release_script_exit_code": 0,
+    "unit_test_and_subtest_pass_events": 794,
+    "unit_package_pass_events": 14,
+    "unit_fail_events": 0,
+    "explicit_simulations": [
+      "TestAppStateDeterminism",
+      "TestAppImportExport",
+      "TestAppSimulationAfterImport"
+    ],
+    "go_vet": "go vet ./...: exit 0",
+    "client_race": "go test -race ./x/pqcauth/client/... -count=3: exit 0",
+    "substitution_regression": "Rebuilt transaction and sign document, recalculated both hashes, supplied and independently verified a genuine attacker-key PoP; target-aware signing refused before the recovery signer was called",
+    "cli_regressions": "Missing/short/nonhex/mismatched fingerprints, missing/wrong-algorithm/mismatched local keys, conflicting flags; checked with and without --yes; trusted watch-only key and fingerprint positive paths",
+    "local_logs": "/tmp/pqcauth-recovery-target.kqd9pm/"
+  },
+  "limits": [
+    "794 counts parent and subtest pass events, not independent security properties",
+    "The substitution regression is a client test, not an end-to-end chain takeover experiment",
+    "The expected target must come from a trusted independent source; copying it from the incoming bundle defeats intent checking",
+    "Matching the key does not replace reviewing the owner, network, fee and other transaction intent",
+    "Low-level SignRecoverySignBundle and its private-key wrapper remain available for already trusted transaction callers",
+    "No new network capacity, four-validator, mainnet snapshot or public-chain run in this client-only change",
+    "Local validation is not a GitHub CI result"
+  ]
+}

@@ -7,8 +7,10 @@ import (
 	"strconv"
 
 	"github.com/cosmos/cosmos-sdk/client/flags"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/spf13/cobra"
 
+	pqcauthclient "github.com/DoraFactory/doravota/x/pqcauth/client"
 	"github.com/DoraFactory/doravota/x/pqcauth/types"
 )
 
@@ -18,10 +20,11 @@ const (
 )
 
 type encodedKeyOutput struct {
-	Algorithm string `json:"algorithm"`
-	PublicKey string `json:"public_key_base64"`
-	Proof     string `json:"proof_base64,omitempty"`
-	Signature string `json:"signature_base64,omitempty"`
+	Algorithm       string `json:"algorithm"`
+	PublicKey       string `json:"public_key_base64"`
+	PublicKeySHA256 string `json:"public_key_sha256"`
+	Proof           string `json:"proof_base64,omitempty"`
+	Signature       string `json:"signature_base64,omitempty"`
 }
 
 func createKeyProofCommand() *cobra.Command {
@@ -30,6 +33,10 @@ func createKeyProofCommand() *cobra.Command {
 		Short: "Create an offline registration, rotation, or recovery key proof",
 		Args:  cobra.ExactArgs(5),
 		RunE: func(command *cobra.Command, args []string) error {
+			owner, err := sdk.AccAddressFromBech32(args[1])
+			if err != nil || owner.String() != args[1] {
+				return fmt.Errorf("owner must be a canonical bech32 account address")
+			}
 			keyID, err := strconv.ParseUint(args[2], 10, 64)
 			if err != nil || keyID == 0 {
 				return fmt.Errorf("key id must be a positive integer")
@@ -81,9 +88,10 @@ func createKeyProofCommand() *cobra.Command {
 				return err
 			}
 			return json.NewEncoder(command.OutOrStdout()).Encode(encodedKeyOutput{
-				Algorithm: "ML-DSA-65",
-				PublicKey: base64.StdEncoding.EncodeToString(publicKey),
-				Proof:     base64.StdEncoding.EncodeToString(proof),
+				Algorithm:       "ML-DSA-65",
+				PublicKey:       base64.StdEncoding.EncodeToString(publicKey),
+				PublicKeySHA256: pqcauthclient.PublicKeySHA256(publicKey),
+				Proof:           base64.StdEncoding.EncodeToString(proof),
 			})
 		},
 	}
