@@ -20,6 +20,8 @@ python3 scripts/check-test-results.py "$results/unit.jsonl" \
  TestPQCAuthMixedTrafficAndRecoveryWithoutQuota \
  TestPQCAuthBoundedInvalidAdmission \
  TestPQCAuthRecheckPreservesGasAndDelivery \
+ TestRestartAdmissionUsesCommittedContext \
+ TestStartupCheckContextScope \
  TestPQCAuthRecheckDoesNotAuthenticateNewBytes \
  TestPQCAuthRecheckRejectsChangedPolicy \
  TestPQCAuthRecheckRejectsPauseAndSequence \

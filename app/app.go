@@ -207,6 +207,9 @@ func init() {
 type App struct {
 	*baseapp.BaseApp
 
+	// Immutable after loading, before ABCI service starts. See startup_context.go.
+	startupCheckContext startupCheckContext
+
 	cdc               *codec.LegacyAmino
 	appCodec          codec.Codec
 	interfaceRegistry types.InterfaceRegistry
@@ -692,7 +695,9 @@ func (app *App) setAnteHandler(txConfig client.TxConfig) {
 	if err != nil {
 		panic(fmt.Errorf("failed to create AnteHandler: %s", err))
 	}
-	app.SetAnteHandler(anteHandler)
+	app.SetAnteHandler(func(ctx sdk.Context, tx sdk.Tx, simulate bool) (sdk.Context, error) {
+		return anteHandler(app.startupCheckContext.restore(ctx), tx, simulate)
+	})
 }
 
 func (app *App) setPostHandler() {
