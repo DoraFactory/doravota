@@ -1,22 +1,19 @@
 # CHANGELOG
 
-## [v1.1.0-dev]
+## [v1.1.0]
 
-Unreleased development candidate based on v1.0.1. Do not install on mainnet or reuse either historical upgrade plan.
+Frozen source candidate based on v1.0.1; not a published release or mainnet deployment approval. Upgrade plan and candidate binary version: `v1.1.0`.
 
-- Harden PQC parameter capacity: minimum two signers and three verifications, signer-dependent maximum-encoding byte floor, consistent signer/transaction/block budgets, and current-consensus gas preflight for capacity changes. Add real native-multisig and protected-fee-payer lifecycle regressions. Registration/protection CLI warns that delegated Authz/Feegrant authority remains valid, without scanning or revoking grants.
-
-- Preserve the v1.0.1 IBC Amino false-omission fix and require its activated signing rules before the separate v1.1.0 PQCAuth upgrade. Keep historical upgrade handlers recognition-only; add combined activation and sequential-upgrade regressions.
-
-- Add opt-in PQC Auth for classical accounts, with distinct ML-DSA-65 signing and offline recovery factors. Initial global enforcement is OPTIONAL.
-- Use SDK ML-DSA keyring keys for proofs and transaction signatures; remove the module-specific keygen command and retain explicitly labeled legacy raw-file recovery.
-- Reject locally detectable classical/PQC derived-key reuse for newly registered or rotated factors; preserve restoration and use of old factors to migrate assets. The CLI cannot prove mnemonic independence across other wallets or derivation paths.
-- Integrate canonical transaction decoding, direct-signature authorization, governance delay and proposal verification budgets without reinstating Wasm or Sponsor dependencies. Keep native SDK Authz/Feegrant behavior; enrollment does not clear or restrict delegations. Comprehensive delegation protection is deferred to phase two.
-- Require explicit factor-independence acknowledgment for Ledger/watch-only owners when the local private-key check is unavailable; detected reuse remains blocked.
-- Document composite multisig limitations in OPTIONAL and REQUIRED modes.
-- Filter malformed proposal transactions before SDK selection and prevent error fallback from restoring rejected transactions; add four-application budget-activation regressions.
-- Restrict CI prerelease allowance to the PQCAuth development branch.
-- Define the internal post-v1.0.1 candidate plan `v1.1.0`; initialize its store, OPTIONAL parameters and network domain without scanning accounts or delegations. Remove experimental Feegrant indexes and use PQC module version 3, rejecting old experimental PQC databases. Production release name and rollout remain subject to review and rehearsal; see `docs/PQCAUTH-ROLLOUT-PLAN.md`.
+- Add opt-in PQCAuth protection to existing single-key classical accounts without changing their addresses. Protected transactions require both the account signature and an ML-DSA-65 factor; lifecycle operations require a single top-level message and DIRECT signing.
+- Support registration, signing/recovery key rotation, delayed recovery, cancellation, protection changes and bounded historical key retention. Authz/Feegrant permissions remain unchanged and are explicitly disclosed by the CLI.
+- Allow OPTIONAL and REQUIRED_FOR_REGISTERED enforcement only. Keep phase-one registration open except during applicable emergency pauses; global REQUIRED, registration cutoff and CLOSED/FRESH modes are not supported.
+- Unify PQC verification pricing at a default/minimum of 750 gas. Remove independent per-transaction/per-block verification-count quotas and custom proposal filtering; retain SDK gas/byte/signature limits, the block gas meter, fixed extension caps and pre-decode wire limits.
+- Set immutable launch defaults to 17,280 blocks for governance safety delay, 107,520 blocks for recovery and 46,080 blocks for maximum emergency pause. Use explicit emergency-only update intent and protect pending emergency activation from same-block full updates.
+- Skip only PQC cryptographic verification on mempool recheck, preserving gas and state-dependent checks. First admission and block execution still verify signatures. Remove duplicate ML-DSA public-key parsing.
+- Require trusted new-key target checks for offline recovery and rotation signing; display key fingerprints and reject mismatches. Preserve local factor-independence checks and reject incompatible registration backends.
+- Restore committed height/time context for admission after restart. Keep the v1.0.1 IBC Amino fix and require its activation before the separate PQCAuth upgrade. Initialize module version 4; old experimental PQC databases are not automatically migrated.
+- Build with Go 1.26.10 and patched dependencies pinned in go.mod. Preserve historical upgrade identities, archive-only Wasm behavior and ordinary SDK native ML-DSA/multisig transactions.
+- Target-hardware capacity and final-artifact deployment rehearsals remain separate acceptance gates. Default mempool/proposal ordering can reject dependent same-account transactions under concurrent admission; this is not a PQCAuth-specific authentication failure. See the module README and `docs/PQCAUTH-ROLLOUT-PLAN.md`.
 
 ## [Unreleased]
 

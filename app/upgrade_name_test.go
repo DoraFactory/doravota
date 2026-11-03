@@ -78,12 +78,12 @@ func TestCompletedLegacyUpgradeRemainsRecognized(t *testing.T) {
 	}
 }
 
-// Keep the development identity separate from historical and candidate plans.
+// Keep the frozen candidate identity aligned without renaming historical plans.
 func TestUpgradeIdentityMatchesReleaseVersion(t *testing.T) {
 	raw, err := os.ReadFile("../VERSION")
 	require.NoError(t, err)
 	name := strings.TrimSpace(string(raw))
-	require.Equal(t, "v1.1.0-dev", name)
+	require.Equal(t, "v1.1.0", name)
 	// Historical migration identities must not be renamed to the new candidate.
 	require.Equal(t, "v1.0.1", aminoUpgrade.UpgradeName)
 	require.Equal(t, "v1.0.0", sdk055.UpgradeName)

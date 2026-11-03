@@ -10,6 +10,7 @@ Passing tests on an older artifact do not approve a newer release.
 | --- | --- |
 | PQCAuth candidate: behavior, parameters and CLI | [Module README](../x/pqcauth/README.md) |
 | PQCAuth phase-one scope and release gates | [Rollout plan](PQCAUTH-ROLLOUT-PLAN.md) |
+| v1.1.0 source freeze and local validation | [Candidate record](PQCAUTH-CANDIDATE-FREEZE-20261103.md) |
 | v1.0.1 coordinated validator upgrade | [Validator guide](VALIDATOR-1.0.1.md) |
 | v1.0.0 validator/client compatibility | [Validator](VALIDATOR-1.0.0.md), [client](CLIENT-1.0.0.md), [release](RELEASE-v1.0.0.md) |
 | Archived Wasm behavior | [Wasm retirement](WASM-RETIREMENT.md) |

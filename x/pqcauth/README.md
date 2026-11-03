@@ -8,7 +8,8 @@ multisig address. A separate recovery key can replace the PQC signing factor;
 it cannot recover the classical private key.
 
 This README describes the current v1.1.0 candidate, not live-chain configuration
-or release approval. The development version is `v1.1.0-dev`.
+or release approval. The candidate version is `v1.1.0`; a version string alone
+does not mean a release tag has been published or deployment approved.
 
 ## Scope and restrictions
 
